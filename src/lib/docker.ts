@@ -28,10 +28,15 @@ interface DfCacheEntry {
   data: DfSnapshot;
   ts: number;
 }
+interface DockerRootCacheEntry {
+  data: string | null;
+  ts: number;
+}
 const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
   __statsCache?: StatsCacheEntry;
   __dfCache?: DfCacheEntry;
+  __dockerRootCache?: DockerRootCacheEntry;
 };
 export const docker: Docker = globalForDocker.__docker ?? createClient();
 globalForDocker.__docker = docker;
@@ -233,6 +238,22 @@ export async function systemDf(): Promise<DfSnapshot> {
   return data;
 }
 
+const DOCKER_ROOT_TTL_MS = 60 * 60 * 1000; // never changes without a daemon restart
+
+/** GET /info, just for DockerRootDir — cached for an hour since it's effectively static. */
+async function getDockerRootDir(): Promise<string | null> {
+  const now = Date.now();
+  if (globalForDocker.__dockerRootCache && now - globalForDocker.__dockerRootCache.ts < DOCKER_ROOT_TTL_MS) {
+    return globalForDocker.__dockerRootCache.data;
+  }
+  const data = await docker
+    .info()
+    .then((info: { DockerRootDir?: string }) => info.DockerRootDir ?? null)
+    .catch(() => null);
+  globalForDocker.__dockerRootCache = { data, ts: now };
+  return data;
+}
+
 export interface ResourceContainer {
   id: string;
   name: string;
@@ -250,6 +271,7 @@ export interface ResourceSnapshot {
   containers: ResourceContainer[];
   volumes: { name: string; sizeBytes: number | null; refCount: number }[] | null;
   hostDisks: { mount: string; total: number; used: number; percent: number }[] | null;
+  dockerRootDir: string | null;
   totals: {
     cpuPct: number;
     memBytes: number;
@@ -268,11 +290,12 @@ export interface ResourceSnapshot {
  * of the snapshot still renders, just without disk numbers.
  */
 export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
-  const [list, stats, df, host] = await Promise.all([
+  const [list, stats, df, host, dockerRootDir] = await Promise.all([
     listContainers(),
     allContainerStats(),
     systemDf().catch(() => null),
     getHostVitals().catch(() => null),
+    getDockerRootDir(),
   ]);
 
   const dfById = new Map((df?.containers ?? []).map((c) => [c.id, c]));
@@ -299,6 +322,7 @@ export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
     containers,
     volumes: df?.volumes ?? null,
     hostDisks: host?.disk ?? null,
+    dockerRootDir,
     totals: {
       cpuPct: containers.reduce((a, c) => a + c.cpuPct, 0),
       memBytes: containers.reduce((a, c) => a + c.memBytes, 0),

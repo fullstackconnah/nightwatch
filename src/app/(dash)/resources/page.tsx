@@ -24,6 +24,34 @@ import {
 type Metric = "cpu" | "mem" | "disk";
 
 type ResourceContainer = ResourceSnapshot["containers"][number];
+type HostDisk = NonNullable<ResourceSnapshot["hostDisks"]>[number];
+type DiskSegment = { key: string; label: string; value: number; fill: string };
+
+/** Path-segment-aware prefix test: "/mnt/docker" matches "/mnt/docker/docker-data" but not "/mnt/dockerfoo". "/" matches everything. */
+function isMountPrefixOf(mount: string, path: string): boolean {
+  if (mount === "/") return true;
+  return path === mount || path.startsWith(mount.endsWith("/") ? mount : `${mount}/`);
+}
+
+function otherDiskSegments(d: HostDisk): DiskSegment[] {
+  const segs: DiskSegment[] = [];
+  if (d.used > 0) segs.push({ key: "used", label: "used", value: d.used, fill: "#0f766e" });
+  const free = Math.max(0, d.total - d.used);
+  segs.push({ key: "free", label: "free", value: free, fill: "var(--color-panel-2)" });
+  return segs;
+}
+
+const isDockerSegKey = (k: string) => k === "images" || k === "writable" || k === "volumes" || k === "buildcache";
+
+const SEGMENT_LEGEND: DiskSegment[] = [
+  { key: "images", label: "images", value: 0, fill: "#134e4a" },
+  { key: "writable", label: "writable layers", value: 0, fill: "#0f766e" },
+  { key: "volumes", label: "volumes", value: 0, fill: "#0d9488" },
+  { key: "buildcache", label: "build cache", value: 0, fill: "#14b8a6" },
+  { key: "other", label: "other used", value: 0, fill: "#2a3a50" },
+  { key: "used", label: "used", value: 0, fill: "#0f766e" },
+  { key: "free", label: "free", value: 0, fill: "var(--color-panel-2)" },
+];
 
 function valueOf(c: ResourceContainer, metric: Metric): number | null {
   if (metric === "cpu") return c.cpuPct;
@@ -260,25 +288,35 @@ export default function ResourcesPage() {
   const maxVolume = Math.max(1, ...sortedVolumes.map((v) => v.sizeBytes ?? 0));
 
   const hostDisks = data?.hostDisks ?? null;
+  const dockerRootDir = data?.dockerRootDir ?? null;
   const writableLayers = useMemo(
     () => containers.reduce((a, c) => a + (c.sizeRw ?? 0), 0),
     [containers],
   );
-  const primaryDisk = useMemo(() => {
+  // Fallback when dockerRootDir is unknown: primary = "/" or the largest drive (approximate).
+  const fallbackDisk = useMemo(() => {
     if (!hostDisks || hostDisks.length === 0) return null;
     return (
       hostDisks.find((d) => d.mount === "/") ??
       [...hostDisks].sort((a, b) => b.total - a.total)[0]
     );
   }, [hostDisks]);
-  const otherDisks = useMemo(() => {
-    if (!hostDisks || !primaryDisk) return [];
-    return hostDisks.filter((d) => d !== primaryDisk);
-  }, [hostDisks, primaryDisk]);
+  // The drive whose mountpoint is the longest prefix of dockerRootDir owns the docker segments.
+  const dockerDisk = useMemo(() => {
+    if (!hostDisks || hostDisks.length === 0) return null;
+    if (!dockerRootDir) return fallbackDisk;
+    let best: HostDisk | null = null;
+    for (const d of hostDisks) {
+      if (isMountPrefixOf(d.mount, dockerRootDir) && (!best || d.mount.length > best.mount.length)) {
+        best = d;
+      }
+    }
+    return best ?? fallbackDisk;
+  }, [hostDisks, dockerRootDir, fallbackDisk]);
   const dfFailed = volumes === null;
-  const dockerSegments = useMemo(() => {
-    if (!primaryDisk || !data) return [];
-    const segs: { key: string; label: string; value: number; fill: string }[] = [];
+  const dockerSegments = useMemo((): DiskSegment[] => {
+    if (!dockerDisk || !data) return [];
+    const segs: DiskSegment[] = [];
     if (!dfFailed) {
       const { totals } = data;
       if (totals.layersSize > 0) segs.push({ key: "images", label: "images", value: totals.layersSize, fill: "#134e4a" });
@@ -287,13 +325,21 @@ export default function ResourcesPage() {
       if (totals.buildCacheBytes > 0) segs.push({ key: "buildcache", label: "build cache", value: totals.buildCacheBytes, fill: "#14b8a6" });
     }
     const dockerTotal = segs.reduce((a, s) => a + s.value, 0);
-    const otherUsed = Math.max(0, primaryDisk.used - dockerTotal);
+    const otherUsed = Math.max(0, dockerDisk.used - dockerTotal);
     if (otherUsed > 0) segs.push({ key: "other", label: "other used", value: otherUsed, fill: "#2a3a50" });
-    const free = Math.max(0, primaryDisk.total - primaryDisk.used);
+    const free = Math.max(0, dockerDisk.total - dockerDisk.used);
     segs.push({ key: "free", label: "free", value: free, fill: "var(--color-panel-2)" });
     return segs;
-  }, [primaryDisk, data, writableLayers, dfFailed]);
-  const isDockerSegKey = (k: string) => k === "images" || k === "writable" || k === "volumes" || k === "buildcache";
+  }, [dockerDisk, data, writableLayers, dfFailed]);
+  const panelLegend = useMemo(() => {
+    if (!hostDisks) return [];
+    const present = new Set<string>();
+    for (const d of hostDisks) {
+      const segs = d === dockerDisk ? dockerSegments : otherDiskSegments(d);
+      for (const s of segs) present.add(s.key);
+    }
+    return SEGMENT_LEGEND.filter((s) => present.has(s.key));
+  }, [hostDisks, dockerDisk, dockerSegments]);
 
   return (
     <div className="space-y-4 pb-4">
@@ -348,85 +394,73 @@ export default function ResourcesPage() {
       </div>
 
       {/* host disk breakdown (disk view only) */}
-      {metric === "disk" && hostDisks && hostDisks.length > 0 && primaryDisk && (
+      {metric === "disk" && hostDisks && hostDisks.length > 0 && (
         <div className="panel p-4">
           <div className="microlabel mb-3">HOST DISK</div>
 
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="font-mono text-xs text-ink">{primaryDisk.mount}</span>
-            <span className="font-mono text-xs text-ink">
-              {formatBytes(primaryDisk.used)} / {formatBytes(primaryDisk.total)}
-            </span>
-          </div>
-
-          <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
-            {dockerSegments.map((seg) => {
-              const pct = primaryDisk.total > 0 ? (seg.value / primaryDisk.total) * 100 : 0;
-              const dockerSeg = isDockerSegKey(seg.key);
-              const title =
-                dockerSeg && primaryDisk.mount !== "/"
-                  ? "approximate — docker root may be on another filesystem"
-                  : `${seg.label} · ${formatBytes(seg.value)}`;
-              const showLabel = pct >= 9 && seg.key !== "free";
+          <div className="space-y-4">
+            {hostDisks.map((d) => {
+              const isDockerDisk = d === dockerDisk;
+              const segs = isDockerDisk ? dockerSegments : otherDiskSegments(d);
               return (
-                <div
-                  key={seg.key}
-                  title={title}
-                  className={cn(
-                    "h-full flex items-center justify-center px-1 overflow-hidden",
-                    seg.key === "free" && "border-l border-line",
-                  )}
-                  style={{ width: `${pct}%`, background: seg.fill }}
-                >
-                  {showLabel && (
-                    <span
-                      className={cn(
-                        "text-[0.625rem] font-medium truncate",
-                        seg.key === "other" ? "text-ink-dim" : "text-ink",
-                      )}
-                    >
-                      {seg.label}
+                <div key={d.mount}>
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <span className="font-mono text-xs text-ink">{d.mount}</span>
+                    <span className="font-mono text-xs text-ink">
+                      {formatBytes(d.used)} / {formatBytes(d.total)}
                     </span>
-                  )}
+                  </div>
+
+                  <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
+                    {segs.map((seg) => {
+                      const pct = d.total > 0 ? (seg.value / d.total) * 100 : 0;
+                      const dockerSeg = isDockerDisk && isDockerSegKey(seg.key);
+                      const title =
+                        dockerSeg && !dockerRootDir && d.mount !== "/"
+                          ? "approximate — docker root may be on another filesystem"
+                          : `${seg.label} · ${formatBytes(seg.value)}`;
+                      const showLabel = pct >= 9 && seg.key !== "free";
+                      const label = seg.key === "used" ? `used · ${formatBytes(seg.value)}` : seg.label;
+                      return (
+                        <div
+                          key={seg.key}
+                          title={title}
+                          className={cn(
+                            "h-full flex items-center justify-center px-1 overflow-hidden",
+                            seg.key === "free" && "border-l border-line",
+                          )}
+                          style={{ width: `${pct}%`, background: seg.fill }}
+                        >
+                          {showLabel && (
+                            <span
+                              className={cn(
+                                "text-[0.625rem] font-medium truncate",
+                                seg.key === "other" ? "text-ink-dim" : "text-ink",
+                              )}
+                            >
+                              {label}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-            {dockerSegments.map((seg) => (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-4 pt-3 border-t border-line">
+            {panelLegend.map((seg) => (
               <div key={seg.key} className="flex items-center gap-1.5">
                 <span
                   className="w-2.5 h-2.5 rounded-sm shrink-0"
                   style={{ background: seg.fill }}
                 />
                 <span className="microlabel">{seg.label}</span>
-                <span className="font-mono text-[0.7rem] text-ink">{formatBytes(seg.value)}</span>
               </div>
             ))}
           </div>
-
-          {otherDisks.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-line space-y-2">
-              {otherDisks.map((d) => (
-                <div key={d.mount} className="flex items-center gap-2.5">
-                  <span className="font-mono text-[0.75rem] flex-1 min-w-0 truncate">{d.mount}</span>
-                  <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden shrink-0">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.min(100, (d.used / Math.max(1, d.total)) * 100)}%`,
-                        background: "#14b8a6",
-                      }}
-                    />
-                  </div>
-                  <span className="font-mono text-[0.75rem] text-ink shrink-0 text-right">
-                    {formatBytes(d.used)} / {formatBytes(d.total)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
