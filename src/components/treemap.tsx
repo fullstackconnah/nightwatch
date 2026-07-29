@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { cn } from "@/lib/utils";
 
 export interface TreemapItem {
@@ -16,89 +17,33 @@ interface PlacedRect extends TreemapItem {
   h: number;
 }
 
-/** Aspect-ratio "badness" of a row of areas laid along a fixed side length. Lower is squarer. */
-function worstRatio(areas: number[], side: number): number {
-  let max = -Infinity;
-  let min = Infinity;
-  let sum = 0;
-  for (const a of areas) {
-    if (a > max) max = a;
-    if (a < min) min = a;
-    sum += a;
-  }
-  const sideSq = side * side;
-  const sumSq = sum * sum;
-  return Math.max((sideSq * max) / sumSq, sumSq / (sideSq * min));
-}
+type HierarchyDatum = TreemapItem | { children: TreemapItem[] };
 
 /**
- * Squarified treemap (Bruls/Huizing/van Wijk). Lays items into rows along
- * whichever side of the remaining rect is currently shortest, growing each row
- * while doing so keeps cell aspect ratios closer to square, then slices off
- * that row and recurses on what's left.
+ * Squarified treemap (Bruls/Huizing/van Wijk) via d3-hierarchy: builds a single-level
+ * hierarchy from `items` and lays it out with the squarify tiling method across the
+ * given pixel dimensions.
  */
-export function squarify(items: TreemapItem[], x: number, y: number, w: number, h: number): PlacedRect[] {
-  if (!items.length || w <= 0 || h <= 0) return [];
+function layoutTreemap(items: TreemapItem[], width: number, height: number): PlacedRect[] {
+  if (!items.length || width <= 0 || height <= 0) return [];
   const total = items.reduce((a, i) => a + i.value, 0);
   if (total <= 0) return [];
 
-  const scale = (w * h) / total;
-  const areas = items.map((i) => i.value * scale);
+  const root = hierarchy<HierarchyDatum>({ children: items })
+    .sum((d) => ("value" in d ? (d.value ?? 0) : 0))
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
 
-  const rects: PlacedRect[] = [];
-  let idx = 0;
-  let cx = x;
-  let cy = y;
-  let cw = w;
-  let ch = h;
+  const laidOut = treemap<HierarchyDatum>().tile(treemapSquarify).size([width, height])(root);
 
-  while (idx < items.length) {
-    const side = Math.min(cw, ch);
-    let rowAreas = [areas[idx]];
-    let rowEnd = idx + 1;
-    while (rowEnd < items.length) {
-      const testAreas = [...rowAreas, areas[rowEnd]];
-      if (worstRatio(testAreas, side) <= worstRatio(rowAreas, side)) {
-        rowAreas = testAreas;
-        rowEnd++;
-      } else {
-        break;
-      }
-    }
-
-    const rowSum = rowAreas.reduce((a, b) => a + b, 0);
-    const placeAsColumn = cw >= ch; // remaining rect is wide -> row becomes a column along the short (height) side
-
-    if (placeAsColumn) {
-      const colWidth = rowSum / ch;
-      let oy = cy;
-      for (let k = idx; k < rowEnd; k++) {
-        const itemH = areas[k] / colWidth;
-        rects.push({ ...items[k], x: cx, y: oy, w: colWidth, h: itemH });
-        oy += itemH;
-      }
-      cx += colWidth;
-      cw -= colWidth;
-    } else {
-      const rowHeight = rowSum / cw;
-      let ox = cx;
-      for (let k = idx; k < rowEnd; k++) {
-        const itemW = areas[k] / rowHeight;
-        rects.push({ ...items[k], x: ox, y: cy, w: itemW, h: rowHeight });
-        ox += itemW;
-      }
-      cy += rowHeight;
-      ch -= rowHeight;
-    }
-
-    idx = rowEnd;
-  }
-
-  return rects;
+  return laidOut.leaves().map((leaf) => {
+    const item = leaf.data as TreemapItem;
+    return { ...item, x: leaf.x0, y: leaf.y0, w: leaf.x1 - leaf.x0, h: leaf.y1 - leaf.y0 };
+  });
 }
 
-/** darkest -> brightest teal, quartile-ranked by magnitude (largest = brightest = most legible). */
-const QUARTILE_FILLS = ["#134e4a", "#0f766e", "#14b8a6", "#2dd4bf"];
+/** darkest -> brightest teal, quartile-ranked by magnitude (largest = darkest so light labels keep
+ * contrast; area already encodes magnitude, so fill only needs to rank, not shout). */
+const QUARTILE_FILLS = ["#134e4a", "#0f766e", "#0d9488", "#14b8a6"];
 
 function quartileFill(rank: number, count: number): string {
   if (count <= 1) return QUARTILE_FILLS[QUARTILE_FILLS.length - 1];
@@ -145,7 +90,7 @@ export function Treemap({
 
   const ranked = [...items].sort((a, b) => b.value - a.value);
   const rankById = new Map(ranked.map((i, idx) => [i.id, idx]));
-  const rects = width > 0 && height > 0 ? squarify(items, 0, 0, width, height) : [];
+  const rects = width > 0 && height > 0 ? layoutTreemap(items, width, height) : [];
 
   return (
     <div ref={ref} className={cn("relative w-full panel overflow-hidden", heightClassName, className)}>

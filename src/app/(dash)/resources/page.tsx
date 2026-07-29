@@ -133,22 +133,29 @@ function ContainerRow({
         type="button"
         onClick={onToggle}
         title={`${c.name}: ${hasValue ? formatValue(metric, v as number) : "no data"}`}
-        className="w-full flex items-center gap-2.5 min-h-11 md:min-h-8 px-3 py-1.5 text-left cursor-pointer hover:bg-panel-2/60"
+        className="w-full flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2.5 min-h-11 md:min-h-8 px-3 py-1.5 text-left cursor-pointer hover:bg-panel-2/60"
       >
-        <span className={cn("dot", running ? "dot-running" : "dot-stopped")} />
-        <span className="font-mono text-[0.8rem] truncate flex-1 min-w-0">{c.name}</span>
-        <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden">
+        <div className="flex items-center gap-2.5 w-full">
+          <span className={cn("dot", running ? "dot-running" : "dot-stopped")} />
+          <span className="font-mono text-[0.8rem] truncate flex-1 min-w-0">{c.name}</span>
+          <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden">
+            {hasValue && (
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#2dd4bf" }} />
+            )}
+          </div>
+          <span className="font-mono text-[0.75rem] text-ink w-20 text-right">
+            {hasValue ? formatValue(metric, v as number) : "—"}
+          </span>
+          <ChevronDown
+            size={13}
+            className={cn("text-ink-faint transition-transform shrink-0", expanded && "rotate-180")}
+          />
+        </div>
+        <div className="sm:hidden w-full h-0.5 rounded-full bg-panel-2 overflow-hidden">
           {hasValue && (
             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#2dd4bf" }} />
           )}
         </div>
-        <span className="font-mono text-[0.75rem] text-ink w-20 text-right">
-          {hasValue ? formatValue(metric, v as number) : "—"}
-        </span>
-        <ChevronDown
-          size={13}
-          className={cn("text-ink-faint transition-transform shrink-0", expanded && "rotate-180")}
-        />
       </button>
 
       {expanded && (
@@ -177,7 +184,7 @@ function ContainerRow({
           </div>
 
           {widgetFields && widgetFields.length > 0 && (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 pt-2 border-t border-line">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 pt-2 border-t border-line">
               {widgetFields.slice(0, 4).map((f) => (
                 <div key={f.label} className="flex items-baseline justify-between gap-1 min-w-0">
                   <span className="microlabel truncate">{f.label}</span>
@@ -252,6 +259,42 @@ export default function ResourcesPage() {
   }, [volumes]);
   const maxVolume = Math.max(1, ...sortedVolumes.map((v) => v.sizeBytes ?? 0));
 
+  const hostDisks = data?.hostDisks ?? null;
+  const writableLayers = useMemo(
+    () => containers.reduce((a, c) => a + (c.sizeRw ?? 0), 0),
+    [containers],
+  );
+  const primaryDisk = useMemo(() => {
+    if (!hostDisks || hostDisks.length === 0) return null;
+    return (
+      hostDisks.find((d) => d.mount === "/") ??
+      [...hostDisks].sort((a, b) => b.total - a.total)[0]
+    );
+  }, [hostDisks]);
+  const otherDisks = useMemo(() => {
+    if (!hostDisks || !primaryDisk) return [];
+    return hostDisks.filter((d) => d !== primaryDisk);
+  }, [hostDisks, primaryDisk]);
+  const dfFailed = volumes === null;
+  const dockerSegments = useMemo(() => {
+    if (!primaryDisk || !data) return [];
+    const segs: { key: string; label: string; value: number; fill: string }[] = [];
+    if (!dfFailed) {
+      const { totals } = data;
+      if (totals.layersSize > 0) segs.push({ key: "images", label: "images", value: totals.layersSize, fill: "#134e4a" });
+      if (writableLayers > 0) segs.push({ key: "writable", label: "writable layers", value: writableLayers, fill: "#0f766e" });
+      if (totals.volumeDisk > 0) segs.push({ key: "volumes", label: "volumes", value: totals.volumeDisk, fill: "#0d9488" });
+      if (totals.buildCacheBytes > 0) segs.push({ key: "buildcache", label: "build cache", value: totals.buildCacheBytes, fill: "#14b8a6" });
+    }
+    const dockerTotal = segs.reduce((a, s) => a + s.value, 0);
+    const otherUsed = Math.max(0, primaryDisk.used - dockerTotal);
+    if (otherUsed > 0) segs.push({ key: "other", label: "other used", value: otherUsed, fill: "#2a3a50" });
+    const free = Math.max(0, primaryDisk.total - primaryDisk.used);
+    segs.push({ key: "free", label: "free", value: free, fill: "var(--color-panel-2)" });
+    return segs;
+  }, [primaryDisk, data, writableLayers, dfFailed]);
+  const isDockerSegKey = (k: string) => k === "images" || k === "writable" || k === "volumes" || k === "buildcache";
+
   return (
     <div className="space-y-4 pb-4">
       <header>
@@ -276,7 +319,12 @@ export default function ResourcesPage() {
         </div>
         <div>
           <div className="microlabel">CONTAINER DISK</div>
-          <div className="font-mono text-ink mt-0.5">{formatBytes(data?.totals.containerDisk)}</div>
+          <div
+            className="font-mono text-ink mt-0.5"
+            title="image + writable layer; shared image layers counted once per container"
+          >
+            {formatBytes(data?.totals.containerDisk)}
+          </div>
         </div>
         {volumes && volumes.length > 0 && (
           <div>
@@ -299,9 +347,86 @@ export default function ResourcesPage() {
         </SegmentButton>
       </div>
 
-      {metric === "disk" && volumes === null && (
-        <div className="microlabel !text-warn/80">
-          volume sizes need SYSTEM=1 on the socket proxy
+      {/* host disk breakdown (disk view only) */}
+      {metric === "disk" && hostDisks && hostDisks.length > 0 && primaryDisk && (
+        <div className="panel p-4">
+          <div className="microlabel mb-3">HOST DISK</div>
+
+          <div className="flex items-baseline justify-between mb-1.5">
+            <span className="font-mono text-xs text-ink">{primaryDisk.mount}</span>
+            <span className="font-mono text-xs text-ink">
+              {formatBytes(primaryDisk.used)} / {formatBytes(primaryDisk.total)}
+            </span>
+          </div>
+
+          <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
+            {dockerSegments.map((seg) => {
+              const pct = primaryDisk.total > 0 ? (seg.value / primaryDisk.total) * 100 : 0;
+              const dockerSeg = isDockerSegKey(seg.key);
+              const title =
+                dockerSeg && primaryDisk.mount !== "/"
+                  ? "approximate — docker root may be on another filesystem"
+                  : `${seg.label} · ${formatBytes(seg.value)}`;
+              const showLabel = pct >= 9 && seg.key !== "free";
+              return (
+                <div
+                  key={seg.key}
+                  title={title}
+                  className={cn(
+                    "h-full flex items-center justify-center px-1 overflow-hidden",
+                    seg.key === "free" && "border-l border-line",
+                  )}
+                  style={{ width: `${pct}%`, background: seg.fill }}
+                >
+                  {showLabel && (
+                    <span
+                      className={cn(
+                        "text-[0.625rem] font-medium truncate",
+                        seg.key === "other" ? "text-ink-dim" : "text-ink",
+                      )}
+                    >
+                      {seg.label}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            {dockerSegments.map((seg) => (
+              <div key={seg.key} className="flex items-center gap-1.5">
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0"
+                  style={{ background: seg.fill }}
+                />
+                <span className="microlabel">{seg.label}</span>
+                <span className="font-mono text-[0.7rem] text-ink">{formatBytes(seg.value)}</span>
+              </div>
+            ))}
+          </div>
+
+          {otherDisks.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-line space-y-2">
+              {otherDisks.map((d) => (
+                <div key={d.mount} className="flex items-center gap-2.5">
+                  <span className="font-mono text-[0.75rem] flex-1 min-w-0 truncate">{d.mount}</span>
+                  <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden shrink-0">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.min(100, (d.used / Math.max(1, d.total)) * 100)}%`,
+                        background: "#14b8a6",
+                      }}
+                    />
+                  </div>
+                  <span className="font-mono text-[0.75rem] text-ink shrink-0 text-right">
+                    {formatBytes(d.used)} / {formatBytes(d.total)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

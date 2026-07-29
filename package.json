@@ -13,6 +13,7 @@
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "d3-hierarchy": "^3.1.2",
     "dockerode": "^4.0.2",
     "jose": "^5.9.6",
     "lucide-react": "^0.469.0",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/dockerode": "^3.3.31",
     "@types/node": "^22",
     "@types/react": "^19",

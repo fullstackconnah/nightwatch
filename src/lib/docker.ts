@@ -186,6 +186,8 @@ export async function allContainerStats(): Promise<
 export interface DfSnapshot {
   containers: { id: string; name: string; sizeRw: number | null; sizeRootFs: number | null }[];
   volumes: { name: string; sizeBytes: number | null; refCount: number }[];
+  layersSize: number | null;
+  buildCacheBytes: number | null;
 }
 
 const DF_TTL_MS = 60_000;
@@ -197,6 +199,9 @@ export async function systemDf(): Promise<DfSnapshot> {
     return globalForDocker.__dfCache.data;
   }
   const raw = (await docker.df()) as {
+    LayersSize?: number;
+    BuildCacheUsage?: number;
+    BuildCache?: { Size?: number }[];
     Containers?: { Id: string; Names?: string[]; SizeRw?: number; SizeRootFs?: number }[];
     Volumes?: { Name: string; UsageData?: { Size: number; RefCount: number } | null }[];
   };
@@ -211,7 +216,19 @@ export async function systemDf(): Promise<DfSnapshot> {
     sizeBytes: v.UsageData && v.UsageData.Size >= 0 ? v.UsageData.Size : null,
     refCount: v.UsageData?.RefCount ?? 0,
   }));
-  const data: DfSnapshot = { containers, volumes };
+  const layersSize = typeof raw.LayersSize === "number" ? raw.LayersSize : null;
+  let buildCacheBytes: number | null;
+  if (typeof raw.BuildCacheUsage === "number") {
+    buildCacheBytes = raw.BuildCacheUsage;
+  } else if (Array.isArray(raw.BuildCache)) {
+    buildCacheBytes = raw.BuildCache.reduce(
+      (a, b) => a + (b.Size != null && b.Size >= 0 ? b.Size : 0),
+      0,
+    );
+  } else {
+    buildCacheBytes = null;
+  }
+  const data: DfSnapshot = { containers, volumes, layersSize, buildCacheBytes };
   globalForDocker.__dfCache = { data, ts: now };
   return data;
 }
@@ -232,12 +249,15 @@ export interface ResourceSnapshot {
   updatedAt: number;
   containers: ResourceContainer[];
   volumes: { name: string; sizeBytes: number | null; refCount: number }[] | null;
+  hostDisks: { mount: string; total: number; used: number; percent: number }[] | null;
   totals: {
     cpuPct: number;
     memBytes: number;
     memTotal: number;
     containerDisk: number;
     volumeDisk: number;
+    layersSize: number;
+    buildCacheBytes: number;
   };
 }
 
@@ -278,12 +298,15 @@ export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
     updatedAt: Date.now(),
     containers,
     volumes: df?.volumes ?? null,
+    hostDisks: host?.disk ?? null,
     totals: {
       cpuPct: containers.reduce((a, c) => a + c.cpuPct, 0),
       memBytes: containers.reduce((a, c) => a + c.memBytes, 0),
       memTotal: host?.memory.total ?? 0,
       containerDisk: containers.reduce((a, c) => a + (c.sizeRootFs ?? 0), 0),
       volumeDisk: (df?.volumes ?? []).reduce((a, v) => a + (v.sizeBytes ?? 0), 0),
+      layersSize: df?.layersSize ?? 0,
+      buildCacheBytes: df?.buildCacheBytes ?? 0,
     },
   };
 }
