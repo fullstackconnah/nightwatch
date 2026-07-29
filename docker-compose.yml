@@ -37,11 +37,14 @@ services:
       - HOST_NAME=homelab # /host/proc hostname resolves to the container's UTS namespace, not the host's
       - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
-      # set both in the .env file next to this compose file (never in git);
-      # bcrypt hashes contain '$' — keep them in .env, NOT inline here, or
-      # compose will mangle them via variable interpolation.
-      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
-      - SESSION_SECRET=${SESSION_SECRET}
+    # ADMIN_PASSWORD_HASH and SESSION_SECRET are loaded from .env via env_file, NOT
+    # through ${...} in `environment:`. Compose expands $ sequences inside interpolated
+    # values, so a raw bcrypt hash ($2a$12$...) reaches the container truncated (60
+    # chars -> 38) and every login fails. env_file passes values through verbatim,
+    # which means the hash is stored raw in .env — no $$ escaping.
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - ./data:/app/data
       - /proc:/host/proc:ro
