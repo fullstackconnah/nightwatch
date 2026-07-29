@@ -33,6 +33,7 @@ services:
     environment:
       - DOCKER_HOST=tcp://socket-proxy:2375
       - PUBLIC_HOST=192.168.1.70
+      - HOST_NAME=homelab # /host/proc hostname resolves to the container's UTS namespace, not the host's
       - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
       # set both in the .env file next to this compose file (never in git);
