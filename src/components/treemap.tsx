@@ -51,6 +51,24 @@ function quartileFill(rank: number, count: number): string {
   return QUARTILE_FILLS[q];
 }
 
+/** Sentinel id for the synthetic "long tail" cell produced by `groupIntoOthers`. */
+export const OTHERS_ID = "__others__";
+
+/**
+ * Folds the long tail of `items` into a single synthetic "others" item once there are more than
+ * `maxCells` of them, so the treemap stays legible instead of rendering a wall of slivers. The
+ * top `maxCells - 1` items by value are kept as-is; everything else is summed into one cell.
+ */
+export function groupIntoOthers(items: TreemapItem[], maxCells: number): TreemapItem[] {
+  if (items.length <= maxCells) return items;
+  const sorted = [...items].sort((a, b) => b.value - a.value);
+  const kept = sorted.slice(0, maxCells - 1);
+  const remainder = sorted.slice(maxCells - 1);
+  const remainderSum = remainder.reduce((a, i) => a + i.value, 0);
+  if (remainderSum <= 0) return kept;
+  return [...kept, { id: OTHERS_ID, label: `others (${remainder.length})`, value: remainderSum }];
+}
+
 /** Tracks an element's content box in pixels via the native ResizeObserver (no new deps). */
 function useElementSize<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -79,18 +97,24 @@ export function Treemap({
   onCellClick,
   className,
   heightClassName = "h-[38vh] min-h-[220px]",
+  maxCells = 24,
 }: {
   items: TreemapItem[];
   formatValue: (v: number) => string;
   onCellClick?: (id: string) => void;
   className?: string;
   heightClassName?: string;
+  maxCells?: number;
 }) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
 
-  const ranked = [...items].sort((a, b) => b.value - a.value);
+  const grouped = groupIntoOthers(items, maxCells);
+  // The others cell is a synthetic aggregate, not a real item, so it must not shift the
+  // quartile ranking of the items it was folded from.
+  const realItems = grouped.filter((i) => i.id !== OTHERS_ID);
+  const ranked = [...realItems].sort((a, b) => b.value - a.value);
   const rankById = new Map(ranked.map((i, idx) => [i.id, idx]));
-  const rects = width > 0 && height > 0 ? layoutTreemap(items, width, height) : [];
+  const rects = width > 0 && height > 0 ? layoutTreemap(grouped, width, height) : [];
 
   return (
     <div ref={ref} className={cn("relative w-full panel overflow-hidden", heightClassName, className)}>
@@ -100,32 +124,43 @@ export function Treemap({
         </div>
       )}
       {rects.map((r) => {
+        const isOthers = r.id === OTHERS_ID;
         const rank = rankById.get(r.id) ?? 0;
-        const fill = quartileFill(rank, items.length);
+        const fill = isOthers ? "#334155" : quartileFill(rank, realItems.length);
         const canLabel = r.w >= 72;
+        const title = `${r.label}: ${formatValue(r.value)}`;
+        const cellStyle = { left: r.x, top: r.y, width: r.w, height: r.h, padding: 2 };
+        const content = (
+          <div className="w-full h-full rounded overflow-hidden flex flex-col justify-between p-1.5" style={{ background: fill }}>
+            {canLabel && (
+              <>
+                <span className="truncate text-[0.7rem] text-ink font-medium">{r.label}</span>
+                <span className="font-mono text-[0.625rem] text-ink truncate">{formatValue(r.value)}</span>
+              </>
+            )}
+          </div>
+        );
+
+        // The others cell has no detail view behind it, so it renders as a plain div: not
+        // focusable, not clickable, never reaches onCellClick.
+        if (isOthers) {
+          return (
+            <div key={r.id} title={title} className="absolute text-left" style={cellStyle}>
+              {content}
+            </div>
+          );
+        }
+
         return (
           <button
             key={r.id}
             type="button"
-            title={`${r.label}: ${formatValue(r.value)}`}
+            title={title}
             onClick={() => onCellClick?.(r.id)}
             className="absolute text-left cursor-pointer transition-[filter] hover:brightness-110 focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
-            style={{
-              left: r.x,
-              top: r.y,
-              width: r.w,
-              height: r.h,
-              padding: 2,
-            }}
+            style={cellStyle}
           >
-            <div className="w-full h-full rounded overflow-hidden flex flex-col justify-between p-1.5" style={{ background: fill }}>
-              {canLabel && (
-                <>
-                  <span className="truncate text-[0.7rem] text-ink font-medium">{r.label}</span>
-                  <span className="font-mono text-[0.625rem] text-ink truncate">{formatValue(r.value)}</span>
-                </>
-              )}
-            </div>
+            {content}
           </button>
         );
       })}

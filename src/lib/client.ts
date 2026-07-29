@@ -1,12 +1,14 @@
 "use client";
 
 import useSWR, { mutate as globalMutate } from "swr";
+import useSWRSubscription from "swr/subscription";
 import type { TiledContainer } from "@/lib/tiles";
 import type { HostVitals } from "@/lib/host-metrics";
 import type { ContainerStatsSnapshot, ResourceSnapshot } from "@/lib/docker";
 import type { DiskUsageScan } from "@/lib/disk-usage";
 import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
+import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/telemetry-types";
 
 export class ApiError extends Error {
   status: number;
@@ -94,7 +96,103 @@ export function useSettings() {
   }>("/api/settings", fetcher);
 }
 
-export type { TiledContainer, HostVitals, ContainerStatsSnapshot, WidgetData, AppConfig, ResourceSnapshot, DiskUsageScan };
+export type TelemetryStatus = "connecting" | "live" | "lost";
+
+export interface TelemetryState {
+  samples: TelemetrySample[]; // rolling, oldest first, capped at RING_CAPACITY
+  status: TelemetryStatus;
+}
+
+/**
+ * Subscribes to the container telemetry SSE stream and accumulates a rolling
+ * window of samples client-side (SWR's subscription cache only holds the latest
+ * emitted value, so this hook owns the buffer rather than relying on SWR for it).
+ * Pass `enabled = false` to skip subscribing entirely (null key).
+ */
+export function useTelemetryStream(enabled = true): TelemetryState {
+  const { data } = useSWRSubscription<TelemetryState, Error>(
+    enabled && typeof window !== "undefined" ? "/api/telemetry/stream" : null,
+    (key: string, { next }: { next: (err?: Error | null, data?: TelemetryState) => void }) => {
+      let samples: TelemetrySample[] = [];
+      const es = new EventSource(key);
+
+      const emit = (status: TelemetryStatus) => next(null, { samples, status });
+
+      es.addEventListener("open", () => emit("live"));
+
+      es.addEventListener("history", (event: MessageEvent<string>) => {
+        try {
+          const parsed = JSON.parse(event.data) as TelemetrySample[];
+          samples = parsed.slice(-RING_CAPACITY);
+          emit("live");
+        } catch (err) {
+          next(err instanceof Error ? err : new Error("failed to parse telemetry history"));
+        }
+      });
+
+      es.addEventListener("sample", (event: MessageEvent<string>) => {
+        try {
+          const parsed = JSON.parse(event.data) as TelemetrySample;
+          samples = [...samples, parsed].slice(-RING_CAPACITY);
+          emit("live");
+        } catch (err) {
+          next(err instanceof Error ? err : new Error("failed to parse telemetry sample"));
+        }
+      });
+
+      // Transient network errors: EventSource auto-reconnects on its own and will
+      // fire "open" again, so just surface "lost" via status — don't close the
+      // connection or reject via next(), and keep existing samples so the UI can
+      // dim stale data instead of blanking.
+      es.onerror = () => emit("lost");
+
+      return () => es.close();
+    },
+  );
+
+  return data ?? { samples: [], status: "connecting" };
+}
+
+export type TelemetryMetric = "cpu" | "mem" | "net" | "blkio";
+
+function telemetryMetricValue(row: TelemetryRow, metric: TelemetryMetric): number {
+  switch (metric) {
+    case "cpu":
+      return row.cpuPct;
+    case "mem":
+      return row.memBytes;
+    case "net":
+      return row.rxRate + row.txRate;
+    case "blkio":
+      return row.blkReadRate + row.blkWriteRate;
+  }
+}
+
+/**
+ * Maps each sample to one container's value for `metric`, keeping the series
+ * length equal to `samples.length` (missing/not-yet-running containers contribute
+ * 0) so a sparkline's x-axis stays time-aligned across containers.
+ */
+export function seriesFor(samples: TelemetrySample[], containerId: string, metric: TelemetryMetric): number[] {
+  return samples.map((sample) => {
+    const row = sample.containers[containerId];
+    if (!row) return 0;
+    const value = telemetryMetricValue(row, metric);
+    return Number.isFinite(value) ? value : 0;
+  });
+}
+
+export type {
+  TiledContainer,
+  HostVitals,
+  ContainerStatsSnapshot,
+  WidgetData,
+  AppConfig,
+  ResourceSnapshot,
+  DiskUsageScan,
+  TelemetrySample,
+  TelemetryRow,
+};
 
 export async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {

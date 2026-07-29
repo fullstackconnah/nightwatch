@@ -6,25 +6,36 @@
    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md */
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ExternalLink, Play, RotateCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Meter } from "@/components/charts";
+import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/treemap";
 import { cn } from "@/lib/utils";
-import { formatBytes, formatPercent, relativeTime } from "@/lib/format";
+import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
   postJson,
   useDiskUsage,
   refreshDiskUsage,
   useResources,
+  useTelemetryStream,
   useWidgets,
+  seriesFor,
   type ResourceSnapshot,
   type DiskUsageScan,
+  type TelemetryRow,
+  type TelemetrySample,
 } from "@/lib/client";
 
-type Metric = "cpu" | "mem" | "disk";
+type Metric = "cpu" | "mem" | "disk" | "net" | "blkio";
+
+const ALL_METRICS: readonly Metric[] = ["cpu", "mem", "disk", "net", "blkio"];
+
+function isMetric(v: string | null): v is Metric {
+  return v !== null && (ALL_METRICS as readonly string[]).includes(v);
+}
 
 type ResourceContainer = ResourceSnapshot["containers"][number];
 type HostDisk = NonNullable<ResourceSnapshot["hostDisks"]>[number];
@@ -202,14 +213,17 @@ function DiskContentsPanel({ label }: { label: string }) {
   );
 }
 
-function valueOf(c: ResourceContainer, metric: Metric): number | null {
-  if (metric === "cpu") return c.cpuPct;
-  if (metric === "mem") return c.memBytes;
+function valueOf(c: ResourceContainer, metric: Metric, row: TelemetryRow | undefined): number | null {
+  if (metric === "cpu") return row?.cpuPct ?? c.cpuPct;
+  if (metric === "mem") return row?.memBytes ?? c.memBytes;
+  if (metric === "net") return row ? row.rxRate + row.txRate : null;
+  if (metric === "blkio") return row ? row.blkReadRate + row.blkWriteRate : null;
   return c.sizeRootFs;
 }
 
 function formatValue(metric: Metric, v: number): string {
   if (metric === "cpu") return formatPercent(v, 1);
+  if (metric === "net" || metric === "blkio") return formatRate(v);
   return formatBytes(v);
 }
 
@@ -283,6 +297,8 @@ function ContainerRow({
   c,
   metric,
   max,
+  row,
+  samples,
   expanded,
   onToggle,
   widgetFields,
@@ -292,13 +308,15 @@ function ContainerRow({
   c: ResourceContainer;
   metric: Metric;
   max: number;
+  row: TelemetryRow | undefined;
+  samples: TelemetrySample[];
   expanded: boolean;
   onToggle: () => void;
   widgetFields: { label: string; value: string; intent?: "ok" | "warn" | "bad" }[] | undefined;
   onActionDone: () => void;
   rowRef: (el: HTMLDivElement | null) => void;
 }) {
-  const v = valueOf(c, metric);
+  const v = valueOf(c, metric, row);
   const hasValue = v != null && v > 0;
   const pct = hasValue ? Math.min(100, ((v as number) / max) * 100) : 0;
   const running = c.state === "running";
@@ -360,6 +378,28 @@ function ContainerRow({
             </div>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-line">
+            <div>
+              <div className="microlabel mb-1">{metric.toUpperCase()} (live)</div>
+              <div className="font-mono text-ink">
+                {hasValue ? formatValue(metric, v as number) : "—"}
+                {metric === "mem" && row && row.memLimit > 0 && (
+                  <span className="text-ink-faint"> · {formatPercent((row.memBytes / row.memLimit) * 100, 1)}</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <div className="microlabel mb-1">pids</div>
+              <div className="font-mono text-ink">{row?.pids ?? "—"}</div>
+            </div>
+            {metric !== "disk" && (
+              <div>
+                <div className="microlabel mb-1">60s trend</div>
+                <Sparkline values={seriesFor(samples, c.id, metric)} width={120} height={28} className="text-accent" />
+              </div>
+            )}
+          </div>
+
           {widgetFields && widgetFields.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-1 pt-2 border-t border-line">
               {widgetFields.slice(0, 4).map((f) => (
@@ -398,32 +438,56 @@ function ContainerRow({
 export default function ResourcesPage() {
   const { data, mutate } = useResources(10000);
   const { data: widgetData } = useWidgets(20000);
+  const { samples, status } = useTelemetryStream();
   const [metric, setMetric] = useState<Metric>("cpu");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
+  // Mount-only: adopt ?metric= from the URL if present and valid (deep-linkable, e.g.
+  // /resources?metric=net). Reading in an effect rather than the useState initialiser
+  // avoids a server/client hydration mismatch.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("metric");
+    if (isMetric(requested)) setMetric(requested);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Keep the URL in sync with the selected metric without a Next navigation/scroll.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("metric", metric);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+  }, [metric]);
+
   const containers = data?.containers ?? [];
+  const latest = samples[samples.length - 1];
 
   const { active, idle } = useMemo(() => {
     const a: ResourceContainer[] = [];
     const i: ResourceContainer[] = [];
     for (const c of containers) {
-      const v = valueOf(c, metric);
+      const v = valueOf(c, metric, latest?.containers[c.id]);
       if (v != null && v > 0) a.push(c);
       else i.push(c);
     }
-    a.sort((x, y) => (valueOf(y, metric) ?? 0) - (valueOf(x, metric) ?? 0));
+    a.sort(
+      (x, y) =>
+        (valueOf(y, metric, latest?.containers[y.id]) ?? 0) - (valueOf(x, metric, latest?.containers[x.id]) ?? 0),
+    );
     i.sort((x, y) => x.name.localeCompare(y.name));
     return { active: a, idle: i };
-  }, [containers, metric]);
+  }, [containers, metric, latest]);
 
-  const max = Math.max(1, ...active.map((c) => valueOf(c, metric) ?? 0));
+  const max = Math.max(1, ...active.map((c) => valueOf(c, metric, latest?.containers[c.id]) ?? 0));
 
   const treemapItems: TreemapItem[] = useMemo(
-    () => active.map((c) => ({ id: c.id, label: c.name, value: valueOf(c, metric) ?? 0 })),
-    [active, metric],
+    () => active.map((c) => ({ id: c.id, label: c.name, value: valueOf(c, metric, latest?.containers[c.id]) ?? 0 })),
+    [active, metric, latest],
   );
+  // The d3-hierarchy squarify layout re-runs on every 1Hz sample; deferring it keeps
+  // hover/click/resize interactions from queuing behind that work.
+  const deferredTreemapItems = useDeferredValue(treemapItems);
 
   function handleCellClick(id: string) {
     setExpandedId(id);
@@ -535,16 +599,27 @@ export default function ResourcesPage() {
       </div>
 
       {/* segmented control */}
-      <div className="panel p-1 flex gap-1">
-        <SegmentButton active={metric === "cpu"} onClick={() => setMetric("cpu")}>
-          CPU
-        </SegmentButton>
-        <SegmentButton active={metric === "mem"} onClick={() => setMetric("mem")}>
-          MEMORY
-        </SegmentButton>
-        <SegmentButton active={metric === "disk"} onClick={() => setMetric("disk")}>
-          DISK
-        </SegmentButton>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="panel p-1 flex gap-1 flex-1 min-w-0">
+          <SegmentButton active={metric === "cpu"} onClick={() => setMetric("cpu")}>
+            CPU
+          </SegmentButton>
+          <SegmentButton active={metric === "mem"} onClick={() => setMetric("mem")}>
+            MEMORY
+          </SegmentButton>
+          <SegmentButton active={metric === "disk"} onClick={() => setMetric("disk")}>
+            DISK
+          </SegmentButton>
+          <SegmentButton active={metric === "net"} onClick={() => setMetric("net")}>
+            NETWORK
+          </SegmentButton>
+          <SegmentButton active={metric === "blkio"} onClick={() => setMetric("blkio")}>
+            DISK I/O
+          </SegmentButton>
+        </div>
+        {status === "lost" && (
+          <div className="microlabel !text-warn/80 shrink-0">connection lost — reconnecting</div>
+        )}
       </div>
 
       {/* host disk breakdown (disk view only) */}
@@ -641,8 +716,11 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {/* treemap hero */}
-      <Treemap items={treemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
+      {/* treemap hero — dimmed (not unmounted) while the telemetry stream is reconnecting,
+          since EventSource auto-reconnects and the last samples are still meaningful */}
+      <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
+        <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
+      </div>
 
       {/* ranked bars */}
       <div className="panel overflow-hidden">
@@ -652,6 +730,8 @@ export default function ResourcesPage() {
             c={c}
             metric={metric}
             max={max}
+            row={latest?.containers[c.id]}
+            samples={samples}
             expanded={expandedId === c.id}
             onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
             widgetFields={widgetData?.widgets[c.name]?.fields}
@@ -670,6 +750,8 @@ export default function ResourcesPage() {
                 c={c}
                 metric={metric}
                 max={max}
+                row={latest?.containers[c.id]}
+                samples={samples}
                 expanded={expandedId === c.id}
                 onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
                 widgetFields={widgetData?.widgets[c.name]?.fields}

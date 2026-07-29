@@ -21,7 +21,7 @@ function createClient(): Docker {
 }
 
 interface StatsCacheEntry {
-  data: Record<string, { cpuPct: number; memBytes: number; memLimit: number }>;
+  data: Record<string, ContainerStatsRow>;
   ts: number;
 }
 interface DfCacheEntry {
@@ -98,6 +98,11 @@ export async function listContainers(): Promise<ContainerSummary[]> {
   });
 }
 
+/**
+ * rxBytes, txBytes, blkReadBytes and blkWriteBytes are cumulative counters
+ * since container start, not rates — a caller holding two consecutive
+ * samples must derive a rate as delta/elapsed itself.
+ */
 export interface ContainerStatsSnapshot {
   cpuPercent: number;
   memUsage: number;
@@ -105,6 +110,8 @@ export interface ContainerStatsSnapshot {
   memPercent: number;
   rxBytes: number;
   txBytes: number;
+  blkReadBytes: number;
+  blkWriteBytes: number;
   pids: number;
   ts: number;
 }
@@ -129,6 +136,11 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
     };
     networks?: Record<string, { rx_bytes: number; tx_bytes: number }>;
     pids_stats?: { current?: number };
+    blkio_stats?: {
+      io_service_bytes_recursive?:
+        | { major: number; minor: number; op: string; value: number }[]
+        | null;
+    };
   };
 
   const cpuDelta =
@@ -151,6 +163,15 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
     tx += net.tx_bytes;
   }
 
+  let blkRead = 0;
+  let blkWrite = 0;
+  // Docker capitalises op inconsistently ("Read"/"read") across API versions.
+  for (const entry of s.blkio_stats?.io_service_bytes_recursive || []) {
+    const op = entry.op.toLowerCase();
+    if (op === "read") blkRead += entry.value;
+    else if (op === "write") blkWrite += entry.value;
+  }
+
   return {
     cpuPercent,
     memUsage,
@@ -158,6 +179,8 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
     memPercent: memLimit > 0 ? (memUsage / memLimit) * 100 : 0,
     rxBytes: rx,
     txBytes: tx,
+    blkReadBytes: blkRead,
+    blkWriteBytes: blkWrite,
     pids: s.pids_stats?.current ?? 0,
     ts: Date.now(),
   };
@@ -165,22 +188,52 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
 
 const STATS_TTL_MS = 5_000;
 
-/** Fan out one-shot stats to every running container; skip any that fail (mid-restart, etc). */
-export async function allContainerStats(): Promise<
-  Record<string, { cpuPct: number; memBytes: number; memLimit: number }>
-> {
+/** Per-container row returned by allContainerStats/cached — mirrors ContainerStatsSnapshot minus the id. */
+export interface ContainerStatsRow {
+  cpuPct: number;
+  memBytes: number;
+  memLimit: number;
+  rxBytes: number;
+  txBytes: number;
+  blkReadBytes: number;
+  blkWriteBytes: number;
+  pids: number;
+  ts: number;
+}
+
+/**
+ * Fan out one-shot stats to every running container; skip any that fail (mid-restart, etc).
+ * Pass force=true to bypass the cache read (still writes the cache afterwards) — needed by
+ * 1Hz streaming consumers that would otherwise see the same sample ~4 ticks out of 5.
+ */
+export async function allContainerStats(force = false): Promise<Record<string, ContainerStatsRow>> {
   const now = Date.now();
-  if (globalForDocker.__statsCache && now - globalForDocker.__statsCache.ts < STATS_TTL_MS) {
+  if (
+    !force &&
+    globalForDocker.__statsCache &&
+    now - globalForDocker.__statsCache.ts < STATS_TTL_MS
+  ) {
     return globalForDocker.__statsCache.data;
   }
   const running = await docker.listContainers({ all: false });
   const settled = await Promise.allSettled(
     running.map(async (c) => {
       const s = await containerStats(c.Id);
-      return [c.Id, { cpuPct: s.cpuPercent, memBytes: s.memUsage, memLimit: s.memLimit }] as const;
+      const row: ContainerStatsRow = {
+        cpuPct: s.cpuPercent,
+        memBytes: s.memUsage,
+        memLimit: s.memLimit,
+        rxBytes: s.rxBytes,
+        txBytes: s.txBytes,
+        blkReadBytes: s.blkReadBytes,
+        blkWriteBytes: s.blkWriteBytes,
+        pids: s.pids,
+        ts: s.ts,
+      };
+      return [c.Id, row] as const;
     }),
   );
-  const data: Record<string, { cpuPct: number; memBytes: number; memLimit: number }> = {};
+  const data: Record<string, ContainerStatsRow> = {};
   for (const r of settled) {
     if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
   }
@@ -262,6 +315,11 @@ export interface ResourceContainer {
   cpuPct: number;
   memBytes: number;
   memLimit: number;
+  rxBytes: number;
+  txBytes: number;
+  blkReadBytes: number;
+  blkWriteBytes: number;
+  pids: number;
   sizeRw: number | null;
   sizeRootFs: number | null;
 }
@@ -280,6 +338,10 @@ export interface ResourceSnapshot {
     volumeDisk: number;
     layersSize: number;
     buildCacheBytes: number;
+    rxBytes: number;
+    txBytes: number;
+    blkReadBytes: number;
+    blkWriteBytes: number;
   };
 }
 
@@ -289,10 +351,10 @@ export interface ResourceSnapshot {
  * df is allowed to fail independently (proxy may not have SYSTEM=1 yet) — the rest
  * of the snapshot still renders, just without disk numbers.
  */
-export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
+export async function getResourceSnapshot(force = false): Promise<ResourceSnapshot> {
   const [list, stats, df, host, dockerRootDir] = await Promise.all([
     listContainers(),
-    allContainerStats(),
+    allContainerStats(force),
     systemDf().catch(() => null),
     getHostVitals().catch(() => null),
     getDockerRootDir(),
@@ -312,6 +374,11 @@ export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
       cpuPct: stat?.cpuPct ?? 0,
       memBytes: stat?.memBytes ?? 0,
       memLimit: stat?.memLimit ?? 0,
+      rxBytes: stat?.rxBytes ?? 0,
+      txBytes: stat?.txBytes ?? 0,
+      blkReadBytes: stat?.blkReadBytes ?? 0,
+      blkWriteBytes: stat?.blkWriteBytes ?? 0,
+      pids: stat?.pids ?? 0,
       sizeRw: dfEntry?.sizeRw ?? null,
       sizeRootFs: dfEntry?.sizeRootFs ?? null,
     };
@@ -331,6 +398,10 @@ export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
       volumeDisk: (df?.volumes ?? []).reduce((a, v) => a + (v.sizeBytes ?? 0), 0),
       layersSize: df?.layersSize ?? 0,
       buildCacheBytes: df?.buildCacheBytes ?? 0,
+      rxBytes: containers.reduce((a, c) => a + c.rxBytes, 0),
+      txBytes: containers.reduce((a, c) => a + c.txBytes, 0),
+      blkReadBytes: containers.reduce((a, c) => a + c.blkReadBytes, 0),
+      blkWriteBytes: containers.reduce((a, c) => a + c.blkWriteBytes, 0),
     },
   };
 }
