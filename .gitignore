@@ -1,0 +1,18 @@
+# deps / build
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# runtime data (widget API keys, sessions, user settings live here — never commit)
+data/
+
+# env
+.env
+.env.local
+.env*.local
+
+# misc
+.DS_Store
+npm-debug.log*

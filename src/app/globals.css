@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+/* ── NIGHT WATCH — homelab console theme ─────────────────────────────────
+   Dark-first identity: near-black blue field, teal phosphor accent,
+   hairline borders, mono numerals. Not slate-gray shadcn. */
+
+@theme {
+  --color-bg: #070b11;
+  --color-panel: #0d131c;
+  --color-panel-2: #121a26;
+  --color-line: #1c2736;
+  --color-line-bright: #2a3a50;
+  --color-ink: #dbe7f4;
+  --color-ink-dim: #8296ad;
+  --color-ink-faint: #4d617a;
+  --color-accent: #5eead4;
+  --color-accent-dim: #2dd4bf;
+  --color-blue: #7dd3fc;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* faint blueprint grid + top glow */
+  background-image:
+    radial-gradient(1200px 500px at 20% -10%, rgba(94, 234, 212, 0.05), transparent 60%),
+    linear-gradient(rgba(148, 180, 220, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 180, 220, 0.025) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    32px 32px,
+    32px 32px;
+  min-height: 100vh;
+}
+
+::selection {
+  background: rgba(94, 234, 212, 0.25);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-bright) transparent;
+}
+
+/* micro-label: the uppercase letterspaced captions used everywhere */
+.microlabel {
+  font-size: 0.625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  font-weight: 600;
+}
+
+/* status dot with glow */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.dot-running {
+  background: var(--color-ok);
+  box-shadow: 0 0 6px 1px rgba(74, 222, 128, 0.55);
+}
+.dot-unhealthy {
+  background: var(--color-warn);
+  box-shadow: 0 0 6px 1px rgba(251, 191, 36, 0.55);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.dot-restarting {
+  background: var(--color-blue);
+  box-shadow: 0 0 6px 1px rgba(125, 211, 252, 0.55);
+  animation: pulse 0.9s ease-in-out infinite;
+}
+.dot-stopped {
+  background: var(--color-ink-faint);
+}
+.dot-dead {
+  background: var(--color-bad);
+  box-shadow: 0 0 6px 1px rgba(248, 113, 113, 0.55);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* panel with hairline + inner top highlight */
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 0.625rem;
+  box-shadow: inset 0 1px 0 rgba(219, 231, 244, 0.03);
+}
+.panel-hover {
+  transition:
+    border-color 120ms ease,
+    transform 120ms ease,
+    background 120ms ease;
+}
+.panel-hover:hover {
+  border-color: var(--color-line-bright);
+  background: var(--color-panel-2);
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+/* log viewer */
+.logbox {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
