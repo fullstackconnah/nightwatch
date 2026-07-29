@@ -40,21 +40,43 @@ function hostProcAvailable(): boolean {
 
 let lastNet: { rx: number; tx: number; ts: number } | null = null;
 
+interface NetDevCounters {
+  rxBytes: number;
+  txBytes: number;
+  interfaceCount: number;
+}
+
+/**
+ * Pure parser: sums rx/tx byte counters from a /proc/net/dev-style table,
+ * applying the same "host network" interface filter readHostNetDev has always
+ * used (skip loopback, veth, bridge, and the docker0 bridge) — shared here so
+ * readHostNetDev and getHostNetCounters can never disagree about what counts
+ * as host traffic. `interfaceCount` lets a caller distinguish "zero interfaces
+ * matched" from "matched interfaces reported zero bytes".
+ */
+function parseNetDevCounters(content: string): NetDevCounters {
+  const lines = content.split("\n").slice(2);
+  let rx = 0;
+  let tx = 0;
+  let interfaceCount = 0;
+  for (const line of lines) {
+    const [ifacePart, rest] = line.split(":");
+    if (!rest) continue;
+    const iface = ifacePart.trim();
+    if (iface === "lo" || iface.startsWith("veth") || iface.startsWith("br-") || iface === "docker0")
+      continue;
+    const cols = rest.trim().split(/\s+/);
+    rx += Number(cols[0]) || 0;
+    tx += Number(cols[8]) || 0;
+    interfaceCount++;
+  }
+  return { rxBytes: rx, txBytes: tx, interfaceCount };
+}
+
 function readHostNetDev(): { rxPerSec: number; txPerSec: number } | null {
   try {
-    const lines = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8").split("\n").slice(2);
-    let rx = 0;
-    let tx = 0;
-    for (const line of lines) {
-      const [ifacePart, rest] = line.split(":");
-      if (!rest) continue;
-      const iface = ifacePart.trim();
-      if (iface === "lo" || iface.startsWith("veth") || iface.startsWith("br-") || iface === "docker0")
-        continue;
-      const cols = rest.trim().split(/\s+/);
-      rx += Number(cols[0]) || 0;
-      tx += Number(cols[8]) || 0;
-    }
+    const content = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8");
+    const { rxBytes: rx, txBytes: tx } = parseNetDevCounters(content);
     const now = Date.now();
     const prev = lastNet;
     lastNet = { rx, tx, ts: now };
@@ -64,6 +86,96 @@ function readHostNetDev(): { rxPerSec: number; txPerSec: number } | null {
       rxPerSec: Math.max(0, (rx - prev.rx) / dt),
       txPerSec: Math.max(0, (tx - prev.tx) / dt),
     };
+  } catch {
+    return null;
+  }
+}
+
+export interface HostNetCounters {
+  rxBytes: number; // cumulative since boot
+  txBytes: number; // cumulative since boot
+}
+
+/**
+ * Raw cumulative network counters. Unlike HostVitals.network.rxPerSec this
+ * does NOT compute a rate and keeps no module state, so a caller polling at
+ * its own cadence can derive delta/elapsed without fighting other callers
+ * (readHostNetDev, other pollers) over shared previous-sample state. Returns
+ * null when unreadable, or when the file yields no usable interfaces — zeros
+ * would otherwise read as "measured no traffic".
+ */
+export async function getHostNetCounters(): Promise<HostNetCounters | null> {
+  try {
+    const content = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8");
+    const { rxBytes, txBytes, interfaceCount } = parseNetDevCounters(content);
+    if (interfaceCount === 0) return null;
+    if (!Number.isFinite(rxBytes) || !Number.isFinite(txBytes)) return null;
+    return { rxBytes, txBytes };
+  } catch {
+    return null;
+  }
+}
+
+// --- host /proc/diskstats (I/O counters) ------------------------------------
+
+export interface HostDiskIoCounters {
+  device: string; // physical device name, e.g. "sda", "nvme0n1"
+  readBytes: number; // cumulative since boot
+  writeBytes: number; // cumulative since boot
+}
+
+const VIRTUAL_DEVICE_PREFIXES = ["loop", "ram", "zram", "sr", "fd", "dm-", "md"];
+
+// /proc/diskstats always reports in 512-byte sectors, regardless of the
+// device's actual block size (e.g. 4Kn drives) — it's a fixed unit of this
+// file's format, not a property of the underlying hardware.
+const DISKSTATS_SECTOR_BYTES = 512;
+
+/** Pure parser — split out so it is testable without a real /proc. */
+export function parseDiskStats(content: string): HostDiskIoCounters[] {
+  const raw: { name: string; readSectors: number; writeSectors: number }[] = [];
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const fields = trimmed.split(/\s+/);
+    if (fields.length < 10) continue; // trailing fields vary by kernel version; only the first 10 are needed
+    raw.push({
+      name: fields[2],
+      readSectors: Number(fields[5]),
+      writeSectors: Number(fields[9]),
+    });
+  }
+
+  // Partition detection is two-pass: a name ending in digits is a partition
+  // only if some OTHER device in the file is a proper prefix of it. A bare
+  // /\d+$/ test would wrongly reject whole disks like "nvme0n1" (ends in a
+  // digit but "nvme0n" is not itself a device).
+  const allNames = raw.map((r) => r.name);
+  const isPartition = (name: string): boolean =>
+    /\d$/.test(name) && allNames.some((other) => other !== name && name.startsWith(other));
+
+  const out: HostDiskIoCounters[] = [];
+  for (const r of raw) {
+    if (VIRTUAL_DEVICE_PREFIXES.some((p) => r.name.startsWith(p))) continue; // dm-*/md* are mapper/RAID layers over the same physical devices - counting them would double-count
+    if (isPartition(r.name)) continue; // partitions would double-count against their parent disk
+    const readBytes = r.readSectors * DISKSTATS_SECTOR_BYTES;
+    const writeBytes = r.writeSectors * DISKSTATS_SECTOR_BYTES;
+    if (!Number.isFinite(readBytes) || !Number.isFinite(writeBytes)) continue;
+    out.push({ device: r.name, readBytes, writeBytes });
+  }
+  return out;
+}
+
+/**
+ * Reads HOST_PROC/diskstats. Returns null when unreadable (missing mount,
+ * permissions) so callers can degrade honestly instead of reporting zeros as
+ * measured. These are cumulative counters since boot — this does NOT compute
+ * rates; the caller derives delta/elapsed by diffing two calls itself.
+ */
+export async function getHostDiskIoCounters(): Promise<HostDiskIoCounters[] | null> {
+  try {
+    const content = fs.readFileSync(`${HOST_PROC}/diskstats`, "utf8");
+    return parseDiskStats(content);
   } catch {
     return null;
   }

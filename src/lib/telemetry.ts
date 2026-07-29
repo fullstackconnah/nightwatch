@@ -1,5 +1,6 @@
 import { allContainerStats, type ContainerStatsRow } from "@/lib/docker";
-import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
+import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
+import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
 
 /**
  * 1Hz container telemetry: a single shared, refcounted collector feeds any number of
@@ -21,6 +22,10 @@ const globalForTelemetry = globalThis as unknown as {
   __telemetryPrevious?: Record<string, ContainerStatsRow>;
   __telemetryPrevTs?: number; // performance.now() of the previous tick
   __telemetryRunning?: boolean;
+  __telemetryPrevDiskRead?: number; // cumulative bytes-read sum, previous tick
+  __telemetryPrevDiskWrite?: number; // cumulative bytes-written sum, previous tick
+  __telemetryPrevNetRx?: number; // cumulative rx bytes, previous tick
+  __telemetryPrevNetTx?: number; // cumulative tx bytes, previous tick
 };
 
 function ring(): TelemetrySample[] {
@@ -51,7 +56,23 @@ function rate(curr: number, prev: number | undefined, elapsedSeconds: number): n
 async function tick(): Promise<void> {
   // force=true: the 5s allContainerStats cache would otherwise return an identical
   // sample ~4 ticks out of 5 and every rate would compute as 0.
-  const raw = await allContainerStats(true);
+  // Host vitals are fetched alongside, but non-fatally: a host-side failure (e.g. the
+  // /host/proc bind mount hiccups) must never cost the tick its container data.
+  const [raw, hostVitals, diskCounters, netCounters] = await Promise.all([
+    allContainerStats(true),
+    getHostVitals().catch((err: unknown) => {
+      console.error("[telemetry] getHostVitals failed:", err);
+      return null;
+    }),
+    getHostDiskIoCounters().catch((err: unknown) => {
+      console.error("[telemetry] getHostDiskIoCounters failed:", err);
+      return null;
+    }),
+    getHostNetCounters().catch((err: unknown) => {
+      console.error("[telemetry] getHostNetCounters failed:", err);
+      return null;
+    }),
+  ]);
   const prev = globalForTelemetry.__telemetryPrevious ?? {};
   const prevTs = globalForTelemetry.__telemetryPrevTs;
   const now = performance.now();
@@ -77,7 +98,72 @@ async function tick(): Promise<void> {
   globalForTelemetry.__telemetryPrevious = raw;
   globalForTelemetry.__telemetryPrevTs = now;
 
-  const sample: TelemetrySample = { ts: Date.now(), containers };
+  let host: TelemetryHost | undefined;
+  if (hostVitals) {
+    // Disk counters are cumulative since boot; sum across devices and derive a rate
+    // against the previous tick's sums via the same guarded rate() helper the
+    // container counters use (counter reset, non-positive elapsed, non-finite).
+    let diskReadRate: number | null = null;
+    let diskWriteRate: number | null = null;
+    if (diskCounters) {
+      const readSum = diskCounters.reduce((a, d) => a + d.readBytes, 0);
+      const writeSum = diskCounters.reduce((a, d) => a + d.writeBytes, 0);
+      // rate() returns 0 when there's no previous sum (first tick) or elapsedSeconds
+      // <= 0 — exactly the "0, not null" behavior required for a fresh start.
+      diskReadRate = rate(readSum, globalForTelemetry.__telemetryPrevDiskRead, elapsedSeconds);
+      diskWriteRate = rate(writeSum, globalForTelemetry.__telemetryPrevDiskWrite, elapsedSeconds);
+      globalForTelemetry.__telemetryPrevDiskRead = readSum;
+      globalForTelemetry.__telemetryPrevDiskWrite = writeSum;
+    } else {
+      // Unavailable rather than transiently missing — null means "not measured", and
+      // dropping the previous sums means a later recovery starts clean instead of
+      // deriving a rate across an unknown-length gap.
+      globalForTelemetry.__telemetryPrevDiskRead = undefined;
+      globalForTelemetry.__telemetryPrevDiskWrite = undefined;
+    }
+
+    // Net counters are cumulative since boot; derive rates against the previous
+    // tick's values with the same rate() helper — NOT hostVitals.network.rxPerSec.
+    // getHostVitals() derives that field from its own module-level lastNet state,
+    // which every caller (this 1Hz loop, useResources at 10s, useHost at 5s) diffs
+    // against and mutates independently. Calls landing milliseconds apart make dt
+    // tiny and the rate becomes quantisation noise (a dip, or a spike if a packet
+    // burst falls in that window) — and the UI's 60s peak-as-bar-denominator would
+    // let one spurious spike flatten the bar for a full minute. Owning our own
+    // cumulative counters and previous-tick state avoids sharing that mutable state.
+    let rxRate = 0;
+    let txRate = 0;
+    if (netCounters) {
+      rxRate = rate(netCounters.rxBytes, globalForTelemetry.__telemetryPrevNetRx, elapsedSeconds);
+      txRate = rate(netCounters.txBytes, globalForTelemetry.__telemetryPrevNetTx, elapsedSeconds);
+      globalForTelemetry.__telemetryPrevNetRx = netCounters.rxBytes;
+      globalForTelemetry.__telemetryPrevNetTx = netCounters.txBytes;
+    } else {
+      // Unlike disk, "no net counters" isn't a state the UI needs to show explicitly
+      // (TelemetryHost types rxRate/txRate as plain number) — 0 and carry on, but
+      // still drop stale previous state so a later recovery doesn't diff across a gap.
+      globalForTelemetry.__telemetryPrevNetRx = undefined;
+      globalForTelemetry.__telemetryPrevNetTx = undefined;
+    }
+
+    host = {
+      // Share of the WHOLE box (0-100), not Docker-style 0-(100*cores) — do not
+      // multiply by cores here, the UI needs this as a direct 0-100 bar value.
+      cpuPct: hostVitals.cpu.percent,
+      cores: hostVitals.cpu.cores,
+      memUsed: hostVitals.memory.used,
+      memTotal: hostVitals.memory.total,
+      memAvailable: hostVitals.memory.available,
+      loadAvg: hostVitals.cpu.loadAvg,
+      tempC: hostVitals.tempC,
+      rxRate,
+      txRate,
+      diskReadRate,
+      diskWriteRate,
+    };
+  }
+
+  const sample: TelemetrySample = { ts: Date.now(), containers, host };
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);
@@ -115,6 +201,10 @@ async function loop(): Promise<void> {
     globalForTelemetry.__telemetryRunning = false;
     globalForTelemetry.__telemetryPrevious = undefined;
     globalForTelemetry.__telemetryPrevTs = undefined;
+    globalForTelemetry.__telemetryPrevDiskRead = undefined;
+    globalForTelemetry.__telemetryPrevDiskWrite = undefined;
+    globalForTelemetry.__telemetryPrevNetRx = undefined;
+    globalForTelemetry.__telemetryPrevNetTx = undefined;
     globalForTelemetry.__telemetryRing = [];
   }
 }

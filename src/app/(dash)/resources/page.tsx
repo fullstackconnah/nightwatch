@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/treemap";
+import { ResourceOverview, type OverviewModel } from "@/components/resource-overview";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
@@ -233,6 +234,202 @@ function formatValue(metric: Metric, v: number): string {
   if (metric === "cpu") return formatPercent(v, 1);
   if (metric === "net" || metric === "blkio") return formatRate(v);
   return formatBytes(v);
+}
+
+type OverviewHost = NonNullable<TelemetrySample["host"]>;
+
+// Reused from the existing HOST DISK segment palette (dockerSegments / otherDiskSegments)
+// rather than inventing new hues — these are the fills already proven legible at
+// text-[0.625rem] inline segment-label size.
+const OVERVIEW_FILL_PRIMARY = "#0f766e"; // "writable"/"used" teal
+const OVERVIEW_FILL_SECONDARY = "#0d9488"; // "volumes" teal
+const OVERVIEW_FILL_OTHER = "#2a3a50"; // "other used" slate
+const OVERVIEW_FILL_TRACK = "var(--color-panel-2)"; // "free" track treatment
+
+function finite(n: number): number {
+  return Number.isFinite(n) ? n : 0;
+}
+
+function emptyOverview(): OverviewModel {
+  return { scale: 0, segments: [], headline: "—", caption: "", figures: [] };
+}
+
+function buildCpuOverview(
+  host: OverviewHost | undefined,
+  containers: Record<string, TelemetryRow> | undefined,
+): OverviewModel {
+  if (!host) return emptyOverview();
+  const rows = containers ? Object.values(containers) : [];
+  // row.cpuPct is Docker-style (one busy core = 100, so a 16-core box can sum to 1600);
+  // host.cpuPct is already 0-100 for the whole box. Dividing by cores puts them in the
+  // same units — without it the bar is nonsense.
+  const containerPct = Math.max(0, finite(rows.reduce((a, r) => a + r.cpuPct, 0) / Math.max(1, host.cores)));
+  const hostPct = Math.max(0, finite(host.cpuPct));
+  const containersSeg = Math.max(0, Math.min(containerPct, hostPct));
+  const otherSeg = Math.max(0, hostPct - containerPct);
+  const idleSeg = Math.max(0, 100 - hostPct);
+
+  const load = host.loadAvg ?? [];
+  const figures: { label: string; value: string }[] = [
+    { label: "load 1m", value: load[0] != null ? load[0].toFixed(2) : "—" },
+    { label: "load 5m", value: load[1] != null ? load[1].toFixed(2) : "—" },
+    { label: "load 15m", value: load[2] != null ? load[2].toFixed(2) : "—" },
+  ];
+  if (host.tempC != null) figures.push({ label: "temp", value: `${host.tempC.toFixed(0)}°C` });
+
+  return {
+    scale: 100,
+    segments: [
+      { key: "containers", label: "containers", value: containersSeg, fill: OVERVIEW_FILL_PRIMARY, display: formatPercent(containersSeg, 1) },
+      { key: "other", label: "other", value: otherSeg, fill: OVERVIEW_FILL_OTHER, display: formatPercent(otherSeg, 1) },
+      { key: "idle", label: "idle", value: idleSeg, fill: OVERVIEW_FILL_TRACK, display: formatPercent(idleSeg, 1) },
+    ],
+    headline: `${formatPercent(hostPct, 0)} of ${host.cores} cores`,
+    caption: `containers ${formatPercent(containersSeg, 1)} · other ${formatPercent(otherSeg, 1)}`,
+    figures,
+  };
+}
+
+function buildMemOverview(
+  host: OverviewHost | undefined,
+  containers: Record<string, TelemetryRow> | undefined,
+): OverviewModel {
+  if (!host) return emptyOverview();
+  const rows = containers ? Object.values(containers) : [];
+  const containerBytes = Math.max(0, finite(rows.reduce((a, r) => a + r.memBytes, 0)));
+  const memUsed = Math.max(0, finite(host.memUsed));
+  const memTotal = Math.max(0, finite(host.memTotal));
+  const memAvailable = Math.max(0, finite(host.memAvailable));
+  const containersSeg = Math.max(0, Math.min(containerBytes, memUsed));
+  const otherSeg = Math.max(0, memUsed - containerBytes);
+
+  return {
+    scale: memTotal,
+    segments: [
+      { key: "containers", label: "containers", value: containersSeg, fill: OVERVIEW_FILL_PRIMARY, display: formatBytes(containersSeg) },
+      { key: "other", label: "other", value: otherSeg, fill: OVERVIEW_FILL_OTHER, display: formatBytes(otherSeg) },
+      { key: "available", label: "available", value: memAvailable, fill: OVERVIEW_FILL_TRACK, display: formatBytes(memAvailable) },
+    ],
+    headline: `${formatBytes(memUsed)} / ${formatBytes(memTotal)}`,
+    caption: "",
+    figures: [
+      { label: "used", value: formatBytes(memUsed) },
+      { label: "containers", value: formatBytes(containersSeg) },
+      { label: "other", value: formatBytes(otherSeg) },
+      { label: "available", value: formatBytes(memAvailable) },
+    ],
+  };
+}
+
+function buildNetOverview(
+  host: OverviewHost | undefined,
+  samples: TelemetrySample[],
+  containers: Record<string, TelemetryRow> | undefined,
+): OverviewModel {
+  if (!host) return emptyOverview();
+  // Peak is the max of the per-sample host total across the whole ring, not the
+  // current value — the bar has no hardware ceiling, so the ring peak is the scale.
+  let peak = 0;
+  const series: number[] = [];
+  for (const s of samples) {
+    const total = Math.max(0, s.host ? finite(s.host.rxRate) + finite(s.host.txRate) : 0);
+    series.push(total);
+    if (total > peak) peak = total;
+  }
+
+  const rx = Math.max(0, finite(host.rxRate));
+  const tx = Math.max(0, finite(host.txRate));
+  const rows = containers ? Object.values(containers) : [];
+  const containersTotal = Math.max(0, finite(rows.reduce((a, r) => a + r.rxRate + r.txRate, 0)));
+
+  return {
+    scale: peak,
+    segments: [
+      { key: "rx", label: "rx", value: rx, fill: OVERVIEW_FILL_PRIMARY, display: formatRate(rx) },
+      { key: "tx", label: "tx", value: tx, fill: OVERVIEW_FILL_SECONDARY, display: formatRate(tx) },
+    ],
+    headline: formatRate(rx + tx),
+    caption: `peak ${formatRate(peak)} · 60s window`,
+    figures: [
+      { label: "rx", value: formatRate(rx) },
+      { label: "tx", value: formatRate(tx) },
+      { label: "containers", value: formatRate(containersTotal) },
+      { label: "peak", value: formatRate(peak) },
+    ],
+    series,
+  };
+}
+
+function buildBlkioOverview(
+  host: OverviewHost | undefined,
+  samples: TelemetrySample[],
+  containers: Record<string, TelemetryRow> | undefined,
+): OverviewModel {
+  if (!host) return emptyOverview();
+  // null explicitly means /proc/diskstats was unreadable, NOT zero — fall back to
+  // container sums for both the segments and the series rather than rendering a
+  // measured-looking 0.
+  const hostUnavailable = host.diskReadRate === null;
+  const rows = containers ? Object.values(containers) : [];
+  const containerRead = Math.max(0, finite(rows.reduce((a, r) => a + r.blkReadRate, 0)));
+  const containerWrite = Math.max(0, finite(rows.reduce((a, r) => a + r.blkWriteRate, 0)));
+
+  const read = host.diskReadRate === null ? containerRead : Math.max(0, finite(host.diskReadRate));
+  const write = host.diskReadRate === null ? containerWrite : Math.max(0, finite(host.diskWriteRate ?? 0));
+
+  let peak = 0;
+  const series: number[] = [];
+  for (const s of samples) {
+    let total: number;
+    if (hostUnavailable) {
+      const crows = s.containers ? Object.values(s.containers) : [];
+      total = crows.reduce((a, r) => a + finite(r.blkReadRate) + finite(r.blkWriteRate), 0);
+    } else {
+      total = s.host && s.host.diskReadRate !== null && s.host.diskWriteRate !== null
+        ? finite(s.host.diskReadRate) + finite(s.host.diskWriteRate)
+        : 0;
+    }
+    total = Math.max(0, total);
+    series.push(total);
+    if (total > peak) peak = total;
+  }
+
+  return {
+    scale: peak,
+    segments: [
+      { key: "read", label: "read", value: read, fill: OVERVIEW_FILL_PRIMARY, display: formatRate(read) },
+      { key: "write", label: "write", value: write, fill: OVERVIEW_FILL_SECONDARY, display: formatRate(write) },
+    ],
+    headline: formatRate(read + write),
+    caption: `peak ${formatRate(peak)} · 60s window`,
+    figures: [
+      { label: "read", value: formatRate(read) },
+      { label: "write", value: formatRate(write) },
+      { label: "peak", value: formatRate(peak) },
+    ],
+    series,
+    caveat: hostUnavailable ? "host disk I/O unavailable — container totals only" : undefined,
+  };
+}
+
+function buildOverviewModel(
+  metric: Metric,
+  host: OverviewHost | undefined,
+  samples: TelemetrySample[],
+  containers: Record<string, TelemetryRow> | undefined,
+): OverviewModel {
+  switch (metric) {
+    case "cpu":
+      return buildCpuOverview(host, containers);
+    case "mem":
+      return buildMemOverview(host, containers);
+    case "net":
+      return buildNetOverview(host, samples, containers);
+    case "blkio":
+      return buildBlkioOverview(host, samples, containers);
+    case "disk":
+      return emptyOverview();
+  }
 }
 
 function SegmentButton({
@@ -490,6 +687,11 @@ export default function ResourcesPage() {
 
   const max = Math.max(1, ...active.map((c) => valueOf(c, metric, latest?.containers[c.id]) ?? 0));
 
+  const overviewModel = useMemo(
+    () => buildOverviewModel(metric, latest?.host, samples, latest?.containers),
+    [metric, latest, samples],
+  );
+
   const treemapItems: TreemapItem[] = useMemo(
     () => active.map((c) => ({ id: c.id, label: c.name, value: valueOf(c, metric, latest?.containers[c.id]) ?? 0 })),
     [active, metric, latest],
@@ -640,6 +842,14 @@ export default function ResourcesPage() {
               I/O
             </SegmentButton>
           </div>
+        </div>
+      )}
+
+      {/* host-level overview for the selected metric — DISK is excluded, the HOST DISK
+          panel below already fills that role and must not be duplicated */}
+      {metric !== "disk" && (
+        <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
+          <ResourceOverview key={metric} title={METRIC_LABELS[metric]} model={overviewModel} />
         </div>
       )}
 
