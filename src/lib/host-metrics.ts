@@ -176,7 +176,10 @@ export async function getHostVitals(): Promise<HostVitals> {
   }
 
   return {
-    hostname: (inContainer ? readHostname() : null) || process.env.HOST_NAME || "homelab",
+    // HOST_NAME wins: /proc/sys/kernel/hostname resolves to the READER's UTS
+    // namespace even through a /host/proc bind mount, so in-container it
+    // reports the container ID, not the host.
+    hostname: process.env.HOST_NAME || (inContainer ? readHostname() : null) || "homelab",
     os: statics.os,
     uptimeSeconds: time.uptime,
     cpu: {
