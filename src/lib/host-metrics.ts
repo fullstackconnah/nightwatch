@@ -117,13 +117,8 @@ export interface HostMountEntry {
   fstype: string;
 }
 
-/**
- * Parse a /proc/mounts-style file into real block-device mounts: /dev/* devices,
- * excluding loop devices and squashfs (snap/overlay noise). Deduped by device,
- * keeping the shortest mountpoint (the "primary" mount of that device).
- */
-export function parseHostMounts(content: string): HostMountEntry[] {
-  const byDevice = new Map<string, HostMountEntry>();
+function parseMountLines(content: string): HostMountEntry[] {
+  const out: HostMountEntry[] = [];
   for (const line of content.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -135,12 +130,54 @@ export function parseHostMounts(content: string): HostMountEntry[] {
     if (!device.startsWith("/dev/")) continue;
     if (device.startsWith("/dev/loop")) continue;
     if (fstype === "squashfs") continue;
-    const existing = byDevice.get(device);
-    if (!existing || mountpoint.length < existing.mountpoint.length) {
-      byDevice.set(device, { device, mountpoint, fstype });
+    out.push({ device, mountpoint, fstype });
+  }
+  return out;
+}
+
+function dedupeByDeviceShortest(entries: HostMountEntry[]): HostMountEntry[] {
+  const byDevice = new Map<string, HostMountEntry>();
+  for (const e of entries) {
+    const existing = byDevice.get(e.device);
+    if (!existing || e.mountpoint.length < existing.mountpoint.length) {
+      byDevice.set(e.device, e);
     }
   }
   return Array.from(byDevice.values());
+}
+
+/**
+ * Parse a /proc/<pid>/mounts-style file (already in the HOST's mount namespace —
+ * e.g. host PID 1's mounts, read through the /host/proc bind mount) into real
+ * block-device mounts: /dev/* devices, excluding loop devices and squashfs
+ * (snap/overlay noise). Deduped by device, keeping the shortest mountpoint
+ * (the "primary" mount of that device).
+ */
+export function parseHostMounts(content: string): HostMountEntry[] {
+  return dedupeByDeviceShortest(parseMountLines(content));
+}
+
+/**
+ * Fallback for when host PID 1's mounts can't be read directly: parse the
+ * CONTAINER's own /proc/mounts instead. Because the host rootfs is bind-mounted
+ * into the container at `hostRootfsPrefix`, the host's real mounts show up in
+ * this table too, nested under that prefix (e.g. `/host/rootfs/mnt/docker`) —
+ * everything else (the container's own binds, like `/app/data`) is noise and
+ * is dropped. Entries are prefix-stripped back to host-relative paths
+ * (`/host/rootfs` itself becomes `/`), and any mount nested under
+ * `/mnt/docker/docker-data/` is dropped too — that's the docker overlay
+ * storage's own backing directories leaking through as bind mounts, not a
+ * real host filesystem.
+ */
+export function parseContainerMountsFallback(content: string, hostRootfsPrefix: string): HostMountEntry[] {
+  const entries = parseMountLines(content)
+    .filter((e) => e.mountpoint === hostRootfsPrefix || e.mountpoint.startsWith(`${hostRootfsPrefix}/`))
+    .map((e) => ({
+      ...e,
+      mountpoint: e.mountpoint === hostRootfsPrefix ? "/" : e.mountpoint.slice(hostRootfsPrefix.length),
+    }))
+    .filter((e) => !e.mountpoint.startsWith("/mnt/docker/docker-data/"));
+  return dedupeByDeviceShortest(entries);
 }
 
 // --- static info cache ------------------------------------------------------
@@ -169,26 +206,32 @@ export async function getHostVitals(): Promise<HostVitals> {
     getStaticInfo(),
   ]);
 
-  // Disk: enumerate all real block-device mounts via the host's /proc/mounts,
-  // statfs-ing each through the /host/rootfs bind mount. Dev mode falls back
-  // to systeminformation's view of the local machine's filesystems.
+  // Disk: enumerate all real block-device mounts from host PID 1's mount
+  // namespace (read through the /host/proc bind mount — /host/proc/mounts
+  // itself resolves via "self" to the CONTAINER's own namespace, not the
+  // host's, so it can't be used here), statfs-ing each through the
+  // /host/rootfs bind mount. If PID 1's mounts can't be read, fall back to
+  // parsing the container's own /proc/mounts and picking out the host's
+  // mounts nested under the /host/rootfs bind. Dev mode falls back to
+  // systeminformation's view of the local machine's filesystems.
   let disks: HostVitals["disk"] = [];
   if (inContainer) {
-    let mountsContent: string | null = null;
+    let hostMounts: HostMountEntry[] | null = null;
     try {
-      mountsContent = fs.readFileSync(`${HOST_PROC}/mounts`, "utf8");
+      const content = fs.readFileSync(`${HOST_PROC}/1/mounts`, "utf8");
+      hostMounts = parseHostMounts(content);
     } catch {
       try {
-        mountsContent = fs.readFileSync("/proc/mounts", "utf8");
+        const content = fs.readFileSync("/proc/mounts", "utf8");
+        hostMounts = parseContainerMountsFallback(content, HOST_ROOTFS);
       } catch {
-        mountsContent = null;
+        hostMounts = null;
       }
     }
 
-    if (mountsContent) {
-      const mounts = parseHostMounts(mountsContent);
+    if (hostMounts) {
       const seenFingerprints: { device: string; total: number; used: number }[] = [];
-      for (const m of mounts) {
+      for (const m of hostMounts) {
         const target = m.mountpoint === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${m.mountpoint}`;
         const d = statfsDisk(target, m.mountpoint);
         if (!d) continue;
