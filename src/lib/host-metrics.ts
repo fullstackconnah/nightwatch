@@ -97,17 +97,78 @@ export interface HostNetCounters {
 }
 
 /**
+ * Picks the interfaces that represent real host throughput. Bridges, veth pairs and
+ * loopback carry bytes that are already counted on the uplink, and a bond aggregates
+ * its slaves — summing everything would multiply the same packets several times.
+ */
+export function selectHostNetInterfaces(names: string[]): string[] {
+  const virtualPrefixes = ["docker", "br-", "veth", "virbr", "tap", "tun", "dummy", "wg"];
+  const physical = names.filter(
+    (name) => name !== "lo" && !virtualPrefixes.some((p) => name.startsWith(p)),
+  );
+  // A bond aggregates its slave NICs (e.g. enp4s0) — if present, only the
+  // bond itself should be summed, or the slave's bytes would be counted twice.
+  const bonds = physical.filter((name) => name.startsWith("bond"));
+  return bonds.length > 0 ? bonds : physical;
+}
+
+interface NetDevSample {
+  iface: string;
+  rxBytes: number;
+  txBytes: number;
+}
+
+/**
+ * Pure parser for a /proc/net/dev-style table — returns every interface's raw
+ * rx/tx byte counters, unfiltered (filtering is selectHostNetInterfaces's job).
+ * Deliberately separate from parseNetDevCounters, which readHostNetDev depends
+ * on, so this can't change that function's behaviour.
+ */
+function parseNetDevSamples(content: string): NetDevSample[] {
+  const lines = content.split("\n").slice(2); // first two lines are headers
+  const out: NetDevSample[] = [];
+  for (const line of lines) {
+    const [ifacePart, rest] = line.split(":");
+    if (!rest) continue;
+    const iface = ifacePart.trim();
+    const cols = rest.trim().split(/\s+/);
+    // Columns after "iface:" are: bytes packets errs drop fifo frame compressed
+    // multicast (receive, 8 cols) then bytes packets errs drop fifo colls carrier
+    // compressed (transmit, 8 cols). Receive bytes is col 0, transmit bytes is
+    // col 8 (the first transmit column, right after receive's 8).
+    out.push({ iface, rxBytes: Number(cols[0]), txBytes: Number(cols[8]) });
+  }
+  return out;
+}
+
+/**
  * Raw cumulative network counters. Unlike HostVitals.network.rxPerSec this
  * does NOT compute a rate and keeps no module state, so a caller polling at
  * its own cadence can derive delta/elapsed without fighting other callers
  * (readHostNetDev, other pollers) over shared previous-sample state. Returns
- * null when unreadable, or when the file yields no usable interfaces — zeros
- * would otherwise read as "measured no traffic".
+ * null when unreadable, or when no usable interface remains after filtering —
+ * zeros would otherwise read as "measured no traffic".
+ *
+ * Reads PID 1's net/dev rather than the top-level HOST_PROC/net/dev: /proc/net
+ * is network-namespace scoped, so even through the /host/proc bind mount the
+ * top-level path resolves to the READER's (container's) own namespace. PID 1's
+ * /net/dev resolves to the host init process's namespace, i.e. the host's.
  */
 export async function getHostNetCounters(): Promise<HostNetCounters | null> {
   try {
-    const content = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8");
-    const { rxBytes, txBytes, interfaceCount } = parseNetDevCounters(content);
+    const content = fs.readFileSync(`${HOST_PROC}/1/net/dev`, "utf8");
+    const samples = parseNetDevSamples(content);
+    const selected = new Set(selectHostNetInterfaces(samples.map((s) => s.iface)));
+
+    let rxBytes = 0;
+    let txBytes = 0;
+    let interfaceCount = 0;
+    for (const s of samples) {
+      if (!selected.has(s.iface)) continue;
+      rxBytes += s.rxBytes;
+      txBytes += s.txBytes;
+      interfaceCount++;
+    }
     if (interfaceCount === 0) return null;
     if (!Number.isFinite(rxBytes) || !Number.isFinite(txBytes)) return null;
     return { rxBytes, txBytes };
