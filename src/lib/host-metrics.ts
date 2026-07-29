@@ -13,6 +13,7 @@ import si from "systeminformation";
  */
 const HOST_PROC = process.env.HOST_PROC || "/host/proc";
 const HOST_ROOTFS = process.env.HOST_ROOTFS || "/host/rootfs";
+const HOST_SYS = process.env.HOST_SYS || "/host/sys";
 
 export interface HostVitals {
   hostname: string;
@@ -20,7 +21,8 @@ export interface HostVitals {
   uptimeSeconds: number;
   cpu: { percent: number; cores: number; model: string; loadAvg: number[] };
   memory: { total: number; used: number; available: number; percent: number };
-  disk: { mount: string; total: number; used: number; percent: number }[];
+  /** One entry per PHYSICAL disk (partitions on the same disk are grouped together). */
+  disk: { mount: string; total: number; used: number; percent: number; mounts?: string[] }[];
   network: { rxPerSec: number; txPerSec: number };
   tempC: number | null;
   ts: number;
@@ -77,7 +79,7 @@ function readHostname(): string | null {
 
 function readTemp(): number | null {
   // Thermal zones in the container's /sys are the host's (sysfs is not namespaced).
-  const roots = ["/sys/class/thermal", "/host/sys/class/thermal"];
+  const roots = ["/sys/class/thermal", `${HOST_SYS}/class/thermal`];
   for (const root of roots) {
     try {
       const zones = fs.readdirSync(root).filter((z) => z.startsWith("thermal_zone"));
@@ -180,6 +182,129 @@ export function parseContainerMountsFallback(content: string, hostRootfsPrefix: 
   return dedupeByDeviceShortest(entries);
 }
 
+// --- physical-disk grouping --------------------------------------------------
+
+const PARTITION_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^\/dev\/nvme(\d+)n(\d+)p\d+$/, (m) => `nvme${m[1]}n${m[2]}`],
+  [/^\/dev\/mmcblk(\d+)p\d+$/, (m) => `mmcblk${m[1]}`],
+  [/^\/dev\/(sd[a-z]+)\d+$/, (m) => m[1]],
+  [/^\/dev\/(vd[a-z]+)\d+$/, (m) => m[1]],
+  [/^\/dev\/(xvd[a-z]+)\d+$/, (m) => m[1]],
+];
+
+/** Non-mapper devices only: partition device path -> the physical disk it lives on. */
+function simpleParentDisk(device: string): string {
+  for (const [re, fn] of PARTITION_PATTERNS) {
+    const m = device.match(re);
+    if (m) return fn(m);
+  }
+  // Already a whole-disk device, or an unrecognized scheme: group by its own name.
+  return device.replace(/^\/dev\//, "");
+}
+
+/**
+ * Resolve a device to the physical disk it lives on, so every partition of the
+ * same disk groups together. `dmResolve` maps a device-mapper name (e.g. an LVM
+ * logical volume like "ubuntu--vg-ubuntu--lv") to one underlying partition
+ * device to recurse into, or null if it can't be resolved to a single disk
+ * (falls back to grouping under the mapper name itself).
+ */
+export function parentDiskOf(device: string, dmResolve: (mapperName: string) => string | null): string {
+  const mapperMatch = device.match(/^\/dev\/mapper\/(.+)$/);
+  const dmMatch = device.match(/^\/dev\/(dm-\d+)$/);
+  if (mapperMatch || dmMatch) {
+    const mapperName = mapperMatch ? mapperMatch[1] : dmMatch![1];
+    const resolved = dmResolve(mapperName);
+    if (resolved) return parentDiskOf(resolved, dmResolve);
+    return mapperName;
+  }
+  return simpleParentDisk(device);
+}
+
+/**
+ * Builds a device-mapper resolver by scanning `${hostSys}/class/block/dm-*` —
+ * finds the dm-N node whose `dm/name` matches the mapper name, then reads its
+ * `slaves/` entries (the underlying partitions backing that mapper device).
+ * A single slave resolves cleanly. Multiple slaves only resolve if they all
+ * sit on the same physical disk (e.g. a mirrored/striped LV would otherwise
+ * misattribute capacity to one disk) — otherwise returns null so the caller
+ * groups the mapper device under its own name instead of guessing.
+ */
+export function makeDmResolver(hostSys: string): (mapperName: string) => string | null {
+  return (mapperName: string): string | null => {
+    let dmNodes: string[];
+    try {
+      dmNodes = fs.readdirSync(`${hostSys}/class/block`).filter((e) => e.startsWith("dm-"));
+    } catch {
+      return null;
+    }
+    for (const dm of dmNodes) {
+      let name: string;
+      try {
+        name = fs.readFileSync(`${hostSys}/class/block/${dm}/dm/name`, "utf8").trim();
+      } catch {
+        continue;
+      }
+      if (name !== mapperName) continue;
+      try {
+        const slaves = fs.readdirSync(`${hostSys}/class/block/${dm}/slaves`);
+        if (slaves.length === 0) return null;
+        if (slaves.length === 1) return `/dev/${slaves[0]}`;
+        const parents = new Set(slaves.map((s) => simpleParentDisk(`/dev/${s}`)));
+        return parents.size === 1 ? `/dev/${slaves[0]}` : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+}
+
+export interface PerMountDisk {
+  device: string;
+  mount: string;
+  total: number;
+  used: number;
+}
+
+/**
+ * Groups per-mount statfs results by the physical disk each mount's device
+ * lives on, so a disk with several partitions (/, /boot, /boot/efi, ...)
+ * reports as a single row instead of one row per partition. Group label is
+ * the physical disk's short name (e.g. "nvme0n1"); total/used are summed
+ * across the disk's mounted partitions. Sorted with the group containing "/"
+ * first, then alphabetically by label.
+ */
+export function groupDisksByPhysicalDisk(
+  perMount: PerMountDisk[],
+  dmResolve: (mapperName: string) => string | null,
+): HostVitals["disk"] {
+  const groups = new Map<string, { mounts: string[]; total: number; used: number }>();
+  for (const pd of perMount) {
+    const label = parentDiskOf(pd.device, dmResolve);
+    const g = groups.get(label) ?? { mounts: [], total: 0, used: 0 };
+    g.mounts.push(pd.mount);
+    g.total += pd.total;
+    g.used += pd.used;
+    groups.set(label, g);
+  }
+  const grouped = Array.from(groups.entries()).map(([label, g]) => ({
+    mount: label,
+    mounts: g.mounts,
+    total: g.total,
+    used: g.used,
+    percent: g.total > 0 ? (g.used / g.total) * 100 : 0,
+  }));
+  grouped.sort((a, b) => {
+    const aRoot = a.mounts.includes("/");
+    const bRoot = b.mounts.includes("/");
+    if (aRoot && !bRoot) return -1;
+    if (bRoot && !aRoot) return 1;
+    return a.mount.localeCompare(b.mount);
+  });
+  return grouped;
+}
+
 // --- static info cache ------------------------------------------------------
 
 let staticInfo: { os: string; cpuModel: string; cores: number } | null = null;
@@ -231,6 +356,7 @@ export async function getHostVitals(): Promise<HostVitals> {
 
     if (hostMounts) {
       const seenFingerprints: { device: string; total: number; used: number }[] = [];
+      const perMountDisks: PerMountDisk[] = [];
       for (const m of hostMounts) {
         const target = m.mountpoint === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${m.mountpoint}`;
         const d = statfsDisk(target, m.mountpoint);
@@ -242,26 +368,22 @@ export async function getHostVitals(): Promise<HostVitals> {
         );
         if (isDuplicate) continue;
         seenFingerprints.push({ device: m.device, total: d.total, used: d.used });
-        disks.push(d);
+        perMountDisks.push({ device: m.device, mount: d.mount, total: d.total, used: d.used });
       }
-      disks.sort((a, b) => {
-        if (a.mount === "/") return -1;
-        if (b.mount === "/") return 1;
-        return a.mount.localeCompare(b.mount);
-      });
+      disks = groupDisksByPhysicalDisk(perMountDisks, makeDmResolver(HOST_SYS));
     }
 
     if (disks.length === 0) {
       // Mounts unreadable for some reason; at least report root.
       const hostRoot = statfsDisk(HOST_ROOTFS, "/");
-      if (hostRoot) disks = [hostRoot];
+      if (hostRoot) disks = [{ ...hostRoot, mounts: ["/"] }];
     }
   } else {
     const fsSizes = await si.fsSize();
     disks = fsSizes
       .filter((f) => f.size > 5 * 1024 ** 3)
       .slice(0, 4)
-      .map((f) => ({ mount: f.mount, total: f.size, used: f.used, percent: f.use }));
+      .map((f) => ({ mount: f.mount, total: f.size, used: f.used, percent: f.use, mounts: [f.mount] }));
   }
 
   // Network: host's /proc when available, else systeminformation.

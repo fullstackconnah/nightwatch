@@ -293,22 +293,26 @@ export default function ResourcesPage() {
     () => containers.reduce((a, c) => a + (c.sizeRw ?? 0), 0),
     [containers],
   );
-  // Fallback when dockerRootDir is unknown: primary = "/" or the largest drive (approximate).
+  // Fallback when dockerRootDir is unknown: the drive containing "/" or the largest drive (approximate).
   const fallbackDisk = useMemo(() => {
     if (!hostDisks || hostDisks.length === 0) return null;
     return (
-      hostDisks.find((d) => d.mount === "/") ??
+      hostDisks.find((d) => (d.mounts ?? [d.mount]).includes("/")) ??
       [...hostDisks].sort((a, b) => b.total - a.total)[0]
     );
   }, [hostDisks]);
-  // The drive whose mountpoint is the longest prefix of dockerRootDir owns the docker segments.
+  // The drive with a mountpoint that's the longest prefix of dockerRootDir owns the docker segments.
   const dockerDisk = useMemo(() => {
     if (!hostDisks || hostDisks.length === 0) return null;
     if (!dockerRootDir) return fallbackDisk;
     let best: HostDisk | null = null;
+    let bestLen = -1;
     for (const d of hostDisks) {
-      if (isMountPrefixOf(d.mount, dockerRootDir) && (!best || d.mount.length > best.mount.length)) {
-        best = d;
+      for (const mp of d.mounts ?? [d.mount]) {
+        if (isMountPrefixOf(mp, dockerRootDir) && mp.length > bestLen) {
+          best = d;
+          bestLen = mp.length;
+        }
       }
     }
     return best ?? fallbackDisk;
@@ -404,9 +408,12 @@ export default function ResourcesPage() {
               const segs = isDockerDisk ? dockerSegments : otherDiskSegments(d);
               return (
                 <div key={d.mount}>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="font-mono text-xs text-ink">{d.mount}</span>
-                    <span className="font-mono text-xs text-ink">
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <div className="flex items-baseline gap-2 min-w-0">
+                      <span className="font-mono text-xs text-ink shrink-0">{d.mount}</span>
+                      <span className="microlabel truncate">{(d.mounts ?? [d.mount]).join(" · ")}</span>
+                    </div>
+                    <span className="font-mono text-xs text-ink shrink-0">
                       {formatBytes(d.used)} / {formatBytes(d.total)}
                     </span>
                   </div>
@@ -416,7 +423,7 @@ export default function ResourcesPage() {
                       const pct = d.total > 0 ? (seg.value / d.total) * 100 : 0;
                       const dockerSeg = isDockerDisk && isDockerSegKey(seg.key);
                       const title =
-                        dockerSeg && !dockerRootDir && d.mount !== "/"
+                        dockerSeg && !dockerRootDir && !(d.mounts ?? [d.mount]).includes("/")
                           ? "approximate — docker root may be on another filesystem"
                           : `${seg.label} · ${formatBytes(seg.value)}`;
                       const showLabel = pct >= 9 && seg.key !== "free";

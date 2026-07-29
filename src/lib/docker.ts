@@ -270,7 +270,7 @@ export interface ResourceSnapshot {
   updatedAt: number;
   containers: ResourceContainer[];
   volumes: { name: string; sizeBytes: number | null; refCount: number }[] | null;
-  hostDisks: { mount: string; total: number; used: number; percent: number }[] | null;
+  hostDisks: { mount: string; total: number; used: number; percent: number; mounts?: string[] }[] | null;
   dockerRootDir: string | null;
   totals: {
     cpuPct: number;

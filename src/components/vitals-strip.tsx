@@ -75,6 +75,11 @@ export function VitalsStrip() {
                   {formatBytes(d.used, 0)}/{formatBytes(d.total, 0)}
                 </span>
               </div>
+              {d.mounts && d.mounts.length > 1 && (
+                <div className="text-[0.625rem] text-ink-faint truncate mb-0.5">
+                  {d.mounts.join(" · ")}
+                </div>
+              )}
               <Meter percent={d.percent} warnAt={85} badAt={95} />
             </div>
           ))}
