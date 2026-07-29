@@ -1,9 +1,10 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import type { TiledContainer } from "@/lib/tiles";
 import type { HostVitals } from "@/lib/host-metrics";
 import type { ContainerStatsSnapshot, ResourceSnapshot } from "@/lib/docker";
+import type { DiskUsageScan } from "@/lib/disk-usage";
 import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
 
@@ -60,6 +61,26 @@ export function useResources(refreshMs = 10000) {
   });
 }
 
+function diskUsageKey(label: string): string {
+  return `/api/resources/disk-usage?disk=${encodeURIComponent(label)}`;
+}
+
+/** Only fetches once a disk is expanded — pass null to skip. */
+export function useDiskUsage(label: string | null) {
+  return useSWR<DiskUsageScan>(label ? diskUsageKey(label) : null, fetcher, {
+    revalidateOnFocus: false,
+    refreshInterval: 0,
+    keepPreviousData: true,
+  });
+}
+
+/** Forces a fresh (non-cached) scan and pushes the result into useDiskUsage's SWR cache. */
+export async function refreshDiskUsage(label: string): Promise<DiskUsageScan> {
+  const data = await fetcher(`${diskUsageKey(label)}&refresh=1`);
+  await globalMutate(diskUsageKey(label), data, false);
+  return data as DiskUsageScan;
+}
+
 export function useSettings() {
   return useSWR<{
     config: AppConfig;
@@ -73,7 +94,7 @@ export function useSettings() {
   }>("/api/settings", fetcher);
 }
 
-export type { TiledContainer, HostVitals, ContainerStatsSnapshot, WidgetData, AppConfig, ResourceSnapshot };
+export type { TiledContainer, HostVitals, ContainerStatsSnapshot, WidgetData, AppConfig, ResourceSnapshot, DiskUsageScan };
 
 export async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {

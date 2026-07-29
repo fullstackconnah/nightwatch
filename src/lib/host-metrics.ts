@@ -11,8 +11,8 @@ import si from "systeminformation";
  *    bind mount when present;
  *  - hostname: read /host/proc/sys/kernel/hostname when present.
  */
-const HOST_PROC = process.env.HOST_PROC || "/host/proc";
-const HOST_ROOTFS = process.env.HOST_ROOTFS || "/host/rootfs";
+export const HOST_PROC = process.env.HOST_PROC || "/host/proc";
+export const HOST_ROOTFS = process.env.HOST_ROOTFS || "/host/rootfs";
 const HOST_SYS = process.env.HOST_SYS || "/host/sys";
 
 export interface HostVitals {
@@ -157,6 +157,27 @@ function dedupeByDeviceShortest(entries: HostMountEntry[]): HostMountEntry[] {
  */
 export function parseHostMounts(content: string): HostMountEntry[] {
   return dedupeByDeviceShortest(parseMountLines(content));
+}
+
+/**
+ * Every mountpoint path in a /proc/<pid>/mounts-style table, UNFILTERED —
+ * unlike parseHostMounts/parseMountLines this keeps pseudo-filesystems (proc,
+ * sysfs, tmpfs, devtmpfs, overlay, cgroup, squashfs, bind mounts, ...). A du
+ * scan needs the full set: `du -x` only prunes descent BELOW an argument, so
+ * a directory that happens to be a mountpoint of a different filesystem must
+ * be excluded from the child list before du ever sees it, or du walks the
+ * whole thing (e.g. treating /proc as a real 128TiB directory).
+ */
+export function parseAllMountpoints(content: string): string[] {
+  const out: string[] = [];
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 3) continue;
+    out.push(decodeMountField(parts[1]));
+  }
+  return out;
 }
 
 /**

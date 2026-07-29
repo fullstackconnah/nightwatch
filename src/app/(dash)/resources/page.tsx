@@ -16,9 +16,12 @@ import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, relativeTime } from "@/lib/format";
 import {
   postJson,
+  useDiskUsage,
+  refreshDiskUsage,
   useResources,
   useWidgets,
   type ResourceSnapshot,
+  type DiskUsageScan,
 } from "@/lib/client";
 
 type Metric = "cpu" | "mem" | "disk";
@@ -52,6 +55,148 @@ const SEGMENT_LEGEND: DiskSegment[] = [
   { key: "used", label: "used", value: 0, fill: "#0f766e" },
   { key: "free", label: "free", value: 0, fill: "var(--color-panel-2)" },
 ];
+
+const CONTENTS_RAMP = ["#134e4a", "#0f766e", "#0d9488", "#14b8a6"];
+const NEUTRAL_FILL = "#2a3a50";
+
+interface ContentsRow {
+  key: string;
+  label: string;
+  bytes: number;
+  fill: string;
+  badge?: "mount" | "file";
+  /** Overrides the default "label · value" tooltip. */
+  title?: string;
+}
+
+function contentsRows(scan: DiskUsageScan): ContentsRow[] {
+  const rows: ContentsRow[] = scan.entries.map((e, i) => ({
+    key: `${e.kind}-${e.name}`,
+    label: e.name,
+    bytes: e.bytes,
+    fill: CONTENTS_RAMP[i % CONTENTS_RAMP.length],
+    badge: e.kind === "mount" || e.kind === "file" ? e.kind : undefined,
+  }));
+  if (scan.otherBytes > 0) rows.push({ key: "other", label: "other", bytes: scan.otherBytes, fill: NEUTRAL_FILL });
+  // Two distinct, honestly-labeled buckets for the remainder — never both at once (see
+  // DiskUsageScan's docstring): permission-denied space is NOT "filesystem overhead".
+  if (scan.unreadableBytes > 0)
+    rows.push({
+      key: "unreadable",
+      label: `unreadable · ${scan.deniedCount} paths denied`,
+      bytes: scan.unreadableBytes,
+      fill: NEUTRAL_FILL,
+      title: "not readable as the dashboard's unprivileged user",
+    });
+  if (scan.unaccountedBytes > 0)
+    rows.push({
+      key: "unaccounted",
+      label: "unaccounted (filesystem overhead)",
+      bytes: scan.unaccountedBytes,
+      fill: NEUTRAL_FILL,
+    });
+  return rows;
+}
+
+/** Drill-in "what's using the space" breakdown for one HOST DISK row, fetched on expand. */
+function DiskContentsPanel({ label }: { label: string }) {
+  const { data: scan, isLoading } = useDiskUsage(label);
+  const [rescanning, setRescanning] = useState(false);
+
+  async function handleRescan() {
+    setRescanning(true);
+    try {
+      await refreshDiskUsage(label);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "rescan failed");
+    } finally {
+      setRescanning(false);
+    }
+  }
+
+  if (isLoading && !scan) {
+    return (
+      <div className="py-2 space-y-1">
+        <div className="microlabel">scanning contents…</div>
+        <div className="text-ink-faint text-xs">large drives can take a few minutes</div>
+      </div>
+    );
+  }
+
+  if (!scan) {
+    return <div className="py-2 text-ink-faint text-xs">no contents data</div>;
+  }
+
+  const rows = contentsRows(scan);
+  const maxBytes = Math.max(1, ...rows.map((r) => r.bytes));
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div className="microlabel">CONTENTS</div>
+        {scan.deniedCount > 0 && (
+          <div className="microlabel !text-warn/80">
+            {Math.round(100 - scan.readablePct)}% of used space not readable
+          </div>
+        )}
+      </div>
+
+      <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
+        {rows.map((r) => {
+          const pct = scan.usedBytes > 0 ? (r.bytes / scan.usedBytes) * 100 : 0;
+          const showLabel = pct >= 9;
+          return (
+            <div
+              key={r.key}
+              title={r.title ?? `${r.label} · ${formatBytes(r.bytes)}`}
+              className="h-full flex items-center justify-center px-1 overflow-hidden"
+              style={{ width: `${pct}%`, background: r.fill }}
+            >
+              {showLabel && <span className="text-[0.625rem] font-medium truncate text-ink">{r.label}</span>}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="divide-y divide-line/50">
+        {rows.map((r) => (
+          <div
+            key={r.key}
+            title={r.title}
+            className="flex items-center gap-2.5 min-h-11 md:min-h-8 py-1.5"
+          >
+            <span className="font-mono text-[0.75rem] break-all flex-1 min-w-0">
+              {r.badge && <span className="microlabel mr-1.5">{r.badge}</span>}
+              {r.label}
+            </span>
+            <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden shrink-0">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${Math.min(100, (r.bytes / maxBytes) * 100)}%`, background: "#2dd4bf" }}
+              />
+            </div>
+            <span className="font-mono text-[0.75rem] text-ink w-20 text-right shrink-0">
+              {formatBytes(r.bytes)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        <div className="microlabel">
+          scanned {relativeTime(scan.scannedAt)} · {(scan.durationMs / 1000).toFixed(1)}s
+        </div>
+        <Button size="sm" variant="ghost" disabled={rescanning} onClick={handleRescan}>
+          <RotateCw size={12} className={rescanning ? "animate-spin" : ""} /> Rescan
+        </Button>
+      </div>
+
+      {(scan.partial || scan.error) && (
+        <div className="microlabel !text-warn/80">{scan.error ?? "partial scan — some data may be incomplete"}</div>
+      )}
+    </div>
+  );
+}
 
 function valueOf(c: ResourceContainer, metric: Metric): number | null {
   if (metric === "cpu") return c.cpuPct;
@@ -251,6 +396,7 @@ export default function ResourcesPage() {
   const { data: widgetData } = useWidgets(20000);
   const [metric, setMetric] = useState<Metric>("cpu");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const containers = data?.containers ?? [];
@@ -406,17 +552,31 @@ export default function ResourcesPage() {
             {hostDisks.map((d) => {
               const isDockerDisk = d === dockerDisk;
               const segs = isDockerDisk ? dockerSegments : otherDiskSegments(d);
+              const isDiskExpanded = expandedDiskLabel === d.mount;
               return (
                 <div key={d.mount}>
-                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedDiskLabel(isDiskExpanded ? null : d.mount)}
+                    aria-expanded={isDiskExpanded}
+                    aria-controls={`disk-contents-${d.mount}`}
+                    className="w-full flex items-center justify-between gap-2 mb-1.5 min-h-11 md:min-h-0 -mx-1 px-1 rounded-md text-left cursor-pointer hover:bg-panel-2/60"
+                  >
                     <div className="flex items-baseline gap-2 min-w-0">
                       <span className="font-mono text-xs text-ink shrink-0">{d.mount}</span>
                       <span className="microlabel truncate">{(d.mounts ?? [d.mount]).join(" · ")}</span>
                     </div>
-                    <span className="font-mono text-xs text-ink shrink-0">
-                      {formatBytes(d.used)} / {formatBytes(d.total)}
-                    </span>
-                  </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-mono text-xs text-ink">
+                        {formatBytes(d.used)} / {formatBytes(d.total)}
+                      </span>
+                      <span className="microlabel hidden sm:inline">CONTENTS</span>
+                      <ChevronDown
+                        size={13}
+                        className={cn("text-ink-faint transition-transform", isDiskExpanded && "rotate-180")}
+                      />
+                    </div>
+                  </button>
 
                   <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
                     {segs.map((seg) => {
@@ -452,6 +612,12 @@ export default function ResourcesPage() {
                       );
                     })}
                   </div>
+
+                  {isDiskExpanded && (
+                    <div id={`disk-contents-${d.mount}`} className="mt-3 pt-3 border-t border-line/60">
+                      <DiskContentsPanel label={d.mount} />
+                    </div>
+                  )}
                 </div>
               );
             })}
