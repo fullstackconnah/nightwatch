@@ -21,12 +21,33 @@ git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
 
    ```sh
    # generate locally: npm run hash-password -- 'your-password'
-   ADMIN_PASSWORD_HASH=$2b$12$…       # fine in .env — compose passes values verbatim
+   # then DOUBLE every '$' before pasting (see below)
+   ADMIN_PASSWORD_HASH=$$2b$$12$$…
    SESSION_SECRET=<long random string>
    ```
 
-   Do NOT inline the hash in `docker-compose.yml` — `$` would be eaten by
-   compose interpolation there.
+   **Escape every `$` as `$$`.** Compose expands `$` sequences while parsing
+   `.env`, so a raw bcrypt hash arrives at the container truncated (60 chars →
+   38) and *every login fails even with the correct password* — with no error
+   in the logs, because a short hash is simply a hash that never matches.
+   This bit us on 2026-07-30. It applies whether the value is referenced via
+   `env_file` or `${...}` in `environment:`; the mangling is in the dotenv layer.
+
+   Escape an already-pasted raw hash in place:
+
+   ```sh
+   sudo sed -i.bak '/^ADMIN_PASSWORD_HASH=/ s/\$/$$/g' .env
+   ```
+
+   Verify the container actually received all 60 characters:
+
+   ```sh
+   sudo docker exec --user node homelab-dashboard \
+     sh -c 'printf %s "$ADMIN_PASSWORD_HASH" | wc -c'   # must print 60
+   ```
+
+   A `.env` edit does NOT reach a running container — recreate it:
+   `sudo docker compose up -d --force-recreate dashboard`
 
 2. **Widget config** — `data/config.json` is gitignored (holds API keys).
    Ship it out-of-band:

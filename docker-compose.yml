@@ -37,11 +37,15 @@ services:
       - HOST_NAME=homelab # /host/proc hostname resolves to the container's UTS namespace, not the host's
       - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
-    # ADMIN_PASSWORD_HASH and SESSION_SECRET are loaded from .env via env_file, NOT
-    # through ${...} in `environment:`. Compose expands $ sequences inside interpolated
-    # values, so a raw bcrypt hash ($2a$12$...) reaches the container truncated (60
-    # chars -> 38) and every login fails. env_file passes values through verbatim,
-    # which means the hash is stored raw in .env — no $$ escaping.
+    # ADMIN_PASSWORD_HASH and SESSION_SECRET come from .env (never committed).
+    #
+    # CRITICAL: every '$' in the hash MUST be written as '$$' in .env. Compose expands
+    # $ sequences while PARSING .env, so a raw bcrypt hash ($2a$12$...) reaches the
+    # container truncated (60 chars -> 38) and every login fails with a correct
+    # password. This applies via env_file AND via ${...} in `environment:` — the
+    # mangling is in the dotenv layer, so escaping is the only fix.
+    #   store:  ADMIN_PASSWORD_HASH=$$2a$$12$$xxxxx...
+    #   verify: docker exec <c> sh -c 'printf %s "$ADMIN_PASSWORD_HASH" | wc -c'  -> 60
     env_file:
       - path: .env
         required: false
