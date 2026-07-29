@@ -106,6 +106,43 @@ function statfsDisk(target: string, label: string) {
   }
 }
 
+// Octal-escaped whitespace/backslash in /proc/mounts fields, e.g. "\040" for a space.
+function decodeMountField(field: string): string {
+  return field.replace(/\\([0-7]{3})/g, (_, oct: string) => String.fromCharCode(parseInt(oct, 8)));
+}
+
+export interface HostMountEntry {
+  device: string;
+  mountpoint: string;
+  fstype: string;
+}
+
+/**
+ * Parse a /proc/mounts-style file into real block-device mounts: /dev/* devices,
+ * excluding loop devices and squashfs (snap/overlay noise). Deduped by device,
+ * keeping the shortest mountpoint (the "primary" mount of that device).
+ */
+export function parseHostMounts(content: string): HostMountEntry[] {
+  const byDevice = new Map<string, HostMountEntry>();
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 3) continue;
+    const device = parts[0];
+    const mountpoint = decodeMountField(parts[1]);
+    const fstype = parts[2];
+    if (!device.startsWith("/dev/")) continue;
+    if (device.startsWith("/dev/loop")) continue;
+    if (fstype === "squashfs") continue;
+    const existing = byDevice.get(device);
+    if (!existing || mountpoint.length < existing.mountpoint.length) {
+      byDevice.set(device, { device, mountpoint, fstype });
+    }
+  }
+  return Array.from(byDevice.values());
+}
+
 // --- static info cache ------------------------------------------------------
 
 let staticInfo: { os: string; cpuModel: string; cores: number } | null = null;
@@ -132,16 +169,49 @@ export async function getHostVitals(): Promise<HostVitals> {
     getStaticInfo(),
   ]);
 
-  // Disk: host rootfs when mounted, else visible filesystems (dev mode).
+  // Disk: enumerate all real block-device mounts via the host's /proc/mounts,
+  // statfs-ing each through the /host/rootfs bind mount. Dev mode falls back
+  // to systeminformation's view of the local machine's filesystems.
   let disks: HostVitals["disk"] = [];
-  const hostRoot = statfsDisk(HOST_ROOTFS, "/");
-  if (inContainer && hostRoot) {
-    disks = [hostRoot];
-    // Extra data mounts commonly present on the homelab.
-    for (const extra of ["/host/rootfs/mnt/docker", "/host/rootfs/mnt/media"]) {
-      const d = statfsDisk(extra, extra.replace("/host/rootfs", ""));
-      // statfs of a bind-mounted subdir of the same fs duplicates root; only add if it differs.
-      if (d && hostRoot && (d.total !== hostRoot.total || d.used !== hostRoot.used)) disks.push(d);
+  if (inContainer) {
+    let mountsContent: string | null = null;
+    try {
+      mountsContent = fs.readFileSync(`${HOST_PROC}/mounts`, "utf8");
+    } catch {
+      try {
+        mountsContent = fs.readFileSync("/proc/mounts", "utf8");
+      } catch {
+        mountsContent = null;
+      }
+    }
+
+    if (mountsContent) {
+      const mounts = parseHostMounts(mountsContent);
+      const seenFingerprints: { device: string; total: number; used: number }[] = [];
+      for (const m of mounts) {
+        const target = m.mountpoint === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${m.mountpoint}`;
+        const d = statfsDisk(target, m.mountpoint);
+        if (!d) continue;
+        // Guard against the same device somehow surfacing twice (e.g. bind mounts);
+        // different devices with coincidentally equal sizes must both be kept.
+        const isDuplicate = seenFingerprints.some(
+          (f) => f.device === m.device && f.total === d.total && f.used === d.used,
+        );
+        if (isDuplicate) continue;
+        seenFingerprints.push({ device: m.device, total: d.total, used: d.used });
+        disks.push(d);
+      }
+      disks.sort((a, b) => {
+        if (a.mount === "/") return -1;
+        if (b.mount === "/") return 1;
+        return a.mount.localeCompare(b.mount);
+      });
+    }
+
+    if (disks.length === 0) {
+      // Mounts unreadable for some reason; at least report root.
+      const hostRoot = statfsDisk(HOST_ROOTFS, "/");
+      if (hostRoot) disks = [hostRoot];
     }
   } else {
     const fsSizes = await si.fsSize();
