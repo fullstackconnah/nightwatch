@@ -11,6 +11,7 @@ services:
       - NETWORKS=1
       - VOLUMES=1
       - PING=1
+      - SYSTEM=1
       # write scopes — start/stop/restart/create only; EXEC stays off
       - POST=1
       - ALLOW_START=1

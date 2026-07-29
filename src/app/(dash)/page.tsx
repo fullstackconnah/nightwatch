@@ -4,16 +4,25 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { VitalsStrip } from "@/components/vitals-strip";
 import { ContainerTile } from "@/components/container-tile";
-import { useContainers, useWidgets } from "@/lib/client";
+import { useContainers, useResources, useWidgets } from "@/lib/client";
 
 export default function OverviewPage() {
   const { data, error, isLoading } = useContainers(5000);
   const { data: widgetData } = useWidgets(20000);
+  const { data: resourceData } = useResources(10000);
 
   const visible = useMemo(
     () => (data?.containers ?? []).filter((c) => !c.tile.hidden),
     [data],
   );
+
+  const statsById = useMemo(() => {
+    const map = new Map<string, { cpuPct: number; memBytes: number }>();
+    for (const c of resourceData?.containers ?? []) {
+      map.set(c.id, { cpuPct: c.cpuPct, memBytes: c.memBytes });
+    }
+    return map;
+  }, [resourceData]);
 
   return (
     <div className="space-y-6">
@@ -67,6 +76,7 @@ export default function OverviewPage() {
                   key={c.id}
                   container={c}
                   widget={widgetData?.widgets[c.name]}
+                  stats={statsById.get(c.id)}
                 />
               ))}
             </div>

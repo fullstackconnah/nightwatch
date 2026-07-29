@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatBytes } from "@/lib/format";
 import type { TiledContainer, WidgetData } from "@/lib/client";
 
 export function stateDotClass(c: { state: string; health: string | null }): string {
@@ -39,15 +40,24 @@ function TileIcon({ icon, name }: { icon: string | null; name: string }) {
 export function ContainerTile({
   container: c,
   widget,
+  stats,
 }: {
   container: TiledContainer;
   widget?: WidgetData;
+  stats?: { cpuPct: number; memBytes: number };
 }) {
   return (
-    <Link
-      href={`/containers/${c.id.slice(0, 12)}`}
-      className={cn("panel panel-hover block p-3 group", c.state !== "running" && "opacity-60")}
+    <div
+      className={cn(
+        "panel panel-hover block p-3 group relative",
+        c.state !== "running" && "opacity-60",
+      )}
     >
+      <Link
+        href={`/containers/${c.id.slice(0, 12)}`}
+        aria-label={c.name}
+        className="absolute inset-0 rounded-[inherit] focus-visible:ring-1 focus-visible:ring-accent"
+      />
       <div className="flex items-center gap-2.5">
         <TileIcon icon={c.tile.icon} name={c.name} />
         <div className="min-w-0 flex-1">
@@ -58,6 +68,11 @@ export function ContainerTile({
           <div className="text-[0.68rem] text-ink-faint font-mono truncate" title={c.image}>
             {c.image.replace(/^(ghcr\.io|lscr\.io|docker\.io)\//, "")}
           </div>
+          {stats && c.state === "running" && (
+            <div className="text-[0.68rem] text-ink-dim font-mono truncate">
+              cpu {stats.cpuPct.toFixed(1)}% · mem {formatBytes(stats.memBytes, 0)}
+            </div>
+          )}
         </div>
         {c.tile.url && (
           <a
@@ -65,7 +80,7 @@ export function ContainerTile({
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="hover-reveal text-ink-dim hover:text-accent p-3 -m-2 md:p-1 md:m-0"
+            className="hover-reveal text-ink-dim hover:text-accent p-3 -m-2 md:p-1 md:m-0 relative z-10"
             title={`Open ${c.tile.url}`}
           >
             <ExternalLink size={14} />
@@ -97,6 +112,6 @@ export function ContainerTile({
           widget: {widget.error}
         </div>
       )}
-    </Link>
+    </div>
   );
 }

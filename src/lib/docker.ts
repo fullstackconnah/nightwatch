@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import { getHostVitals } from "@/lib/host-metrics";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -19,7 +20,19 @@ function createClient(): Docker {
   });
 }
 
-const globalForDocker = globalThis as unknown as { __docker?: Docker };
+interface StatsCacheEntry {
+  data: Record<string, { cpuPct: number; memBytes: number; memLimit: number }>;
+  ts: number;
+}
+interface DfCacheEntry {
+  data: DfSnapshot;
+  ts: number;
+}
+const globalForDocker = globalThis as unknown as {
+  __docker?: Docker;
+  __statsCache?: StatsCacheEntry;
+  __dfCache?: DfCacheEntry;
+};
 export const docker: Docker = globalForDocker.__docker ?? createClient();
 globalForDocker.__docker = docker;
 
@@ -142,6 +155,136 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
     txBytes: tx,
     pids: s.pids_stats?.current ?? 0,
     ts: Date.now(),
+  };
+}
+
+const STATS_TTL_MS = 5_000;
+
+/** Fan out one-shot stats to every running container; skip any that fail (mid-restart, etc). */
+export async function allContainerStats(): Promise<
+  Record<string, { cpuPct: number; memBytes: number; memLimit: number }>
+> {
+  const now = Date.now();
+  if (globalForDocker.__statsCache && now - globalForDocker.__statsCache.ts < STATS_TTL_MS) {
+    return globalForDocker.__statsCache.data;
+  }
+  const running = await docker.listContainers({ all: false });
+  const settled = await Promise.allSettled(
+    running.map(async (c) => {
+      const s = await containerStats(c.Id);
+      return [c.Id, { cpuPct: s.cpuPercent, memBytes: s.memUsage, memLimit: s.memLimit }] as const;
+    }),
+  );
+  const data: Record<string, { cpuPct: number; memBytes: number; memLimit: number }> = {};
+  for (const r of settled) {
+    if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
+  }
+  globalForDocker.__statsCache = { data, ts: now };
+  return data;
+}
+
+export interface DfSnapshot {
+  containers: { id: string; name: string; sizeRw: number | null; sizeRootFs: number | null }[];
+  volumes: { name: string; sizeBytes: number | null; refCount: number }[];
+}
+
+const DF_TTL_MS = 60_000;
+
+/** GET /system/df — expensive on the daemon, cached for a full minute. */
+export async function systemDf(): Promise<DfSnapshot> {
+  const now = Date.now();
+  if (globalForDocker.__dfCache && now - globalForDocker.__dfCache.ts < DF_TTL_MS) {
+    return globalForDocker.__dfCache.data;
+  }
+  const raw = (await docker.df()) as {
+    Containers?: { Id: string; Names?: string[]; SizeRw?: number; SizeRootFs?: number }[];
+    Volumes?: { Name: string; UsageData?: { Size: number; RefCount: number } | null }[];
+  };
+  const containers = (raw.Containers || []).map((c) => ({
+    id: c.Id,
+    name: (c.Names?.[0] || c.Id.slice(0, 12)).replace(/^\//, ""),
+    sizeRw: c.SizeRw ?? null,
+    sizeRootFs: c.SizeRootFs ?? null,
+  }));
+  const volumes = (raw.Volumes || []).map((v) => ({
+    name: v.Name,
+    sizeBytes: v.UsageData && v.UsageData.Size >= 0 ? v.UsageData.Size : null,
+    refCount: v.UsageData?.RefCount ?? 0,
+  }));
+  const data: DfSnapshot = { containers, volumes };
+  globalForDocker.__dfCache = { data, ts: now };
+  return data;
+}
+
+export interface ResourceContainer {
+  id: string;
+  name: string;
+  state: string;
+  image: string;
+  cpuPct: number;
+  memBytes: number;
+  memLimit: number;
+  sizeRw: number | null;
+  sizeRootFs: number | null;
+}
+
+export interface ResourceSnapshot {
+  updatedAt: number;
+  containers: ResourceContainer[];
+  volumes: { name: string; sizeBytes: number | null; refCount: number }[] | null;
+  totals: {
+    cpuPct: number;
+    memBytes: number;
+    memTotal: number;
+    containerDisk: number;
+    volumeDisk: number;
+  };
+}
+
+/**
+ * Joined view for the Resources page: running-container stats + df (disk usage) +
+ * the full container list, so stopped containers still show up with real disk sizes.
+ * df is allowed to fail independently (proxy may not have SYSTEM=1 yet) — the rest
+ * of the snapshot still renders, just without disk numbers.
+ */
+export async function getResourceSnapshot(): Promise<ResourceSnapshot> {
+  const [list, stats, df, host] = await Promise.all([
+    listContainers(),
+    allContainerStats(),
+    systemDf().catch(() => null),
+    getHostVitals().catch(() => null),
+  ]);
+
+  const dfById = new Map((df?.containers ?? []).map((c) => [c.id, c]));
+  const dfByName = new Map((df?.containers ?? []).map((c) => [c.name, c]));
+
+  const containers: ResourceContainer[] = list.map((c) => {
+    const stat = stats[c.id];
+    const dfEntry = dfById.get(c.id) ?? dfByName.get(c.name);
+    return {
+      id: c.id,
+      name: c.name,
+      state: c.state,
+      image: c.image,
+      cpuPct: stat?.cpuPct ?? 0,
+      memBytes: stat?.memBytes ?? 0,
+      memLimit: stat?.memLimit ?? 0,
+      sizeRw: dfEntry?.sizeRw ?? null,
+      sizeRootFs: dfEntry?.sizeRootFs ?? null,
+    };
+  });
+
+  return {
+    updatedAt: Date.now(),
+    containers,
+    volumes: df?.volumes ?? null,
+    totals: {
+      cpuPct: containers.reduce((a, c) => a + c.cpuPct, 0),
+      memBytes: containers.reduce((a, c) => a + c.memBytes, 0),
+      memTotal: host?.memory.total ?? 0,
+      containerDisk: containers.reduce((a, c) => a + (c.sizeRootFs ?? 0), 0),
+      volumeDisk: (df?.volumes ?? []).reduce((a, v) => a + (v.sizeBytes ?? 0), 0),
+    },
   };
 }
 

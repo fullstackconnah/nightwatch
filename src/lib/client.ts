@@ -3,7 +3,7 @@
 import useSWR from "swr";
 import type { TiledContainer } from "@/lib/tiles";
 import type { HostVitals } from "@/lib/host-metrics";
-import type { ContainerStatsSnapshot } from "@/lib/docker";
+import type { ContainerStatsSnapshot, ResourceSnapshot } from "@/lib/docker";
 import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
 
@@ -53,6 +53,13 @@ export function useWidgets(refreshMs = 20000) {
   });
 }
 
+export function useResources(refreshMs = 10000) {
+  return useSWR<ResourceSnapshot>("/api/resources", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
 export function useSettings() {
   return useSWR<{
     config: AppConfig;
@@ -66,7 +73,7 @@ export function useSettings() {
   }>("/api/settings", fetcher);
 }
 
-export type { TiledContainer, HostVitals, ContainerStatsSnapshot, WidgetData, AppConfig };
+export type { TiledContainer, HostVitals, ContainerStatsSnapshot, WidgetData, AppConfig, ResourceSnapshot };
 
 export async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {
