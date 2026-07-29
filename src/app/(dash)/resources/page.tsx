@@ -33,6 +33,14 @@ type Metric = "cpu" | "mem" | "disk" | "net" | "blkio";
 
 const ALL_METRICS: readonly Metric[] = ["cpu", "mem", "disk", "net", "blkio"];
 
+const METRIC_LABELS: Record<Metric, string> = {
+  cpu: "CPU",
+  mem: "MEMORY",
+  disk: "DISK",
+  net: "NETWORK",
+  blkio: "DISK I/O",
+};
+
 function isMetric(v: string | null): v is Metric {
   return v !== null && (ALL_METRICS as readonly string[]).includes(v);
 }
@@ -380,7 +388,7 @@ function ContainerRow({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-line">
             <div>
-              <div className="microlabel mb-1">{metric.toUpperCase()} (live)</div>
+              <div className="microlabel mb-1">{METRIC_LABELS[metric]} (live)</div>
               <div className="font-mono text-ink">
                 {hasValue ? formatValue(metric, v as number) : "—"}
                 {metric === "mem" && row && row.memLimit > 0 && (
@@ -440,6 +448,7 @@ export default function ResourcesPage() {
   const { data: widgetData } = useWidgets(20000);
   const { samples, status } = useTelemetryStream();
   const [metric, setMetric] = useState<Metric>("cpu");
+  const diskActive = metric === "disk" || metric === "blkio";
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -602,25 +611,37 @@ export default function ResourcesPage() {
       <div className="flex items-center gap-2 flex-wrap">
         <div className="panel p-1 flex gap-1 flex-1 min-w-0">
           <SegmentButton active={metric === "cpu"} onClick={() => setMetric("cpu")}>
-            CPU
+            {METRIC_LABELS.cpu}
           </SegmentButton>
           <SegmentButton active={metric === "mem"} onClick={() => setMetric("mem")}>
-            MEMORY
+            {METRIC_LABELS.mem}
           </SegmentButton>
-          <SegmentButton active={metric === "disk"} onClick={() => setMetric("disk")}>
-            DISK
+          <SegmentButton active={diskActive} onClick={() => !diskActive && setMetric("disk")}>
+            {METRIC_LABELS.disk}
           </SegmentButton>
           <SegmentButton active={metric === "net"} onClick={() => setMetric("net")}>
-            NETWORK
-          </SegmentButton>
-          <SegmentButton active={metric === "blkio"} onClick={() => setMetric("blkio")}>
-            DISK I/O
+            {METRIC_LABELS.net}
           </SegmentButton>
         </div>
         {status === "lost" && (
           <div className="microlabel !text-warn/80 shrink-0">connection lost — reconnecting</div>
         )}
       </div>
+
+      {/* disk sub-view toggle: storage (bytes on disk) vs i/o (throughput rate) — same tab, different lens */}
+      {diskActive && (
+        <div className="space-y-1.5">
+          <div className="microlabel">disk view</div>
+          <div className="panel p-1 flex gap-1 w-fit">
+            <SegmentButton active={metric === "disk"} onClick={() => setMetric("disk")}>
+              STORAGE
+            </SegmentButton>
+            <SegmentButton active={metric === "blkio"} onClick={() => setMetric("blkio")}>
+              I/O
+            </SegmentButton>
+          </div>
+        </div>
+      )}
 
       {/* host disk breakdown (disk view only) */}
       {metric === "disk" && hostDisks && hostDisks.length > 0 && (
