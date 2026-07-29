@@ -102,13 +102,15 @@ function contentsRows(scan: DiskUsageScan): ContentsRow[] {
 function DiskContentsPanel({ label }: { label: string }) {
   const { data: scan, isLoading } = useDiskUsage(label);
   const [rescanning, setRescanning] = useState(false);
+  const [rescanError, setRescanError] = useState<string | null>(null);
 
   async function handleRescan() {
     setRescanning(true);
+    setRescanError(null);
     try {
       await refreshDiskUsage(label);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "rescan failed");
+      setRescanError(e instanceof Error ? e.message : "rescan failed");
     } finally {
       setRescanning(false);
     }
@@ -190,6 +192,8 @@ function DiskContentsPanel({ label }: { label: string }) {
           <RotateCw size={12} className={rescanning ? "animate-spin" : ""} /> Rescan
         </Button>
       </div>
+
+      {rescanError && <div className="microlabel !text-warn/80">{rescanError}</div>}
 
       {(scan.partial || scan.error) && (
         <div className="microlabel !text-warn/80">{scan.error ?? "partial scan — some data may be incomplete"}</div>
