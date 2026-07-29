@@ -55,7 +55,9 @@ export function ResourceOverview({
   model: OverviewModel;
   className?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  // Open by default: the host context is the point of the panel, not an optional
+  // detail — collapsing it hid the answer behind a tap.
+  const [expanded, setExpanded] = useState(true);
   const contentId = useId();
 
   const hasScale = model.scale > 0;
