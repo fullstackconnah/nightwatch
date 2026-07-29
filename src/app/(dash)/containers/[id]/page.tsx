@@ -95,7 +95,7 @@ function Logs({ id }: { id: string }) {
         </CardTitle>
         <div className="flex items-center gap-2">
           <Select
-            className="h-6 w-24 text-xs"
+            className="h-9 w-28 text-sm md:h-6 md:w-24 md:text-xs"
             value={tail}
             onChange={(e) => setTail(Number(e.target.value))}
           >
@@ -111,7 +111,7 @@ function Logs({ id }: { id: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div ref={boxRef} className="logbox bg-bg rounded-md border border-line p-3 h-96 overflow-y-auto text-ink-dim">
+        <div ref={boxRef} className="logbox bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim">
           {data?.logs || "no output"}
         </div>
       </CardContent>

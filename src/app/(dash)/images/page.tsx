@@ -34,7 +34,7 @@ export default function ImagesPage() {
 
       {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
 
-      <div className="panel overflow-x-auto">
+      <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -50,7 +50,11 @@ export default function ImagesPage() {
               <tr key={img.id} className="border-b border-line/50 last:border-0 hover:bg-panel-2/60">
                 <td className="px-3 py-2 font-mono text-xs">
                   {img.tags.length ? (
-                    img.tags.map((t) => <div key={t}>{t}</div>)
+                    img.tags.map((t) => (
+                      <div key={t} className="max-w-72 truncate" title={t}>
+                        {t}
+                      </div>
+                    ))
                   ) : (
                     <span className="text-ink-faint">{img.id.replace("sha256:", "").slice(0, 12)} (untagged)</span>
                   )}
@@ -66,6 +70,34 @@ export default function ImagesPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="md:hidden space-y-2">
+        {(data?.images ?? []).map((img) => (
+          <div key={img.id} className="panel p-3 space-y-2">
+            <div className="font-mono text-xs break-all">
+              {img.tags.length ? (
+                img.tags.map((t) => <div key={t}>{t}</div>)
+              ) : (
+                <span className="text-ink-faint">{img.id.replace("sha256:", "").slice(0, 12)} (untagged)</span>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <div className="microlabel">size</div>
+                <div className="font-mono text-xs text-ink-dim">{formatBytes(img.size, 0)}</div>
+              </div>
+              <div>
+                <div className="microlabel">created</div>
+                <div className="text-xs text-ink-faint whitespace-nowrap">{relativeTime(img.created * 1000)}</div>
+              </div>
+              <div>
+                <div className="microlabel">status</div>
+                {img.inUse ? <Badge variant="ok">in use</Badge> : <Badge>unused</Badge>}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

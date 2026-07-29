@@ -67,21 +67,21 @@ export default function ContainersPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Containers</h1>
           <p className="text-xs text-ink-dim mt-0.5">
             {data ? `${data.counts.running}/${data.counts.total} running` : "…"}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-initial">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint" />
             <Input
               placeholder="filter by name or image…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="pl-8 w-64"
+              className="pl-8 w-full sm:w-64"
             />
           </div>
           <Button onClick={() => setShowCreate(true)}>
@@ -90,7 +90,7 @@ export default function ContainersPage() {
         </div>
       </header>
 
-      <div className="panel overflow-x-auto">
+      <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -146,6 +146,45 @@ export default function ContainersPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="md:hidden space-y-2">
+        {rows.map((c) => (
+          <div key={c.id} className="panel p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Link
+                href={`/containers/${c.id.slice(0, 12)}`}
+                className="flex items-center gap-2 hover:text-accent min-w-0"
+              >
+                <span className={cn("dot", stateDotClass(c))} />
+                <span className="font-mono text-sm font-medium truncate">{c.name}</span>
+              </Link>
+              <Badge variant={stateBadgeVariant(c.state, c.health)}>
+                {c.health === "unhealthy" ? "unhealthy" : c.state}
+              </Badge>
+            </div>
+            <div className="font-mono text-xs text-ink-dim truncate">{c.image}</div>
+            <div className="text-xs text-ink-dim">
+              <span className="microlabel mr-1">ports</span>
+              {c.ports
+                .filter((p) => p.public)
+                .slice(0, 3)
+                .map((p) => p.public)
+                .join(", ") || "—"}
+            </div>
+            <div className="text-xs text-ink-faint">
+              {c.composeProject ?? "—"} · {relativeTime(c.created * 1000)}
+            </div>
+            <div className="pt-1 border-t border-line/50">
+              <RowActions c={c} onDone={() => mutate()} />
+            </div>
+          </div>
+        ))}
+        {!rows.length && (
+          <div className="panel p-6 text-center text-ink-faint text-sm">
+            {data ? "no containers match" : "loading…"}
+          </div>
+        )}
       </div>
 
       {showCreate && (

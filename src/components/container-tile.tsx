@@ -65,7 +65,7 @@ export function ContainerTile({
             target="_blank"
             rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-ink-dim hover:text-accent p-1"
+            className="hover-reveal text-ink-dim hover:text-accent p-3 -m-2 md:p-1 md:m-0"
             title={`Open ${c.tile.url}`}
           >
             <ExternalLink size={14} />

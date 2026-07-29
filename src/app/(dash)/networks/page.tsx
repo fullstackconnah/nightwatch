@@ -29,7 +29,7 @@ export default function NetworksPage() {
 
       {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
 
-      <div className="panel overflow-x-auto">
+      <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -61,6 +61,39 @@ export default function NetworksPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="md:hidden space-y-2">
+        {(data?.networks ?? []).map((n) => (
+          <div key={n.id} className="panel p-3 space-y-2">
+            <div>
+              <div className="microlabel">name</div>
+              <div className="font-mono text-sm">
+                {n.name}
+                {n.internal && <Badge className="ml-2">internal</Badge>}
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div>
+                <div className="microlabel">driver</div>
+                <div className="text-xs text-ink-dim">{n.driver}</div>
+              </div>
+              <div>
+                <div className="microlabel">subnet</div>
+                <div className="font-mono text-xs text-ink-faint">{n.subnet ?? "—"}</div>
+              </div>
+            </div>
+            <div>
+              <div className="microlabel mb-1">containers</div>
+              <div className="flex flex-wrap gap-1">
+                {n.containers.map((c) => (
+                  <Badge key={c} variant="accent">{c}</Badge>
+                ))}
+                {!n.containers.length && <span className="text-xs text-ink-faint">—</span>}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

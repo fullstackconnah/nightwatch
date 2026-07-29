@@ -30,21 +30,108 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
   const { data } = useContainers(10000);
   const unhealthy = data?.counts.unhealthy ?? 0;
 
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }
+
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 w-52 border-r border-line bg-panel/70 backdrop-blur flex flex-col">
-      {/* brand */}
-      <div className="px-4 pt-5 pb-4 border-b border-line">
-        <div className="flex items-center gap-2">
+    <>
+      {/* desktop sidebar */}
+      <aside className="hidden md:flex fixed inset-y-0 left-0 z-40 w-52 border-r border-line bg-panel/70 backdrop-blur flex-col">
+        {/* brand */}
+        <div className="px-4 pt-5 pb-4 border-b border-line">
+          <div className="flex items-center gap-2">
+            <Activity size={16} className="text-accent" />
+            <span className="font-mono text-sm font-semibold tracking-wide">
+              night<span className="text-accent">watch</span>
+            </span>
+          </div>
+          <div className="microlabel mt-1">homelab · 192.168.1.70</div>
+        </div>
+
+        {/* nav */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
+          {NAV.map(({ href, label, icon: Icon }) => {
+            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] transition-colors",
+                  active
+                    ? "bg-accent/10 text-accent border border-accent/20"
+                    : "text-ink-dim hover:text-ink hover:bg-panel-2 border border-transparent",
+                )}
+              >
+                <Icon size={15} />
+                {label}
+                {label === "Containers" && unhealthy > 0 && (
+                  <span className="ml-auto dot dot-unhealthy" title={`${unhealthy} unhealthy`} />
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* external + logout */}
+        <div className="px-2 pb-4 space-y-0.5 border-t border-line pt-3">
+          <a
+            href={dockgeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] text-ink-dim hover:text-ink hover:bg-panel-2"
+          >
+            <ExternalLink size={15} />
+            Stacks · Dockge
+          </a>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] text-ink-dim hover:text-bad hover:bg-panel-2 cursor-pointer"
+          >
+            <LogOut size={15} />
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      {/* mobile top bar */}
+      <header
+        className="md:hidden sticky top-0 z-40 flex items-center justify-between border-b border-line bg-panel/90 backdrop-blur px-4"
+        style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "52px" }}
+      >
+        <div className="flex items-center gap-2 py-2">
           <Activity size={16} className="text-accent" />
           <span className="font-mono text-sm font-semibold tracking-wide">
             night<span className="text-accent">watch</span>
           </span>
         </div>
-        <div className="microlabel mt-1">homelab · 192.168.1.70</div>
-      </div>
+        <div className="flex items-center -mr-2">
+          <a
+            href={dockgeUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center h-11 w-11 text-ink-dim hover:text-ink active:text-ink"
+            aria-label="Stacks · Dockge"
+          >
+            <ExternalLink size={17} />
+          </a>
+          <button
+            onClick={logout}
+            className="flex items-center justify-center h-11 w-11 text-ink-dim hover:text-bad active:text-bad cursor-pointer"
+            aria-label="Log out"
+          >
+            <LogOut size={17} />
+          </button>
+        </div>
+      </header>
 
-      {/* nav */}
-      <nav className="flex-1 px-2 py-3 space-y-0.5">
+      {/* mobile bottom tab bar */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-6 border-t border-line bg-panel/95 backdrop-blur"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
@@ -52,44 +139,24 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
               key={href}
               href={href}
               className={cn(
-                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] transition-colors",
-                active
-                  ? "bg-accent/10 text-accent border border-accent/20"
-                  : "text-ink-dim hover:text-ink hover:bg-panel-2 border border-transparent",
+                "relative flex flex-col items-center justify-center gap-0.5 min-h-14 transition-colors active:bg-panel-2",
+                active ? "text-accent" : "text-ink-dim",
               )}
             >
-              <Icon size={15} />
-              {label}
-              {label === "Containers" && unhealthy > 0 && (
-                <span className="ml-auto dot dot-unhealthy" title={`${unhealthy} unhealthy`} />
-              )}
+              <span className="relative">
+                <Icon size={18} />
+                {label === "Containers" && unhealthy > 0 && (
+                  <span
+                    className="absolute -top-0.5 -right-1 dot dot-unhealthy"
+                    title={`${unhealthy} unhealthy`}
+                  />
+                )}
+              </span>
+              <span className="text-[0.625rem]">{label}</span>
             </Link>
           );
         })}
       </nav>
-
-      {/* external + logout */}
-      <div className="px-2 pb-4 space-y-0.5 border-t border-line pt-3">
-        <a
-          href={dockgeUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] text-ink-dim hover:text-ink hover:bg-panel-2"
-        >
-          <ExternalLink size={15} />
-          Stacks · Dockge
-        </a>
-        <button
-          onClick={async () => {
-            await fetch("/api/auth/logout", { method: "POST" });
-            window.location.href = "/login";
-          }}
-          className="w-full flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] text-ink-dim hover:text-bad hover:bg-panel-2 cursor-pointer"
-        >
-          <LogOut size={15} />
-          Log out
-        </button>
-      </div>
-    </aside>
+    </>
   );
 }

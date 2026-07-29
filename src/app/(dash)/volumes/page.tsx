@@ -28,7 +28,7 @@ export default function VolumesPage() {
 
       {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
 
-      <div className="panel overflow-x-auto">
+      <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -64,6 +64,37 @@ export default function VolumesPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="md:hidden space-y-2">
+        {(data?.volumes ?? []).map((v) => (
+          <div key={v.name} className="panel p-3 space-y-2">
+            <div>
+              <div className="microlabel">name</div>
+              <div className="font-mono text-sm break-all">{v.name}</div>
+            </div>
+            <div>
+              <div className="microlabel">driver</div>
+              <div className="text-xs text-ink-dim">{v.driver}</div>
+            </div>
+            <div>
+              <div className="microlabel">mountpoint</div>
+              <div className="font-mono text-xs text-ink-faint break-all">{v.mountpoint}</div>
+            </div>
+            <div>
+              <div className="microlabel mb-1">used by</div>
+              {v.usedBy.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {v.usedBy.map((c) => (
+                    <Badge key={c} variant="accent">{c}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <Badge>orphaned</Badge>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -26,6 +26,7 @@
 
 html {
   color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -111,9 +112,30 @@ body {
     transform 120ms ease,
     background 120ms ease;
 }
-.panel-hover:hover {
+@media (hover: hover) {
+  .panel-hover:hover {
+    border-color: var(--color-line-bright);
+    background: var(--color-panel-2);
+  }
+}
+.panel-hover:active {
   border-color: var(--color-line-bright);
   background: var(--color-panel-2);
+}
+
+/* reveal-on-hover utility: visible by default (touch), hover-gated on pointer devices */
+.hover-reveal {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .hover-reveal {
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+  .group:hover .hover-reveal,
+  .hover-reveal:focus-visible {
+    opacity: 1;
+  }
 }
 
 .font-mono {
@@ -127,4 +149,5 @@ body {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+  overscroll-behavior: contain;
 }

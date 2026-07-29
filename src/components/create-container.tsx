@@ -54,7 +54,7 @@ export function CreateContainerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto py-10">
+    <div className="fixed inset-0 z-50 bg-bg/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] md:py-10">
       <div className="panel w-full max-w-lg p-5 space-y-4 relative">
         <button onClick={onClose} className="absolute right-3 top-3 text-ink-dim hover:text-ink cursor-pointer">
           <X size={16} />
@@ -66,7 +66,7 @@ export function CreateContainerDialog({
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="col-span-2">
             <Label>Image *</Label>
             <Input placeholder="nginx:alpine" value={image} onChange={(e) => setImage(e.target.value)} />
@@ -99,9 +99,9 @@ export function CreateContainerDialog({
             </Button>
           </div>
           {ports.map((p, i) => (
-            <div key={i} className="flex gap-2 mb-1.5">
-              <Input placeholder="8080" value={p.host} onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
-              <Input placeholder="80" value={p.container} onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
+            <div key={i} className="flex flex-wrap gap-2 mb-1.5">
+              <Input placeholder="8080" value={p.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
+              <Input placeholder="80" value={p.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
               <Select className="w-20" value={p.protocol} onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, protocol: e.target.value as "tcp" | "udp" } : x)))}>
                 <option>tcp</option>
                 <option>udp</option>
@@ -122,9 +122,9 @@ export function CreateContainerDialog({
             </Button>
           </div>
           {env.map((e2, i) => (
-            <div key={i} className="flex gap-2 mb-1.5">
-              <Input placeholder="KEY" value={e2.key} onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
-              <Input placeholder="value" value={e2.value} onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
+            <div key={i} className="flex flex-wrap gap-2 mb-1.5">
+              <Input placeholder="KEY" value={e2.key} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
+              <Input placeholder="value" value={e2.value} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
               <Button size="icon" variant="ghost" onClick={() => setEnv(env.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </Button>
@@ -141,9 +141,9 @@ export function CreateContainerDialog({
             </Button>
           </div>
           {vols.map((v, i) => (
-            <div key={i} className="flex gap-2 mb-1.5 items-center">
-              <Input placeholder="/mnt/docker/thing" value={v.host} onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
-              <Input placeholder="/data" value={v.container} onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
+            <div key={i} className="flex flex-wrap gap-2 mb-1.5 items-center">
+              <Input placeholder="/mnt/docker/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
+              <Input placeholder="/data" value={v.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
               <label className="flex items-center gap-1 text-xs text-ink-dim whitespace-nowrap cursor-pointer">
                 <input type="checkbox" checked={v.readonly} onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, readonly: e.target.checked } : x)))} />
                 ro

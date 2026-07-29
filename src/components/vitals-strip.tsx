@@ -18,7 +18,7 @@ export function VitalsStrip() {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
+    <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
       {/* CPU */}
       <Card>
         <CardHeader>
@@ -100,7 +100,7 @@ export function VitalsStrip() {
       </Card>
 
       {/* Host */}
-      <Card className="col-span-2 md:col-span-4 xl:col-span-1">
+      <Card className="col-span-1 min-[420px]:col-span-2 md:col-span-4 xl:col-span-1">
         <CardHeader>
           <CardTitle className="flex items-center gap-1.5">
             <Clock size={11} /> Host

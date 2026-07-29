@@ -17,7 +17,7 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Overview</h1>
           <p className="text-xs text-ink-dim mt-0.5">
@@ -25,7 +25,7 @@ export default function OverviewPage() {
           </p>
         </div>
         {data && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Badge variant="ok">{data.counts.running} running</Badge>
             {data.counts.unhealthy > 0 && (
               <Badge variant="warn">{data.counts.unhealthy} unhealthy</Badge>

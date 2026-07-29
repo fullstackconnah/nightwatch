@@ -35,7 +35,7 @@ function WidgetEditor({
 
   return (
     <div className="panel p-4 space-y-3 border-accent/30">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <Label>Container</Label>
           <Select value={w.container} onChange={(e) => set({ container: e.target.value })}>
@@ -61,7 +61,7 @@ function WidgetEditor({
           <Label>API key</Label>
           <Input type="password" value={w.key ?? ""} onChange={(e) => set({ key: e.target.value || undefined })} />
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
             <Label>Username</Label>
             <Input value={w.username ?? ""} onChange={(e) => set({ username: e.target.value || undefined })} />
@@ -86,10 +86,10 @@ function WidgetEditor({
                 </Button>
               </div>
               {(w.fields ?? []).map((f, i) => (
-                <div key={i} className="flex gap-2 mb-1.5">
-                  <Input placeholder="Queries" value={f.label}
+                <div key={i} className="flex flex-wrap gap-2 mb-1.5">
+                  <Input placeholder="Queries" value={f.label} className="min-w-0 flex-1 basis-[10rem]"
                     onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
-                  <Input placeholder="queries.total" value={f.path}
+                  <Input placeholder="queries.total" value={f.path} className="min-w-0 flex-1 basis-[10rem]"
                     onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, path: e.target.value } : x)) })} />
                   <Select className="w-28" value={f.format ?? "text"}
                     onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, format: e.target.value as never } : x)) })}>
@@ -244,7 +244,7 @@ export default function SettingsPage() {
               <Save size={13} /> Save tiles
             </Button>
           </div>
-          <div className="panel overflow-x-auto">
+          <div className="panel overflow-x-auto hidden md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line">
@@ -323,6 +323,80 @@ export default function SettingsPage() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div className="md:hidden space-y-2">
+            {containerNames.map((name) => {
+              const groupOf = cfg.groups.find((g) => g.containers.includes(name))?.name ?? "";
+              return (
+                <div key={name} className="panel p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-sm truncate">{name}</span>
+                    <label className="flex items-center gap-2 min-h-11 pl-2 cursor-pointer text-xs text-ink-dim">
+                      hide
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={cfg.hidden.includes(name)}
+                        onChange={(e) =>
+                          setTileDraft({
+                            ...cfg,
+                            hidden: e.target.checked
+                              ? [...cfg.hidden, name]
+                              : cfg.hidden.filter((h) => h !== name),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                  <div>
+                    <Label>Group</Label>
+                    <Input
+                      placeholder="(compose project)"
+                      value={groupOf}
+                      onChange={(e) => {
+                        const groups = cfg.groups
+                          .map((g) => ({ ...g, containers: g.containers.filter((c) => c !== name) }))
+                          .filter((g) => g.containers.length > 0 || g.name === e.target.value);
+                        const target = e.target.value.trim();
+                        if (target) {
+                          const existing = groups.find((g) => g.name === target);
+                          if (existing) existing.containers.push(name);
+                          else groups.push({ name: target, containers: [name] });
+                        }
+                        setTileDraft({ ...cfg, groups });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label>App URL</Label>
+                    <Input
+                      placeholder="(inferred)"
+                      value={cfg.urls[name] ?? ""}
+                      onChange={(e) => {
+                        const urls = { ...cfg.urls };
+                        if (e.target.value) urls[name] = e.target.value;
+                        else delete urls[name];
+                        setTileDraft({ ...cfg, urls });
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <Label>Icon</Label>
+                    <Input
+                      placeholder="(auto)"
+                      value={cfg.icons[name] ?? ""}
+                      onChange={(e) => {
+                        const icons = { ...cfg.icons };
+                        if (e.target.value) icons[name] = e.target.value;
+                        else delete icons[name];
+                        setTileDraft({ ...cfg, icons });
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
