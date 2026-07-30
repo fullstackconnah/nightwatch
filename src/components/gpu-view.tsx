@@ -186,7 +186,10 @@ function streamBadge(s: TranscodeStream): { text: string; className: string; tit
   }
   // DirectPlay, DirectStream (remux), or an audio-only transcode: no hardware/software
   // encode distinction applies, so this gets the quiet direct-play treatment.
-  return { text: "DIRECT", className: "text-ink-faint" };
+  // ink-dim, not ink-faint: this cell is the answer the reader came for, and faint is
+  // ~4:1 on .panel — fine for a caption, not for a value. It still reads quieter than
+  // the ok/warn hues, which is the intended hierarchy: only anomalies pull the eye.
+  return { text: "DIRECT", className: "text-ink-dim" };
 }
 
 export function GpuView({ samples, status }: { samples: TelemetrySample[]; status: TelemetryStatus }) {
