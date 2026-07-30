@@ -100,6 +100,46 @@ ssh homelab@192.168.1.70 "cd /mnt/docker/stacks/homelab-dashboard \
   `/mnt/docker/stacks/`); use Dockge for compose edits, this app for one-off
   containers.
 
+## GPU telemetry (`/gpu` route)
+
+Enabled 2026-07-30. The `dashboard` service runs under `runtime: nvidia` with
+`NVIDIA_DRIVER_CAPABILITIES=utility`, which grants `nvidia-smi`/NVML only — no
+CUDA and no video encode, since the page only reads counters. This needs no
+extra Docker socket-proxy scope: the collector spawns `nvidia-smi` inside this
+container rather than exec-ing into another, so `EXEC` stays `0`.
+
+Two hard requirements, both learned the hard way:
+
+- **The image base must be glibc** (`node:22-slim`, not `-alpine`). The
+  container toolkit injects the *host's* `nvidia-smi`, which is glibc-linked; on
+  musl it fails with `exec /usr/bin/nvidia-smi: no such file or directory`.
+- **The loaded kernel module must match the userspace libraries.** An in-place
+  driver upgrade without a reboot breaks everything, including container
+  creation, because the toolkit's CDI generator itself calls NVML.
+
+### If GPU telemetry stops working
+
+1. `nvidia-smi` on the host. `Failed to initialize NVML: Driver/library version
+   mismatch` means the driver was upgraded without a reboot. Confirm with:
+
+   ```sh
+   cat /proc/driver/nvidia/version            # loaded module
+   ls /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.*   # installed libs
+   ```
+
+   If they disagree, `sudo reboot`. Nothing else fixes it — the running module
+   cannot be swapped while the GPU is in use.
+2. While mismatched, the dashboard container **will not start at all** (CDI spec
+   generation fails). That is the expected failure, not a bug in this app.
+3. Note that Jellyfin can keep transcoding through such a mismatch, because its
+   bind-mounted driver libraries are the older inodes from before the upgrade.
+   It loses hardware transcoding the moment that container restarts — and
+   `watchtower` will eventually restart it. A working Jellyfin is not evidence
+   that the driver is healthy.
+4. The `/gpu` route diagnoses itself: each unavailable state names the specific
+   next action (enable the runtime, reboot the host, and so on), so visiting the
+   page is always safe and usually tells you the answer.
+
 ## Rollback
 
 ```sh

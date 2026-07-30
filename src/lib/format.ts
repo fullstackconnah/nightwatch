@@ -16,6 +16,18 @@ export function formatRate(bytesPerSec: number | undefined | null): string {
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
+/**
+ * Media bitrate, in decimal Mbps/kbps — the unit video actually gets quoted in.
+ * Deliberately NOT formatRate(bits/8): that renders binary bytes ("1.2 MiB/s"),
+ * which is a correct number in the wrong idiom for a stream's bitrate.
+ */
+export function formatBitrate(bitsPerSec: number | undefined | null): string {
+  if (bitsPerSec == null || isNaN(bitsPerSec)) return "—";
+  if (bitsPerSec >= 1_000_000) return `${(bitsPerSec / 1_000_000).toFixed(1)} Mbps`;
+  if (bitsPerSec >= 1000) return `${Math.round(bitsPerSec / 1000)} kbps`;
+  return `${Math.round(bitsPerSec)} bps`;
+}
+
 export function formatUptime(seconds: number | undefined | null): string {
   if (seconds == null || isNaN(seconds)) return "—";
   const d = Math.floor(seconds / 86400);

@@ -1,7 +1,10 @@
+import type { GpuSnapshot } from "./gpu-types";
+
 /** Wire contract shared by the SSE producer (src/lib/telemetry.ts) and the browser
  * consumer (src/lib/client.ts). Deliberately import-free: client.ts is "use client",
  * so anything reachable from here lands in the browser bundle — and telemetry.ts
- * reaches dockerode. */
+ * reaches dockerode. (`import type` here is erased at compile time, so gpu-types.ts's
+ * own zero-import rule is what actually keeps this leaf runtime-import-free.) */
 export interface TelemetryRow {
   cpuPct: number;
   memBytes: number;
@@ -32,5 +35,8 @@ export interface TelemetrySample {
   containers: Record<string, TelemetryRow>;
   // Optional: a tick where getHostVitals() fails must still deliver container data.
   host?: TelemetryHost;
+  // Optional: absent (not `ok: false`) only when the GPU collector itself never
+  // ran for this tick - a real "no GPU"/"driver mismatch" result is still `gpu`.
+  gpu?: GpuSnapshot;
 }
 export const RING_CAPACITY = 60;

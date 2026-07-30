@@ -9,6 +9,7 @@ import type { DiskUsageScan } from "@/lib/disk-usage";
 import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
 import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/telemetry-types";
+import type { TranscodeSnapshot } from "@/lib/transcode-types";
 
 export class ApiError extends Error {
   status: number;
@@ -58,6 +59,13 @@ export function useWidgets(refreshMs = 20000) {
 
 export function useResources(refreshMs = 10000) {
   return useSWR<ResourceSnapshot>("/api/resources", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+export function useTranscodes(refreshMs = 5000) {
+  return useSWR<TranscodeSnapshot>("/api/transcodes", fetcher, {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
@@ -192,6 +200,7 @@ export type {
   DiskUsageScan,
   TelemetrySample,
   TelemetryRow,
+  TranscodeSnapshot,
 };
 
 export async function postJson(url: string, body?: unknown) {

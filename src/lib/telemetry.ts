@@ -1,4 +1,5 @@
 import { allContainerStats, type ContainerStatsRow } from "@/lib/docker";
+import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
 
@@ -58,7 +59,7 @@ async function tick(): Promise<void> {
   // sample ~4 ticks out of 5 and every rate would compute as 0.
   // Host vitals are fetched alongside, but non-fatally: a host-side failure (e.g. the
   // /host/proc bind mount hiccups) must never cost the tick its container data.
-  const [raw, hostVitals, diskCounters, netCounters] = await Promise.all([
+  const [raw, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
     allContainerStats(true),
     getHostVitals().catch((err: unknown) => {
       console.error("[telemetry] getHostVitals failed:", err);
@@ -70,6 +71,10 @@ async function tick(): Promise<void> {
     }),
     getHostNetCounters().catch((err: unknown) => {
       console.error("[telemetry] getHostNetCounters failed:", err);
+      return null;
+    }),
+    getGpuSnapshot().catch((err: unknown) => {
+      console.error("[telemetry] getGpuSnapshot failed:", err);
       return null;
     }),
   ]);
@@ -163,7 +168,9 @@ async function tick(): Promise<void> {
     };
   }
 
-  const sample: TelemetrySample = { ts: Date.now(), containers, host };
+  // A caught null (collector threw) becomes undefined, never a null in the `gpu`
+  // field - the type is GpuSnapshot | undefined, and null is not GpuSnapshot.
+  const sample: TelemetrySample = { ts: Date.now(), containers, host, gpu: gpu ?? undefined };
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);

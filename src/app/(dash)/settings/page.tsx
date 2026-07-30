@@ -416,6 +416,7 @@ export default function SettingsPage() {
             <div>dashboard.widget.endpoint=http://…/api/stats</div>
             <div>dashboard.widget.path=Queries:queries.total,Hits:cache.hits</div>
             <div>dashboard.widget.key=&lt;api key&gt;</div>
+            <div>Jellyfin transcodes: widgets[] entry, type=jellyfin, key=&lt;api key&gt; <span className="text-ink-faint"># Dashboard → API Keys</span></div>
           </CardContent>
         </Card>
 
