@@ -13,7 +13,6 @@ import {
   LogOut,
   Activity,
   Gauge,
-  Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContainers } from "@/lib/client";
@@ -21,7 +20,6 @@ import { useContainers } from "@/lib/client";
 const NAV = [
   { href: "/", label: "Overview", icon: LayoutGrid },
   { href: "/resources", label: "Resources", icon: Gauge },
-  { href: "/gpu", label: "GPU", icon: Cpu },
   { href: "/containers", label: "Containers", icon: Boxes },
   { href: "/images", label: "Images", icon: HardDrive },
   { href: "/volumes", label: "Volumes", icon: Database },
@@ -133,7 +131,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
 
       {/* mobile bottom tab bar */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-8 border-t border-line bg-panel/95 backdrop-blur"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-7 border-t border-line bg-panel/95 backdrop-blur"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {NAV.map(({ href, label, icon: Icon }) => {

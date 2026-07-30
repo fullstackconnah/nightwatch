@@ -14,6 +14,7 @@ import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/treemap";
 import { ResourceOverview, type OverviewModel } from "@/components/resource-overview";
+import { GpuView } from "@/components/gpu-view";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
@@ -30,13 +31,14 @@ import {
   type TelemetrySample,
 } from "@/lib/client";
 
-type Metric = "cpu" | "mem" | "disk" | "net" | "blkio";
+type Metric = "cpu" | "mem" | "gpu" | "disk" | "net" | "blkio";
 
-const ALL_METRICS: readonly Metric[] = ["cpu", "mem", "disk", "net", "blkio"];
+const ALL_METRICS: readonly Metric[] = ["cpu", "mem", "gpu", "disk", "net", "blkio"];
 
 const METRIC_LABELS: Record<Metric, string> = {
   cpu: "CPU",
   mem: "MEMORY",
+  gpu: "GPU",
   disk: "DISK",
   net: "NETWORK",
   blkio: "DISK I/O",
@@ -429,6 +431,10 @@ function buildOverviewModel(
       return buildBlkioOverview(host, samples, containers);
     case "disk":
       return emptyOverview();
+    // GpuView owns its own VRAM overview band; this metric never reaches
+    // ResourceOverview (see gpuActive in ResourcesPage), so there is nothing to build.
+    case "gpu":
+      return emptyOverview();
   }
 }
 
@@ -597,7 +603,10 @@ function ContainerRow({
               <div className="microlabel mb-1">pids</div>
               <div className="font-mono text-ink">{row?.pids ?? "—"}</div>
             </div>
-            {metric !== "disk" && (
+            {/* ContainerRow never mounts while gpuActive (ranked rows are suppressed for
+                GPU), but the metric prop's type still includes "gpu" — exclude it here
+                too so it narrows to TelemetryMetric for seriesFor. */}
+            {metric !== "disk" && metric !== "gpu" && (
               <div>
                 <div className="microlabel mb-1">60s trend</div>
                 <Sparkline values={seriesFor(samples, c.id, metric)} width={120} height={28} className="text-accent" />
@@ -646,6 +655,7 @@ export default function ResourcesPage() {
   const { samples, status } = useTelemetryStream();
   const [metric, setMetric] = useState<Metric>("cpu");
   const diskActive = metric === "disk" || metric === "blkio";
+  const gpuActive = metric === "gpu";
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -818,6 +828,9 @@ export default function ResourcesPage() {
           <SegmentButton active={metric === "mem"} onClick={() => setMetric("mem")}>
             {METRIC_LABELS.mem}
           </SegmentButton>
+          <SegmentButton active={gpuActive} onClick={() => setMetric("gpu")}>
+            {METRIC_LABELS.gpu}
+          </SegmentButton>
           <SegmentButton active={diskActive} onClick={() => !diskActive && setMetric("disk")}>
             {METRIC_LABELS.disk}
           </SegmentButton>
@@ -846,12 +859,17 @@ export default function ResourcesPage() {
       )}
 
       {/* host-level overview for the selected metric — DISK is excluded, the HOST DISK
-          panel below already fills that role and must not be duplicated */}
-      {metric !== "disk" && (
+          panel below already fills that role and must not be duplicated; GPU is
+          excluded because GpuView owns its own VRAM overview band below */}
+      {metric !== "disk" && !gpuActive && (
         <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
           <ResourceOverview key={metric} title={METRIC_LABELS[metric]} model={overviewModel} />
         </div>
       )}
+
+      {/* GPU metric view — its own band-stack (verdict, thermal/core, VRAM, NVENC,
+          transcode streams), replacing the treemap/ranked-rows grammar below */}
+      {gpuActive && <GpuView samples={samples} status={status} />}
 
       {/* host disk breakdown (disk view only) */}
       {metric === "disk" && hostDisks && hostDisks.length > 0 && (
@@ -947,35 +965,17 @@ export default function ResourcesPage() {
         </div>
       )}
 
-      {/* treemap hero — dimmed (not unmounted) while the telemetry stream is reconnecting,
-          since EventSource auto-reconnects and the last samples are still meaningful */}
-      <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
-        <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
-      </div>
+      {/* treemap hero + ranked rows — suppressed for GPU. Only containers holding VRAM
+          would ever appear in a GPU treemap — realistically one, and a single-cell
+          treemap asserts a proportion that does not exist. Don't feed GPU into it. */}
+      {!gpuActive && (
+        <>
+          <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
+            <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
+          </div>
 
-      {/* ranked bars */}
-      <div className="panel overflow-hidden">
-        {active.map((c) => (
-          <ContainerRow
-            key={c.id}
-            c={c}
-            metric={metric}
-            max={max}
-            row={latest?.containers[c.id]}
-            samples={samples}
-            expanded={expandedId === c.id}
-            onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
-            widgetFields={widgetData?.widgets[c.name]?.fields}
-            onActionDone={() => mutate()}
-            rowRef={(el) => {
-              rowRefs.current[c.id] = el;
-            }}
-          />
-        ))}
-        {idle.length > 0 && (
-          <>
-            <div className="microlabel px-3 py-2 bg-panel-2/40">idle / no data</div>
-            {idle.map((c) => (
+          <div className="panel overflow-hidden">
+            {active.map((c) => (
               <ContainerRow
                 key={c.id}
                 c={c}
@@ -992,12 +992,34 @@ export default function ResourcesPage() {
                 }}
               />
             ))}
-          </>
-        )}
-        {!containers.length && (
-          <div className="p-8 text-center text-ink-faint text-sm">discovering containers…</div>
-        )}
-      </div>
+            {idle.length > 0 && (
+              <>
+                <div className="microlabel px-3 py-2 bg-panel-2/40">idle / no data</div>
+                {idle.map((c) => (
+                  <ContainerRow
+                    key={c.id}
+                    c={c}
+                    metric={metric}
+                    max={max}
+                    row={latest?.containers[c.id]}
+                    samples={samples}
+                    expanded={expandedId === c.id}
+                    onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+                    widgetFields={widgetData?.widgets[c.name]?.fields}
+                    onActionDone={() => mutate()}
+                    rowRef={(el) => {
+                      rowRefs.current[c.id] = el;
+                    }}
+                  />
+                ))}
+              </>
+            )}
+            {!containers.length && (
+              <div className="p-8 text-center text-ink-faint text-sm">discovering containers…</div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* volumes panel (disk view only) */}
       {metric === "disk" && (
