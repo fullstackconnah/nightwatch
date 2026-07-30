@@ -12,6 +12,7 @@ import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/te
 import type { TranscodeSnapshot } from "@/lib/transcode-types";
 import type { ProcessSnapshot, ProcessRow } from "@/lib/process-types";
 import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/smart-types";
+import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/network-types";
 
 export class ApiError extends Error {
   status: number;
@@ -88,6 +89,12 @@ export function useProcesses(refreshMs = 2000, enabled = true) {
 // temperatures embedded in each drive move faster than the collector cadence.
 export function useSmart(refreshMs = 30000) {
   return useSWR<SmartSnapshot>("/api/smart", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
+}
+
+// 15s: interface inventory/sockets change slowly (link flaps, new listeners) —
+// per-interface *rates* ride the 1Hz telemetry SSE instead, same split as host vitals.
+export function useNetwork(refreshMs = 15000) {
+  return useSWR<NetworkSnapshot>("/api/network", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
 }
 
 function diskUsageKey(label: string): string {
@@ -227,6 +234,11 @@ export type {
   AtaAttribute,
   ArrayIntegrity,
   HealthVerdict,
+  NetworkSnapshot,
+  NetInterface,
+  ListeningSocket,
+  SocketOwner,
+  InterfaceRole,
 };
 
 export async function postJson(url: string, body?: unknown) {

@@ -1,6 +1,7 @@
 import { allContainerStats, type ContainerStatsRow } from "@/lib/docker";
 import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
+import { getInterfaceCounters } from "@/lib/network";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
 
 /**
@@ -27,6 +28,7 @@ const globalForTelemetry = globalThis as unknown as {
   __telemetryPrevDiskWrite?: number; // cumulative bytes-written sum, previous tick
   __telemetryPrevNetRx?: number; // cumulative rx bytes, previous tick
   __telemetryPrevNetTx?: number; // cumulative tx bytes, previous tick
+  __telemetryPrevIfaces?: Record<string, { rxBytes: number; txBytes: number }>;
 };
 
 function ring(): TelemetrySample[] {
@@ -168,9 +170,47 @@ async function tick(): Promise<void> {
     };
   }
 
+  // Per-interface counters do not depend on getHostVitals succeeding, so this
+  // sits outside the `if (hostVitals)` block above — a host-vitals hiccup
+  // must not cost the tick its interface rates, same reasoning as running
+  // diskCounters/netCounters alongside hostVitals rather than inside it.
+  // getInterfaceCounters() is synchronous and does its own guarding
+  // internally (returns null rather than throwing), but it's still wrapped
+  // here so a surprise throw can't take the whole tick down.
+  let interfaces: Record<string, { rxRate: number; txRate: number }> | undefined;
+  let ifaceCounters: Record<string, { rxBytes: number; txBytes: number }> | null;
+  try {
+    ifaceCounters = getInterfaceCounters();
+  } catch (err) {
+    console.error("[telemetry] getInterfaceCounters failed:", err);
+    ifaceCounters = null;
+  }
+  if (ifaceCounters) {
+    const prevIfaces = globalForTelemetry.__telemetryPrevIfaces ?? {};
+    const out: Record<string, { rxRate: number; txRate: number }> = {};
+    for (const [name, curr] of Object.entries(ifaceCounters)) {
+      const p = prevIfaces[name];
+      out[name] = {
+        rxRate: rate(curr.rxBytes, p?.rxBytes, elapsedSeconds),
+        txRate: rate(curr.txBytes, p?.txBytes, elapsedSeconds),
+      };
+    }
+    interfaces = out;
+    // Replace (not merge into) the previous-tick map so vanished veths are
+    // pruned — mirrors __telemetryPrevious's comment and behaviour above.
+    globalForTelemetry.__telemetryPrevIfaces = ifaceCounters;
+  } else {
+    // Unavailable rather than transiently missing — undefined means "not
+    // measured this tick", and dropping the previous counters means a later
+    // recovery starts clean instead of deriving a rate across an
+    // unknown-length gap (same reasoning as the disk/net counters above).
+    interfaces = undefined;
+    globalForTelemetry.__telemetryPrevIfaces = undefined;
+  }
+
   // A caught null (collector threw) becomes undefined, never a null in the `gpu`
   // field - the type is GpuSnapshot | undefined, and null is not GpuSnapshot.
-  const sample: TelemetrySample = { ts: Date.now(), containers, host, gpu: gpu ?? undefined };
+  const sample: TelemetrySample = { ts: Date.now(), containers, host, gpu: gpu ?? undefined, interfaces };
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);
@@ -212,6 +252,7 @@ async function loop(): Promise<void> {
     globalForTelemetry.__telemetryPrevDiskWrite = undefined;
     globalForTelemetry.__telemetryPrevNetRx = undefined;
     globalForTelemetry.__telemetryPrevNetTx = undefined;
+    globalForTelemetry.__telemetryPrevIfaces = undefined;
     globalForTelemetry.__telemetryRing = [];
   }
 }

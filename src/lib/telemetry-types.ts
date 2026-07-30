@@ -38,5 +38,9 @@ export interface TelemetrySample {
   // Optional: absent (not `ok: false`) only when the GPU collector itself never
   // ran for this tick - a real "no GPU"/"driver mismatch" result is still `gpu`.
   gpu?: GpuSnapshot;
+  /** Per-interface throughput in bytes/sec, keyed by kernel interface name.
+   * Optional and absent (not an empty object) when the host's interface counters
+   * could not be read this tick — an empty object means "read fine, no interfaces". */
+  interfaces?: Record<string, { rxRate: number; txRate: number }>;
 }
 export const RING_CAPACITY = 60;

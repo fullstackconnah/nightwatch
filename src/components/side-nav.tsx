@@ -23,7 +23,9 @@ const NAV = [
   { href: "/containers", label: "Containers", icon: Boxes },
   { href: "/images", label: "Images", icon: HardDrive },
   { href: "/volumes", label: "Volumes", icon: Database },
-  { href: "/networks", label: "Networks", icon: Network },
+  // "Network", not "Networks": the page is no longer a docker-network inventory —
+  // it is this box's network (uplink throughput, bridges, container footprint, ports).
+  { href: "/networks", label: "Network", icon: Network },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

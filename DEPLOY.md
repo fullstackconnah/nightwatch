@@ -190,6 +190,52 @@ shows the collector as STALE and says which unit to check — it does not break.
   against sysfs and will populate if a pool ever appears; until then the card
   says "not present", which is a fact, not a fault.
 
+## Network monitor (`/networks`)
+
+Added 2026-07-30. Interface throughput, docker-bridge breakdown and the host's
+listening ports. **No compose change, no new capability, no new socket-proxy
+scope** — everything comes from bind mounts that already existed.
+
+| Data | Source |
+|---|---|
+| Interface counters (1 Hz, via the telemetry SSE) | `/host/proc/1/net/dev` |
+| Link speed, operstate, MTU, MAC, bond slaves, bridge members | `/host/sys/class/net/<if>/` |
+| Listening sockets | `/host/proc/1/net/{tcp,tcp6,udp,udp6}` |
+| uid → username for host-owned ports | `/host/rootfs/etc/passwd` |
+| Bridge → docker network name, published-port → container | docker socket-proxy (already permitted) |
+
+### Notes
+
+- **Always `/host/proc/1/net/…`, never `/host/proc/net/…`.** `/proc/net` is a
+  symlink to `/proc/self/net` and `self` resolves in the *reading* process's
+  network namespace, so the bind-mounted path returns the **container's** single
+  `eth0` instead of the host's 30-odd interfaces. Pid 1 is host init, so its
+  namespace is the host's. Same trap as `/proc/mounts` — see the drive-health
+  notes. `getHostNetCounters()` already did this; the collector follows it.
+- **Counters overlap by design and must never be summed.** One download crosses
+  `enp4s0` → `bond0` → a `br-*` bridge → a `veth`, and appears in all four. The
+  page encodes this in its ordering: only `uplink` is host throughput, the bond
+  slave is labelled as the same packets, and the veths are collapsed behind a
+  disclosure that says so. `InterfaceRole` in `src/lib/network-types.ts` is what
+  enforces it.
+- **Link speed is only trusted for physical interfaces.** sysfs reports `10000`
+  for a veth and garbage for a bridge; a utilisation bar scaled to a fabricated
+  10 GbE would render a saturated 1 GbE link as idle. Bridges and veths get
+  `speedMbps: null` and no utilisation bar.
+- **Utilisation uses the busier direction, not rx+tx.** Ethernet is full duplex:
+  125 MB/s each way at once is 100 % both ways, not 200 % of anything.
+- **Port → process is not available and is not guessed.** `/proc/net/tcp` gives a
+  uid and a socket inode; resolving the inode to a pid needs `/proc/<pid>/fd`,
+  which is `0500` and unreadable as uid 1000. Ports docker publishes are named
+  from the daemon's port bindings; everything else shows the uid and reads
+  "unattributed". No well-known-ports lookup table — that would be fabrication.
+  Note this names the container *holding the binding*: the \*arr ports resolve to
+  `gluetun`, which is the truth about who owns the socket.
+- This host has **no `eth0`, no tailscale and no wireguard** despite what a
+  generic bandwidth-monitor brief assumes. The role classifier handles them if
+  they ever appear; the page renders what is actually there — `bond0` over
+  `enp4s0`, `docker0`, seven `br-*` bridges and ~24 veths.
+
 ## Rollback
 
 ```sh
