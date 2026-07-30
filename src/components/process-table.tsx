@@ -65,9 +65,17 @@ function sortProcesses(rows: ProcessRow[], key: SortKey, dir: SortDir): ProcessR
       return dir === "asc" ? c : -c;
     });
   } else {
-    // pid is the tiebreaker so equal values (a wall of 0.0% CPU) hold a stable
-    // order between polls instead of shuffling every 2 seconds.
-    sorted.sort((a, b) => cmpNum(numericValue(a, key), numericValue(b, key), dir) || a.pid - b.pid);
+    sorted.sort(
+      (a, b) =>
+        cmpNum(numericValue(a, key), numericValue(b, key), dir) ||
+        // Sorting by I/O groups a container's processes together, since they all
+        // carry its one cgroup figure. Break that tie on CPU so the container's
+        // busiest process leads its own group rather than whichever forked first.
+        (key === "io" ? cmpNum(a.cpuPct, b.cpuPct, "desc") : 0) ||
+        // pid last, so equal values (a wall of 0.0% CPU) hold a stable order
+        // between polls instead of reshuffling every 2 seconds.
+        a.pid - b.pid,
+    );
   }
   return sorted;
 }
@@ -338,10 +346,17 @@ export function ProcessTable() {
               </tr>
             )}
 
-            {visible.map((p) => {
+            {visible.map((p, i) => {
               const tone = stateTone(p.state);
               const barValue = barMax > 0 ? numericValue(p, sort.key) : null;
               const pct = barValue != null && barMax > 0 ? Math.min(100, (barValue / barMax) * 100) : 0;
+              // Six postgres processes in one container all carry that container's
+              // single I/O figure. Printed six times it reads as six independent
+              // 35 KiB/s consumers, which is a real misreading no header caveat
+              // prevents. The value prints once per run and continuation rows point
+              // at it instead — observed on live data, not hypothetical.
+              const ioRepeat =
+                p.cgroupIoRate != null && p.containerId != null && i > 0 && visible[i - 1].containerId === p.containerId;
               return (
                 <tr key={p.pid} className="border-b border-line/40 last:border-0 hover:bg-panel-2/60 align-middle">
                   <td className="px-2 py-1.5 min-w-0">
@@ -401,11 +416,17 @@ export function ProcessTable() {
                         ? p.containerId
                           ? "this container's cgroup reported no readable io.stat"
                           : "no container — per-process disk I/O is not readable without root"
-                        : `${p.containerName ?? "container"} cgroup total, shared by all its processes`
+                        : ioRepeat
+                          ? `same ${p.containerName ?? "container"} cgroup as the row above — ${formatRate(p.cgroupIoRate)} for the container in total, not per process`
+                          : `${p.containerName ?? "container"} cgroup total, shared by all its processes`
                     }
                   >
                     {p.cgroupIoRate == null ? (
                       <span className="text-ink-faint">—</span>
+                    ) : ioRepeat ? (
+                      <span className="text-ink-faint" aria-label="same container as the row above">
+                        ↳
+                      </span>
                     ) : (
                       // ink-dim, not ink: the number is real but it is the
                       // container's, and it should not read as louder than the
@@ -461,8 +482,9 @@ export function ProcessTable() {
           is a different scope from the two beside it, and the reason is a
           permission boundary the dashboard deliberately does not cross. */}
       <p className="text-ink-faint text-[0.68rem] leading-relaxed">
-        CPU and memory are measured per process. <span className="text-ink-dim">Disk I/O is per container</span> — every
-        process in a container reports its cgroup&apos;s combined read+write rate, because per-process I/O counters are
+        CPU and memory are measured per process. <span className="text-ink-dim">Disk I/O is per container</span> — it is
+        the cgroup&apos;s combined read+write rate, printed once per container with{" "}
+        <span className="font-mono text-ink-dim">↳</span> on its other processes, because per-process I/O counters are
         readable only by root and this dashboard runs unprivileged.
       </p>
     </div>
