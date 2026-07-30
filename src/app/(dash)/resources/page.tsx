@@ -17,6 +17,7 @@ import { Treemap, type TreemapItem } from "@/components/treemap";
 import { ResourceOverview, type OverviewModel } from "@/components/resource-overview";
 import { GpuView } from "@/components/gpu-view";
 import { ProcessTable } from "@/components/process-table";
+import { DriveHealthPanel } from "@/components/drive-health";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
@@ -977,6 +978,14 @@ export default function ResourcesPage() {
           </div>
         </div>
       )}
+
+      {/* Drive health — SMART, wear, temperature, array integrity.
+          Deliberately gated on diskActive rather than metric === "disk": a failing
+          drive is a property of the hardware, not of the STORAGE sub-view, and an
+          alert you can only see after toggling to the right lens is an alert that
+          gets missed. Data comes from a host-side collector (smartctl needs root
+          and raw device nodes, which this container has neither of). */}
+      {diskActive && <DriveHealthPanel />}
 
       {/* treemap hero + ranked rows — suppressed for GPU. Only containers holding VRAM
           would ever appear in a GPU treemap — realistically one, and a single-cell

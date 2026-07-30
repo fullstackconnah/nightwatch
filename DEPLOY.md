@@ -140,6 +140,56 @@ Two hard requirements, both learned the hard way:
    next action (enable the runtime, reboot the host, and so on), so visiting the
    page is always safe and usually tells you the answer.
 
+## Drive health / SMART (`/resources` DISK tab)
+
+Enabled 2026-07-30. `smartctl` needs root **and** raw device nodes; this container
+has neither (uid 1000, no `/dev/nvme*`). Rather than hand a web-facing container
+`CAP_SYS_RAWIO` and raw disk ioctls, a host-side systemd timer publishes
+smartctl's JSON and the dashboard reads the file.
+
+**Install (one-time, host):**
+
+```sh
+scp scripts/host/nightwatch-smart.* homelab@192.168.1.70:/tmp/
+ssh homelab@192.168.1.70 '
+  sudo install -m 0755 /dev/stdin /usr/local/bin/nightwatch-smart < <(tr -d "\r" < /tmp/nightwatch-smart.sh)
+  sudo install -m 0644 /dev/stdin /etc/systemd/system/nightwatch-smart.service < <(tr -d "\r" < /tmp/nightwatch-smart.service)
+  sudo install -m 0644 /dev/stdin /etc/systemd/system/nightwatch-smart.timer < <(tr -d "\r" < /tmp/nightwatch-smart.timer)
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now nightwatch-smart.timer'
+```
+
+`tr -d "\r"` matters — the same CRLF caveat as `git archive`, and systemd will
+refuse a unit file with carriage returns.
+
+Output lands at `/var/lib/nightwatch/smart.json` (root-owned, world-readable) and
+is read at `/host/rootfs/var/lib/nightwatch/smart.json`. That bind mount already
+existed for host metrics, so **this needs no compose change, no `cap_add`, and no
+`devices:` passthrough**.
+
+**Removal:** `sudo systemctl disable --now nightwatch-smart.timer`. The card then
+shows the collector as STALE and says which unit to check — it does not break.
+
+### Notes
+
+- The script passes `-n standby` so polling never spins up a sleeping disk.
+  smartd uses the same flag. A standby drive renders as "standby · not woken"
+  rather than as missing data.
+- **smartctl's exit code is a bitmask, not a success flag.** Bit 6 (64) means
+  "errors recorded in the error log" — exactly what this card exists to show.
+  `/dev/nvme1n1` on this host exits `4` ("Read Self-test Log failed") while
+  `smart_status.passed` is `true`. The script keeps the JSON regardless and
+  `src/lib/smart.ts` decides from the payload.
+- The script does **no** interpretation — it concatenates smartctl's JSON
+  verbatim. Every threshold and judgement lives in `src/lib/smart.ts`, so
+  changing the UI never means touching the host again.
+- Live temperatures come from `/host/sys/class/hwmon` instead, which is instant
+  rather than up to 5 minutes old. Thresholds outside 20–120 °C are discarded:
+  hwmon reports unset limits as `65261850` m°C (65261 °C) on both NVMe drives.
+- This host has **no ZFS, no Btrfs and no mdraid**. Those readouts are written
+  against sysfs and will populate if a pool ever appears; until then the card
+  says "not present", which is a fact, not a fault.
+
 ## Rollback
 
 ```sh

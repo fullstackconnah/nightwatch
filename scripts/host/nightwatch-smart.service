@@ -1,0 +1,28 @@
+[Unit]
+Description=Collect SMART data for the nightwatch dashboard
+Documentation=file:///usr/local/bin/nightwatch-smart
+After=smartmontools.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nightwatch-smart
+
+# systemd creates and owns /var/lib/nightwatch, and under ProtectSystem=strict it
+# is the only writable path this unit gets.
+StateDirectory=nightwatch
+
+# Reading SMART is never urgent. Stay behind real I/O so a collection can never
+# be the reason a container waits on the disk.
+Nice=10
+IOSchedulingClass=idle
+
+# It needs raw disk ioctls and one output directory. Nothing else.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+
+# A wedged smartctl must not pile up runs every 5 minutes.
+TimeoutStartSec=60

@@ -11,6 +11,7 @@ import type { AppConfig } from "@/lib/config";
 import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/telemetry-types";
 import type { TranscodeSnapshot } from "@/lib/transcode-types";
 import type { ProcessSnapshot, ProcessRow } from "@/lib/process-types";
+import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/smart-types";
 
 export class ApiError extends Error {
   status: number;
@@ -80,6 +81,13 @@ export function useProcesses(refreshMs = 2000, enabled = true) {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
+}
+
+// 30s: the host collector only republishes smart.json every 5 minutes, so
+// polling faster than that buys nothing for most fields — only the hwmon
+// temperatures embedded in each drive move faster than the collector cadence.
+export function useSmart(refreshMs = 30000) {
+  return useSWR<SmartSnapshot>("/api/smart", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
 }
 
 function diskUsageKey(label: string): string {
@@ -214,6 +222,11 @@ export type {
   TranscodeSnapshot,
   ProcessSnapshot,
   ProcessRow,
+  SmartSnapshot,
+  DriveHealth,
+  AtaAttribute,
+  ArrayIntegrity,
+  HealthVerdict,
 };
 
 export async function postJson(url: string, body?: unknown) {

@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect SMART data for the nightwatch dashboard every 5 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+# SMART figures move over weeks, not seconds. Loose accuracy lets systemd batch
+# this wakeup with others instead of waking an idle host on its own.
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
