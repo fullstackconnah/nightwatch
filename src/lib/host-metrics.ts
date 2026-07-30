@@ -13,7 +13,7 @@ import si from "systeminformation";
  */
 export const HOST_PROC = process.env.HOST_PROC || "/host/proc";
 export const HOST_ROOTFS = process.env.HOST_ROOTFS || "/host/rootfs";
-const HOST_SYS = process.env.HOST_SYS || "/host/sys";
+export const HOST_SYS = process.env.HOST_SYS || "/host/sys";
 
 export interface HostVitals {
   hostname: string;

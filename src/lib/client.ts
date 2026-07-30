@@ -10,6 +10,7 @@ import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
 import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/telemetry-types";
 import type { TranscodeSnapshot } from "@/lib/transcode-types";
+import type { ProcessSnapshot, ProcessRow } from "@/lib/process-types";
 
 export class ApiError extends Error {
   status: number;
@@ -66,6 +67,16 @@ export function useResources(refreshMs = 10000) {
 
 export function useTranscodes(refreshMs = 5000) {
   return useSWR<TranscodeSnapshot>("/api/transcodes", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+/** `enabled` matters here: the ALL tab is one of six, and polling ~476 /proc
+ * entries every 2s when that tab isn't open is waste — the null SWR key is
+ * how that's avoided (mirrors useDiskUsage's pattern). */
+export function useProcesses(refreshMs = 2000, enabled = true) {
+  return useSWR<ProcessSnapshot>(enabled ? "/api/processes" : null, fetcher, {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
@@ -201,6 +212,8 @@ export type {
   TelemetrySample,
   TelemetryRow,
   TranscodeSnapshot,
+  ProcessSnapshot,
+  ProcessRow,
 };
 
 export async function postJson(url: string, body?: unknown) {

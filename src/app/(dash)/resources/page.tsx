@@ -15,6 +15,7 @@ import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/treemap";
 import { ResourceOverview, type OverviewModel } from "@/components/resource-overview";
 import { GpuView } from "@/components/gpu-view";
+import { ProcessTable } from "@/components/process-table";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
@@ -31,17 +32,36 @@ import {
   type TelemetrySample,
 } from "@/lib/client";
 
-type Metric = "cpu" | "mem" | "gpu" | "disk" | "net" | "blkio";
+type Metric = "all" | "cpu" | "mem" | "disk" | "net" | "gpu" | "blkio";
 
-const ALL_METRICS: readonly Metric[] = ["cpu", "mem", "gpu", "disk", "net", "blkio"];
+const ALL_METRICS: readonly Metric[] = ["all", "cpu", "mem", "disk", "net", "gpu", "blkio"];
 
+/** Tab order: broad first, then the triage sequence you actually walk (CPU is what
+ *  you check, then memory, then disk, then network), with GPU last as the
+ *  specialist view. "blkio" is not a tab — it is DISK's sub-view. */
+const TAB_METRICS: readonly Metric[] = ["all", "cpu", "mem", "disk", "net", "gpu"];
+
+/** Short enough that six tabs fit a 360px phone without scrolling or wrapping, and
+ *  already this app's own idiom — the totals strip above says CPU and MEM too.
+ *  ACCESSIBLE_METRIC_LABELS carries the unabbreviated name for screen readers. */
 const METRIC_LABELS: Record<Metric, string> = {
+  all: "ALL",
   cpu: "CPU",
-  mem: "MEMORY",
-  gpu: "GPU",
+  mem: "MEM",
   disk: "DISK",
-  net: "NETWORK",
+  net: "NET",
+  gpu: "GPU",
   blkio: "DISK I/O",
+};
+
+const ACCESSIBLE_METRIC_LABELS: Record<Metric, string> = {
+  all: "All processes",
+  cpu: "CPU",
+  mem: "Memory",
+  disk: "Disk",
+  net: "Network",
+  gpu: "GPU",
+  blkio: "Disk I/O",
 };
 
 function isMetric(v: string | null): v is Metric {
@@ -225,6 +245,9 @@ function DiskContentsPanel({ label }: { label: string }) {
 }
 
 function valueOf(c: ResourceContainer, metric: Metric, row: TelemetryRow | undefined): number | null {
+  // ALL ranks host PROCESSES, not containers — ProcessTable owns that list and does
+  // its own sorting, so there is no container magnitude to report here.
+  if (metric === "all") return null;
   if (metric === "cpu") return row?.cpuPct ?? c.cpuPct;
   if (metric === "mem") return row?.memBytes ?? c.memBytes;
   if (metric === "net") return row ? row.rxRate + row.txRate : null;
@@ -435,6 +458,10 @@ function buildOverviewModel(
     // ResourceOverview (see gpuActive in ResourcesPage), so there is nothing to build.
     case "gpu":
       return emptyOverview();
+    // ALL is a process table, not a container magnitude — it is suppressed before
+    // ResourceOverview renders (see allActive). Present only for exhaustiveness.
+    case "all":
+      return emptyOverview();
   }
 }
 
@@ -442,17 +469,27 @@ function SegmentButton({
   active,
   onClick,
   children,
+  label,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
+  /** Unabbreviated name, for the accessible label and the hover title. The visible
+   *  text is clipped to fit six tabs on a phone; the meaning must not be. */
+  label?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      title={label}
       className={cn(
-        "flex-1 h-11 md:h-8 px-3 rounded-md text-xs font-medium transition cursor-pointer border",
+        // px-1 on the narrowest phones, px-3 from sm up: six tabs at px-3 overflow a
+        // 360px viewport, and a horizontal scroll strip would hide tabs behind a
+        // gesture nobody discovers.
+        "flex-1 min-w-0 h-11 md:h-8 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border truncate",
         active
           ? "bg-accent/10 text-accent border-accent/30"
           : "text-ink-dim border-transparent hover:text-ink hover:bg-panel-2",
@@ -603,10 +640,11 @@ function ContainerRow({
               <div className="microlabel mb-1">pids</div>
               <div className="font-mono text-ink">{row?.pids ?? "—"}</div>
             </div>
-            {/* ContainerRow never mounts while gpuActive (ranked rows are suppressed for
-                GPU), but the metric prop's type still includes "gpu" — exclude it here
-                too so it narrows to TelemetryMetric for seriesFor. */}
-            {metric !== "disk" && metric !== "gpu" && (
+            {/* ContainerRow never mounts while gpuActive or allActive (ranked rows are
+                suppressed for both), but the metric prop's type still includes "gpu"
+                and "all" — exclude them here too so it narrows to TelemetryMetric
+                for seriesFor. */}
+            {metric !== "disk" && metric !== "gpu" && metric !== "all" && (
               <div>
                 <div className="microlabel mb-1">60s trend</div>
                 <Sparkline values={seriesFor(samples, c.id, metric)} width={120} height={28} className="text-accent" />
@@ -656,6 +694,10 @@ export default function ResourcesPage() {
   const [metric, setMetric] = useState<Metric>("cpu");
   const diskActive = metric === "disk" || metric === "blkio";
   const gpuActive = metric === "gpu";
+  // ALL swaps the page's subject from containers to host processes: the treemap,
+  // ranked container rows and the host overview band all describe containers, so
+  // none of them belong under this tab. ProcessTable replaces the lot.
+  const allActive = metric === "all";
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -821,24 +863,24 @@ export default function ResourcesPage() {
 
       {/* segmented control */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="panel p-1 flex gap-1 flex-1 min-w-0">
-          <SegmentButton active={metric === "cpu"} onClick={() => setMetric("cpu")}>
-            {METRIC_LABELS.cpu}
-          </SegmentButton>
-          <SegmentButton active={metric === "mem"} onClick={() => setMetric("mem")}>
-            {METRIC_LABELS.mem}
-          </SegmentButton>
-          <SegmentButton active={gpuActive} onClick={() => setMetric("gpu")}>
-            {METRIC_LABELS.gpu}
-          </SegmentButton>
-          <SegmentButton active={diskActive} onClick={() => !diskActive && setMetric("disk")}>
-            {METRIC_LABELS.disk}
-          </SegmentButton>
-          <SegmentButton active={metric === "net"} onClick={() => setMetric("net")}>
-            {METRIC_LABELS.net}
-          </SegmentButton>
+        <div className="panel p-1 flex gap-1 flex-1 min-w-0" role="group" aria-label="Resource metric">
+          {TAB_METRICS.map((m) => (
+            <SegmentButton
+              key={m}
+              active={m === "disk" ? diskActive : metric === m}
+              label={ACCESSIBLE_METRIC_LABELS[m]}
+              onClick={() => {
+                // DISK owns a sub-view (STORAGE / I/O). Re-tapping the tab you are
+                // already on must not silently reset you from I/O back to STORAGE.
+                if (m === "disk" && diskActive) return;
+                setMetric(m);
+              }}
+            >
+              {METRIC_LABELS[m]}
+            </SegmentButton>
+          ))}
         </div>
-        {status === "lost" && (
+        {status === "lost" && !allActive && (
           <div className="microlabel !text-warn/80 shrink-0">connection lost — reconnecting</div>
         )}
       </div>
@@ -861,7 +903,7 @@ export default function ResourcesPage() {
       {/* host-level overview for the selected metric — DISK is excluded, the HOST DISK
           panel below already fills that role and must not be duplicated; GPU is
           excluded because GpuView owns its own VRAM overview band below */}
-      {metric !== "disk" && !gpuActive && (
+      {metric !== "disk" && !gpuActive && !allActive && (
         <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
           <ResourceOverview key={metric} title={METRIC_LABELS[metric]} model={overviewModel} />
         </div>
@@ -870,6 +912,11 @@ export default function ResourcesPage() {
       {/* GPU metric view — its own band-stack (verdict, thermal/core, VRAM, NVENC,
           transcode streams), replacing the treemap/ranked-rows grammar below */}
       {gpuActive && <GpuView samples={samples} status={status} />}
+
+      {/* ALL — every host process, sortable on each column, with live filtering.
+          Polls /api/processes on its own cadence and only while mounted, so the
+          ~476 /proc reads never happen for the five container tabs. */}
+      {allActive && <ProcessTable />}
 
       {/* host disk breakdown (disk view only) */}
       {metric === "disk" && hostDisks && hostDisks.length > 0 && (
@@ -968,7 +1015,7 @@ export default function ResourcesPage() {
       {/* treemap hero + ranked rows — suppressed for GPU. Only containers holding VRAM
           would ever appear in a GPU treemap — realistically one, and a single-cell
           treemap asserts a proportion that does not exist. Don't feed GPU into it. */}
-      {!gpuActive && (
+      {!gpuActive && !allActive && (
         <>
           <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
             <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
