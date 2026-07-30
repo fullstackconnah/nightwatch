@@ -36,6 +36,10 @@ function jellyfinCredentials(): JellyfinCredentials | null {
 interface JellyfinMediaStream {
   Type?: string;
   Codec?: string;
+  Width?: number;
+  Height?: number;
+  BitRate?: number;
+  RealFrameRate?: number;
 }
 
 interface JellyfinNowPlayingItem {
@@ -135,10 +139,25 @@ function codecFor(streams: JellyfinMediaStream[] | undefined, type: string): str
   return streams?.find((s) => s.Type === type)?.Codec ?? null;
 }
 
+function videoStreamFor(streams: JellyfinMediaStream[] | undefined): JellyfinMediaStream | undefined {
+  return streams?.find((s) => s.Type === "Video");
+}
+
 function mapSession(session: JellyfinSession): TranscodeStream {
   const item = session.NowPlayingItem as JellyfinNowPlayingItem;
   const transcoding = session.TranscodingInfo;
   const hw = hardwareAccelFrom(transcoding?.HardwareAccelerationType);
+
+  // width/height/bitrate/fps mean "the stream as delivered": TranscodingInfo describes
+  // the target being produced, so it wins whenever present. Jellyfin omits TranscodingInfo
+  // entirely on DirectPlay/DirectStream — nothing is being produced — so in that case these
+  // fall back to the source video stream's own reported values instead of going null. Do
+  // NOT read MediaSources here: Jellyfin has been observed to report it as an empty array
+  // even on a live session, so MediaSources[0].Bitrate is not a usable source.
+  const videoStream = videoStreamFor(item.MediaStreams);
+  const delivered = transcoding
+    ? { width: transcoding.Width, height: transcoding.Height, bitrate: transcoding.Bitrate, fps: transcoding.Framerate }
+    : { width: videoStream?.Width, height: videoStream?.Height, bitrate: videoStream?.BitRate, fps: videoStream?.RealFrameRate };
 
   return {
     id: session.Id,
@@ -155,10 +174,10 @@ function mapSession(session: JellyfinSession): TranscodeStream {
     videoTo: transcoding?.VideoCodec ?? null,
     audioFrom: codecFor(item.MediaStreams, "Audio"),
     audioTo: transcoding?.AudioCodec ?? null,
-    width: numberOrNull(transcoding?.Width),
-    height: numberOrNull(transcoding?.Height),
-    bitrate: numberOrNull(transcoding?.Bitrate),
-    fps: numberOrNull(transcoding?.Framerate),
+    width: numberOrNull(delivered.width),
+    height: numberOrNull(delivered.height),
+    bitrate: numberOrNull(delivered.bitrate),
+    fps: numberOrNull(delivered.fps),
     completionPct: numberOrNull(transcoding?.CompletionPercentage),
     reasons: reasonsFrom(transcoding?.TranscodeReasons),
   };

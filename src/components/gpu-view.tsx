@@ -161,10 +161,16 @@ function transcodeUnavailableCopy(reason: TranscodeUnavailableReason): { headlin
   }
 }
 
+/**
+ * Branches on what is actually being converted rather than on which codec fields
+ * happen to be populated: a direct play/direct stream still has videoFrom set (it's
+ * read straight off the source MediaStreams), but nothing is being produced, so an
+ * arrow there would assert a conversion that isn't happening.
+ */
 function codecPath(s: TranscodeStream): string {
-  if (s.videoFrom || s.videoTo) return `${s.videoFrom ?? "?"} → ${s.videoTo ?? "?"}`;
-  if (s.audioFrom || s.audioTo) return `${s.audioFrom ?? "?"} → ${s.audioTo ?? "?"}`;
-  return "—";
+  if (s.isVideoTranscode) return `${s.videoFrom ?? "?"} → ${s.videoTo ?? "?"}`;
+  if (s.isAudioTranscode) return `${s.audioFrom ?? "?"} → ${s.audioTo ?? "?"}`;
+  return s.videoFrom ?? s.audioFrom ?? "—";
 }
 
 function streamBadge(s: TranscodeStream): { text: string; className: string; title?: string } {
@@ -367,10 +373,18 @@ export function GpuView({ samples, status }: { samples: TelemetrySample[]; statu
             </div>
             {sessions === null ? (
               <div className="text-xs text-ink-faint">not reported by this driver</div>
-            ) : (
+            ) : sessionSeries.some((v) => v > 0) ? (
               // No max: session count has no honest ceiling on this hardware, and
               // inventing one is exactly what this surface refuses.
               <Sparkline data={sessionSeries} className="text-accent" height={40} />
+            ) : (
+              // All-zero (or empty) session series would draw as a flat teal rule pinned
+              // to the panel floor — on a phone that reads as a rendering artifact, not
+              // data. Core utilization above is different: it has a real 0-100 axis via
+              // max={100}, so a flat line sitting at the bottom is legible as "idle for
+              // 60s". Session count is a discrete tally with no axis to anchor it, so a
+              // flat zero here has nothing to be flat against — swap to a quiet label.
+              <div className="microlabel">no encoder sessions in the last 60s</div>
             )}
           </div>
         </>
