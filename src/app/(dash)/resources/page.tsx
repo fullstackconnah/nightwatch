@@ -834,6 +834,7 @@ export default function ResourcesPage() {
           {TAB_METRICS.map((m) => (
             <SegmentButton
               key={m}
+              fill
               active={m === "disk" ? diskActive : metric === m}
               label={ACCESSIBLE_METRIC_LABELS[m]}
               onClick={() => {

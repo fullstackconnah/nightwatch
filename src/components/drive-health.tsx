@@ -46,12 +46,22 @@ const VERDICT_FILL: Record<HealthVerdict, string> = {
   unknown: "#4d617a",
 };
 
-const OVERALL_LABEL: Record<HealthVerdict, string> = {
-  ok: "ALL HEALTHY",
-  warn: "NEEDS ATTENTION",
-  bad: "ACTION NEEDED",
-  unknown: "PARTIAL DATA",
-};
+/**
+ * Headline verdict. `unknown` deliberately does NOT become an alarm: this host
+ * has a USB stick whose bridge cannot pass SMART commands through, so a naive
+ * worst-of roll-up would pin the panel to "PARTIAL DATA" permanently — a
+ * non-green state nobody can ever resolve, which is how people learn to ignore
+ * a status line. Count instead, and let the drive's own row say it is unknowable.
+ */
+function headline(drives: DriveHealth[], overall: HealthVerdict): { text: string; tone: HealthVerdict } {
+  if (overall === "bad") return { text: "ACTION NEEDED", tone: "bad" };
+  if (overall === "warn") return { text: "NEEDS ATTENTION", tone: "warn" };
+  const assessable = drives.filter((d) => d.verdict !== "unknown");
+  if (assessable.length < drives.length) {
+    return { text: `${assessable.length} OF ${drives.length} ASSESSABLE`, tone: "unknown" };
+  }
+  return { text: "ALL HEALTHY", tone: "ok" };
+}
 
 const BUS_LABEL: Record<DriveHealth["bus"], string> = {
   nvme: "NVMe",
@@ -198,7 +208,18 @@ function AttributeGauge({ attr }: { attr: AtaAttribute }) {
 
       <div className="col-span-2 sm:col-span-1 order-last sm:order-none">
         {headroom == null ? (
-          <div className="h-1.5 rounded-full bg-panel-2 border border-line/70" title="Drive declares no failure threshold for this attribute" />
+          // Same hatch as the life track, and for the same reason: 14 of this
+          // drive's 17 attributes publish no threshold, and an empty bar in a
+          // column of full ones reads as "no health left" rather than "no scale
+          // exists". These are informational counters, not failure predictors.
+          <div
+            className="h-1.5 rounded-full bg-panel-2 border border-line/70"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(135deg, transparent 0 4px, rgba(77,97,122,0.30) 4px 5px)",
+            }}
+            title="This drive publishes no failure threshold for this attribute — it is a counter, not a predictor"
+          />
         ) : (
           <div className="relative h-1.5 rounded-full bg-panel-2 overflow-hidden">
             <div
@@ -281,8 +302,12 @@ function DriveRow({ drive, swept }: { drive: DriveHealth; swept: boolean }) {
               aria-hidden
             />
             <span className="text-xs text-ink truncate">{drive.model ?? drive.name}</span>
+            {/* The kernel name stays at every width — two identical drives are
+                otherwise indistinguishable on a phone. Bus and capacity are the
+                parts that can wait for room. */}
+            <span className="microlabel shrink-0">{drive.name}</span>
             <span className="microlabel shrink-0 hidden sm:inline">
-              {drive.name} · {BUS_LABEL[drive.bus]}
+              {BUS_LABEL[drive.bus]}
               {drive.capacityBytes != null && ` · ${formatBytes(drive.capacityBytes, 0)}`}
             </span>
           </div>
@@ -443,8 +468,8 @@ function DriveRow({ drive, swept }: { drive: DriveHealth; swept: boolean }) {
             <div>
               <div className="flex items-baseline justify-between gap-2 mb-1">
                 <span className="microlabel">SMART ATTRIBUTES</span>
-                <span className="microlabel normal-case tracking-normal">
-                  bar = headroom above the drive&apos;s failure threshold
+                <span className="microlabel normal-case tracking-normal hidden sm:inline">
+                  bar = headroom above the failure threshold · hatched = no threshold published
                 </span>
               </div>
               <div className="divide-y divide-line/40">
@@ -528,7 +553,11 @@ function IntegritySection({ snap }: { snap: SmartSnapshot }) {
       <div>
         <div className="flex items-baseline justify-between gap-2 mb-1.5">
           <span className="microlabel">FILESYSTEM ERRORS</span>
-          <span className="microlabel normal-case tracking-normal">kernel counters since last fsck</span>
+          {/* Explainer, not information — on a phone it wraps into a two-column
+              collision with its own heading, so it waits for room. */}
+          <span className="microlabel normal-case tracking-normal hidden sm:inline">
+            kernel counters since last fsck
+          </span>
         </div>
         <div className="flex flex-wrap gap-x-5 gap-y-1.5">
           {integrity.filesystems.length === 0 ? (
@@ -589,7 +618,10 @@ export function DriveHealthPanel() {
   const drives = useMemo(() => {
     if (!data?.drives) return [];
     // Worst first — the row you need is the row you see without scrolling.
-    const rank: Record<HealthVerdict, number> = { bad: 0, warn: 1, unknown: 2, ok: 3 };
+    // `unknown` sorts LAST, not second: a USB stick whose bridge cannot pass SMART
+    // through is not a problem, and ranking it above four healthy drives puts the
+    // one row with nothing to say at the top of the card.
+    const rank: Record<HealthVerdict, number> = { bad: 0, warn: 1, ok: 2, unknown: 3 };
     return [...data.drives].sort(
       (a, b) => rank[a.verdict] - rank[b.verdict] || a.name.localeCompare(b.name),
     );
@@ -622,14 +654,15 @@ export function DriveHealthPanel() {
   // dead and every figure below is a fossil. Say so rather than showing stale
   // numbers as if they were current.
   const stale = data.collectorAgeMs != null && data.collectorAgeMs > 20 * 60 * 1000;
+  const verdictLine = headline(drives, data.overall);
 
   return (
     <div className="panel p-4">
       <div className="flex items-baseline justify-between gap-2 mb-3">
         <div className="flex items-baseline gap-2 min-w-0">
           <span className="microlabel">DRIVE HEALTH</span>
-          <span className={cn("microlabel", VERDICT_TEXT_STRONG[data.overall])}>
-            {OVERALL_LABEL[data.overall]}
+          <span className={cn("microlabel", VERDICT_TEXT_STRONG[verdictLine.tone])}>
+            {verdictLine.text}
           </span>
         </div>
         {data.collectorTs != null && (
@@ -637,7 +670,9 @@ export function DriveHealthPanel() {
             className={cn("microlabel shrink-0", stale && "!text-warn")}
             title={stale ? "The host collector has not published recently — nightwatch-smart.timer may be stopped" : undefined}
           >
-            {stale ? "STALE · " : ""}
+            {/* "CHECKED" earns its place: uppercased, "11m ago" and "11mo ago"
+                are one letter apart, and the prefix makes the unit unambiguous. */}
+            {stale ? "STALE · " : "CHECKED "}
             {relativeTime(data.collectorTs)}
           </span>
         )}

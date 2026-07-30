@@ -113,6 +113,33 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+interface SysfsBlockIdentity {
+  model: string | null;
+  capacityBytes: number | null;
+  rotational: boolean | null;
+}
+
+/**
+ * Fallback identity for drives sysfs knows about but SMART couldn't reach at
+ * all (e.g. an unrecognized USB bridge) — absence of *health* data is not
+ * absence of *identity* data, so such a drive still gets a model/capacity/
+ * spin-type instead of rendering as a bare device name. Only ever used to
+ * fill a field SMART left null, never to override a value SMART supplied.
+ */
+async function readSysfsBlockIdentity(name: string): Promise<SysfsBlockIdentity> {
+  const model = (await readTextFile(`${HOST_SYS}/block/${name}/device/model`))?.trim() || null;
+
+  // sysfs "size" is always in 512-byte sectors regardless of the device's
+  // actual block size — same fixed unit /proc/diskstats uses for the same reason.
+  const sectors = await readIntFile(`${HOST_SYS}/block/${name}/size`);
+  const capacityBytes = sectors !== null ? sectors * 512 : null;
+
+  const rotationalRaw = await readIntFile(`${HOST_SYS}/block/${name}/queue/rotational`);
+  const rotational = rotationalRaw === null ? null : rotationalRaw === 1;
+
+  return { model, capacityBytes, rotational };
+}
+
 // --- Source A: per-drive SMART fields ----------------------------------------
 
 function classifyBus(devicePath: string, protocol: string | undefined, messages: { string: string }[]): DriveBus {
@@ -170,10 +197,14 @@ function projectedHoursRemaining(wearPct: number | null, powerOnHours: number | 
   return Math.round((powerOnHours / wearPct) * (100 - wearPct));
 }
 
-function buildDrive(entry: { device: string; json: SmartCtlJson }, hwmonByController: Map<string, SmartTempSensor[]>): DriveHealth {
+async function buildDrive(
+  entry: { device: string; json: SmartCtlJson },
+  hwmonByController: Map<string, SmartTempSensor[]>,
+): Promise<DriveHealth> {
   const json = entry.json;
   const name = entry.device.replace(/^\/dev\//, "");
   const messages = json.smartctl?.messages ?? [];
+  const sysfsIdentity = await readSysfsBlockIdentity(name);
 
   // smartctl's exit code is a bitmask (bit 6 = "errors in the error log", the
   // exact case this feature exists to surface), never a pass/fail flag —
@@ -195,9 +226,11 @@ function buildDrive(entry: { device: string; json: SmartCtlJson }, hwmonByContro
   // rotation_rate is the only signal SMART gives for "spinning vs not": present
   // and nonzero means an HDD; NVMe is never rotational; anything else that did
   // return SMART data (ATA/SATA SSDs report no rotation_rate) is non-rotational.
-  const rotational = rpm !== null ? true : isNvme ? false : smartAvailable ? false : null;
+  // Falls back to sysfs queue/rotational only when SMART gave no signal at all
+  // (e.g. the USB bridge case where smartAvailable is false).
+  const rotational = rpm !== null ? true : isNvme ? false : smartAvailable ? false : sysfsIdentity.rotational;
 
-  const capacityBytes = json.user_capacity?.bytes ?? json.nvme_total_capacity ?? null;
+  const capacityBytes = json.user_capacity?.bytes ?? json.nvme_total_capacity ?? sysfsIdentity.capacityBytes;
 
   const wearPct = nvmeLog?.percentage_used ?? null;
   const powerOnHours = nvmeLog?.power_on_hours ?? json.power_on_time?.hours ?? null;
@@ -228,7 +261,7 @@ function buildDrive(entry: { device: string; json: SmartCtlJson }, hwmonByContro
   const drive: DriveHealth = {
     device: entry.device,
     name,
-    model: json.model_name ?? null,
+    model: json.model_name ?? sysfsIdentity.model,
     serial: json.serial_number ?? null,
     firmware: json.firmware_version ?? null,
     bus,
@@ -518,13 +551,25 @@ async function readMdstat(): Promise<{ raidPersonalities: string[]; mdArrays: Md
 
 /**
  * Maps a bare block-device name (as ext4's sysfs dir names it, e.g. "sda1",
- * "dm-0") to its mountpoint, by parsing /proc/mounts and, for /dev/mapper/*
- * entries, resolving the mapper name back to its dm-N node via dm/name — the
- * same join ext4's own sysfs uses to expose dm devices by number, not by name.
+ * "dm-0") to its mountpoint, by parsing the HOST's mount table and, for
+ * /dev/mapper/* entries, resolving the mapper name back to its dm-N node via
+ * dm/name — the same join ext4's own sysfs uses to expose dm devices by
+ * number, not by name.
+ *
+ * Deliberately reads PID 1's mounts, not the top-level HOST_PROC/mounts:
+ * /proc/mounts is a symlink to /proc/self/mounts, and "self" resolves in the
+ * READER's mount namespace — so even through the /host/proc bind mount, the
+ * top-level path still returns THIS CONTAINER's own mount table (its bind
+ * mounts, /etc/hosts, driver injections, ...), not the host's. Verified live:
+ * that bug pointed nvme0n1p2 at "/boot" through the container's own bind
+ * mount of the host's /boot rather than the host's real "/boot" mountpoint,
+ * and pointed dm-0 at a stray nvidia .so bind-mounted into this container.
+ * PID 1 is the host's init, so its /1/mounts is the host's real table.
  */
 async function buildDeviceToMountMap(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const content = await readTextFile(`${HOST_PROC}/mounts`);
+  let content = await readTextFile(`${HOST_PROC}/1/mounts`);
+  if (content === null) content = await readTextFile(`${HOST_PROC}/mounts`); // pid 1 unreadable — best effort
   if (content === null) return map;
 
   const dmNameToDevice = new Map<string, string>();
@@ -543,7 +588,9 @@ async function buildDeviceToMountMap(): Promise<Map<string, string>> {
     if (parts.length < 2 || !parts[0].startsWith("/dev/")) continue;
     const mapperMatch = parts[0].match(/^\/dev\/mapper\/(.+)$/);
     const devName = mapperMatch ? dmNameToDevice.get(mapperMatch[1]) : parts[0].replace(/^\/dev\//, "");
-    if (devName) map.set(devName, parts[1]);
+    // A device mounted more than once (e.g. bind mounts) keeps its FIRST
+    // (primary) mountpoint rather than the last one seen.
+    if (devName && !map.has(devName)) map.set(devName, parts[1]);
   }
   return map;
 }
@@ -756,7 +803,7 @@ export async function getSmartSnapshot(): Promise<SmartSnapshot> {
 
     if (!raw) return emptySnapshot(ts, integrity, readError);
 
-    const drives = (raw.devices ?? []).map((entry) => buildDrive(entry, hwmonByController));
+    const drives = await Promise.all((raw.devices ?? []).map((entry) => buildDrive(entry, hwmonByController)));
     const overall = worstVerdict([...drives.map((d) => d.verdict), integrity.verdict]);
 
     return {
