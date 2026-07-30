@@ -2,12 +2,13 @@ import { loadConfig } from "@/lib/config";
 import type { PlayMethod, TranscodeSnapshot, TranscodeStream } from "@/lib/transcode-types";
 
 /**
- * Server-only Jellyfin session fetcher. Config convention matches the other
- * built-in widgets (see src/lib/widgets/builtins.ts and data/config.json):
- * a `widgets[]` entry with `type: "jellyfin"` and a `key` field for the API
- * token, same shape as the `w_sonarr` / `w_radarr` / etc. entries. The base
- * URL falls back to `urls.jellyfin` (already used for the dashboard tile's
- * open-app link) when the widget entry doesn't set its own `url`.
+ * Server-only Jellyfin session fetcher. Credentials come from the top-level
+ * `jellyfin` config block (see src/lib/config.ts), not widgets[]: an entry in
+ * widgets[] feeds the widget fetcher (src/lib/widgets/index.ts), and a type
+ * with no builtin falls through to the generic fetcher, which would GET
+ * Jellyfin's web root and fail to parse the HTML as JSON. The base URL falls
+ * back to `urls.jellyfin` (already used for the dashboard tile's open-app
+ * link) when the `jellyfin` block doesn't set its own `url`.
  *
  * This does NOT go through src/lib/widgets/ — that pipeline returns flat
  * WidgetField rows for the overview grid, whereas transcode sessions need
@@ -23,10 +24,9 @@ interface JellyfinCredentials {
 
 function jellyfinCredentials(): JellyfinCredentials | null {
   const cfg = loadConfig();
-  const widget = cfg.widgets.find((w) => w.type === "jellyfin" || w.container === "jellyfin");
-  const key = widget?.key;
+  const key = cfg.jellyfin?.key?.trim();
   if (!key) return null;
-  const url = widget?.url || cfg.urls.jellyfin;
+  const url = cfg.jellyfin?.url || cfg.urls.jellyfin;
   if (!url) return null;
   return { url, key };
 }
@@ -189,9 +189,9 @@ export async function getTranscodeSnapshot(): Promise<TranscodeSnapshot> {
       ok: false,
       reason: "not-configured",
       detail:
-        'No Jellyfin API key configured. Add a widgets[] entry to data/config.json: ' +
-        '{ "id": "w_jellyfin", "container": "jellyfin", "type": "jellyfin", "url": "http://<host>:8096", "key": "<API key>" } ' +
-        "— same shape as the other *arr widgets. Generate a key in Jellyfin under Dashboard -> API Keys.",
+        'No Jellyfin API key configured. Add a "jellyfin" block to data/config.json: ' +
+        '{ "jellyfin": { "url": "http://<host>:8096", "key": "<API key>" } } ' +
+        "— generate a key in Jellyfin under Dashboard -> API Keys.",
     };
   }
 

@@ -40,6 +40,12 @@ export interface AppConfig {
   /** container names hidden from the overview grid */
   hidden: string[];
   widgets: WidgetInstance[];
+  /** Jellyfin connection used for transcode telemetry in the GPU resource view.
+   *  Deliberately NOT a widgets[] entry: widgets[] feeds the widget fetcher, and an
+   *  entry whose type has no builtin falls through to the generic fetcher, which
+   *  would GET Jellyfin's web root, fail to parse HTML as JSON, and render an error
+   *  tile on the Overview. */
+  jellyfin?: { url?: string; key?: string };
 }
 
 const DEFAULT_CONFIG: AppConfig = {
