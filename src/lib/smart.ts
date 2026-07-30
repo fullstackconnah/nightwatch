@@ -252,9 +252,13 @@ async function buildDrive(
       break;
     }
   }
-  if (temps.length === 0 && !isNvme && json.temperature?.current != null) {
-    // ATA drives normally have no hwmon entry at all — synthesise the one
-    // sensor SMART itself reports, with no vendor thresholds to attach.
+  if (temps.length === 0 && json.temperature?.current != null) {
+    // ATA drives normally have no hwmon entry at all, and an NVMe drive whose
+    // controller failed to register one lands here too — deliberately NOT gated
+    // on bus. SMART already carries the reading, so falling back costs nothing,
+    // whereas rendering no temperature for a drive whose temperature we know
+    // would be the honest-data rule broken in the one direction that matters.
+    // Per-sensor detail and vendor thresholds are lost; the number is not.
     temps = [{ label: "Drive", celsius: json.temperature.current, criticalC: null, maxC: null }];
   }
 
