@@ -235,8 +235,7 @@ async function readIfInet6GlobalAddresses(): Promise<Map<string, string[]>> {
  * /proc/net/route (Destination 00000000). Used only as a role-classification
  * signal ("this interface carries traffic to the outside world, so it must
  * have a usable IPv4 address") — NOT as a source for the actual address. See
- * the long comment on the `addresses` field below for why deriving the real
- * IPv4 address from route+arp was tried and abandoned.
+ * readIPv4ByIface below for how the actual address is resolved.
  */
 async function readDefaultRouteIface(): Promise<string | null> {
   const content = await readTextFile(`${HOST_PROC}/1/net/route`);
@@ -248,6 +247,142 @@ async function readDefaultRouteIface(): Promise<string | null> {
     if (cols[1] === "00000000") return cols[0];
   }
   return null;
+}
+
+// --- IPv4 addresses: fib_trie ∩ route -----------------------------------
+
+/**
+ * "192.168.1.70" -> 3232235846 (unsigned 32-bit). NaN for anything that
+ * isn't 4 dot-separated octets 0-255, so a malformed string fails the AND
+ * comparison below instead of silently matching everything as 0.
+ */
+function ipv4ToInt(dotted: string): number {
+  const parts = dotted.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => !Number.isFinite(p) || p < 0 || p > 255)) return NaN;
+  return ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+}
+
+/** Number of set bits in a mask, e.g. 255.255.252.0 (0xFFFFFC00) -> 22. */
+function popcount32(n: number): number {
+  let count = 0;
+  let x = n >>> 0;
+  while (x) {
+    x &= x - 1;
+    count++;
+  }
+  return count;
+}
+
+/**
+ * /proc/net/fib_trie's "host LOCAL" leaves are the box's own IPv4 addresses —
+ * the kernel's own routing table saying "this address is mine, deliver
+ * locally, no dial-out needed". Each one is a `|-- <dotted-quad>` line
+ * immediately followed by a `/<prefixlen> host LOCAL` line (the prefix here
+ * is fib_trie's own internal trie depth, NOT the interface's subnet prefix —
+ * that comes from the matching /proc/net/route entry in readIPv4ByIface).
+ * 127.0.0.0/8 is skipped: lo showing 127.0.0.1 is noise, not information.
+ * Both the "Main:" and "Local:" sections of the file repeat every LOCAL
+ * address, hence the Set for dedup.
+ */
+function parseFibTrieLocalIPv4(content: string): Set<string> {
+  const lines = content.split("\n");
+  const out = new Set<string>();
+  const IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^\|--\s+(\S+)$/);
+    if (!m || !IPV4_RE.test(m[1])) continue;
+    const next = lines[i + 1]?.trim() ?? "";
+    if (!next.startsWith("/32 host LOCAL")) continue;
+    if (m[1].startsWith("127.")) continue;
+    out.add(m[1]);
+  }
+  return out;
+}
+
+interface RouteEntry {
+  iface: string;
+  destInt: number;
+  maskInt: number;
+}
+
+/**
+ * /proc/net/route's Destination and Mask columns are little-endian hex, same
+ * encoding as /proc/net/{tcp,udp}'s address column — reuses
+ * decodeSocketTableIPv4Hex rather than a second byte-swap implementation.
+ * The default route (mask 00000000) is dropped here, not just skipped by the
+ * caller: every address ANDs to 0.0.0.0 against a zero mask, so leaving it
+ * in would make every address match every interface with a default route.
+ */
+function parseRouteEntries(content: string): RouteEntry[] {
+  const out: RouteEntry[] = [];
+  for (const line of content.split("\n").slice(1)) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 8) continue;
+    const [iface, destHex, , , , , , maskHex] = cols;
+    if (maskHex === "00000000") continue;
+    const dest = decodeSocketTableIPv4Hex(destHex);
+    const mask = decodeSocketTableIPv4Hex(maskHex);
+    if (!dest || !mask) continue;
+    const destInt = ipv4ToInt(dest);
+    const maskInt = ipv4ToInt(mask);
+    if (!Number.isFinite(destInt) || !Number.isFinite(maskInt)) continue;
+    out.push({ iface, destInt, maskInt });
+  }
+  return out;
+}
+
+/**
+ * Resolves each of the box's own IPv4 addresses (from fib_trie) to the ONE
+ * interface whose route entry claims it (address & mask === destination,
+ * non-default routes only), deterministically — no /proc/net/arp involved.
+ * arp was the first thing tried here and abandoned: its rows are OTHER
+ * hosts' addresses keyed by the local device that learned them, not this
+ * box's own address, so using one would be a fabrication dressed up as a
+ * reading. fib_trie ∩ route has no such gap — fib_trie says "this address is
+ * mine" and route says "this interface owns that address's subnet", and
+ * intersecting the two is a fact, not an inference.
+ *
+ * When an address matches more than one interface's subnet (ambiguous) or
+ * matches none, it is left off the result entirely — this function would
+ * rather under-report than guess. When multiple routes on the SAME interface
+ * match (overlapping subnets), the most specific (longest prefix / highest
+ * popcount) one wins, matching standard longest-prefix-match routing
+ * semantics — that is still the one confident answer, not a guess between
+ * several.
+ */
+async function readIPv4ByIface(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  const [fibContent, routeContent] = await Promise.all([
+    readTextFile(`${HOST_PROC}/1/net/fib_trie`),
+    readTextFile(`${HOST_PROC}/1/net/route`),
+  ]);
+  // Deliberately no warning on failure: this only ever fills in a field that
+  // is already handled as honestly-absent, so a warning banner for it would
+  // be noise, not signal — same reasoning as the empty-addresses case below.
+  if (fibContent === null || routeContent === null) return map;
+
+  const locals = parseFibTrieLocalIPv4(fibContent);
+  if (locals.size === 0) return map;
+  const routes = parseRouteEntries(routeContent);
+
+  for (const addr of locals) {
+    const addrInt = ipv4ToInt(addr);
+    if (!Number.isFinite(addrInt)) continue;
+
+    const bestMaskByIface = new Map<string, number>();
+    for (const r of routes) {
+      if (((addrInt & r.maskInt) >>> 0) !== r.destInt) continue;
+      const prevMask = bestMaskByIface.get(r.iface);
+      if (prevMask === undefined || popcount32(r.maskInt) > popcount32(prevMask)) {
+        bestMaskByIface.set(r.iface, r.maskInt);
+      }
+    }
+    if (bestMaskByIface.size !== 1) continue; // no match, or claimed by more than one interface — stays unrendered
+
+    const [[iface, maskInt]] = bestMaskByIface;
+    map.set(iface, `${addr}/${popcount32(maskInt)}`);
+  }
+  return map;
 }
 
 // --- docker network labels + bridge gateway addresses ------------------------
@@ -331,6 +466,7 @@ interface BuildContext {
   ipv6ByIface: Map<string, string[]>;
   defaultRouteIface: string | null;
   dockerNet: DockerNetInfo;
+  ipv4ByIface: Map<string, string>;
 }
 
 async function buildInterface(name: string, ctx: BuildContext): Promise<NetInterface> {
@@ -386,14 +522,23 @@ async function buildInterface(name: string, ctx: BuildContext): Promise<NetInter
     }
   }
 
-  const addresses: string[] = [...(ctx.ipv6ByIface.get(name) ?? [])];
+  // IPv4 first, then IPv6 — the page renders addresses in array order and
+  // the v4 address is the one a human recognises. A docker bridge's IPAM
+  // gateway is more precise than the fib_trie/route resolution (it also
+  // carries the network's own configured prefix, not a routing-table
+  // artifact), so it wins when both would apply; fib_trie/route only fills
+  // in interfaces docker doesn't already have an answer for (physical NICs,
+  // bonds) — see readIPv4ByIface for why that source is deterministic
+  // rather than a guess.
+  const addresses: string[] = [];
   const bridgeAddr = ctx.dockerNet.bridgeAddress.get(name);
-  if (bridgeAddr) addresses.push(bridgeAddr);
-  // IPv4 for uplink/bond-slave interfaces is deliberately left empty: there
-  // is no `ip` binary in the container, and /proc/net/arp's rows are OTHER
-  // hosts' addresses keyed by the local device they were learned on, not
-  // this interface's own address — using one would be a fabrication, not a
-  // reading. Rather than guess, this stays honestly empty for those roles.
+  if (bridgeAddr) {
+    addresses.push(bridgeAddr);
+  } else {
+    const fibAddr = ctx.ipv4ByIface.get(name);
+    if (fibAddr) addresses.push(fibAddr);
+  }
+  addresses.push(...(ctx.ipv6ByIface.get(name) ?? []));
 
   const counters = ctx.devCounters?.get(name) ?? null;
 
@@ -645,13 +790,14 @@ export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
     const devCounters = await readNetDevFull();
     if (devCounters === null) warnings.push("could not read interface counters (/proc/1/net/dev)");
 
-    const [ipv6ByIface, defaultRouteIface, dockerNet] = await Promise.all([
+    const [ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface] = await Promise.all([
       readIfInet6GlobalAddresses(),
       readDefaultRouteIface(),
       readDockerNetInfo(warnings),
+      readIPv4ByIface(),
     ]);
 
-    const ctx: BuildContext = { devCounters, ipv6ByIface, defaultRouteIface, dockerNet };
+    const ctx: BuildContext = { devCounters, ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface };
     const interfaces = await Promise.all(names.map((name) => buildInterface(name, ctx)));
     interfaces.sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role] || a.name.localeCompare(b.name));
 

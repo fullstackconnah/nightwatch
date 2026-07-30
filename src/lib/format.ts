@@ -1,6 +1,9 @@
 export function formatBytes(n: number | undefined | null, digits = 1): string {
   if (n == null || isNaN(n)) return "—";
-  if (n < 1024) return `${n} B`;
+  // Rounded, not raw: every other branch is fixed to `digits`, and callers now
+  // include derived per-second rates, which are floats. Without this a sub-KiB
+  // rate renders as "937.9528663389771 B/s".
+  if (n < 1024) return `${Math.round(n)} B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
   let v = n;
   let i = -1;

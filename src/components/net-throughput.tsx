@@ -46,6 +46,18 @@ export function seriesPeak(series: RateSeries): number {
   return Math.max(1, ...series.rx, ...series.tx);
 }
 
+/**
+ * True when nothing crossed this interface for the whole window. Worth its own
+ * concept because the alternative renders badly: a zero-amplitude area chart is
+ * a bare rule across the row, indistinguishable from a missing chart, captioned
+ * "peak 1 B/s" — a fabricated denominator dressed as a measurement. Most of the
+ * bridges on this host are idle most of the time, so this is the common case,
+ * not the edge case.
+ */
+export function seriesIsIdle(series: RateSeries): boolean {
+  return series.rx.every((v) => v === 0) && series.tx.every((v) => v === 0);
+}
+
 function areaPath(values: number[], peak: number, width: number, mid: number, amplitude: number, sign: 1 | -1): string {
   if (values.length < 2) return "";
   const step = width / (values.length - 1);
@@ -87,6 +99,7 @@ export function ThroughputChart({
   const mid = height / 2;
   const amplitude = mid - 2;
   const ready = series.rx.length >= 2;
+  const idle = ready && seriesIsIdle(series);
 
   if (!ready) {
     return (
@@ -96,6 +109,31 @@ export function ThroughputChart({
       >
         collecting…
       </div>
+    );
+  }
+
+  // Idle draws the axis alone — dashed, so it reads as "measured, nothing moved"
+  // rather than as a solid rule that could be mistaken for a chart that failed.
+  if (idle) {
+    return (
+      <svg
+        viewBox={`0 0 ${W} ${height}`}
+        preserveAspectRatio="none"
+        className={cn("w-full block", className)}
+        style={{ height }}
+        aria-hidden
+      >
+        <line
+          x1={0}
+          y1={mid}
+          x2={W}
+          y2={mid}
+          stroke="var(--color-line-bright)"
+          strokeWidth={1}
+          strokeDasharray="3 4"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
     );
   }
 

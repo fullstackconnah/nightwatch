@@ -64,8 +64,17 @@ function PortRow({ s }: { s: ListeningSocket }) {
         {s.families.length === 2 && <span className="microlabel ml-1.5">v4+v6</span>}
         {s.families.length === 1 && <span className="microlabel ml-1.5">{s.families[0]}</span>}
       </td>
-      <td className="px-3 py-2 font-mono text-xs text-ink-faint truncate max-w-[14rem]">
-        {s.addresses.join("  ")}
+      {/* Fixed narrow column with its own truncation: a socket bound to three
+          addresses (a v4, a ::, and a global v6) produces a string long enough to
+          push the owner off the row, and the owner is the column that answers the
+          question. Full list stays available on hover. */}
+      <td className="px-3 py-2 w-[11rem] max-w-[11rem]">
+        <span
+          className="font-mono text-xs text-ink-faint truncate block"
+          title={s.addresses.join("  ")}
+        >
+          {s.addresses.join("  ")}
+        </span>
       </td>
       <td className="px-3 py-2 min-w-0">
         <OwnerCell owner={s.owner} />

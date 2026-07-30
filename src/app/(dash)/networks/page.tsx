@@ -11,6 +11,7 @@ import {
   TX_GLYPH,
   ThroughputChart,
   interfaceSeries,
+  seriesIsIdle,
   seriesPeak,
 } from "@/components/net-throughput";
 import { fetcher, useContainers, useNetwork, useTelemetryStream } from "@/lib/client";
@@ -109,7 +110,7 @@ function UplinkBand({
             60s · {RX_GLYPH} received above · {TX_GLYPH} sent below
           </span>
           <span className="font-mono text-[0.7rem] text-ink-faint tabular-nums whitespace-nowrap">
-            peak {formatRate(peak)}
+            {seriesIsIdle(series) ? "no traffic in the window" : `peak ${formatRate(peak)}`}
           </span>
         </div>
       </div>
@@ -176,18 +177,32 @@ function BridgeRow({
 }) {
   const series = useMemo(() => interfaceSeries(samples, iface.name), [samples, iface.name]);
   const peak = seriesPeak(series);
+  const idle = seriesIsIdle(series);
   const now = latestRate(samples, iface.name);
   const name = network?.name ?? iface.label ?? iface.name;
   const renamed = name !== iface.name;
+  const attached = network ? network.containers.length : null;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,13rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3 py-3 border-b border-line/50 last:border-0">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3 py-3 border-b border-line/50 last:border-0">
       <div className="min-w-0">
-        <div className="font-mono text-sm truncate">{name}</div>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="font-mono text-sm truncate" title={name}>
+            {name}
+          </span>
+          {iface.state !== "up" && <span className="microlabel shrink-0">{iface.state}</span>}
+        </div>
+        {/* Two lines rather than one: at 17rem the raw bridge name, the subnet and
+            the attached count all fit only by ellipsing the count away, and the
+            count is the part that tells you whether the bridge matters. */}
         <div className="font-mono text-[0.65rem] text-ink-faint truncate">
-          {renamed && `${iface.name} · `}
-          {network?.subnet ?? "subnet unknown"}
-          {network ? ` · ${network.containers.length} attached` : ""}
+          {renamed ? iface.name : (network?.subnet ?? "subnet unknown")}
+        </div>
+        <div className="font-mono text-[0.65rem] text-ink-faint truncate">
+          {renamed && network?.subnet ? `${network.subnet} · ` : ""}
+          {attached === null
+            ? "not a docker network"
+            : `${attached} ${attached === 1 ? "container" : "containers"}`}
         </div>
       </div>
 
@@ -198,24 +213,87 @@ function BridgeRow({
       <div className="text-right shrink-0">
         <RateReadout rx={now.rx} tx={now.tx} className="justify-end" />
         <div className="font-mono text-[0.65rem] text-ink-faint tabular-nums mt-0.5">
-          peak {formatRate(peak)}
+          {idle ? "idle" : `peak ${formatRate(peak)}`}
         </div>
       </div>
     </div>
   );
 }
 
+interface FootprintRow {
+  id: string;
+  name: string;
+  /** Other containers sharing this row's network namespace, so the same bytes are
+   *  attributed once but the sharers are still named. */
+  sharing: string[];
+  rx: number;
+  tx: number;
+}
+
 function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
   const { data } = useContainers(15000);
   const latest = samples.length > 0 ? samples[samples.length - 1] : undefined;
 
-  const rows = useMemo(() => {
+  const rows = useMemo<FootprintRow[]>(() => {
     if (!latest) return [];
-    return (data?.containers ?? [])
-      .map((c) => {
-        const row = latest.containers[c.id];
-        return { id: c.id, name: c.name, rx: row?.rxRate ?? 0, tx: row?.txRate ?? 0 };
-      })
+    const containers = data?.containers ?? [];
+    const nameById = new Map(containers.map((c) => [c.id, c.name]));
+
+    // Containers sharing a network namespace report IDENTICAL docker network
+    // counters, because there is only one namespace to count. The *arr stack runs
+    // through the VPN container (`network_mode: service:gluetun` → docker's
+    // `container:<id>`), so five containers each report gluetun's bytes; summing
+    // them would count the same traffic five times and hand every one of them an
+    // equal, wrong share of the bar. This is the same double-count the interface
+    // roles exist to prevent, arriving from the other direction.
+    //
+    // Host-network containers are excluded outright: their "container" counters
+    // are the whole box's, which does not belong in a per-container breakdown.
+    const groups = new Map<string, FootprintRow>();
+    for (const c of containers) {
+      if (c.networkMode === "host") continue;
+      const shared = c.networkMode?.startsWith("container:")
+        ? c.networkMode.slice("container:".length)
+        : null;
+      const ownerId = shared ?? c.id;
+      const row = latest.containers[c.id];
+      const existing = groups.get(ownerId);
+      if (existing) {
+        // The namespace owner names the row when it is itself running; otherwise
+        // the first sharer we saw keeps the name and the rest are listed.
+        if (ownerId === c.id) {
+          existing.sharing.push(existing.name);
+          existing.name = c.name;
+          existing.id = c.id;
+        } else {
+          existing.sharing.push(c.name);
+        }
+        // Counters are identical across the group by definition; keep the first
+        // non-zero reading rather than adding, and never overwrite it with a zero
+        // (a sharer whose stats have not been sampled yet reports nothing).
+        if (existing.rx + existing.tx === 0 && row) {
+          existing.rx = row.rxRate;
+          existing.tx = row.txRate;
+        }
+      } else {
+        groups.set(ownerId, {
+          id: c.id,
+          name: c.name,
+          sharing: [],
+          rx: row?.rxRate ?? 0,
+          tx: row?.txRate ?? 0,
+        });
+      }
+    }
+
+    // A sharer whose owner is not in the container list (stopped, or filtered out)
+    // still deserves its real name rather than the owner's id.
+    for (const [ownerId, row] of groups) {
+      const ownerName = nameById.get(ownerId);
+      if (ownerName && row.name !== ownerName) row.name = ownerName;
+    }
+
+    return [...groups.values()]
       .filter((r) => r.rx + r.tx > 0)
       .sort((a, b) => b.rx + b.tx - (a.rx + a.tx));
   }, [data, latest]);
@@ -240,7 +318,15 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
   const shown = rows.slice(0, 8);
   const rest = rows.slice(8);
   const restTotal = rest.reduce((a, r) => a + r.rx + r.tx, 0);
-  const hue = (i: number) => `hsl(${172 + i * 15} ${64 - i * 4}% ${60 - i * 2}%)`;
+  // Teal → sky: the two hues this console already uses for rx and tx. Hue alone
+  // cannot separate eight segments inside a 33° span — adjacent ones came out
+  // indistinguishable and the bar read as one solid block — so lightness does most
+  // of the work and hue carries the direction of travel. Extending the hue range
+  // instead would reach magenta, which belongs to no other surface in this app.
+  const hue = (i: number) => {
+    const t = shown.length > 1 ? i / (shown.length - 1) : 0;
+    return `hsl(${(172 + t * 33).toFixed(0)} ${(70 - t * 18).toFixed(0)}% ${(70 - t * 34).toFixed(0)}%)`;
+  };
 
   return (
     <section className="panel p-4">
@@ -248,9 +334,13 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
         <h2 className="text-sm font-semibold tracking-tight">Container footprint</h2>
         <span className="font-mono text-xs text-ink-dim tabular-nums">
           {formatRate(total)}{" "}
-          <span className="text-ink-faint">across {rows.length} containers</span>
+          <span className="text-ink-faint">across {rows.length} namespaces</span>
         </span>
       </div>
+      <p className="text-[0.7rem] text-ink-faint mt-0.5">
+        one row per network namespace, not per container — containers behind a VPN
+        container report its counters, and host-network containers are left out
+      </p>
 
       <div className="flex h-2.5 w-full rounded-full overflow-hidden mt-3 bg-line/60">
         {shown.map((r, i) => (
@@ -274,14 +364,28 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
           <li key={r.id}>
             <Link
               href={`/containers/${r.id}`}
-              className="flex items-center gap-2.5 rounded px-1 -mx-1 py-1.5 hover:bg-panel-2 min-h-11 md:min-h-0"
+              /* Wraps below sm: the rate pair needs ~11rem, which on a 390px
+                 phone left the name so narrow that "homelab-dashboard" and
+                 "homelab-dashboard-proxy" both truncated to the same string —
+                 two different rows rendering identically. */
+              className="flex flex-wrap sm:flex-nowrap items-center gap-x-2.5 gap-y-0.5 rounded px-1 -mx-1 py-1.5 hover:bg-panel-2 min-h-11 md:min-h-0"
             >
               <span
                 className="h-2.5 w-2.5 rounded-sm shrink-0"
                 style={{ background: hue(i) }}
                 aria-hidden
               />
-              <span className="font-mono text-xs truncate flex-1 min-w-0">{r.name}</span>
+              <span className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] sm:basis-auto">
+                <span className="font-mono text-xs truncate block">{r.name}</span>
+                {r.sharing.length > 0 && (
+                  <span
+                    className="text-[0.65rem] text-ink-faint truncate block"
+                    title={`Shares ${r.name}'s network namespace: ${r.sharing.join(", ")}`}
+                  >
+                    shared with {r.sharing.join(", ")}
+                  </span>
+                )}
+              </span>
               <RateReadout rx={r.rx} tx={r.tx} className="shrink-0" />
             </Link>
           </li>
