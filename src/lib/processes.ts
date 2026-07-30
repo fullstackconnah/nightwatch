@@ -56,6 +56,8 @@ interface ContainerNameCacheEntry {
 const globalForProcesses = globalThis as unknown as {
   __processCache?: ProcessCacheEntry;
   __processContainerNameCache?: ContainerNameCacheEntry;
+  /** undefined = never looked up; null = looked up and we are not in a container. */
+  __processOwnContainerId?: string | null;
 };
 
 function delay(ms: number): Promise<void> {
@@ -164,6 +166,41 @@ function extractContainerId(cgroupContent: string): string | null {
   return m[1] ?? m[2] ?? null;
 }
 
+/**
+ * A container cannot see its OWN docker id in /proc/<pid>/cgroup. The cgroup
+ * namespace renders the container's own scope as the root, so our processes read
+ * a bare "0::/" while every other container reads "0::/../docker-<id>.scope".
+ *
+ * Left unhandled that is not cosmetic: this container's own processes
+ * (next-server, node, and the `du` of a disk-usage scan — measured at 25% CPU and
+ * 229 MiB together) land in the "other" bucket, and the dashboard's own row
+ * disappears from the containers view entirely — 25 rows for a 26-container
+ * fleet, with the shortfall silently inflating "other".
+ *
+ * The id is recoverable from our own mountinfo, because docker bind-mounts
+ * /etc/hostname, /etc/hosts and /etc/resolv.conf out of
+ * /var/lib/docker/containers/<64hex>/. Verified equal to `docker inspect .Id`.
+ * Returns null when not in a container at all (dev server on the host), where
+ * leaving "0::/" unattributed is then the correct answer.
+ */
+const OWN_CONTAINER_ID_RE = /containers\/([0-9a-f]{64})/;
+
+async function getOwnContainerId(): Promise<string | null> {
+  if (globalForProcesses.__processOwnContainerId !== undefined) {
+    return globalForProcesses.__processOwnContainerId;
+  }
+  let id: string | null = null;
+  try {
+    // Deliberately our OWN /proc, not HOST_PROC — this asks "who am I".
+    const content = await fsp.readFile("/proc/self/mountinfo", "utf8");
+    id = content.match(OWN_CONTAINER_ID_RE)?.[1] ?? null;
+  } catch {
+    id = null;
+  }
+  globalForProcesses.__processOwnContainerId = id;
+  return id;
+}
+
 // --- per-pid cmdline + cgroup read -------------------------------------------
 
 interface PidDetail {
@@ -174,7 +211,7 @@ interface PidDetail {
   containerId: string | null;
 }
 
-async function readPidDetail(pid: number): Promise<PidDetail | null> {
+async function readPidDetail(pid: number, ownContainerId: string | null): Promise<PidDetail | null> {
   let stat: StatFields | null;
   try {
     const statContent = await fsp.readFile(`${HOST_PROC}/${pid}/stat`, "utf8");
@@ -197,6 +234,12 @@ async function readPidDetail(pid: number): Promise<PidDetail | null> {
   try {
     const cgroupContent = await fsp.readFile(`${HOST_PROC}/${pid}/cgroup`, "utf8");
     containerId = extractContainerId(cgroupContent);
+    // See getOwnContainerId. Only OUR processes render as a bare "0::/" — every
+    // other container is "0::/../docker-…" and host services are
+    // "0::/../docker.service" and the like, so this cannot over-claim.
+    if (containerId === null && ownContainerId !== null && cgroupContent.trim() === "0::/") {
+      containerId = ownContainerId;
+    }
   } catch {
     containerId = null;
   }
@@ -275,7 +318,8 @@ async function scanOnce(pids: number[]): Promise<{
   skipped: number;
   ioTotals: Map<string, number>;
 }> {
-  const rows = await mapWithConcurrency(pids, READ_CONCURRENCY, readPidDetail);
+  const ownContainerId = await getOwnContainerId();
+  const rows = await mapWithConcurrency(pids, READ_CONCURRENCY, (pid) => readPidDetail(pid, ownContainerId));
   const details: PidDetail[] = [];
   let skipped = 0;
   for (const row of rows) {
