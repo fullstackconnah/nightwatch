@@ -21,6 +21,13 @@ const PAGE_SIZE = 4096;
 const CLK_TCK = 100; // sanity check: 100 ticks over 1000ms = 100% of one core
 const SAMPLE_DELAY_MS = 250;
 const STALE_BASELINE_MS = 30_000;
+/** Samples older than this are dropped, so the widest CPU window is ~12s at the
+ *  client's 2s poll — long enough to resolve a 0.05% container, short enough that
+ *  the figure still tracks what the box is doing now. */
+const SAMPLE_MAX_AGE_MS = 12_000;
+/** Belt to SAMPLE_MAX_AGE_MS's braces: caps memory if something polls far faster
+ *  than every 2s. Each entry holds ~476 small records. */
+const MAX_SAMPLES = 10;
 const READ_CONCURRENCY = 64; // bound simultaneous file handles across ~476 pids x 3 reads each
 const CONTAINER_NAME_TTL_MS = 10_000;
 
@@ -54,7 +61,9 @@ interface ContainerNameCacheEntry {
 // Mirrors gpu.ts/docker.ts's globalForX pattern: state on globalThis survives
 // Next dev HMR reloads of this module.
 const globalForProcesses = globalThis as unknown as {
-  __processCache?: ProcessCacheEntry;
+  /** Recent samples, OLDEST FIRST. See getProcessSnapshot for why a ring rather
+   *  than a single previous sample. */
+  __processSamples?: ProcessCacheEntry[];
   __processContainerNameCache?: ContainerNameCacheEntry;
   /** undefined = never looked up; null = looked up and we are not in a container. */
   __processOwnContainerId?: string | null;
@@ -367,77 +376,98 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
     };
   }
 
-  const prev = globalForProcesses.__processCache;
   const now0 = Date.now();
-  const prevUsable = prev && now0 - prev.ts < STALE_BASELINE_MS;
 
-  let baselineTicks: Map<number, PidTick>;
-  let baselineTs: number;
-  if (prevUsable) {
-    baselineTicks = prev!.ticks;
-    baselineTs = prev!.ts;
-  } else {
-    // No usable previous sample (cold start, or the cached one is stale) —
-    // take an internal throwaway sample now and wait, so the sample we
-    // actually RETURN already has a real CPU delta instead of a screen of
-    // dashes on the very first response.
-    baselineTicks = await sampleTicksOnly(pids);
-    // Stamp the baseline AFTER those reads finish, not from before them:
+  /**
+   * A ring of recent samples, not just the previous one.
+   *
+   * CPU here comes from jiffies, and CLK_TCK is 100, so one tick is 10ms. Diffed
+   * over a single 2s poll that is a resolution of ~0.5 percentage points, which
+   * floors every container busier than nothing but quieter than ~0.2% to a flat
+   * 0.0% — measured: 20 of this box's 26 containers, while `docker stats` (which
+   * reads cgroup CPU in nanoseconds) had them at 0.02-0.32%. A table that reports
+   * 0.0% for two thirds of its rows reads as broken even when each figure is
+   * technically what was measured.
+   *
+   * Diffing instead against the OLDEST retained sample that saw the same process
+   * widens the window ~5x and improves the resolution with it, and a ~10s average
+   * is a better answer to "which container is busy" than a 2s snapshot anyway.
+   * Per-process rather than one shared baseline, so a process that started three
+   * seconds ago still gets a figure from the newest sample that has it.
+   */
+  const samples = (globalForProcesses.__processSamples ?? []).filter((s) => now0 - s.ts <= SAMPLE_MAX_AGE_MS);
+  const newest = samples.at(-1);
+
+  if (!newest || now0 - newest.ts >= STALE_BASELINE_MS) {
+    // Cold start, or every retained sample has gone stale — take an internal
+    // throwaway sample and wait, so the response we actually RETURN already
+    // carries a real CPU delta instead of a screen of dashes.
+    const ticks = await sampleTicksOnly(pids);
+    // Stamp it AFTER those reads finish, not from the earlier `now0`:
     // sampleTicksOnly spends tens of ms crossing ~476 pids, and timing the
-    // interval from the earlier `now0` would inflate deltaMs and understate
-    // every CPU figure in the first response the reader ever sees. Steady-state
-    // polls are already correct — they diff two `sampleTs` values, both stamped
-    // at the same point in the cycle.
-    baselineTs = Date.now();
+    // interval from before them would inflate the delta and understate every
+    // CPU figure in the first response the reader ever sees.
+    samples.length = 0;
+    samples.push({ ts: Date.now(), ticks, io: new Map() });
     await delay(SAMPLE_DELAY_MS);
   }
-  const baselineIo = prevUsable ? prev!.io : new Map<string, number>();
+
+  /** Widest usable window for this pid: the oldest retained sample that saw the
+   *  same process. starttime guards pid reuse — a pid recycled onto a different
+   *  process would otherwise show its tick counter leaping from 0 to a large
+   *  value, a wild bogus spike instead of the correct "no baseline yet" null. */
+  function tickBaseline(pid: number, starttime: number): { ts: number; ticks: number } | null {
+    for (const s of samples) {
+      const t = s.ticks.get(pid);
+      if (t && t.starttime === starttime) return { ts: s.ts, ticks: t.ticks };
+    }
+    return null;
+  }
+
+  /** Same widest-window rule for a container's cumulative io.stat total. */
+  function ioBaseline(id: string): { ts: number; total: number } | null {
+    for (const s of samples) {
+      const v = s.io.get(id);
+      if (v !== undefined) return { ts: s.ts, total: v };
+    }
+    return null;
+  }
 
   const { details, scanned, skipped, ioTotals } = await scanOnce(pids);
   const sampleTs = Date.now();
-  const deltaMs = sampleTs - baselineTs;
 
   const containerIds = new Set(details.map((d) => d.containerId).filter((id): id is string => id !== null));
   const nameMap = await resolveContainerNames(containerIds);
 
-  // cgroup io rate: diff this scan's per-container cumulative total against
-  // the previous cached total for that container, over the same interval as
-  // the CPU delta. Missing on either side, a non-positive interval, or a
-  // negative delta (cgroup recreated e.g. container restarted) => null,
-  // never a fabricated rate.
+  // cgroup io rate: diff this scan's per-container cumulative total against the
+  // oldest retained total for that container. Missing on either side, a
+  // non-positive interval, or a negative delta (cgroup recreated, e.g. the
+  // container restarted) => null, never a fabricated rate.
   const ioRateByContainer = new Map<string, number | null>();
   for (const id of containerIds) {
     const nowTotal = ioTotals.get(id);
-    const prevTotal = baselineIo.get(id);
-    if (nowTotal === undefined) {
+    const base = ioBaseline(id);
+    if (nowTotal === undefined || base === null) {
       ioRateByContainer.set(id, null);
       continue;
     }
-    if (prevTotal === undefined || deltaMs <= 0) {
-      ioRateByContainer.set(id, null);
-      continue;
-    }
-    const delta = nowTotal - prevTotal;
-    ioRateByContainer.set(id, delta >= 0 ? (delta * 1000) / deltaMs : null);
+    const span = sampleTs - base.ts;
+    const delta = nowTotal - base.total;
+    ioRateByContainer.set(id, span > 0 && delta >= 0 ? (delta * 1000) / span : null);
   }
 
   const processes: ProcessRow[] = details.map((d) => {
-    const baseline = baselineTicks.get(d.pid);
+    const base = tickBaseline(d.pid, d.stat.starttime);
     let cpuPct: number | null = null;
-    // A pid reused since the baseline sample (recycled onto a different
-    // process) carries a different starttime — without this check a recycled
-    // pid's tick counter would appear to have jumped from 0 to a large value
-    // instantly, producing a wild bogus spike instead of the correct "no
-    // baseline yet" null.
-    if (baseline && baseline.starttime === d.stat.starttime && deltaMs > 0) {
-      const nowTicks = d.stat.utime + d.stat.stime;
-      const deltaTicks = nowTicks - baseline.ticks;
-      if (deltaTicks >= 0) {
+    if (base) {
+      const span = sampleTs - base.ts;
+      const deltaTicks = d.stat.utime + d.stat.stime - base.ticks;
+      if (span > 0 && deltaTicks >= 0) {
         // One busy core = 100 (Docker-style, matching TelemetryRow.cpuPct).
         // Sanity check: CLK_TCK=100 means 1 tick = 10ms, so 100 ticks spent
         // over a 1000ms window is a fully-busy core -> 100.
         const msPerTick = 1000 / CLK_TCK;
-        cpuPct = ((deltaTicks * msPerTick) / deltaMs) * 100;
+        cpuPct = ((deltaTicks * msPerTick) / span) * 100;
       }
     }
 
@@ -468,7 +498,8 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
   for (const d of details) {
     newTicks.set(d.pid, { ticks: d.stat.utime + d.stat.stime, starttime: d.stat.starttime });
   }
-  globalForProcesses.__processCache = { ts: sampleTs, ticks: newTicks, io: ioTotals };
+  samples.push({ ts: sampleTs, ticks: newTicks, io: ioTotals });
+  globalForProcesses.__processSamples = samples.slice(-MAX_SAMPLES);
 
   return { ts: sampleTs, cores, memTotal, processes, scanned, skipped };
 }
