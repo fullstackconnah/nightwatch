@@ -1,0 +1,78 @@
+# TEST STACK — throwaway instance for exercising finished work against the real
+# Docker socket. See CLAUDE.md "Verify before calling work done".
+#
+# ALWAYS invoke with -f, never bare `docker compose`: the production
+# docker-compose.yml is shipped into this directory by the same tar and would
+# otherwise claim container_name `homelab-dashboard` and port 3005, colliding
+# head-on with production.
+#
+#   sudo docker compose -f docker-compose.test.yml build
+#   sudo docker compose -f docker-compose.test.yml up -d
+#   sudo docker compose -f docker-compose.test.yml down
+#
+# THIS INSTANCE HAS NO PASSWORD. It builds from Dockerfile.dev (`next dev`),
+# which is what makes the dev login bypass active, and ships no .env so
+# ADMIN_PASSWORD_HASH is absent (the bypass needs both). Consequences, on
+# purpose:
+#   - anyone on the LAN reaching :3006 can read every container's logs, which on
+#     this host include gluetun credentials, cloudflared tokens and *arr API keys
+#   - the socket proxy is therefore READ-ONLY (POST=0, EXEC=0): an instance with
+#     no login has no business holding write scopes
+#   - restart: "no" — it must not come back after a reboot
+# Tear it down when finished.
+name: homelab-dashboard-test
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: homelab-dashboard-test-proxy
+    restart: "no"
+    environment:
+      - CONTAINERS=1
+      - IMAGES=1
+      - INFO=1
+      - NETWORKS=1
+      - VOLUMES=1
+      - PING=1
+      - SYSTEM=1
+      - POST=0
+      - EXEC=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+    labels:
+      - dashboard.enable=false
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: homelab-dashboard-test
+    restart: "no"
+    # host 3006 -> the dev server's own 3005 inside the container
+    ports:
+      - "3006:3005"
+    environment:
+      - DOCKER_HOST=tcp://socket-proxy:2375
+      - PUBLIC_HOST=192.168.1.70
+      - HOST_NAME=homelab
+      - DOCKGE_URL=http://192.168.1.70:5001
+      - DATA_DIR=/app/data
+      - NODE_ENV=development
+    # Deliberately no env_file and no ADMIN_PASSWORD_HASH — the bypass requires
+    # the hash to be absent as well as NODE_ENV=development.
+    volumes:
+      - ./data:/app/data
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro,rslave
+    depends_on:
+      - socket-proxy
+    networks:
+      - internal
+    labels:
+      - dashboard.enable=false
+
+networks:
+  internal:

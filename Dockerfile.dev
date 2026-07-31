@@ -1,0 +1,29 @@
+# Test-stack image ONLY — a real `next dev` build, not the production standalone one.
+# Used by docker-compose.test.yml. Production uses ./Dockerfile.
+#
+# Why a dev build rather than the production image with an env var: the login
+# bypass in src/app/api/auth/login/route.ts requires
+# process.env.NODE_ENV === "development", and Next.js INLINES NODE_ENV into the
+# server bundle at build time. Setting NODE_ENV=development at runtime on the
+# standalone image does nothing — verified against the real container, where the
+# route still answered "ADMIN_PASSWORD_HASH is not set — login disabled" with the
+# variable correctly set inside it.
+#
+# Running the dev server is therefore the only way to get a passwordless test
+# instance without editing the auth route, which would put an auth bypass into
+# the repo where it could reach production. No app code changes.
+FROM node:22-slim
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+
+COPY . .
+
+# `next dev` sets this itself, but the login route reads it and the whole point
+# of this image is that it reads "development".
+ENV NODE_ENV=development
+
+# -H 0.0.0.0 so the published port actually reaches it from outside the container.
+EXPOSE 3005
+CMD ["npx", "next", "dev", "-p", "3005", "-H", "0.0.0.0"]
