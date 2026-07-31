@@ -37,6 +37,20 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
   const unhealthy = data?.counts.unhealthy ?? 0;
 
   async function logout() {
+    // Signing out is a deliberate "I am done on this machine", and /logs now
+    // keeps container output in IndexedDB — output that on this box carries
+    // gluetun credentials, cloudflared tunnel tokens and *arr API keys.
+    //
+    // Session EXPIRY deliberately does not come through here: that is the
+    // moment the archive is most useful, and the reader never chose to leave.
+    // Imported here rather than at module scope: this nav renders on every
+    // page, and a static import would put the whole IndexedDB layer in every
+    // page's bundle to serve one click that happens once a session.
+    await import("@/lib/log-archive")
+      .then((m) => m.clearArchive())
+      .catch(() => {
+        // A storage failure must never trap someone in a signed-in session.
+      });
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
   }

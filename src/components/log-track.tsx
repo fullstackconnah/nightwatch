@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Pause, Play, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Download, History, Pause, Play, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { relativeTime } from "@/lib/format";
+import { formatNumber, relativeTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { AnsiText, stripAnsi } from "@/components/ansi";
+import {
+  archiveAvailable,
+  countBefore,
+  countFor,
+  readBefore,
+  readLatest,
+  toLogLine,
+} from "@/lib/log-archive";
+import { downloadLines, type ExportFormat } from "@/lib/log-export";
 import {
   CLOCK_TICK_MS,
   LEVEL_CODE,
@@ -16,6 +25,18 @@ import {
   type LogLine,
   type LogTrackState,
 } from "@/lib/log-types";
+
+/** How many archived lines one "load earlier" press pulls in. */
+const EARLIER_PAGE = 500;
+
+/**
+ * `useLayoutEffect` warns when it runs during SSR, and this component does
+ * render on the server: /logs is force-dynamic, and a `?c=` deep link puts
+ * tracks in the very first HTML. Scroll restoration has to be synchronous
+ * (a passive effect would let the jumped view paint for a frame), so the
+ * layout effect is real on the client and a no-op stand-in on the server.
+ */
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 /**
  * One container's full-width band. The header answers "is this thing alive"
@@ -198,6 +219,26 @@ export function LogTrack({
   const status = state?.status ?? "connecting";
   const paused = manualPause || hovering || touching || !stickToBottom;
 
+  // Lines pulled back out of the archive. Always strictly older than the live
+  // buffer, so they prepend rather than merge — which is what lets the divider
+  // between the two be a single honest line instead of a per-row badge.
+  const [earlier, setEarlier] = useState<LogLine[]>([]);
+  /** How many further archived lines exist before the oldest line on screen. */
+  const [earlierAvailable, setEarlierAvailable] = useState(0);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const hasArchive = archiveAvailable();
+  /** Set by the load handler so the layout effect below can undo the jump. */
+  const restoreScroll = useRef<{ height: number; top: number } | null>(null);
+  /**
+   * Synchronous re-entry guard for `loadEarlier`. `loadingEarlier` is state, so
+   * the button's `disabled` only takes effect on the NEXT render — two fast
+   * clicks both get inside, both read the same range from the same `oldestTs`,
+   * and both prepend it. That renders every one of those lines twice under
+   * duplicate React keys. A ref flips now, not next frame.
+   */
+  const loadingRef = useRef(false);
+
   // Shared clock for this track, ticking on the same CLOCK_TICK_MS cadence
   // as log-console's rate readout (one constant, imported from log-types, so
   // the two components can't quietly drift into two different decisions).
@@ -228,14 +269,38 @@ export function LogTrack({
   // Stripped text per line, cached by id and recomputed only when `lines`
   // grows — not on every keystroke in the filter box, which is the
   // highest-frequency dependency here.
+  /**
+   * Archive first, then the live buffer, never interleaved.
+   *
+   * The trim is not belt-and-braces. `earlier` is loaded from strictly before
+   * whatever was on screen AT THAT MOMENT — and when the track is in its error
+   * state the buffer is empty, so the load takes the newest archived lines
+   * instead. A seed can arrive afterwards without this component remounting:
+   * useLogStream re-seeds any container that has no buffer whenever the
+   * subscription re-runs, which putting a second container on the floor is
+   * enough to cause. That seed covers lines the archive already supplied, and
+   * because archived ids are namespaced `a:` they do not collide with seed ids
+   * — so React treats them as distinct rows and renders each line twice.
+   *
+   * Re-establishing the invariant here, rather than trying to catch every path
+   * that could reseed, keeps it true by construction.
+   */
+  const allLines = useMemo(() => {
+    if (earlier.length === 0) return lines;
+    if (lines.length === 0) return earlier;
+    const boundary = lines[0].ts;
+    const trimmed = earlier.filter((l) => l.ts < boundary);
+    return trimmed.length === earlier.length ? [...earlier, ...lines] : [...trimmed, ...lines];
+  }, [earlier, lines]);
+
   const strippedById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const l of lines) map.set(l.id, stripAnsi(l.text));
+    for (const l of allLines) map.set(l.id, stripAnsi(l.text));
     return map;
-  }, [lines]);
+  }, [allLines]);
 
   const filtered = useMemo(() => {
-    return lines.filter((l) => {
+    return allLines.filter((l) => {
       if (!levels.has(l.level)) return false;
       if (highlight === null) return true;
       // Cloning (via a fresh regex built from source+flags) rather than reusing
@@ -251,13 +316,104 @@ export function LogTrack({
       // colour boundary.
       return re.test(strippedById.get(l.id) ?? l.text);
     });
-  }, [lines, levels, highlight, strippedById]);
+  }, [allLines, levels, highlight, strippedById]);
+
+  /** Oldest line currently on screen — the boundary every archive read works from. */
+  const oldestTs = allLines.length > 0 ? allLines[0].ts : null;
+
+  // How much history sits behind what is on screen. Re-probed when the boundary
+  // moves, which is either a "load earlier" press or the live ring rolling over
+  // its 2000-line cap — on this host, hours apart.
+  useEffect(() => {
+    if (!hasArchive) return;
+    let cancelled = false;
+    const probe = oldestTs === null ? countFor(container) : countBefore(container, oldestTs);
+    probe
+      .then((n) => {
+        if (!cancelled) setEarlierAvailable(n);
+      })
+      .catch(() => {
+        if (!cancelled) setEarlierAvailable(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [container, oldestTs, hasArchive]);
+
+  const loadEarlier = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    const el = scrollRef.current;
+    if (el) restoreScroll.current = { height: el.scrollHeight, top: el.scrollTop };
+    setLoadingEarlier(true);
+    try {
+      const records =
+        oldestTs === null
+          ? await readLatest(container, EARLIER_PAGE)
+          : await readBefore(container, oldestTs, EARLIER_PAGE);
+      if (records.length === 0) {
+        setEarlierAvailable(0);
+        return;
+      }
+      const converted = records.map(toLogLine);
+      // File these as already-seen BEFORE they reach a render. They are history:
+      // left unfiled, all 500 would play the arrival animation at once and be
+      // announced to a screen reader as new lines that just landed.
+      for (const line of converted) seenIds.current.add(line.id);
+      setEarlier((prev) => [...converted, ...prev]);
+    } catch {
+      // A failed read is not worth a banner — the offer simply stops being made.
+      setEarlierAvailable(0);
+    } finally {
+      loadingRef.current = false;
+      setLoadingEarlier(false);
+    }
+  }, [container, oldestTs]);
+
+  // Prepending grows the content above the viewport, which would otherwise throw
+  // the reader to a completely different part of the log than the one they were
+  // reading. Layout effect, not passive: a frame of the jumped view is visible.
+  useIsomorphicLayoutEffect(() => {
+    const saved = restoreScroll.current;
+    if (!saved) return;
+    restoreScroll.current = null;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight - saved.height + saved.top;
+  }, [earlier]);
+
+  const runExport = useCallback(
+    (format: ExportFormat) => {
+      downloadLines(
+        filtered,
+        {
+          container,
+          query: query.trim() ? query.trim() : null,
+          levels: LEVEL_ORDER.filter((l) => levels.has(l)),
+          includesArchive: earlier.length > 0,
+        },
+        format,
+      );
+      setExportOpen(false);
+    },
+    [filtered, container, query, levels, earlier.length],
+  );
+
+  // Escape closes the format choice, the way every transient control should.
+  useEffect(() => {
+    if (!exportOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setExportOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [exportOpen]);
 
   // Level-format honesty note: some containers never emit a level at all, and
   // once the buffer is long enough to trust that as a fact (not just "hasn't
   // happened yet"), say so — otherwise a `none`-only container with the level
   // filters at their default looks identical to a broken track.
-  const allNoLevel = lines.length >= 20 && lines.every((l) => l.level === "none");
+  const allNoLevel = allLines.length >= 20 && allLines.every((l) => l.level === "none");
 
   const rate1min = useMemo(() => {
     const since = Date.now() - RATE_WINDOW_MS;
@@ -385,8 +541,39 @@ export function LogTrack({
     return () => clearTimeout(id);
   }, [announcement]);
 
+  // Where the archived prefix ends inside the FILTERED list — the seam the
+  // divider marks. Counted rather than assumed, because filtering removes lines
+  // from both sides and the boundary index moves with every level toggle.
+  const earlierIds = useMemo(() => new Set(earlier.map((l) => l.id)), [earlier]);
+  const archivedShown = useMemo(
+    () => filtered.reduce((n, l) => (earlierIds.has(l.id) ? n + 1 : n), 0),
+    [filtered, earlierIds],
+  );
+
+  // `newest` stays on the LIVE buffer: it feeds "last line 14m ago", which is a
+  // claim about the stream. Pulling week-old history in would make a silent
+  // track suddenly claim recent activity.
   const newest = lines.length > 0 ? lines[lines.length - 1] : undefined;
   const bodyHeight = dense ? "11rem" : "17rem";
+  const canLoadEarlier = hasArchive && earlierAvailable > 0;
+
+  const earlierButton = canLoadEarlier ? (
+    <div className="flex justify-center px-2 py-1.5">
+      <button
+        type="button"
+        onClick={() => void loadEarlier()}
+        disabled={loadingEarlier}
+        className="inline-flex items-center gap-1.5 h-11 md:h-7 px-2.5 rounded-md border border-line bg-panel-2 text-[0.7rem] text-ink-dim hover:text-ink hover:border-line-bright transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait"
+      >
+        <History size={11} />
+        {loadingEarlier
+          ? "reading the archive…"
+          : `load ${formatNumber(Math.min(EARLIER_PAGE, earlierAvailable))} earlier ${
+              earlierAvailable === 1 ? "line" : "lines"
+            }`}
+      </button>
+    </div>
+  ) : null;
 
   return (
     <div className="panel overflow-hidden">
@@ -396,8 +583,8 @@ export function LogTrack({
         <span className="font-mono text-xs text-ink-dim tabular-nums">{rate1min}/min</span>
         <span className="font-mono text-xs text-ink-faint tabular-nums">
           {highlight || levels.size < LEVEL_ORDER.length
-            ? `showing ${filtered.length} of ${lines.length}`
-            : `${lines.length} lines`}
+            ? `showing ${filtered.length} of ${allLines.length}`
+            : `${allLines.length} lines`}
         </span>
 
         {allNoLevel && (
@@ -407,6 +594,48 @@ export function LogTrack({
         )}
 
         <div className="ml-auto flex items-center gap-1">
+          {/* Format choice inline rather than in a menu or dialog: two options
+              do not earn a popup, and the chips sit where the trigger is so the
+              second click is a few pixels from the first. */}
+          {exportOpen && (
+            <>
+              <button
+                type="button"
+                onClick={() => runExport("json")}
+                className="h-11 md:h-7 px-2 rounded-md border border-line-bright bg-panel-2 font-mono text-[0.7rem] text-ink hover:border-accent/50 hover:text-accent transition-colors cursor-pointer"
+              >
+                JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => runExport("txt")}
+                className="h-11 md:h-7 px-2 rounded-md border border-line-bright bg-panel-2 font-mono text-[0.7rem] text-ink hover:border-accent/50 hover:text-accent transition-colors cursor-pointer"
+              >
+                TXT
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setExportOpen((v) => !v)}
+            disabled={filtered.length === 0}
+            aria-expanded={exportOpen}
+            // Names the count, because export scope is exactly what a reader
+            // second-guesses: this exports what is on screen, filters and all.
+            aria-label={
+              filtered.length === 0
+                ? `Nothing to export from ${container}`
+                : `Export ${formatNumber(filtered.length)} shown ${filtered.length === 1 ? "line" : "lines"} from ${container}`
+            }
+            title={
+              filtered.length === 0
+                ? "Nothing to export"
+                : `Export the ${formatNumber(filtered.length)} lines shown`
+            }
+            className="h-11 w-11 md:h-7 md:w-7 grid place-items-center rounded-md text-ink-faint hover:text-ink hover:bg-panel-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-faint disabled:hover:bg-transparent"
+          >
+            <Download size={14} />
+          </button>
           {/* Explicit pause control: the only way to reach the pause/resume
               behaviour without a pointer, since hover has no touch equivalent. */}
           <button
@@ -462,29 +691,69 @@ export function LogTrack({
             className="logbox overflow-y-auto py-1 outline-none focus-visible:ring-1 focus-visible:ring-accent"
             style={{ height: bodyHeight }}
           >
-            {status === "error" && lines.length === 0 ? (
+            {status === "error" && allLines.length === 0 ? (
               <div className="px-3 py-6 text-xs text-ink-faint">
-                {state?.detail ?? `couldn't connect to ${container}.`} Try removing and re-adding
-                the container from the rail.
+                <p>
+                  {state?.detail ?? `couldn't connect to ${container}.`} Try removing and
+                  re-adding the container from the rail.
+                </p>
+                {/* The payoff of persisting anything: the stream being dead is
+                    exactly when older lines are worth reading, and they are the
+                    only thing on this surface that a dead stream cannot take. */}
+                {canLoadEarlier && (
+                  <p className="mt-2 text-ink-dim">
+                    Nothing is streaming, but {formatNumber(earlierAvailable)} archived{" "}
+                    {earlierAvailable === 1 ? "line" : "lines"} for this container{" "}
+                    {earlierAvailable === 1 ? "is" : "are"} still readable.
+                  </p>
+                )}
+                {earlierButton}
               </div>
-            ) : lines.length === 0 ? (
+            ) : allLines.length === 0 ? (
               <div className="px-3 py-6 text-xs text-ink-faint">
-                {status === "live"
-                  ? "waiting for the first line — quiet is normal here."
-                  : status === "connecting"
-                    ? "reading scrollback…"
-                    : status === "ended"
-                      ? "this container exited without logging anything."
-                      : "connection lost before any line arrived."}
+                <p>
+                  {status === "live"
+                    ? "waiting for the first line — quiet is normal here."
+                    : status === "connecting"
+                      ? "reading scrollback…"
+                      : status === "ended"
+                        ? "this container exited without logging anything."
+                        : "connection lost before any line arrived."}
+                </p>
+                {earlierButton}
               </div>
             ) : filtered.length === 0 ? (
               <div className="px-3 py-6 text-xs text-ink-faint">
                 {query
-                  ? `no line matches /${query}/ in the last ${lines.length} lines.`
-                  : `every line in the last ${lines.length} is filtered out — ${levelsOffNote(levels)}.`}
+                  ? `no line matches /${query}/ in the last ${allLines.length} lines.`
+                  : `every line in the last ${allLines.length} is filtered out — ${levelsOffNote(levels)}.`}
               </div>
             ) : (
               <>
+                {earlierButton}
+                {filtered.slice(0, archivedShown).map((l) => (
+                  <LogRow
+                    key={l.id}
+                    line={l}
+                    ansi={ansi}
+                    highlight={highlight}
+                    arrived={arrivedIds.has(l.id)}
+                  />
+                ))}
+                {/* The seam. A hairline rule with the project's own microlabel,
+                    not a per-row badge: which side of the line a row sits on is
+                    the only thing that separates them, and repeating that on
+                    every row would fight the level gutter for the same pixels. */}
+                {archivedShown > 0 && archivedShown < filtered.length && (
+                  <div className="flex items-center gap-2 px-3 py-1.5">
+                    <span className="h-px flex-1 bg-line" />
+                    {/* microlabel for the shape, ink-dim for the colour: the
+                        class ships ink-faint, which measures 3.1:1 here. A rail
+                        group header is scanned once; this seam is read. */}
+                    <span className="microlabel text-ink-dim">archive above · this session below</span>
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                )}
                 {short && (
                   // The seed came back short of the requested tail — this
                   // *is* the container's entire history, not a truncated
@@ -500,10 +769,17 @@ export function LogTrack({
                   // Falls back to `lines.length` only when the caller hasn't
                   // wired the prop up yet.
                   <div className="px-3 py-1 text-[0.7rem] text-ink-faint italic">
-                    only {seedCount ?? lines.length} lines exist for this container
+                    {canLoadEarlier
+                      ? // Without this branch the note flatly contradicts the
+                        // button above it: docker really is holding only N lines,
+                        // but the archive kept the ones docker has since rotated
+                        // away, so "only N exist" stops being true the moment
+                        // anything was persisted.
+                        `docker is holding only ${seedCount ?? lines.length} lines — older ones survive in the archive`
+                      : `only ${seedCount ?? lines.length} lines exist for this container`}
                   </div>
                 )}
-                {filtered.map((l) => (
+                {filtered.slice(archivedShown).map((l) => (
                   <LogRow
                     key={l.id}
                     line={l}

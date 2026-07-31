@@ -1,13 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, Baseline } from "lucide-react";
+import { Search, X, Baseline, Database } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatBytes, formatNumber, formatUptime } from "@/lib/format";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { ContainerRail, type RailContainer } from "@/components/container-rail";
 import { LogTrack } from "@/components/log-track";
 import { hasAnsi } from "@/components/ansi";
 import { useLogStream, type LogConnection } from "@/lib/use-log-stream";
+import { useLogArchive } from "@/lib/use-log-archive";
+import { ARCHIVE_LINE_CAP } from "@/lib/log-archive";
 import {
   LEVEL_LABEL,
   LEVEL_ORDER,
@@ -136,6 +139,21 @@ export function LogConsole({
 
   const { lines, tracks, connection, arrivals, short, seedCount } = useLogStream(selected);
 
+  // Everything that arrives is written through to IndexedDB. The console never
+  // waits on it: if the archive cannot open, this surface is exactly the live
+  // console it was before persistence existed.
+  const archive = useLogArchive(lines);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+
+  useEffect(() => {
+    if (!confirmPurge) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setConfirmPurge(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmPurge]);
+
   // An invalid pattern is a half-typed one. Applying nothing and saying so keeps
   // the floor readable while you type `(err` — blanking every track mid-keystroke
   // would make the filter feel broken at exactly the moment it is being used.
@@ -220,6 +238,16 @@ export function LogConsole({
 
   const dense = selected.length > 3;
   const allLevelsOff = levels.size === 0;
+
+  // The honest way to say "how much history is here" is the span the archive
+  // actually covers, not a figure derived from the cap and this host's average
+  // rate — a quiet night and a container restart storm fill it very differently.
+  const archiveSpan =
+    archive.stats.oldestTs !== null && archive.stats.newestTs !== null
+      ? formatUptime((archive.stats.newestTs - archive.stats.oldestTs) / 1000)
+      : null;
+  // Say it out loud before the reader notices lines vanishing from the top.
+  const archiveNearCap = archive.stats.count >= ARCHIVE_LINE_CAP * 0.9;
 
   // A `?c=` name that no longer matches a container gets dropped — but dropping
   // it in silence lands the reader on an empty floor with no reason given, so a
@@ -392,6 +420,81 @@ export function LogConsole({
               Reload to sign in again
             </a>{" "}
             — the tracks below are the last lines that arrived, not live.
+            {archive.stats.count > 0 && " Archived lines are still readable on every track."}
+          </p>
+        )}
+
+        {/* Storage disclosure, in the same advisory register as the notes above
+            it. Container logs on this box carry real credentials, so the fact
+            that they are now written to this device is stated plainly and the
+            way to undo it sits next to the statement, not in Settings. */}
+        {archive.available && archive.stats.count > 0 && (
+          // ink-dim, not the ink-faint the sibling notes use: measured at 11px
+          // ink-faint is 3.1:1 against this ground, and this is the one line in
+          // the group that both discloses what is being written to the device
+          // and carries a destructive control. Those have to be readable.
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.7rem] text-ink-dim">
+            <Database size={11} className="shrink-0" aria-hidden />
+            {confirmPurge ? (
+              <>
+                {/* The count lives on the button, not in the question: repeating
+                    it in both is the redundancy clarify warns about, and the
+                    number matters most where the click happens. */}
+                <span className="text-ink">Delete every archived line? This can&apos;t be undone.</span>
+                {/* One flex item, so the two answers never split across a wrap
+                    and strand "Keep it" on a line of its own with no question
+                    attached to it — which is exactly what 390px did. */}
+                <span className="inline-flex items-center gap-2">
+                  {/* Safe answer first, and deliberately in the slot the
+                      trigger occupied: with "Delete archive" in both places, a
+                      second click in the same spot destroyed 387 lines without
+                      the prompt ever being read. */}
+                  <button
+                    type="button"
+                    onClick={() => setConfirmPurge(false)}
+                    className="inline-flex items-center min-h-11 md:min-h-0 px-1 hover:text-ink cursor-pointer"
+                  >
+                    Keep it
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void archive.clear();
+                      setConfirmPurge(false);
+                    }}
+                    disabled={archive.clearing}
+                    className="inline-flex items-center min-h-11 md:min-h-0 px-1 text-bad underline underline-offset-2 hover:text-ink cursor-pointer disabled:opacity-60"
+                  >
+                    Delete {formatNumber(archive.stats.count)} lines
+                  </button>
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  <span className="font-mono text-ink tabular-nums">
+                    {formatNumber(archive.stats.count)}
+                  </span>{" "}
+                  lines kept on this device
+                  {archiveSpan && (
+                    <>
+                      {" · "}
+                      <span className="font-mono tabular-nums">{archiveSpan}</span>
+                    </>
+                  )}
+                  {" · "}
+                  <span className="font-mono tabular-nums">{formatBytes(archive.stats.bytes)}</span>
+                  {archiveNearCap && " · oldest are being evicted"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setConfirmPurge(true)}
+                  className="inline-flex items-center min-h-11 md:min-h-0 px-1 underline underline-offset-2 hover:text-ink cursor-pointer"
+                >
+                  Delete archive
+                </button>
+              </>
+            )}
           </p>
         )}
       </div>
