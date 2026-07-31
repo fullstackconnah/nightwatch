@@ -31,14 +31,22 @@ export function formatBitrate(bitsPerSec: number | undefined | null): string {
   return `${Math.round(bitsPerSec)} bps`;
 }
 
+/**
+ * Two significant units, largest first. Sub-minute spans report seconds rather
+ * than the "0m" this used to render — the one span where that matters most is a
+ * container that has just been restarted, which is exactly when someone is
+ * watching the counter.
+ */
 export function formatUptime(seconds: number | undefined | null): string {
   if (seconds == null || isNaN(seconds)) return "—";
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
+  const total = Math.max(0, Math.floor(seconds));
+  const d = Math.floor(total / 86400);
+  const h = Math.floor((total % 86400) / 3600);
+  const m = Math.floor((total % 3600) / 60);
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${total}s`;
 }
 
 export function formatPercent(v: number | undefined | null, digits = 0): string {

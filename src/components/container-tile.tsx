@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ExternalLink } from "lucide-react";
+import {
+  ContainerStatus,
+  LifecycleActions,
+  LifecycleError,
+  OpenAppLink,
+  PortChips,
+  actionsFor,
+  publishedPorts,
+  useLifecycle,
+} from "@/components/container-controls";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
 import type { TiledContainer, WidgetData } from "@/lib/client";
@@ -11,8 +20,19 @@ export function stateDotClass(c: { state: string; health: string | null }): stri
   if (c.health === "unhealthy") return "dot-unhealthy";
   if (c.state === "running") return "dot-running";
   if (c.state === "restarting") return "dot-restarting";
+  if (c.state === "paused") return "dot-paused";
   if (c.state === "dead") return "dot-dead";
   return "dot-stopped";
+}
+
+/** Group separator for the telemetry strip — without it "mem 133 MiB" and the
+ *  next value run together into one number nobody can parse at a glance. */
+function Divider() {
+  return (
+    <span className="text-ink-faint" aria-hidden="true">
+      ·
+    </span>
+  );
 }
 
 function TileIcon({ icon, name }: { icon: string | null; name: string }) {
@@ -41,16 +61,26 @@ export function ContainerTile({
   container: c,
   widget,
   stats,
+  onChanged,
 }: {
   container: TiledContainer;
   widget?: WidgetData;
   stats?: { cpuPct: number; memBytes: number };
+  onChanged?: () => void;
 }) {
+  const lifecycle = useLifecycle(c.id, onChanged);
+  const running = c.state === "running";
+  const hasActions = actionsFor(c.state).length > 0;
+
   return (
     <div
       className={cn(
         "panel panel-hover block p-3 group relative",
-        c.state !== "running" && "opacity-60",
+        // Deliberately not opacity on the card: a blanket 0.6 drags every label
+        // inside it under 4.5:1 against the panel, including the state text that
+        // is the whole reason to look at a stopped tile. Dim the ground instead
+        // and let the contents keep their own contrast.
+        !running && c.state !== "paused" && "bg-panel/40 border-line/70",
       )}
     >
       <Link
@@ -58,35 +88,35 @@ export function ContainerTile({
         aria-label={c.name}
         className="absolute inset-0 rounded-[inherit] focus-visible:ring-1 focus-visible:ring-accent"
       />
+
       <div className="flex items-center gap-2.5">
         <TileIcon icon={c.tile.icon} name={c.name} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className={cn("dot", stateDotClass(c))} />
-            <span className="text-sm font-medium truncate">{c.name}</span>
+            <span className={cn("text-sm font-medium truncate", !running && "text-ink-dim")}>
+              {c.name}
+            </span>
           </div>
           <div className="text-[0.68rem] text-ink-faint font-mono truncate" title={c.image}>
             {c.image.replace(/^(ghcr\.io|lscr\.io|docker\.io)\//, "")}
           </div>
-          {stats && c.state === "running" && (
-            <div className="text-[0.68rem] text-ink-dim font-mono truncate">
-              cpu {stats.cpuPct.toFixed(1)}% · mem {formatBytes(stats.memBytes, 0)}
-            </div>
-          )}
         </div>
-        {c.tile.url && (
-          <a
-            href={c.tile.url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className="hover-reveal text-ink-dim hover:text-accent p-3 -m-2 md:p-1 md:m-0 relative z-10"
-            title={`Open ${c.tile.url}`}
-          >
-            <ExternalLink size={14} />
-          </a>
+      </div>
+
+      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[0.68rem]">
+        <ContainerStatus c={c} />
+        {stats && running && (
+          <>
+            <Divider />
+            <span className="text-ink-dim font-mono">
+              cpu {stats.cpuPct.toFixed(1)}% · mem {formatBytes(stats.memBytes, 0)}
+            </span>
+          </>
         )}
       </div>
+
+      <LifecycleError lifecycle={lifecycle} className="mt-1.5 relative z-10" />
 
       {widget && !widget.error && widget.fields.length > 0 && (
         <div className="mt-2.5 pt-2.5 border-t border-line grid grid-cols-2 gap-x-3 gap-y-1">
@@ -110,6 +140,28 @@ export function ContainerTile({
       {widget?.error && (
         <div className="mt-2.5 pt-2 border-t border-line microlabel !text-warn/70">
           widget: {widget.error}
+        </div>
+      )}
+
+      {/* The control lane. Always visible, always at the same edge of every
+          card, and sharing its row with the published ports — which is what
+          pays for the height it costs.
+
+          It was briefly a hover-revealed cluster up in the header instead. That
+          reads cleaner at rest and is wrong: an opacity-0 element still holds
+          its width, so four buttons quietly took ~130px away from the container
+          name on a 240px card and turned "nginx-proxy-manager" into
+          "nginx-proxy-…". Reserving the space elsewhere only moves the damage;
+          overlaying the buttons hides the name of the thing you are about to
+          stop. A row of their own is the only version that costs nothing it
+          shouldn't. */}
+      {(hasActions || c.tile.url || publishedPorts(c.ports).length > 0) && (
+        <div className="mt-2.5 pt-1.5 border-t border-line/60 flex items-center justify-between gap-2 relative z-10">
+          <PortChips ports={c.ports} className="text-[0.68rem] min-w-0" />
+          <div className="flex items-center gap-0.5 ml-auto">
+            <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} dense />
+            {c.tile.url && <OpenAppLink url={c.tile.url} name={c.name} dense />}
+          </div>
         </div>
       )}
     </div>

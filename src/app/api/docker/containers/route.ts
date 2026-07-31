@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAndStartContainer, listContainers, type CreateContainerSpec } from "@/lib/docker";
+import {
+  createAndStartContainer,
+  listContainersWithRuntime,
+  type CreateContainerSpec,
+} from "@/lib/docker";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 
@@ -7,17 +11,25 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const containers = await listContainers();
+    const containers = await listContainersWithRuntime();
     const widgetContainers = new Set(resolveWidgetInstances(containers).map((w) => w.container));
     const tiles = buildTiles(containers, widgetContainers);
+    // running/paused/restarting are exhaustive of "not stopped", so `stopped`
+    // is the remainder rather than an enumeration — exited, created, dead and
+    // removing all belong there, and a state Docker adds later still lands
+    // somewhere instead of silently vanishing from the totals.
+    const running = tiles.filter((t) => t.state === "running").length;
+    const paused = tiles.filter((t) => t.state === "paused").length;
+    const restarting = tiles.filter((t) => t.state === "restarting").length;
     return NextResponse.json({
       containers: tiles,
       groups: orderedGroups(tiles),
       counts: {
         total: tiles.length,
-        running: tiles.filter((t) => t.state === "running").length,
-        stopped: tiles.filter((t) => t.state === "exited" || t.state === "created").length,
-        restarting: tiles.filter((t) => t.state === "restarting").length,
+        running,
+        paused,
+        restarting,
+        stopped: tiles.length - running - paused - restarting,
         unhealthy: tiles.filter((t) => t.health === "unhealthy").length,
       },
     });

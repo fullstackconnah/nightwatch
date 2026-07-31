@@ -7,7 +7,7 @@ import { ContainerTile } from "@/components/container-tile";
 import { useContainers, useResources, useWidgets } from "@/lib/client";
 
 export default function OverviewPage() {
-  const { data, error, isLoading } = useContainers(5000);
+  const { data, error, isLoading, mutate } = useContainers(5000);
   const { data: widgetData } = useWidgets(20000);
   const { data: resourceData } = useResources(10000);
 
@@ -42,6 +42,7 @@ export default function OverviewPage() {
             {data.counts.restarting > 0 && (
               <Badge variant="blue">{data.counts.restarting} restarting</Badge>
             )}
+            {data.counts.paused > 0 && <Badge variant="warn">{data.counts.paused} paused</Badge>}
             <Badge>{data.counts.stopped} stopped</Badge>
           </div>
         )}
@@ -77,6 +78,7 @@ export default function OverviewPage() {
                   container={c}
                   widget={widgetData?.widgets[c.name]}
                   stats={statsById.get(c.id)}
+                  onChanged={() => mutate()}
                 />
               ))}
             </div>

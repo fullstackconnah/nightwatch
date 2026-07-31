@@ -34,6 +34,7 @@ export function stateBadgeVariant(
   if (health === "unhealthy") return "warn";
   if (state === "running") return "ok";
   if (state === "restarting") return "blue";
+  if (state === "paused") return "warn";
   if (state === "dead") return "bad";
   return "neutral";
 }

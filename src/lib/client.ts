@@ -36,7 +36,14 @@ export const fetcher = async (url: string) => {
 export interface ContainersResponse {
   containers: TiledContainer[];
   groups: string[];
-  counts: { total: number; running: number; stopped: number; restarting: number; unhealthy: number };
+  counts: {
+    total: number;
+    running: number;
+    paused: number;
+    stopped: number;
+    restarting: number;
+    unhealthy: number;
+  };
 }
 
 export function useContainers(refreshMs = 5000) {

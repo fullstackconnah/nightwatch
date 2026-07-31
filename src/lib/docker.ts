@@ -32,11 +32,16 @@ interface DockerRootCacheEntry {
   data: string | null;
   ts: number;
 }
+interface RuntimeCacheEntry {
+  data: Record<string, ContainerRuntime>;
+  ts: number;
+}
 const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
   __statsCache?: StatsCacheEntry;
   __dfCache?: DfCacheEntry;
   __dockerRootCache?: DockerRootCacheEntry;
+  __runtimeCache?: RuntimeCacheEntry;
 };
 export const docker: Docker = globalForDocker.__docker ?? createClient();
 globalForDocker.__docker = docker;
@@ -96,6 +101,98 @@ export async function listContainers(): Promise<ContainerSummary[]> {
       networkMode: (c.HostConfig as { NetworkMode?: string })?.NetworkMode,
     };
   });
+}
+
+/**
+ * The per-container facts that only /containers/{id}/json carries. The list
+ * endpoint's `Status` ("Up 2 hours", "Exited (137) 3 days ago") is Docker's own
+ * prose rendering of exactly these fields — coarse, localised to whole units,
+ * and impossible to tick a live counter from. Inspect gives the timestamps.
+ */
+export interface ContainerRuntime {
+  /** ms epoch of the current run, or null if this container has never started. */
+  startedAt: number | null;
+  /** ms epoch the last run ended, or null while running / if it never ran. */
+  finishedAt: number | null;
+  /** Exit status of the last completed run; null while running or never run. */
+  exitCode: number | null;
+  restartCount: number;
+}
+
+export type RuntimeContainer = ContainerSummary & ContainerRuntime;
+
+const RUNTIME_TTL_MS = 3_000;
+
+/** Docker writes this sentinel rather than a null when a timestamp is unset. */
+const ZERO_TIME = "0001-01-01T00:00:00Z";
+
+function parseDockerTime(value: string | undefined): number | null {
+  if (!value || value === ZERO_TIME) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Inspect every container in one fan-out, cached briefly.
+ *
+ * The cache is deliberately short: it exists to collapse the burst that happens
+ * when the overview page and the containers page are both mounted and their
+ * 5s polls interleave, not to serve stale timestamps. It is also invalidated by
+ * *membership*, not just age — a container created since the last pass would
+ * otherwise show no uptime until the TTL expired, which is precisely the moment
+ * someone is watching it.
+ *
+ * Inspect is cheap (in-memory daemon state, no container involvement), unlike
+ * `stats`, which blocks ~1s per call to fill precpu. Fanning it out across ~26
+ * containers costs a few milliseconds.
+ */
+async function containerRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
+  const now = Date.now();
+  const cached = globalForDocker.__runtimeCache;
+  if (cached && now - cached.ts < RUNTIME_TTL_MS && ids.every((id) => id in cached.data)) {
+    return cached.data;
+  }
+  const settled = await Promise.allSettled(
+    ids.map(async (id) => {
+      const info = await docker.getContainer(id).inspect();
+      const runtime: ContainerRuntime = {
+        startedAt: parseDockerTime(info.State?.StartedAt),
+        finishedAt: info.State?.Running ? null : parseDockerTime(info.State?.FinishedAt),
+        exitCode: info.State?.Running ? null : (info.State?.ExitCode ?? null),
+        restartCount: info.RestartCount ?? 0,
+      };
+      return [id, runtime] as const;
+    }),
+  );
+  const data: Record<string, ContainerRuntime> = {};
+  for (const r of settled) {
+    // A container removed between the list and the inspect simply drops out;
+    // its caller renders the same "unknown" branch as a never-started one.
+    if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
+  }
+  globalForDocker.__runtimeCache = { data, ts: now };
+  return data;
+}
+
+const UNKNOWN_RUNTIME: ContainerRuntime = {
+  startedAt: null,
+  finishedAt: null,
+  exitCode: null,
+  restartCount: 0,
+};
+
+/**
+ * listContainers() plus start/exit timestamps. Kept separate from
+ * listContainers() on purpose: gpu, processes, network, widgets and the log
+ * stream all call that one for names and labels, and none of them should pay
+ * for a 26-way inspect fan-out they have no use for.
+ */
+export async function listContainersWithRuntime(): Promise<RuntimeContainer[]> {
+  const containers = await listContainers();
+  const runtimes = await containerRuntimes(containers.map((c) => c.id)).catch(
+    () => ({}) as Record<string, ContainerRuntime>,
+  );
+  return containers.map((c) => ({ ...c, ...(runtimes[c.id] ?? UNKNOWN_RUNTIME) }));
 }
 
 /**
@@ -437,13 +534,44 @@ export async function containerLogs(id: string, tail = 200): Promise<string> {
   return demuxLogs(buf).replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-export type ContainerAction = "start" | "stop" | "restart";
+export const CONTAINER_ACTIONS = ["start", "stop", "restart", "pause", "unpause"] as const;
+export type ContainerAction = (typeof CONTAINER_ACTIONS)[number];
 
+/**
+ * pause/unpause need no extra socket-proxy scope: the proxy's generic
+ * `^/containers` allow rule sits after the granular ALLOW_START/ALLOW_STOP ones,
+ * so CONTAINERS=1 + POST=1 — which start/stop/restart/create already require —
+ * covers every write under that prefix. Verified against the running proxy's
+ * haproxy.cfg.template, 2026-08-01.
+ */
 export async function containerAction(id: string, action: ContainerAction): Promise<void> {
   const container = docker.getContainer(id);
-  if (action === "start") await container.start();
-  else if (action === "stop") await container.stop({ t: 15 });
-  else await container.restart({ t: 15 });
+  switch (action) {
+    case "start":
+      return void (await container.start());
+    case "stop":
+      return void (await container.stop({ t: 15 }));
+    case "restart":
+      return void (await container.restart({ t: 15 }));
+    case "pause":
+      return void (await container.pause());
+    case "unpause":
+      return void (await container.unpause());
+  }
+}
+
+/**
+ * Every lifecycle verb changes exactly what containerRuntimes() caches, and the
+ * poll that follows one is the poll someone is actually watching — so the
+ * snapshot is dropped here rather than left to age out over RUNTIME_TTL_MS.
+ * Wrapped so a caller can't perform an action and forget.
+ */
+export async function performContainerAction(id: string, action: ContainerAction): Promise<void> {
+  try {
+    await containerAction(id, action);
+  } finally {
+    globalForDocker.__runtimeCache = undefined;
+  }
 }
 
 export interface CreateContainerSpec {

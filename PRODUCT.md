@@ -12,7 +12,7 @@ Single admin (the owner) monitoring and managing their Docker home server (192.1
 
 ## Product Purpose
 
-"nightwatch" — a self-hosted homelab dashboard that replaced Homepage on the server. Shows container health, host vitals, per-app widget stats, and provides container lifecycle actions (start/stop/restart/create) plus links into each app's own UI. Success = the owner trusts it enough to retire Homepage/Glances and answer any "what's wrong / what's heavy" question in seconds.
+"nightwatch" — a self-hosted homelab dashboard that replaced Homepage on the server. Shows container health, host vitals, per-app widget stats, and provides container lifecycle actions (start/stop/restart/pause/resume/create) plus links into each app's own UI. Success = the owner trusts it enough to retire Homepage/Glances and answer any "what's wrong / what's heavy" question in seconds.
 
 ## Operating Context
 

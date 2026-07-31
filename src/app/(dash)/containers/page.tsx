@@ -2,53 +2,35 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, Play, Plus, RotateCw, Search, Square } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Badge, stateBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { stateDotClass } from "@/components/container-tile";
+import {
+  ContainerStatus,
+  LifecycleActions,
+  LifecycleError,
+  OpenAppLink,
+  PortChips,
+  useLifecycle,
+} from "@/components/container-controls";
 import { CreateContainerDialog } from "@/components/create-container";
-import { postJson, useContainers, type TiledContainer } from "@/lib/client";
-import { relativeTime } from "@/lib/format";
+import { useContainers, type TiledContainer } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
+/** Same five verbs, same icons, same order as the overview cards and the detail
+ *  header — the vocabulary is defined once in container-controls and rendered
+ *  three times, so no surface can drift into meaning something different. */
 function RowActions({ c, onDone }: { c: TiledContainer; onDone: () => void }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  async function act(action: "start" | "stop" | "restart") {
-    setBusy(action);
-    try {
-      await postJson(`/api/docker/containers/${c.id.slice(0, 12)}/action`, { action });
-      onDone();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "action failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-  const running = c.state === "running";
+  const lifecycle = useLifecycle(c.id, onDone);
   return (
-    <div className="flex items-center gap-1 justify-end">
-      {!running && (
-        <Button size="icon" variant="ghost" title="Start" disabled={!!busy} onClick={() => act("start")}>
-          <Play size={13} className={busy === "start" ? "animate-pulse" : ""} />
-        </Button>
-      )}
-      {running && (
-        <>
-          <Button size="icon" variant="ghost" title="Restart" disabled={!!busy} onClick={() => act("restart")}>
-            <RotateCw size={13} className={busy === "restart" ? "animate-spin" : ""} />
-          </Button>
-          <Button size="icon" variant="ghost" title="Stop" disabled={!!busy} onClick={() => act("stop")}>
-            <Square size={13} className={busy === "stop" ? "animate-pulse" : ""} />
-          </Button>
-        </>
-      )}
-      {c.tile.url && (
-        <a href={c.tile.url} target="_blank" rel="noreferrer" title="Open app"
-          className="p-1.5 text-ink-dim hover:text-accent">
-          <ExternalLink size={13} />
-        </a>
-      )}
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-0.5 justify-end">
+        <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
+        {c.tile.url && <OpenAppLink url={c.tile.url} name={c.name} />}
+      </div>
+      <LifecycleError lifecycle={lifecycle} className="max-w-56 justify-end text-right" />
     </div>
   );
 }
@@ -94,7 +76,7 @@ export default function ContainersPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line">
-              {["Name", "State", "Image", "Ports", "Stack", "Created", ""].map((h) => (
+              {["Name", "State", "Image", "Ports", "Stack", "Uptime", ""].map((h) => (
                 <th key={h} className="microlabel text-left px-3 py-2 font-semibold">
                   {h}
                 </th>
@@ -121,16 +103,15 @@ export default function ContainersPage() {
                 <td className="px-3 py-2 font-mono text-xs text-ink-dim max-w-56 truncate" title={c.image}>
                   {c.image}
                 </td>
-                <td className="px-3 py-2 font-mono text-xs text-ink-dim">
-                  {c.ports
-                    .filter((p) => p.public)
-                    .slice(0, 3)
-                    .map((p) => p.public)
-                    .join(", ") || "—"}
+                <td className="px-3 py-2 text-xs">
+                  <PortChips ports={c.ports} max={4} />
+                  {c.ports.every((p) => p.public == null) && (
+                    <span className="font-mono text-ink-faint">—</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-xs text-ink-dim">{c.composeProject ?? "—"}</td>
-                <td className="px-3 py-2 text-xs text-ink-faint whitespace-nowrap">
-                  {relativeTime(c.created * 1000)}
+                <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  <ContainerStatus c={c} />
                 </td>
                 <td className="px-3 py-2">
                   <RowActions c={c} onDone={() => mutate()} />
@@ -164,17 +145,11 @@ export default function ContainersPage() {
               </Badge>
             </div>
             <div className="font-mono text-xs text-ink-dim truncate">{c.image}</div>
-            <div className="text-xs text-ink-dim">
-              <span className="microlabel mr-1">ports</span>
-              {c.ports
-                .filter((p) => p.public)
-                .slice(0, 3)
-                .map((p) => p.public)
-                .join(", ") || "—"}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+              <ContainerStatus c={c} />
+              <PortChips ports={c.ports} max={4} />
             </div>
-            <div className="text-xs text-ink-faint">
-              {c.composeProject ?? "—"} · {relativeTime(c.created * 1000)}
-            </div>
+            <div className="text-xs text-ink-dim">{c.composeProject ?? "not compose-managed"}</div>
             <div className="pt-1 border-t border-line/50">
               <RowActions c={c} onDone={() => mutate()} />
             </div>

@@ -85,6 +85,14 @@ body {
   box-shadow: 0 0 6px 1px rgba(125, 211, 252, 0.55);
   animation: pulse 0.9s ease-in-out infinite;
 }
+/* Paused is a hollow ring, not another hue. Amber is already unhealthy and blue
+   is already restarting, so a fourth colour would have to be learned; a dot
+   drawn as an outline with nothing inside reads as held-in-place on sight, and
+   stays legible for anyone who can't separate the hues at 8px. */
+.dot-paused {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--color-warn);
+}
 .dot-stopped {
   background: var(--color-ink-faint);
 }
@@ -132,8 +140,13 @@ body {
     opacity: 0;
     transition: opacity 120ms ease;
   }
+  /* focus-within as well as focus-visible: a reveal that wraps more than one
+     control must show all of them when any one is tabbed to, or the keyboard
+     path leads into controls that are still invisible. */
   .group:hover .hover-reveal,
-  .hover-reveal:focus-visible {
+  .group:focus-within .hover-reveal,
+  .hover-reveal:focus-visible,
+  .hover-reveal:focus-within {
     opacity: 1;
   }
 }

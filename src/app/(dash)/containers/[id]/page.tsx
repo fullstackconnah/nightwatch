@@ -3,21 +3,21 @@
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import {
-  ArrowLeft,
-  ExternalLink,
-  Play,
-  RotateCw,
-  ScrollText,
-  Square,
-} from "lucide-react";
+import { ArrowLeft, ExternalLink, ScrollText } from "lucide-react";
 import { Badge, stateBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Sparkline } from "@/components/charts";
-import { fetcher, postJson, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
-import { formatBytes, relativeTime } from "@/lib/format";
+import {
+  LIFECYCLE_META,
+  LifecycleError,
+  actionsFor,
+  useLifecycle,
+} from "@/components/container-controls";
+import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
+import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
+import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
 interface Inspect {
@@ -138,7 +138,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   });
   const { data: containersData } = useContainers(10000);
   const { data: widgetData } = useWidgets(20000);
-  const [busy, setBusy] = useState<string | null>(null);
+  const lifecycle = useLifecycle(id, () => void mutate());
   const [showEnv, setShowEnv] = useState(false);
 
   const history = useStatsHistory(id, info?.state.running ?? false);
@@ -154,17 +154,15 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   const listEntry = containersData?.containers.find((c) => c.id.startsWith(id));
   const widget = listEntry ? widgetData?.widgets[listEntry.name] : undefined;
 
-  async function act(action: "start" | "stop" | "restart") {
-    setBusy(action);
-    try {
-      await postJson(`/api/docker/containers/${id}/action`, { action });
-      await mutate();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "action failed");
-    } finally {
-      setBusy(null);
-    }
-  }
+  // Named buttons rather than the shared icon cluster: this page has room for
+  // words, and a full-width header is the one place where "Stop" should read as
+  // a decision rather than a glyph. The verbs and their availability still come
+  // from the same state machine the cards use.
+  const status = info?.state.status ?? "";
+  const busy = lifecycle.pending !== null;
+  const startedMs = info?.state.startedAt ? Date.parse(info.state.startedAt) : NaN;
+  const hasStarted = Number.isFinite(startedMs) && startedMs > 0;
+  const now = useNow(hasStarted && Date.now() - startedMs < TICKING_THRESHOLD_MS);
 
   if (error) {
     return (
@@ -201,22 +199,32 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
               </Button>
             </a>
           )}
-          {info?.state.running ? (
-            <>
-              <Button variant="outline" disabled={!!busy} onClick={() => act("restart")}>
-                <RotateCw size={13} className={busy === "restart" ? "animate-spin" : ""} /> Restart
-              </Button>
-              <Button variant="danger" disabled={!!busy} onClick={() => act("stop")}>
-                <Square size={13} /> Stop
-              </Button>
-            </>
-          ) : (
-            <Button disabled={!!busy} onClick={() => act("start")}>
-              <Play size={13} /> Start
-            </Button>
-          )}
+          {info &&
+            actionsFor(status).map((action) => {
+              const { label, Icon, variant } = LIFECYCLE_META[action];
+              const isPending = lifecycle.pending === action;
+              return (
+                <Button
+                  key={action}
+                  variant={variant}
+                  disabled={busy}
+                  aria-busy={isPending}
+                  onClick={() => void lifecycle.run(action)}
+                >
+                  <Icon
+                    size={13}
+                    className={cn(
+                      isPending && (action === "restart" ? "animate-spin" : "animate-pulse"),
+                    )}
+                  />{" "}
+                  {label}
+                </Button>
+              );
+            })}
         </div>
       </header>
+
+      <LifecycleError lifecycle={lifecycle} className="panel px-3 py-2 !text-xs" />
 
       {/* live graphs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -274,7 +282,12 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                 [
                   ["Image", info?.image],
                   ["Created", info ? relativeTime(info.created) : "…"],
-                  ["Started", info?.state.running ? relativeTime(info.state.startedAt) : "—"],
+                  [
+                    "Uptime",
+                    hasStarted && (info?.state.running || status === "paused")
+                      ? `${formatUptime((now - startedMs) / 1000)} (since ${relativeTime(startedMs)})`
+                      : "—",
+                  ],
                   ["Restart count", info ? String(info.state.restartCount) : "…"],
                   ["Restart policy", info?.restartPolicy],
                   ["Network mode", info?.networkMode],

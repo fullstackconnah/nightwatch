@@ -17,7 +17,21 @@ services:
       - VOLUMES=1
       - PING=1
       - SYSTEM=1
-      # write scopes — start/stop/restart/create only; EXEC stays off
+      # Write scopes. EXEC stays off — that one is a real boundary, matched by
+      # its own rule in the proxy.
+      #
+      # Read the rest honestly: POST=1 plus CONTAINERS=1 grants EVERY write under
+      # /containers, not just the three verbs named below. The proxy's rule order
+      # is `deny unless GET or POST`, then the granular ALLOW_* allows, then a
+      # generic `allow ^/containers if CONTAINERS` — and that last rule catches
+      # what the granular ones didn't, including pause, unpause, DELETE and prune.
+      # The ALLOW_* lines are therefore documentation, not a narrower grant.
+      #
+      # There is no configuration that gives lifecycle actions without also
+      # giving container removal: any write at all needs POST=1, and listing
+      # containers needs CONTAINERS=1. Verified against the running proxy's
+      # haproxy.cfg.template, 2026-08-01. The boundary that actually holds is
+      # that this proxy is reachable only from the dashboard's own network.
       - POST=1
       - ALLOW_START=1
       - ALLOW_STOP=1

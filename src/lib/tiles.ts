@@ -1,6 +1,6 @@
 import { loadConfig, publicHost } from "@/lib/config";
 import { parseDashboardLabels, resolveIconUrl } from "@/lib/labels";
-import type { ContainerSummary } from "@/lib/docker";
+import type { ContainerSummary, RuntimeContainer } from "@/lib/docker";
 
 /** Zero-config icons for images we recognise (selfh.st slugs). */
 const IMAGE_ICONS: [RegExp, string][] = [
@@ -40,7 +40,7 @@ export interface Tile {
   hasWidget: boolean;
 }
 
-export type TiledContainer = ContainerSummary & { tile: Tile };
+export type TiledContainer = RuntimeContainer & { tile: Tile };
 
 function prettify(project: string | null): string {
   if (!project) return "Ungrouped";
@@ -56,10 +56,16 @@ function inferUrl(c: ContainerSummary): string | null {
   return `http://${publicHost()}:${Math.min(...candidates)}`;
 }
 
-export function buildTiles(
-  containers: ContainerSummary[],
+/**
+ * Generic over the input row so the caller's extra fields survive: the API
+ * route passes RuntimeContainer (summary + start/exit timestamps) and needs
+ * them on the other side. A signature fixed to ContainerSummary would silently
+ * widen them away.
+ */
+export function buildTiles<T extends ContainerSummary>(
+  containers: T[],
   widgetContainers: Set<string>,
-): TiledContainer[] {
+): (T & { tile: Tile })[] {
   const cfg = loadConfig();
   const groupByContainer = new Map<string, string>();
   for (const g of cfg.groups) for (const name of g.containers) groupByContainer.set(name, g.name);
@@ -88,7 +94,7 @@ export function buildTiles(
 }
 
 /** Ordered group names: configured order first, then discovered groups alphabetically. */
-export function orderedGroups(tiles: TiledContainer[]): string[] {
+export function orderedGroups(tiles: { tile: Pick<Tile, "group"> }[]): string[] {
   const cfg = loadConfig();
   const configured = cfg.groups.map((g) => g.name);
   const discovered = [...new Set(tiles.map((t) => t.tile.group))]
