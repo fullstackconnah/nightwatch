@@ -8,6 +8,7 @@ import {
   HardDrive,
   Database,
   Network,
+  ScrollText,
   Settings,
   ExternalLink,
   LogOut,
@@ -26,6 +27,7 @@ const NAV = [
   // "Network", not "Networks": the page is no longer a docker-network inventory —
   // it is this box's network (uplink throughput, bridges, container footprint, ports).
   { href: "/networks", label: "Network", icon: Network },
+  { href: "/logs", label: "Logs", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -133,7 +135,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
 
       {/* mobile bottom tab bar */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-7 border-t border-line bg-panel/95 backdrop-blur"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-8 border-t border-line bg-panel/95 backdrop-blur"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         {NAV.map(({ href, label, icon: Icon }) => {
@@ -143,7 +145,11 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
               key={href}
               href={href}
               className={cn(
-                "relative flex flex-col items-center justify-center gap-0.5 min-h-14 transition-colors active:bg-panel-2",
+                // overflow-hidden + px-0.5: the bar carries eight cells since the
+                // log console joined it, which is ~45px each on a 360px phone.
+                // "Containers" does not fit at that width and would collide with
+                // its neighbours rather than clip, so the cell clamps its label.
+                "relative flex flex-col items-center justify-center gap-0.5 min-h-14 overflow-hidden px-0.5 transition-colors active:bg-panel-2",
                 active ? "text-accent" : "text-ink-dim",
               )}
             >
@@ -156,7 +162,9 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
                   />
                 )}
               </span>
-              <span className="text-[0.625rem]">{label}</span>
+              <span className="text-[0.625rem] leading-none w-full text-center truncate">
+                {label}
+              </span>
             </Link>
           );
         })}

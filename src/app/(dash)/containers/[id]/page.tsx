@@ -73,7 +73,7 @@ function useStatsHistory(id: string, running: boolean) {
   return history;
 }
 
-function Logs({ id }: { id: string }) {
+function Logs({ id, name }: { id: string; name: string | null }) {
   const [tail, setTail] = useState(200);
   const [paused, setPaused] = useState(false);
   const { data } = useSWR<{ logs: string }>(
@@ -94,6 +94,17 @@ function Logs({ id }: { id: string }) {
           <ScrollText size={11} /> Logs
         </CardTitle>
         <div className="flex items-center gap-2">
+          {/* Hand-off to the multi-container console. This card stays as it is —
+              one container, polled, good enough for a quick look — and the link
+              is how you get from here to watching this alongside others live. */}
+          {name && (
+            <Link
+              href={`/logs?c=${encodeURIComponent(name)}`}
+              className="text-[0.7rem] text-ink-faint hover:text-accent transition-colors whitespace-nowrap"
+            >
+              open in console
+            </Link>
+          )}
           <Select
             className="h-9 w-28 text-sm md:h-6 md:w-24 md:text-xs"
             value={tail}
@@ -366,7 +377,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
         </Card>
       </div>
 
-      <Logs id={id} />
+      <Logs id={id} name={info?.name ?? null} />
     </div>
   );
 }

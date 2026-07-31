@@ -166,9 +166,66 @@ body {
 /* log viewer */
 .logbox {
   font-family: var(--font-mono);
+  /* Set here as well as on `.font-mono`: this class applies the mono family
+     directly rather than through that utility, so without it the timestamp
+     gutter — a column of numerals that changes every second — is proportional
+     and jitters line to line. */
+  font-variant-numeric: tabular-nums;
   font-size: 0.72rem;
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
   overscroll-behavior: contain;
+}
+
+/* Log console: the one authored moment, in the two places it belongs.
+   This host emits roughly 17 log lines a minute across 26 containers, so an
+   arriving line is an event, not a flicker in a torrent — it earns a single
+   settle from an accent wash back to the panel ground. Seeded scrollback never
+   animates; only lines that land while you are watching. */
+.log-arrival {
+  animation: log-land 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Background only, deliberately. An earlier version also animated an inset
+   left-edge accent, but `both` keeps the final keyframe applied after the run,
+   so `box-shadow: inset … transparent` outranked the row's own 1px stderr
+   hairline — every stderr line that arrived while you watched silently lost its
+   channel marker, and kept it under prefers-reduced-motion, making the marker
+   depend on a motion setting. An animation must not own a property another rule
+   needs. */
+@keyframes log-land {
+  from {
+    background-color: color-mix(in srgb, var(--color-accent) 13%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+/* The same moment registered on the rail, so a line arriving in a track you are
+   not looking at is still noticeable — that is the entire job of an ambient
+   watch. Background and ring only: the chip's resting border varies (hollow
+   socket vs. ordinary chip) and animating border-color would fight it. */
+.rail-arrival {
+  animation: rail-land 1100ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+/* Derived from the accent token rather than a literal copy of it: the contract
+   for this surface says "no new palette", and a hardcoded rgba that merely
+   happens to match today desyncs the moment the token moves. */
+@keyframes rail-land {
+  from {
+    background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    box-shadow: 0 0 0 1px var(--color-accent);
+  }
+  to {
+    background-color: transparent;
+    box-shadow: 0 0 0 1px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .log-arrival,
+  .rail-arrival {
+    animation: none;
+  }
 }
