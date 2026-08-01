@@ -242,3 +242,46 @@ body {
     animation: none;
   }
 }
+
+/* Kiosk (/kiosk): the one authored moment on this surface — a wrong PIN
+   shakes the pad so a mistaken entry never depends on reading the error copy
+   alone from across the room. Transform only, so nothing here can silently
+   override a state colour or border the way log-arrival's box-shadow once
+   did (see the note above it). */
+.kiosk-pin-shake {
+  animation: kiosk-pin-shake 420ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+@keyframes kiosk-pin-shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(2px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-4px);
+  }
+  40%,
+  60% {
+    transform: translateX(4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-pin-shake {
+    animation: none;
+  }
+}
+
+/* Kiosk-only status dot: "this session is elevated", not a container state —
+   teal is the one hue this system reserves for "the live signal", so it is
+   used here rather than reaching for `ok` green (which stays scoped to real
+   container health, see .dot-running above). color-mix, not a literal rgba,
+   so it can't desync from the token the way a copied literal would. */
+.dot-live {
+  background: var(--color-accent);
+  box-shadow: 0 0 6px 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
+}

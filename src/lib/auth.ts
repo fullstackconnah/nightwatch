@@ -38,3 +38,58 @@ export function sessionCookieOptions() {
     maxAge: SESSION_TTL_SECONDS,
   };
 }
+
+// --- kiosk PIN elevation -----------------------------------------------------
+//
+// The /kiosk wall display is viewable without the normal admin session (see
+// middleware.ts), but a short "Admin" tap can elevate it into the same
+// authenticated surface the logged-in dashboard gets. That elevation is a
+// second, distinct JWT — not the session token above — so it carries its own
+// short TTL and its own claim, and losing it can never extend or touch a real
+// admin session.
+
+export const KIOSK_ELEVATION_COOKIE = "hd_kiosk_elevated";
+export const KIOSK_ELEVATION_TTL_SECONDS = 5 * 60; // 5 minutes, slides on activity (see /api/auth/kiosk/refresh)
+
+export async function createKioskElevationToken(): Promise<string> {
+  return new SignJWT({ sub: "kiosk", kiosk: true })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${KIOSK_ELEVATION_TTL_SECONDS}s`)
+    .sign(secretKey());
+}
+
+export async function verifyKioskElevationToken(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const { payload } = await jwtVerify(token, secretKey());
+    return payload.kiosk === true;
+  } catch {
+    return false;
+  }
+}
+
+export function kioskElevationCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: false,
+    path: "/",
+    maxAge: KIOSK_ELEVATION_TTL_SECONDS,
+  };
+}
+
+/**
+ * The one check every protected route effectively runs (via middleware.ts):
+ * a normal admin session OR a still-valid kiosk PIN elevation both count as
+ * "authenticated". Kept as its own function rather than folded into
+ * verifySessionToken so the normal login flow's own check never changes
+ * shape — this is strictly additive.
+ */
+export async function isRequestAuthenticated(
+  sessionToken: string | undefined,
+  kioskElevationToken: string | undefined,
+): Promise<boolean> {
+  if (await verifySessionToken(sessionToken)) return true;
+  return verifyKioskElevationToken(kioskElevationToken);
+}
