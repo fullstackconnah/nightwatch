@@ -203,7 +203,11 @@ export default function OverviewPage() {
           </div>
 
           <div
-            className="panel p-1 flex gap-1 overflow-x-auto"
+            // Edge-fade cue: at ~768px the segmented control's rightmost
+            // button clips flush at the container edge with nothing to
+            // suggest it scrolls. A right-edge mask feathers that last
+            // sliver so the cut reads as "more here", not as a layout bug.
+            className="panel p-1 flex gap-1 overflow-x-auto [mask-image:linear-gradient(to_right,black,black_calc(100%-1.5rem),transparent)] [-webkit-mask-image:linear-gradient(to_right,black,black_calc(100%-1.5rem),transparent)]"
             role="group"
             aria-label="Sort containers"
           >
