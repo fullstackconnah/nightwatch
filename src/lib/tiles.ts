@@ -93,6 +93,12 @@ export function buildTiles<T extends ContainerSummary>(
   });
 }
 
+/**
+ * Ranks "needs a look" ahead of "nothing to see" — unhealthy first, then the
+ * states that mean the container isn't doing its job, running last. Shared by
+ * the overview STATE sort and the /containers State column sort so "rank by
+ * state" means the same thing in both places.
+ */
 /** Ordered group names: configured order first, then discovered groups alphabetically. */
 export function orderedGroups(tiles: { tile: Pick<Tile, "group"> }[]): string[] {
   const cfg = loadConfig();

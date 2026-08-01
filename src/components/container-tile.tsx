@@ -14,6 +14,7 @@ import {
 } from "@/components/container-controls";
 import { cn } from "@/lib/utils";
 import { formatBytes } from "@/lib/format";
+import { hasWidgetActions, WidgetActionsMenu } from "@/components/widget-actions";
 import type { TiledContainer, WidgetData } from "@/lib/client";
 
 export function stateDotClass(c: { state: string; health: string | null }): string {
@@ -62,15 +63,21 @@ export function ContainerTile({
   widget,
   stats,
   onChanged,
+  rankValue,
 }: {
   container: TiledContainer;
   widget?: WidgetData;
   stats?: { cpuPct: number; memBytes: number };
   onChanged?: () => void;
+  /** Set only when the overview grid is flattened into a ranked list (sort !=
+   *  groups): the value the reader ranked by, printed mono beside the name so
+   *  the ordering has a number to point at instead of asking for trust. */
+  rankValue?: { label: string; value: string };
 }) {
   const lifecycle = useLifecycle(c.id, onChanged);
   const running = c.state === "running";
   const hasActions = actionsFor(c.state).length > 0;
+  const showWidgetActions = hasWidgetActions(widget);
 
   return (
     <div
@@ -102,6 +109,14 @@ export function ContainerTile({
             {c.image.replace(/^(ghcr\.io|lscr\.io|docker\.io)\//, "")}
           </div>
         </div>
+        {rankValue && (
+          // Neutral mono, not a threshold colour — a high number here is the
+          // reader's own sort choice, not an alarm (Threshold Rule).
+          <div className="text-right shrink-0">
+            <div className="font-mono text-sm text-ink tabular-nums">{rankValue.value}</div>
+            <div className="microlabel">{rankValue.label}</div>
+          </div>
+        )}
       </div>
 
       <div className="mt-1.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[0.68rem]">
@@ -155,12 +170,13 @@ export function ContainerTile({
           overlaying the buttons hides the name of the thing you are about to
           stop. A row of their own is the only version that costs nothing it
           shouldn't. */}
-      {(hasActions || c.tile.url || publishedPorts(c.ports).length > 0) && (
+      {(hasActions || c.tile.url || showWidgetActions || publishedPorts(c.ports).length > 0) && (
         <div className="mt-2.5 pt-1.5 border-t border-line/60 flex items-center justify-between gap-2 relative z-10">
           <PortChips ports={c.ports} className="text-[0.68rem] min-w-0" />
           <div className="flex items-center gap-0.5 ml-auto">
             <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} dense />
             {c.tile.url && <OpenAppLink url={c.tile.url} name={c.name} dense />}
+            {showWidgetActions && widget && <WidgetActionsMenu container={c.name} widgetType={widget.type} />}
           </div>
         </div>
       )}

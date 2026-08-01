@@ -74,7 +74,13 @@ export async function fetchAllWidgets(
 ): Promise<Record<string, WidgetData>> {
   const instances = resolveWidgetInstances(containers);
   const results = await Promise.all(
-    instances.map(async (i) => [i.container, await fetchWidgetData(i)] as const),
+    instances.map(async (i) => {
+      const data = await fetchWidgetData(i);
+      // Tag per-response rather than on the cached object: the cache is keyed by
+      // instance id and shared, but "configured" is a fact about the instance's
+      // origin (config.json vs. a label), not about the fetched data itself.
+      return [i.container, { ...data, configured: !i.id.startsWith("label:") }] as const;
+    }),
   );
   return Object.fromEntries(results);
 }

@@ -1,7 +1,7 @@
 import type { WidgetInstance } from "@/lib/config";
 import { formatBytes, formatNumber, formatPercent } from "@/lib/format";
 import { resolvePath } from "./jsonpath";
-import { fetchJson, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
+import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 
 /**
  * Built-in widget fetchers for what actually runs on the homelab today.
@@ -39,6 +39,16 @@ const radarr: WidgetFetcher = async (w) => {
     { label: "Queued", value: formatNumber(queue.totalRecords) },
   ];
 };
+
+/** Shared *arr command trigger (G3 widget actions) — same POST /command endpoint
+ *  both Sonarr and Radarr expose; only the command name differs by caller. */
+export async function arrCommand(w: WidgetInstance, name: string): Promise<void> {
+  await postAction(`${w.url}/api/v3/command`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Key": w.key || "" },
+    body: JSON.stringify({ name }),
+  });
+}
 
 const prowlarr: WidgetFetcher = async (w) => {
   const stats = await fetchJson<{
@@ -124,6 +134,32 @@ const qbittorrent: WidgetFetcher = async (w) => {
   }
 };
 
+/** Pause/resume every torrent (G3 widget actions) — same login-and-retry-once
+ *  shape as the qbittorrent fetcher above, since these endpoints demand the
+ *  session cookie even when the read-only stats calls don't. */
+export async function qbitSetPaused(w: WidgetInstance, paused: boolean): Promise<void> {
+  const endpoint = paused ? "pause" : "resume";
+  const attempt = async (cookie?: string) => {
+    const h: Record<string, string> = {
+      Referer: w.url,
+      Origin: w.url,
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    if (cookie) h.Cookie = cookie;
+    await postAction(`${w.url}/api/v2/torrents/${endpoint}`, { method: "POST", headers: h, body: "hashes=all" });
+  };
+  try {
+    await attempt(qbitSessions.get(w.url)?.cookie);
+  } catch (e) {
+    if (e instanceof WidgetError && e.message.startsWith("HTTP 40")) {
+      qbitSessions.delete(w.url);
+      await attempt(await qbitLogin(w));
+      return;
+    }
+    throw e;
+  }
+}
+
 // --- Pi-hole v6 (sid session) -----------------------------------------------
 
 const piholeSessions = new Map<string, { sid: string; ts: number }>();
@@ -163,6 +199,30 @@ const pihole: WidgetFetcher = async (w) => {
     throw e;
   }
 };
+
+/** Toggle blocking (G3 widget actions) — POST /api/dns/blocking, the v6 REST
+ *  endpoint matching the sid-session generation the read-only fetcher above
+ *  already speaks. `timerSec` omitted means "disable indefinitely"; the
+ *  route only ever calls this with 300 (5 min) or with `blocking: true`. */
+export async function piholeSetBlocking(w: WidgetInstance, blocking: boolean, timerSec?: number): Promise<void> {
+  const body = JSON.stringify(blocking ? { blocking: true } : { blocking: false, timer: timerSec ?? null });
+  const attempt = async (sid: string) =>
+    postAction(`${w.url}/api/dns/blocking`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-FTL-SID": sid },
+      body,
+    });
+  try {
+    await attempt(await piholeAuth(w));
+  } catch (e) {
+    if (e instanceof WidgetError && e.message.startsWith("HTTP 40")) {
+      piholeSessions.delete(w.url);
+      await attempt(await piholeAuth(w));
+      return;
+    }
+    throw e;
+  }
+}
 
 // --- Seerr / Jellyseerr -----------------------------------------------------
 

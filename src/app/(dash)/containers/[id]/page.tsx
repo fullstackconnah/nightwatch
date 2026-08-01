@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { use, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { ArrowLeft, ExternalLink, ScrollText } from "lucide-react";
+import { Activity, ArrowLeft, ExternalLink, ScrollText } from "lucide-react";
 import { Badge, stateBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,10 @@ import {
   actionsFor,
   useLifecycle,
 } from "@/components/container-controls";
+import { WidgetActionRow } from "@/components/widget-actions";
 import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
+import { processesHref } from "@/lib/container-rank";
 import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +194,11 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
         {info?.state.oomKilled && <Badge variant="bad">OOM killed</Badge>}
         <div className="flex-1" />
         <div className="flex items-center gap-1.5">
+          <Link href={processesHref(info?.name ?? id)}>
+            <Button variant="ghost">
+              <Activity size={13} /> Processes
+            </Button>
+          </Link>
           {listEntry?.tile.url && (
             <a href={listEntry.tile.url} target="_blank" rel="noreferrer">
               <Button variant="outline">
@@ -385,6 +392,13 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                   ? `widget error: ${widget.error}`
                   : "No widget configured. Add one in Settings or via dashboard.widget.* labels."}
               </p>
+            )}
+            {listEntry && widget?.configured && (
+              <WidgetActionRow
+                container={listEntry.name}
+                widgetType={widget.type}
+                className="mt-3 pt-3 border-t border-line"
+              />
             )}
           </CardContent>
         </Card>
