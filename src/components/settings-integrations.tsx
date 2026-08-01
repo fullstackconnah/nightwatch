@@ -516,7 +516,7 @@ export function SettingsIntegrations() {
           <UrlTokenPanel
             title="Forgejo"
             integrationKey="forgejo"
-            urlPlaceholder="http://192.168.1.70:3000"
+            urlPlaceholder="http://192.168.1.70:3010"
             secretLabel="Access token"
             hint={
               <>
