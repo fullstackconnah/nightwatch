@@ -140,7 +140,14 @@ export interface HermesModelFile {
 }
 
 function hermesModelPath(): string {
-  return path.join(dataDir(), "hermes-model.json");
+  // A dedicated SUBDIRECTORY, not a file at the data-dir root: the hermes
+  // daemon bind-mounts this directory read-only. Mounting the single file
+  // doesn't work — our atomic tmp+rename replaces the inode, and a Docker
+  // file bind-mount pins the old inode, so the daemon would never see
+  // another update (observed live 2026-08-02). Mounting all of data/ would
+  // hand hermes every secret in config.json; the subdir carries only this
+  // contract file.
+  return path.join(dataDir(), "hermes", "hermes-model.json");
 }
 
 /** Best-effort read for the settings UI's "last saved" display — a missing or
@@ -159,7 +166,7 @@ export function readHermesModelFile(): HermesModelFile | null {
 /** Same atomic tmp+rename pattern as saveConfig, so the daemon's hot-read
  *  never observes a half-written file. */
 export function writeHermesModelFile(data: HermesModelFile): void {
-  fs.mkdirSync(dataDir(), { recursive: true });
+  fs.mkdirSync(path.dirname(hermesModelPath()), { recursive: true });
   const tmp = hermesModelPath() + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
   fs.renameSync(tmp, hermesModelPath());
