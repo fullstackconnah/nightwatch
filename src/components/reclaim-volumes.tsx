@@ -67,7 +67,7 @@ export function ReclaimVolumesPanel() {
       {lastResult && <ReclaimedBanner result={lastResult} onDismiss={() => setLastResult(null)} />}
 
       {orphans.length === 0 ? (
-        <div className="text-xs text-ink-faint pt-2 border-t border-line">
+        <div className="text-xs text-ink-dim pt-2 border-t border-line">
           Nothing to reclaim — every volume is attached to a container.
         </div>
       ) : (

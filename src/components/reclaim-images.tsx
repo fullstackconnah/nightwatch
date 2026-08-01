@@ -85,7 +85,7 @@ export function ReclaimImagesPanel() {
       {lastResult && <ReclaimedBanner result={lastResult} onDismiss={() => setLastResult(null)} />}
 
       {dangling.length === 0 ? (
-        <div className="text-xs text-ink-faint pt-2 border-t border-line">
+        <div className="text-xs text-ink-dim pt-2 border-t border-line">
           Nothing to reclaim — no dangling images right now.
         </div>
       ) : (
@@ -138,7 +138,7 @@ export function ReclaimImagesPanel() {
       )}
 
       {additionalUnused > 0 && (
-        <div className="mt-3 pt-3 border-t border-line/60 text-[0.7rem] text-ink-faint">
+        <div className="mt-3 pt-3 border-t border-line/60 text-[0.7rem] text-ink-dim">
           Another {formatBytes(additionalUnused, 1)} sits in tagged images no container is using — pruning here never
           removes a named image, so clear those by hand if you want the space back.
         </div>

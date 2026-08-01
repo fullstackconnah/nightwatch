@@ -28,13 +28,36 @@ function copyFor(status: GitSnapshotUnavailable["status"]): { headline: string; 
   }
 }
 
+const CONFIG_SNIPPET = `{
+  "forgejo": {
+    "url": "http://192.168.1.70:3010",
+    "token": "<the access token>"
+  }
+}`;
+
 export function GitStatusPanel({ snapshot }: { snapshot: GitSnapshotUnavailable }) {
   const copy = copyFor(snapshot.status);
+  const unconfigured = snapshot.status === "unconfigured";
   return (
     <div className="panel p-4 space-y-2">
       <div className="text-sm text-warn font-medium">{copy.headline}</div>
       {copy.fix && <div className="text-xs text-ink-dim">{copy.fix}</div>}
-      <div className="font-mono text-xs text-ink-dim whitespace-pre-wrap break-words">{snapshot.detail}</div>
+      {/* unconfigured detail is setup prose; the other states carry raw error
+          strings, which stay mono per the Mono-Is-Data rule. */}
+      <div
+        className={
+          unconfigured
+            ? "max-w-prose text-xs text-ink-dim"
+            : "font-mono text-xs text-ink-dim whitespace-pre-wrap break-words"
+        }
+      >
+        {snapshot.detail}
+      </div>
+      {unconfigured && (
+        <pre className="mt-1 overflow-x-auto rounded-md border border-line bg-panel-2 px-3 py-2.5 font-mono text-[0.7rem] text-ink-dim">
+          {CONFIG_SNIPPET}
+        </pre>
+      )}
     </div>
   );
 }

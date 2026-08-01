@@ -14,7 +14,7 @@ const CONFIG_SNIPPET = `{
 export function HaUnconfigured() {
   return (
     <div className="panel p-4">
-      <div className="microlabel mb-2">not configured</div>
+      <div className="mb-2 text-sm font-medium text-warn">Home Assistant is not configured</div>
       <p className="max-w-prose text-xs text-ink-dim">
         Home Assistant isn&apos;t connected yet. In HA, open your profile (bottom-left of the
         sidebar) → <span className="text-ink">Security</span> →{" "}
@@ -25,7 +25,7 @@ export function HaUnconfigured() {
       <pre className="mt-3 overflow-x-auto rounded-md border border-line bg-panel-2 px-3 py-2.5 font-mono text-[0.7rem] text-ink-dim">
         {CONFIG_SNIPPET}
       </pre>
-      <p className="mt-2 text-[0.7rem] text-ink-faint">
+      <p className="mt-2 text-[0.7rem] text-ink-dim">
         The config file is reread on every request — no restart needed once it&apos;s saved.
       </p>
     </div>
@@ -40,7 +40,7 @@ export function HaUnreachable({ detail }: { detail?: string }) {
         <span className="microlabel !text-bad">unreachable</span>
       </div>
       <p className="text-xs text-ink-dim">{detail ?? "Home Assistant did not respond."}</p>
-      <p className="mt-1 text-[0.7rem] text-ink-faint">
+      <p className="mt-1 text-[0.7rem] text-ink-dim">
         Check that the Home Assistant container is running and that its URL in{" "}
         <span className="font-mono">data/config.json</span> is correct.
       </p>
@@ -56,7 +56,7 @@ export function HaUnauthorized({ detail }: { detail?: string }) {
         <span className="microlabel !text-warn">unauthorized</span>
       </div>
       <p className="text-xs text-ink-dim">{detail ?? "Home Assistant rejected the access token."}</p>
-      <p className="mt-1 text-[0.7rem] text-ink-faint">
+      <p className="mt-1 text-[0.7rem] text-ink-dim">
         Mint a fresh token in HA → Profile → Security → Long-Lived Access Tokens, then replace the
         token in <span className="font-mono">data/config.json</span>.
       </p>

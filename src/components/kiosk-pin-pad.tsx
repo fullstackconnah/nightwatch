@@ -106,7 +106,7 @@ export function KioskPinPad({
           ) : error ? (
             <span className="text-bad">{error}</span>
           ) : (
-            <span className="text-ink-faint">Enter the 4-digit PIN</span>
+            <span className="text-ink-dim">Enter the 4-digit PIN</span>
           )}
         </div>
 
