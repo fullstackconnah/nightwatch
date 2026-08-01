@@ -70,6 +70,10 @@ export async function GET(req: NextRequest) {
       mcpEnabled: mcpEnabled(),
       mcpEndpoint: `${req.nextUrl.origin}/api/mcp`,
       kioskPinConfigured: Boolean(process.env.KIOSK_PIN),
+      // Additive: whether the /hermes control page has anything to talk to.
+      // Same "env var presence, never the value" idiom as mcpEnabled/kioskPinConfigured —
+      // src/lib/hermes-ctl.ts is the only place HERMES_API_TOKEN is ever read for real.
+      hermesApiConfigured: Boolean(process.env.HERMES_API_URL?.trim() && process.env.HERMES_API_TOKEN?.trim()),
     },
     integrations: integrationsMeta(config),
   });

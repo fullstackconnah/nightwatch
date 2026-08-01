@@ -60,8 +60,15 @@ services:
       - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
       - NODE_ENV=development
-    # Deliberately no env_file and no ADMIN_PASSWORD_HASH — the bypass requires
-    # the hash to be absent as well as NODE_ENV=development.
+    # Deliberately no .env and no ADMIN_PASSWORD_HASH — the bypass requires
+    # the hash to be absent as well as NODE_ENV=development. The OPTIONAL
+    # .env.test (gitignored, server-side only) exists so non-auth integration
+    # vars (e.g. the hermes control-API token) can reach the test stack for
+    # live verification WITHOUT re-enabling the login gate — never put
+    # ADMIN_PASSWORD_HASH in it.
+    env_file:
+      - path: .env.test
+        required: false
     volumes:
       - ./data:/app/data
       - /proc:/host/proc:ro

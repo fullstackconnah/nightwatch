@@ -21,6 +21,7 @@ import {
   Tv,
   MoreHorizontal,
   X,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContainers } from "@/lib/client";
@@ -57,6 +58,7 @@ const GROUPS: NavGroup[] = [
       { href: "/smarthome", label: "Home", icon: House },
       { href: "/proxy", label: "Proxy", icon: Globe },
       { href: "/git", label: "Git", icon: GitBranch },
+      { href: "/hermes", label: "Hermes", icon: Bot },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

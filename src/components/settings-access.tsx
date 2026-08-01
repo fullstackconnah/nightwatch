@@ -43,11 +43,19 @@ function AuthPanel({ data }: { data: SettingsFullResponse | undefined }) {
   );
 }
 
+/** Additive field GET /api/settings now returns on `meta` — kept local rather
+ *  than editing settings-integrations.tsx's SettingsFullResponse, which is
+ *  out of this feature's touch scope. Same "env var presence, never the
+ *  value" idiom as mcpEnabled/kioskPinConfigured above it. */
+type SettingsMetaWithHermes = SettingsFullResponse["meta"] & { hermesApiConfigured?: boolean };
+
 function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined }) {
-  const mcpOn = data?.meta.mcpEnabled ?? false;
-  const mcpEndpoint = data?.meta.mcpEndpoint;
-  const customPin = data?.meta.kioskPinConfigured ?? false;
-  const dockgeUrl = data?.meta.dockgeUrl;
+  const meta = data?.meta as SettingsMetaWithHermes | undefined;
+  const mcpOn = meta?.mcpEnabled ?? false;
+  const mcpEndpoint = meta?.mcpEndpoint;
+  const customPin = meta?.kioskPinConfigured ?? false;
+  const dockgeUrl = meta?.dockgeUrl;
+  const hermesOn = meta?.hermesApiConfigured ?? false;
 
   return (
     <Card>
@@ -82,6 +90,27 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
             )}
           </div>
           {mcpOn && mcpEndpoint && <CopyButton value={mcpEndpoint} label="MCP endpoint" />}
+        </div>
+
+        {/* Hermes API */}
+        <div className="flex items-start justify-between gap-2 pb-3 border-b border-line/50">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-ink">Hermes API</span>
+              {hermesOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">disabled</Badge>}
+            </div>
+            <p className="mt-1 text-[0.7rem] text-ink-dim">
+              {hermesOn
+                ? "Ops daemon control wired via HERMES_API_URL / HERMES_API_TOKEN."
+                : "Set HERMES_API_URL and HERMES_API_TOKEN in the server environment to enable the /hermes control page."}
+            </p>
+          </div>
+          <Link
+            href="/hermes"
+            className="shrink-0 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+          >
+            Open <ExternalLink size={12} />
+          </Link>
         </div>
 
         {/* Kiosk mode */}
