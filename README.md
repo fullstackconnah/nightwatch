@@ -73,6 +73,28 @@ Session = 7-day HttpOnly JWT cookie; middleware guards every page and API
 route. The socket proxy never exposes `EXEC`, so the app cannot shell into
 containers even if compromised.
 
+## MCP server
+
+`/api/mcp` exposes nightwatch's data to MCP clients (Claude Code, Claude
+Desktop, etc.) over the Streamable HTTP transport — hand-rolled JSON-RPC 2.0,
+no SDK. Deployed: `http://192.168.1.70:3005/api/mcp`.
+
+Resources: `nightwatch://containers`, `nightwatch://telemetry`,
+`nightwatch://smart`, `nightwatch://logs/{container}` (last ~200 lines, by
+name). Tools: `container_start` / `container_stop` / `container_restart`
+(each `{ name: string }`), reusing the same lifecycle actions as the
+Containers page.
+
+Disabled by default — set `MCP_TOKEN` (a long random string) in the server's
+`.env` to turn it on; every request must send it as
+`Authorization: Bearer <token>`, checked independently of the cookie session
+above. Unset `MCP_TOKEN` → the endpoint always returns 503.
+
+```sh
+claude mcp add --transport http nightwatch http://192.168.1.70:3005/api/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md) — Dockge stack at
