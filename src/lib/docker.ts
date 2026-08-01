@@ -388,6 +388,139 @@ export async function systemDf(): Promise<DfSnapshot> {
   return data;
 }
 
+export interface DanglingImage {
+  id: string;
+  tags: string[];
+  size: number;
+  created: number; // epoch seconds, per Docker's own Image.Created
+}
+
+export interface OrphanVolume {
+  name: string;
+  size: number | null; // null when the proxy hasn't reported UsageData for it
+  created: string | null; // ISO string; Docker omits it on some daemon versions
+}
+
+export interface DiskReclaimSnapshot {
+  images: {
+    /** Untagged images — exactly what `docker image prune` (and this app's
+     *  "Prune dangling images" action) removes. */
+    dangling: DanglingImage[];
+    danglingBytes: number;
+    /**
+     * Broader than danglingBytes: every image (tagged or not) with zero
+     * running-or-stopped containers referencing it. Informational only — the
+     * prune action never touches a tagged image, since removing something with
+     * a name a person chose is a more deliberate act than this dashboard
+     * offers. Always >= danglingBytes.
+     */
+    unusedBytes: number;
+  };
+  volumes: {
+    /** Volumes with zero container references — same definition as the
+     *  volumes page's own "orphaned" badge, and exactly what pruneVolumes()
+     *  with no filters removes. */
+    orphans: OrphanVolume[];
+    orphanBytes: number;
+  };
+  /** Read-only: the socket-proxy's BUILD scope is deliberately 0 (see the
+   *  disk-reclaimer design note), so this figure can be shown but never acted
+   *  on from this dashboard. Null if the proxy didn't report it at all. */
+  buildCacheBytes: number | null;
+  totals: {
+    /** danglingBytes + orphanBytes — the space the two prune actions on this
+     *  page can actually recover. Deliberately excludes buildCacheBytes and
+     *  the broader unusedBytes figure, neither of which a click here can free. */
+    reclaimableBytes: number;
+  };
+}
+
+/**
+ * Feeds the /images and /volumes "Reclaimable" panels. Reuses listImages,
+ * listContainers and systemDf() — all already cached/cheap elsewhere in this
+ * module — rather than re-parsing /system/df's own Images array, so this
+ * shares the same 60s df cache the Resources page already pays for.
+ */
+export async function getDiskReclaimSnapshot(): Promise<DiskReclaimSnapshot> {
+  const [images, containers, volumeList, df] = await Promise.all([
+    docker.listImages({ all: false }),
+    docker.listContainers({ all: true }),
+    docker.listVolumes(),
+    systemDf(),
+  ]);
+
+  const inUseImageIds = new Set(containers.map((c) => c.ImageID));
+  const dangling: DanglingImage[] = [];
+  let danglingBytes = 0;
+  let unusedBytes = 0;
+  for (const img of images) {
+    const tags = (img.RepoTags ?? []).filter((t) => t !== "<none>:<none>");
+    if (!inUseImageIds.has(img.Id)) unusedBytes += img.Size;
+    if (tags.length === 0) {
+      danglingBytes += img.Size;
+      dangling.push({ id: img.Id, tags, size: img.Size, created: img.Created });
+    }
+  }
+  dangling.sort((a, b) => b.size - a.size);
+
+  const usedVolumeNames = new Set<string>();
+  for (const c of containers) {
+    for (const m of c.Mounts || []) {
+      if (m.Type === "volume" && m.Name) usedVolumeNames.add(m.Name);
+    }
+  }
+  const sizeByVolumeName = new Map(df.volumes.map((v) => [v.name, v.sizeBytes] as const));
+  const orphans: OrphanVolume[] = [];
+  let orphanBytes = 0;
+  for (const v of volumeList.Volumes || []) {
+    if (usedVolumeNames.has(v.Name)) continue;
+    const size = sizeByVolumeName.get(v.Name) ?? null;
+    if (size) orphanBytes += size;
+    // CreatedAt isn't in dockerode's VolumeInspectInfo type but the daemon does
+    // send it — same cast the volumes page already relies on.
+    orphans.push({ name: v.Name, size, created: (v as { CreatedAt?: string }).CreatedAt ?? null });
+  }
+  orphans.sort((a, b) => (b.size ?? 0) - (a.size ?? 0));
+
+  return {
+    images: { dangling, danglingBytes, unusedBytes },
+    volumes: { orphans, orphanBytes },
+    buildCacheBytes: df.buildCacheBytes,
+    totals: { reclaimableBytes: danglingBytes + orphanBytes },
+  };
+}
+
+export const PRUNE_TARGETS = ["images", "volumes"] as const;
+export type PruneTarget = (typeof PRUNE_TARGETS)[number];
+
+export interface PruneResult {
+  reclaimedBytes: number;
+  deleted: string[];
+}
+
+/**
+ * Prunes exactly the scope the Reclaimable panel showed — dangling (untagged)
+ * images, or volumes with zero container references — never Docker's broader
+ * defaults. Container pruning and build-cache pruning are both out of scope
+ * for this app (BUILD=0 on the socket-proxy makes the latter impossible
+ * without a new, deliberate scope grant — see DiskReclaimSnapshot's own doc
+ * above). The df cache is dropped afterwards so the next read reflects
+ * reality instead of a stale minute-old snapshot.
+ */
+export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult> {
+  if (target === "images") {
+    const result = await docker.pruneImages({ filters: { dangling: ["true"] } });
+    globalForDocker.__dfCache = undefined;
+    const deleted = (result.ImagesDeleted ?? [])
+      .map((d) => d.Deleted || d.Untagged)
+      .filter((v): v is string => !!v);
+    return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted };
+  }
+  const result = await docker.pruneVolumes({});
+  globalForDocker.__dfCache = undefined;
+  return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted: result.VolumesDeleted ?? [] };
+}
+
 const DOCKER_ROOT_TTL_MS = 60 * 60 * 1000; // never changes without a daemon restart
 
 /** GET /info, just for DockerRootDir — cached for an hour since it's effectively static. */

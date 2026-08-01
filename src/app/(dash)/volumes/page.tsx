@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
+import { ReclaimVolumesPanel } from "@/components/reclaim-volumes";
 import { fetcher } from "@/lib/client";
 
 interface VolumeRow {
@@ -27,6 +28,8 @@ export default function VolumesPage() {
       </header>
 
       {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
+
+      <ReclaimVolumesPanel />
 
       <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">

@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
+import { ReclaimImagesPanel } from "@/components/reclaim-images";
 import { fetcher } from "@/lib/client";
 import { formatBytes, relativeTime } from "@/lib/format";
 
@@ -33,6 +34,8 @@ export default function ImagesPage() {
       </header>
 
       {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
+
+      <ReclaimImagesPanel />
 
       <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
