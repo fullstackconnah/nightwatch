@@ -134,6 +134,52 @@ export interface ListeningSocket {
   owner: SocketOwner | null;
 }
 
+/** Threshold Rule: a single remote holding more concurrent connections than
+ *  this earns a warn-coloured count. Not a security verdict — an unusually
+ *  high number for what this host normally sees, named as exactly that. */
+export const ESTABLISHED_WARN_THRESHOLD = 50;
+
+/**
+ * One local port an established connection group touched, with the same
+ * honest attribution as a ListeningSocket's owner (docker binding, else uid,
+ * else null — never a well-known-ports guess).
+ */
+export interface ConnectionLocalEndpoint {
+  port: number;
+  owner: SocketOwner | null;
+}
+
+/**
+ * ESTABLISHED (state 01) TCP rows from the host's socket tables, grouped by
+ * remote address — many connections from one remote collapse into one row,
+ * because "how many ports is this remote using" is rarely the question;
+ * "who is this remote and how much is it doing" is. Sorted by `count`
+ * descending by the collector, same convention as ListeningSocket's scope sort.
+ */
+export interface EstablishedConnectionGroup {
+  remoteAddress: string;
+  family: "v4" | "v6";
+  /** Total ESTABLISHED rows folded into this row. */
+  count: number;
+  /**
+   * True when `remoteAddress` falls outside RFC1918 (IPv4 private), RFC4193
+   * (IPv6 unique-local), link-local and loopback — a computed fact about the
+   * address's own bits, never a geolocation or reputation claim. Threshold
+   * Rule: this is the one real signal a raw address can honestly carry.
+   */
+  isPublic: boolean;
+  /**
+   * Remote is a loopback address (127.0.0.0/8 or ::1) — this box talking to
+   * itself. Folded behind a disclosure by the UI, same idiom as the
+   * host-only listening-port group, because a loopback pair is never
+   * actionable network information.
+   */
+  isLoopback: boolean;
+  /** Distinct local ports this remote touched, each independently attributed —
+   *  a remote can legitimately hold connections to more than one local service. */
+  localPorts: ConnectionLocalEndpoint[];
+}
+
 /**
  * Everything the network page needs that changes slowly enough to poll rather
  * than stream. Per-interface *rates* ride the 1Hz telemetry SSE instead.
@@ -142,6 +188,14 @@ export interface NetworkSnapshot {
   ts: number;
   interfaces: NetInterface[];
   sockets: ListeningSocket[];
+  connections: EstablishedConnectionGroup[];
+  /**
+   * False when neither the host's tcp nor tcp6 table could be read — distinct
+   * from `connections` being empty, which is a real and common state ("nothing
+   * established right now"). Mirrors the `sockets`/`warnings` split: an empty
+   * array must never be the only signal for "we could not look".
+   */
+  connectionsAvailable: boolean;
   /**
    * Non-fatal degradations, phrased for display. A collector that cannot read the
    * host's socket tables returns an empty `sockets` array *and* a warning here —

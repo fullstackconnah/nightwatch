@@ -4,6 +4,7 @@ import path from "node:path";
 import { docker, listContainers } from "@/lib/docker";
 import { HOST_PROC, HOST_ROOTFS, HOST_SYS } from "@/lib/host-metrics";
 import type {
+  EstablishedConnectionGroup,
   InterfaceRole,
   LinkState,
   ListeningSocket,
@@ -667,7 +668,64 @@ async function readUidToUser(): Promise<Map<number, string>> {
 
 const SOCKET_SCOPE_RANK: Record<SocketScope, number> = { "all-interfaces": 2, specific: 1, loopback: 0 };
 
-async function buildListeningSockets(warnings: string[]): Promise<ListeningSocket[]> {
+/**
+ * Owner attribution, shared by listening sockets AND established connections
+ * (both key off "local port -> who bound it"). Two honest sources, in order:
+ *
+ * 1. Docker's published port bindings. Reuses listContainers()'s already-
+ *    deduped `ports` (private/public/type) rather than a second docker call —
+ *    `public` is the host-bound port these /proc tables report.
+ * 2. Host uid -> username, for anything docker didn't claim. If source 1
+ *    failed entirely, every port falls through to this path — the docker
+ *    warning below already covers that degradation.
+ *
+ * Computed once per snapshot and passed to both builders rather than re-read,
+ * so a single collection makes exactly one docker call and one passwd read
+ * regardless of how many places need attribution.
+ */
+async function readOwnerMaps(warnings: string[]): Promise<{
+  portOwner: Map<string, { container: string; containerPort: number }>;
+  uidToUser: Map<number, string>;
+}> {
+  const portOwner = new Map<string, { container: string; containerPort: number }>();
+  try {
+    const containers = await listContainers();
+    for (const c of containers) {
+      for (const p of c.ports) {
+        if (p.public === null) continue;
+        portOwner.set(`${p.type}:${p.public}`, { container: c.name, containerPort: p.private });
+      }
+    }
+  } catch (err) {
+    warnings.push(`could not list docker containers for port attribution: ${errMsg(err)}`);
+  }
+
+  const uidToUser = await readUidToUser();
+  return { portOwner, uidToUser };
+}
+
+/** Shared by listening-socket and established-connection attribution: docker's
+ *  binding wins (names the container *holding* the port — see SocketOwner's
+ *  doc comment for the gluetun case), else the uid resolves through passwd,
+ *  else null. Never a well-known-ports guess. */
+function attributeOwner(
+  protocol: SocketProtocol,
+  port: number,
+  uid: number,
+  portOwner: Map<string, { container: string; containerPort: number }>,
+  uidToUser: Map<number, string>,
+): SocketOwner | null {
+  const bound = portOwner.get(`${protocol}:${port}`);
+  if (bound) return { kind: "container", container: bound.container, containerPort: bound.containerPort };
+  if (uid >= 0) return { kind: "host", uid, user: uidToUser.get(uid) ?? null };
+  return null;
+}
+
+async function buildListeningSockets(
+  warnings: string[],
+  portOwner: Map<string, { container: string; containerPort: number }>,
+  uidToUser: Map<number, string>,
+): Promise<ListeningSocket[]> {
   const files: { path: string; protocol: SocketProtocol; family: "v4" | "v6" }[] = [
     { path: `${HOST_PROC}/1/net/tcp`, protocol: "tcp", family: "v4" },
     { path: `${HOST_PROC}/1/net/tcp6`, protocol: "tcp", family: "v6" },
@@ -684,28 +742,6 @@ async function buildListeningSockets(warnings: string[]): Promise<ListeningSocke
     }
     allRows.push(...rows);
   }
-
-  // Owner attribution, source 1: docker's published port bindings. Reuses
-  // listContainers()'s already-deduped `ports` (private/public/type) rather
-  // than a second docker call — `public` is the host-bound port these
-  // /proc tables report.
-  const portOwner = new Map<string, { container: string; containerPort: number }>();
-  try {
-    const containers = await listContainers();
-    for (const c of containers) {
-      for (const p of c.ports) {
-        if (p.public === null) continue;
-        portOwner.set(`${p.type}:${p.public}`, { container: c.name, containerPort: p.private });
-      }
-    }
-  } catch (err) {
-    warnings.push(`could not list docker containers for port attribution: ${errMsg(err)}`);
-  }
-
-  // Owner attribution, source 2: host uid -> username, for anything docker
-  // didn't claim. If source 1 failed entirely, every socket falls through to
-  // this path — the docker warning above already covers that degradation.
-  const uidToUser = await readUidToUser();
 
   const groups = new Map<
     string,
@@ -732,12 +768,7 @@ async function buildListeningSockets(warnings: string[]): Promise<ListeningSocke
     let widest: SocketScope = "loopback";
     for (const s of g.scopes) if (SOCKET_SCOPE_RANK[s] > SOCKET_SCOPE_RANK[widest]) widest = s;
 
-    const bound = portOwner.get(`${g.protocol}:${g.port}`);
-    const owner: SocketOwner | null = bound
-      ? { kind: "container", container: bound.container, containerPort: bound.containerPort }
-      : g.uid >= 0
-        ? { kind: "host", uid: g.uid, user: uidToUser.get(g.uid) ?? null }
-        : null;
+    const owner = attributeOwner(g.protocol, g.port, g.uid, portOwner, uidToUser);
 
     sockets.push({
       protocol: g.protocol,
@@ -755,6 +786,177 @@ async function buildListeningSockets(warnings: string[]): Promise<ListeningSocke
   });
 
   return sockets;
+}
+
+// --- established connections: /proc/net/{tcp,tcp6}, state 01 ----------------
+
+const TCP_ESTABLISHED = "01";
+
+interface RawConnectionRow {
+  family: "v4" | "v6";
+  localPort: number;
+  remoteAddress: string;
+  uid: number;
+}
+
+/**
+ * Same column layout as parseSocketTable (local_address rem_address st ...
+ * uid at index 7), filtered to ESTABLISHED (01) instead of LISTEN/UNCONN, and
+ * keeping the remote address instead of discarding it. Kept as its own
+ * function rather than a generalised "any state" parser: the two callers want
+ * different columns (owner's local port here; local address there) and a
+ * shared abstraction over both would need to carry fields neither uses.
+ */
+async function parseEstablishedTable(filePath: string, family: "v4" | "v6"): Promise<RawConnectionRow[] | null> {
+  const content = await readTextFile(filePath);
+  if (content === null) return null;
+  const out: RawConnectionRow[] = [];
+  for (const line of content.split("\n").slice(1)) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 8) continue;
+    const [localAddr, remAddr, st] = [cols[1], cols[2], cols[3]];
+    if (st !== TCP_ESTABLISHED) continue;
+    const uidStr = cols[7];
+    const [, localPortHex] = localAddr.split(":");
+    const [remoteHex, remotePortHex] = remAddr.split(":");
+    if (!localPortHex || !remoteHex || !remotePortHex) continue;
+
+    const localPort = parseInt(localPortHex, 16);
+    if (!Number.isFinite(localPort)) continue;
+
+    const remoteAddress =
+      family === "v4" ? (decodeSocketTableIPv4Hex(remoteHex) ?? remoteHex) : decodeSocketTableIPv6Hex(remoteHex);
+    const uid = Number(uidStr);
+
+    out.push({ family, localPort, remoteAddress, uid: Number.isFinite(uid) ? uid : -1 });
+  }
+  return out;
+}
+
+/** "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16" (RFC1918) plus
+ *  "169.254.0.0/16" (link-local) and "127.0.0.0/8" (loopback). Malformed
+ *  input is treated as private/local — this function's only job is deciding
+ *  who EARNS the "public" marker, and refusing to guess means never flagging
+ *  a remote this box cannot even parse. */
+function isPrivateOrLocalIPv4(address: string): boolean {
+  const octets = address.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((o) => !Number.isFinite(o) || o < 0 || o > 255)) return true;
+  const [a, b] = octets;
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true;
+  if (a === 127) return true;
+  return false;
+}
+
+/** "::1"/"::" (loopback/unspecified), "fc00::/7" (RFC4193 unique-local) and
+ *  "fe80::/10" (link-local). formatIPv6 never strips a nonzero leading hex
+ *  digit, so the first group's own first two characters are a reliable way
+ *  to read these prefixes off the already-formatted address. An IPv4-mapped
+ *  address ("::ffff:a.b.c.d", rendered here as "::ffff:HHHH:HHHH") is
+ *  unwrapped and judged by the IPv4 rules instead — it IS an IPv4 address,
+ *  wearing a v6 wrapper because it arrived on a dual-stack socket. */
+function isPrivateOrLocalIPv6(address: string): boolean {
+  const lower = address.toLowerCase();
+  if (lower === "::1" || lower === "::") return true;
+
+  const mapped = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (mapped) {
+    const hi = parseInt(mapped[1], 16);
+    const lo = parseInt(mapped[2], 16);
+    const dotted = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join(".");
+    return isPrivateOrLocalIPv4(dotted);
+  }
+
+  const firstGroup = lower.split(":")[0];
+  if (firstGroup.startsWith("fc") || firstGroup.startsWith("fd")) return true; // fc00::/7
+  if (/^fe[89ab]/.test(firstGroup)) return true; // fe80::/10
+  return false;
+}
+
+/** The Threshold Rule's one honest reading of a bare address: is it outside
+ *  every private/local range, computed from the address's own bits — never
+ *  geolocation, never a reputation list. */
+function isPublicAddress(address: string, family: "v4" | "v6"): boolean {
+  return family === "v4" ? !isPrivateOrLocalIPv4(address) : !isPrivateOrLocalIPv6(address);
+}
+
+function isLoopbackAddress(address: string, family: "v4" | "v6"): boolean {
+  if (family === "v4") return address.startsWith("127.");
+  const lower = address.toLowerCase();
+  return lower === "::1" || lower === "::ffff:127.0.0.1";
+}
+
+interface ConnectionGroupAccum {
+  remoteAddress: string;
+  family: "v4" | "v6";
+  count: number;
+  isPublic: boolean;
+  isLoopback: boolean;
+  localPorts: Map<number, SocketOwner | null>;
+}
+
+async function buildEstablishedConnections(
+  warnings: string[],
+  portOwner: Map<string, { container: string; containerPort: number }>,
+  uidToUser: Map<number, string>,
+): Promise<{ connections: EstablishedConnectionGroup[]; available: boolean }> {
+  const files: { path: string; family: "v4" | "v6" }[] = [
+    { path: `${HOST_PROC}/1/net/tcp`, family: "v4" },
+    { path: `${HOST_PROC}/1/net/tcp6`, family: "v6" },
+  ];
+
+  const allRows: RawConnectionRow[] = [];
+  let anyRead = false;
+  for (const f of files) {
+    const rows = await parseEstablishedTable(f.path, f.family);
+    if (rows === null) {
+      warnings.push(`could not read tcp${f.family === "v6" ? "6" : ""} connection table`);
+      continue;
+    }
+    anyRead = true;
+    allRows.push(...rows);
+  }
+  // Distinct from an empty result: no established connection is a real and
+  // common state on a quiet host, but it must never be indistinguishable
+  // from "both tables were unreadable" — same split as sockets/warnings.
+  if (!anyRead) return { connections: [], available: false };
+
+  const groups = new Map<string, ConnectionGroupAccum>();
+  for (const row of allRows) {
+    const key = `${row.family}:${row.remoteAddress}`;
+    const g = groups.get(key) ?? {
+      remoteAddress: row.remoteAddress,
+      family: row.family,
+      count: 0,
+      isPublic: isPublicAddress(row.remoteAddress, row.family),
+      isLoopback: isLoopbackAddress(row.remoteAddress, row.family),
+      localPorts: new Map<number, SocketOwner | null>(),
+    };
+    g.count++;
+    if (!g.localPorts.has(row.localPort)) {
+      g.localPorts.set(row.localPort, attributeOwner("tcp", row.localPort, row.uid, portOwner, uidToUser));
+    }
+    groups.set(key, g);
+  }
+
+  const connections: EstablishedConnectionGroup[] = [...groups.values()].map((g) => ({
+    remoteAddress: g.remoteAddress,
+    family: g.family,
+    count: g.count,
+    isPublic: g.isPublic,
+    isLoopback: g.isLoopback,
+    localPorts: [...g.localPorts.entries()]
+      .map(([port, owner]) => ({ port, owner }))
+      .sort((a, b) => a.port - b.port),
+  }));
+
+  // Highest connection count first — the Threshold Rule's >50 marker and a
+  // glance at "who is talking to this box the most" both want the same order.
+  connections.sort((a, b) => b.count - a.count);
+
+  return { connections, available: true };
 }
 
 // --- main ---------------------------------------------------------------
@@ -784,7 +986,7 @@ export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
       }
     } catch (err) {
       warnings.push(`could not list network interfaces: ${errMsg(err)}`);
-      return { ts, interfaces: [], sockets: [], warnings };
+      return { ts, interfaces: [], sockets: [], connections: [], connectionsAvailable: false, warnings };
     }
 
     const devCounters = await readNetDevFull();
@@ -801,12 +1003,28 @@ export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
     const interfaces = await Promise.all(names.map((name) => buildInterface(name, ctx)));
     interfaces.sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role] || a.name.localeCompare(b.name));
 
-    const sockets = await buildListeningSockets(warnings);
+    // One owner lookup (one docker call, one passwd read) shared by listening
+    // sockets and established connections — both attribute off "local port ->
+    // who bound it".
+    const { portOwner, uidToUser } = await readOwnerMaps(warnings);
+    const sockets = await buildListeningSockets(warnings, portOwner, uidToUser);
+    const { connections, available: connectionsAvailable } = await buildEstablishedConnections(
+      warnings,
+      portOwner,
+      uidToUser,
+    );
 
-    return { ts, interfaces, sockets, warnings };
+    return { ts, interfaces, sockets, connections, connectionsAvailable, warnings };
   } catch (err) {
     // Belt-and-braces: getNetworkSnapshot must never throw. Anything that
     // reaches here is a bug in a source above, not an expected failure mode.
-    return { ts, interfaces: [], sockets: [], warnings: [...warnings, errMsg(err)] };
+    return {
+      ts,
+      interfaces: [],
+      sockets: [],
+      connections: [],
+      connectionsAvailable: false,
+      warnings: [...warnings, errMsg(err)],
+    };
   }
 }

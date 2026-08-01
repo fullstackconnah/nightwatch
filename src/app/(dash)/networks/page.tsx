@@ -3,8 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Plus } from "lucide-react";
 import { ListeningPorts } from "@/components/listening-ports";
+import { NetConnections } from "@/components/net-connections";
+import { NetCompare, type CompareContainer } from "@/components/net-compare";
 import {
   RateReadout,
   RX_GLYPH,
@@ -230,9 +232,23 @@ interface FootprintRow {
   tx: number;
 }
 
+const COMPARE_MAX = 4;
+
 function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
   const { data } = useContainers(15000);
   const latest = samples.length > 0 ? samples[samples.length - 1] : undefined;
+  // Client-state only, no URL/persistence: this is a scratch comparison, not
+  // a view worth bookmarking. Order is selection order, not row order, so a
+  // container keeps its colour while it stays selected regardless of what
+  // else gets added or removed around it.
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const toggleCompare = (id: string) => {
+    setCompareIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= COMPARE_MAX) return prev;
+      return [...prev, id];
+    });
+  };
 
   const rows = useMemo<FootprintRow[]>(() => {
     if (!latest) return [];
@@ -328,79 +344,125 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
     return `hsl(${(172 + t * 33).toFixed(0)} ${(70 - t * 18).toFixed(0)}% ${(70 - t * 34).toFixed(0)}%)`;
   };
 
+  const compareContainers: CompareContainer[] = compareIds
+    .map((id) => rows.find((r) => r.id === id))
+    .filter((r): r is FootprintRow => Boolean(r))
+    .map((r) => ({ id: r.id, name: r.name }));
+
   return (
-    <section className="panel p-4">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <h2 className="text-sm font-semibold tracking-tight">Container footprint</h2>
-        <span className="font-mono text-xs text-ink-dim tabular-nums">
-          {formatRate(total)}{" "}
-          <span className="text-ink-faint">across {rows.length} namespaces</span>
-        </span>
-      </div>
-      <p className="text-[0.7rem] text-ink-faint mt-0.5">
-        one row per network namespace, not per container — containers behind a VPN
-        container report its counters, and host-network containers are left out
-      </p>
+    <div className="space-y-3">
+      {compareContainers.length > 0 && <NetCompare containers={compareContainers} samples={samples} />}
 
-      <div className="flex h-2.5 w-full rounded-full overflow-hidden mt-3 bg-line/60">
-        {shown.map((r, i) => (
-          <div
-            key={r.id}
-            title={`${r.name}: ${formatRate(r.rx + r.tx)}`}
-            style={{ width: `${((r.rx + r.tx) / total) * 100}%`, background: hue(i) }}
-            className="transition-[width] duration-700 ease-out"
-          />
-        ))}
-        {restTotal > 0 && (
-          <div
-            title={`${rest.length} others: ${formatRate(restTotal)}`}
-            style={{ width: `${(restTotal / total) * 100}%`, background: "var(--color-ink-faint)" }}
-          />
-        )}
-      </div>
+      <section className="panel p-4">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <h2 className="text-sm font-semibold tracking-tight">Container footprint</h2>
+          <span className="font-mono text-xs text-ink-dim tabular-nums">
+            {formatRate(total)}{" "}
+            <span className="text-ink-faint">across {rows.length} namespaces</span>
+          </span>
+        </div>
+        <p className="text-[0.7rem] text-ink-faint mt-0.5">
+          one row per network namespace, not per container — containers behind a VPN
+          container report its counters, and host-network containers are left out
+          {shown.length > 0 && " · select up to 4 to compare their throughput above"}
+        </p>
 
-      <ul className="mt-3 space-y-0.5">
-        {shown.map((r, i) => (
-          <li key={r.id}>
-            <Link
-              href={`/containers/${r.id}`}
-              /* Wraps below sm: the rate pair needs ~11rem, which on a 390px
-                 phone left the name so narrow that "homelab-dashboard" and
-                 "homelab-dashboard-proxy" both truncated to the same string —
-                 two different rows rendering identically. */
-              className="flex flex-wrap sm:flex-nowrap items-center gap-x-2.5 gap-y-0.5 rounded px-1 -mx-1 py-1.5 hover:bg-panel-2 min-h-11 md:min-h-0"
-            >
-              <span
-                className="h-2.5 w-2.5 rounded-sm shrink-0"
-                style={{ background: hue(i) }}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] sm:basis-auto">
-                <span className="font-mono text-xs truncate block">{r.name}</span>
-                {r.sharing.length > 0 && (
+        <div className="flex h-2.5 w-full rounded-full overflow-hidden mt-3 bg-line/60">
+          {shown.map((r, i) => (
+            <div
+              key={r.id}
+              title={`${r.name}: ${formatRate(r.rx + r.tx)}`}
+              style={{ width: `${((r.rx + r.tx) / total) * 100}%`, background: hue(i) }}
+              className="transition-[width] duration-700 ease-out"
+            />
+          ))}
+          {restTotal > 0 && (
+            <div
+              title={`${rest.length} others: ${formatRate(restTotal)}`}
+              style={{ width: `${(restTotal / total) * 100}%`, background: "var(--color-ink-faint)" }}
+            />
+          )}
+        </div>
+
+        <ul className="mt-3 space-y-0.5">
+          {shown.map((r, i) => {
+            const isComparing = compareIds.includes(r.id);
+            const atCap = !isComparing && compareIds.length >= COMPARE_MAX;
+            return (
+              <li key={r.id} className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => toggleCompare(r.id)}
+                  disabled={atCap}
+                  aria-pressed={isComparing}
+                  aria-label={
+                    isComparing
+                      ? `Remove ${r.name} from the comparison chart`
+                      : `Add ${r.name} to the comparison chart`
+                  }
+                  title={
+                    atCap
+                      ? "Comparison is full — remove one to add another"
+                      : isComparing
+                        ? "In the comparison chart — click to remove"
+                        : "Add to the comparison chart"
+                  }
+                  className={cn(
+                    "h-11 w-11 md:h-7 md:w-7 shrink-0 rounded-md inline-flex items-center justify-center",
+                    "outline-none focus-visible:ring-1 focus-visible:ring-accent cursor-pointer",
+                    isComparing
+                      ? "border border-dashed border-line-bright bg-transparent"
+                      : "border border-line bg-panel-2 hover:border-line-bright",
+                    atCap && "opacity-40 cursor-not-allowed pointer-events-none",
+                  )}
+                >
+                  {isComparing ? (
+                    <Check size={13} className="text-ink-faint" aria-hidden />
+                  ) : (
+                    <Plus size={13} className="text-ink-faint" aria-hidden />
+                  )}
+                </button>
+                <Link
+                  href={`/containers/${r.id}`}
+                  /* Wraps below sm: the rate pair needs ~11rem, which on a 390px
+                     phone left the name so narrow that "homelab-dashboard" and
+                     "homelab-dashboard-proxy" both truncated to the same string —
+                     two different rows rendering identically. */
+                  className="flex flex-1 flex-wrap sm:flex-nowrap items-center gap-x-2.5 gap-y-0.5 rounded px-1 -mx-1 py-1.5 hover:bg-panel-2 min-h-11 md:min-h-0 min-w-0"
+                >
                   <span
-                    className="text-[0.65rem] text-ink-faint truncate block"
-                    title={`Shares ${r.name}'s network namespace: ${r.sharing.join(", ")}`}
-                  >
-                    shared with {r.sharing.join(", ")}
+                    className="h-2.5 w-2.5 rounded-sm shrink-0"
+                    style={{ background: hue(i) }}
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 basis-[calc(100%-1.5rem)] sm:basis-auto">
+                    <span className="font-mono text-xs truncate block">{r.name}</span>
+                    {r.sharing.length > 0 && (
+                      <span
+                        className="text-[0.65rem] text-ink-faint truncate block"
+                        title={`Shares ${r.name}'s network namespace: ${r.sharing.join(", ")}`}
+                      >
+                        shared with {r.sharing.join(", ")}
+                      </span>
+                    )}
                   </span>
-                )}
+                  <RateReadout rx={r.rx} tx={r.tx} className="shrink-0" />
+                </Link>
+              </li>
+            );
+          })}
+          {restTotal > 0 && (
+            <li className="flex items-center gap-2.5 px-1 py-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm shrink-0 bg-ink-faint" aria-hidden />
+              <span className="text-xs text-ink-faint flex-1">{rest.length} others</span>
+              <span className="font-mono text-xs text-ink-faint tabular-nums">
+                {formatRate(restTotal)}
               </span>
-              <RateReadout rx={r.rx} tx={r.tx} className="shrink-0" />
-            </Link>
-          </li>
-        ))}
-        {restTotal > 0 && (
-          <li className="flex items-center gap-2.5 px-1 py-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm shrink-0 bg-ink-faint" aria-hidden />
-            <span className="text-xs text-ink-faint flex-1">{rest.length} others</span>
-            <span className="font-mono text-xs text-ink-faint tabular-nums">
-              {formatRate(restTotal)}
-            </span>
-          </li>
-        )}
-      </ul>
-    </section>
+            </li>
+          )}
+        </ul>
+      </section>
+    </div>
   );
 }
 
@@ -463,7 +525,7 @@ export default function NetworkPage() {
           <h1 className="text-lg font-semibold tracking-tight">Network</h1>
           <p className="text-xs text-ink-dim mt-0.5">
             {snapshot
-              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports`
+              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length} remote peers`
               : "…"}
           </p>
         </div>
@@ -560,6 +622,12 @@ export default function NetworkPage() {
       )}
 
       <ContainerFootprint samples={samples} />
+
+      {snapshot ? (
+        <NetConnections connections={snapshot.connections} available={snapshot.connectionsAvailable} />
+      ) : (
+        !error && <div className="panel p-4 text-sm text-ink-dim">Reading connections…</div>
+      )}
 
       <ListeningPorts
         sockets={snapshot?.sockets ?? []}
