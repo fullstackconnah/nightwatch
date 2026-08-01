@@ -2,6 +2,7 @@ import { allContainerStats, type ContainerStatsRow } from "@/lib/docker";
 import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { getInterfaceCounters } from "@/lib/network";
+import { recordMetricsHistoryTick } from "@/lib/metrics-history";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
 
 /**
@@ -211,6 +212,23 @@ async function tick(): Promise<void> {
   // A caught null (collector threw) becomes undefined, never a null in the `gpu`
   // field - the type is GpuSnapshot | undefined, and null is not GpuSnapshot.
   const sample: TelemetrySample = { ts: Date.now(), containers, host, gpu: gpu ?? undefined, interfaces };
+
+  // Long-range history sampler, piggybacked on this same 1Hz loop rather than its
+  // own timer. Throttles itself to one write per ~30s and never throws — see
+  // metrics-history.ts's own docs for why this can never cost the ring a tick.
+  try {
+    recordMetricsHistoryTick({
+      ts: sample.ts,
+      host: hostVitals
+        ? { cpuPct: hostVitals.cpu.percent, memUsed: hostVitals.memory.used, memTotal: hostVitals.memory.total }
+        : null,
+      mounts: hostVitals?.disk ?? null,
+      containers,
+    });
+  } catch (err) {
+    console.error("[telemetry] recordMetricsHistoryTick threw:", err);
+  }
+
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);
