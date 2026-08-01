@@ -75,7 +75,7 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
                 </p>
               </>
             ) : (
-              <p className="mt-1 text-[0.7rem] text-ink-faint">
+              <p className="mt-1 text-[0.7rem] text-ink-dim">
                 Set <span className="font-mono">MCP_TOKEN</span> in the server environment to enable{" "}
                 <span className="font-mono">/api/mcp</span>.
               </p>
@@ -91,7 +91,7 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
               <span className="text-xs font-medium text-ink">Kiosk mode</span>
               {customPin ? <Badge variant="ok">custom PIN</Badge> : <Badge variant="warn">default PIN</Badge>}
             </div>
-            <p className="mt-1 text-[0.7rem] text-ink-faint">
+            <p className="mt-1 text-[0.7rem] text-ink-dim">
               {customPin
                 ? "PIN set via KIOSK_PIN in the environment."
                 : "Using the fallback PIN (0000) — set KIOSK_PIN to change it."}
@@ -109,7 +109,7 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <span className="text-xs font-medium text-ink">Stacks · Dockge</span>
-            <p className="mt-1 text-[0.7rem] text-ink-faint">
+            <p className="mt-1 text-[0.7rem] text-ink-dim">
               Manages the compose stacks this dashboard reads from — not this app&apos;s auth.
             </p>
           </div>

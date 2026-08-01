@@ -22,7 +22,7 @@ import { fetcher, useDiskUsage, refreshDiskUsage, type DiskUsageScan } from "@/l
  */
 
 const CONTENTS_RAMP = ["#134e4a", "#0f766e", "#0d9488", "#14b8a6"];
-const NEUTRAL_FILL = "#2a3a50";
+const NEUTRAL_FILL = "var(--color-line-bright)";
 
 interface ContentsRow {
   key: string;
@@ -202,7 +202,7 @@ export function DiskContentsPanel({ label }: { label: string }) {
             <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden shrink-0">
               <div
                 className="h-full rounded-full"
-                style={{ width: `${Math.min(100, (r.bytes / maxBytes) * 100)}%`, background: "#2dd4bf" }}
+                style={{ width: `${Math.min(100, (r.bytes / maxBytes) * 100)}%`, background: "var(--color-accent-dim)" }}
               />
             </div>
           );

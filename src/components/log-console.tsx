@@ -564,7 +564,7 @@ function EmptyFloor() {
         Take a container off the rail above and its log lands here, last {LOG_TAIL_DEFAULT}{" "}
         lines first, then live. Up to {MAX_TRACKS} at once, each in its own band.
       </p>
-      <p className="text-[0.7rem] text-ink-faint mt-3 max-w-md mx-auto">
+      <p className="text-[0.7rem] text-ink-dim mt-3 max-w-md mx-auto">
         This box is quiet — a few lines a minute across everything. A track that sits
         still is working, not broken.
       </p>

@@ -117,7 +117,7 @@ const SEGMENT_LEGEND: DiskSegment[] = [
   { key: "writable", label: "writable layers", value: 0, fill: "#0f766e" },
   { key: "volumes", label: "volumes", value: 0, fill: "#0d9488" },
   { key: "buildcache", label: "build cache", value: 0, fill: "#14b8a6" },
-  { key: "other", label: "other used", value: 0, fill: "#2a3a50" },
+  { key: "other", label: "other used", value: 0, fill: "var(--color-line-bright)" },
   { key: "used", label: "used", value: 0, fill: "#0f766e" },
   { key: "free", label: "free", value: 0, fill: "var(--color-panel-2)" },
 ];
@@ -146,7 +146,7 @@ type OverviewHost = NonNullable<TelemetrySample["host"]>;
 // text-[0.625rem] inline segment-label size.
 const OVERVIEW_FILL_PRIMARY = "#0f766e"; // "writable"/"used" teal
 const OVERVIEW_FILL_SECONDARY = "#0d9488"; // "volumes" teal
-const OVERVIEW_FILL_OTHER = "#2a3a50"; // "other used" slate
+const OVERVIEW_FILL_OTHER = "var(--color-line-bright)"; // "other used" slate
 const OVERVIEW_FILL_TRACK = "var(--color-panel-2)"; // "free" track treatment
 
 function finite(n: number): number {
@@ -435,7 +435,7 @@ function ContainerRow({
           <span className="font-mono text-[0.8rem] truncate flex-1 min-w-0">{c.name}</span>
           <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden">
             {hasValue && (
-              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#2dd4bf" }} />
+              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--color-accent-dim)" }} />
             )}
           </div>
           <span className="font-mono text-[0.75rem] text-ink w-20 text-right">
@@ -448,7 +448,7 @@ function ContainerRow({
         </div>
         <div className="sm:hidden w-full h-0.5 rounded-full bg-panel-2 overflow-hidden">
           {hasValue && (
-            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "#2dd4bf" }} />
+            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "var(--color-accent-dim)" }} />
           )}
         </div>
       </button>
@@ -737,7 +737,7 @@ function ResourcesPageInner() {
     }
     const dockerTotal = segs.reduce((a, s) => a + s.value, 0);
     const otherUsed = Math.max(0, dockerDisk.used - dockerTotal);
-    if (otherUsed > 0) segs.push({ key: "other", label: "other used", value: otherUsed, fill: "#2a3a50" });
+    if (otherUsed > 0) segs.push({ key: "other", label: "other used", value: otherUsed, fill: "var(--color-line-bright)" });
     const free = Math.max(0, dockerDisk.total - dockerDisk.used);
     segs.push({ key: "free", label: "free", value: free, fill: "var(--color-panel-2)" });
     return segs;
@@ -1065,7 +1065,7 @@ function ResourcesPageInner() {
                 {v.sizeBytes != null && v.sizeBytes > 0 && (
                   <div
                     className="h-full rounded-full"
-                    style={{ width: `${Math.min(100, (v.sizeBytes / maxVolume) * 100)}%`, background: "#2dd4bf" }}
+                    style={{ width: `${Math.min(100, (v.sizeBytes / maxVolume) * 100)}%`, background: "var(--color-accent-dim)" }}
                   />
                 )}
               </div>

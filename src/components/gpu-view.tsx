@@ -54,7 +54,7 @@ function measuredSeries(samples: TelemetrySample[], pick: (device: GpuDevice) =>
 // Reused from the resources/page.tsx overview-fill convention (OVERVIEW_FILL_PRIMARY/
 // SECONDARY/OTHER/TRACK) rather than inventing new hues.
 const VRAM_FILL_RAMP = ["var(--color-accent-dim)", "#0f766e", "#0d9488"];
-const VRAM_FILL_UNATTRIBUTED = "#2a3a50";
+const VRAM_FILL_UNATTRIBUTED = "var(--color-line-bright)";
 const VRAM_FILL_FREE = "var(--color-panel-2)";
 
 function buildVramOverview(device: GpuDevice): OverviewModel {

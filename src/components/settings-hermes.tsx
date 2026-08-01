@@ -375,7 +375,7 @@ export function SettingsHermes() {
                   onDraftChange={setOpenrouterKey}
                   placeholder="sk-or-..."
                 />
-                <p className="mt-1 text-[0.7rem] text-ink-faint">
+                <p className="mt-1 text-[0.7rem] text-ink-dim">
                   Mint one at{" "}
                   <a
                     href="https://openrouter.ai/settings/keys"
@@ -398,7 +398,7 @@ export function SettingsHermes() {
                   onDraftChange={setAnthropicKey}
                   placeholder="sk-ant-..."
                 />
-                <p className="mt-1 text-[0.7rem] text-ink-faint">
+                <p className="mt-1 text-[0.7rem] text-ink-dim">
                   Mint one at{" "}
                   <a
                     href="https://console.anthropic.com"

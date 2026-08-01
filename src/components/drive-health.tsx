@@ -40,10 +40,10 @@ const VERDICT_TEXT_STRONG: Record<HealthVerdict, string> = {
 };
 
 const VERDICT_FILL: Record<HealthVerdict, string> = {
-  ok: "#4ade80",
-  warn: "#fbbf24",
-  bad: "#f87171",
-  unknown: "#4d617a",
+  ok: "var(--color-ok)",
+  warn: "var(--color-warn)",
+  bad: "var(--color-bad)",
+  unknown: "var(--color-ink-faint)",
 };
 
 /**
@@ -147,7 +147,7 @@ function LifeTrack({
   }
 
   const pct = Math.max(0, Math.min(100, wearPct));
-  const fill = verdict === "bad" ? VERDICT_FILL.bad : verdict === "warn" ? VERDICT_FILL.warn : "#2dd4bf";
+  const fill = verdict === "bad" ? VERDICT_FILL.bad : verdict === "warn" ? VERDICT_FILL.warn : "var(--color-accent-dim)";
 
   return (
     <div
@@ -422,7 +422,7 @@ function DriveRow({ drive, swept }: { drive: DriveHealth; swept: boolean }) {
                   className="h-full rounded-full"
                   style={{
                     width: `${spare.pct}%`,
-                    background: spare.pct <= spare.min ? VERDICT_FILL.bad : spare.pct <= spare.min + 10 ? VERDICT_FILL.warn : "#2dd4bf",
+                    background: spare.pct <= spare.min ? VERDICT_FILL.bad : spare.pct <= spare.min + 10 ? VERDICT_FILL.warn : "var(--color-accent-dim)",
                   }}
                 />
                 <div

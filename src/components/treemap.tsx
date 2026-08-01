@@ -126,7 +126,7 @@ export function Treemap({
       {rects.map((r) => {
         const isOthers = r.id === OTHERS_ID;
         const rank = rankById.get(r.id) ?? 0;
-        const fill = isOthers ? "#334155" : quartileFill(rank, realItems.length);
+        const fill = isOthers ? "var(--color-line-bright)" : quartileFill(rank, realItems.length);
         const canLabel = r.w >= 72;
         const title = `${r.label}: ${formatValue(r.value)}`;
         const cellStyle = { left: r.x, top: r.y, width: r.w, height: r.h, padding: 2 };

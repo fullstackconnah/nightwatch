@@ -31,28 +31,69 @@ export default function VolumesPage() {
 
       <ReclaimVolumesPanel />
 
-      <div className="panel overflow-x-auto hidden md:block">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-line">
-              {["Name", "Driver", "Mountpoint", "Used by"].map((h) => (
-                <th key={h} className="microlabel text-left px-3 py-2 font-semibold">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+      {data && data.volumes.length === 0 && (
+        <div className="panel px-3 py-4 text-center text-ink-faint text-sm">
+          No named volumes exist on this box — app data lives in bind mounts instead.
+        </div>
+      )}
+
+      {(!data || data.volumes.length > 0) && (
+        <>
+          <div className="panel overflow-x-auto hidden md:block">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line">
+                  {["Name", "Driver", "Mountpoint", "Used by"].map((h) => (
+                    <th key={h} className="microlabel text-left px-3 py-2 font-semibold">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.volumes ?? []).map((v) => (
+                  <tr key={v.name} className="border-b border-line/50 last:border-0 hover:bg-panel-2/60">
+                    <td className="px-3 py-2 font-mono text-xs max-w-64 truncate" title={v.name}>
+                      {v.name}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-ink-dim">{v.driver}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-ink-faint max-w-72 truncate" title={v.mountpoint}>
+                      {v.mountpoint}
+                    </td>
+                    <td className="px-3 py-2">
+                      {v.usedBy.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {v.usedBy.map((c) => (
+                            <Badge key={c} variant="accent">{c}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <Badge>orphaned</Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="md:hidden space-y-2">
             {(data?.volumes ?? []).map((v) => (
-              <tr key={v.name} className="border-b border-line/50 last:border-0 hover:bg-panel-2/60">
-                <td className="px-3 py-2 font-mono text-xs max-w-64 truncate" title={v.name}>
-                  {v.name}
-                </td>
-                <td className="px-3 py-2 text-xs text-ink-dim">{v.driver}</td>
-                <td className="px-3 py-2 font-mono text-xs text-ink-faint max-w-72 truncate" title={v.mountpoint}>
-                  {v.mountpoint}
-                </td>
-                <td className="px-3 py-2">
+              <div key={v.name} className="panel p-3 space-y-2">
+                <div>
+                  <div className="microlabel">name</div>
+                  <div className="font-mono text-sm break-all">{v.name}</div>
+                </div>
+                <div>
+                  <div className="microlabel">driver</div>
+                  <div className="text-xs text-ink-dim">{v.driver}</div>
+                </div>
+                <div>
+                  <div className="microlabel">mountpoint</div>
+                  <div className="font-mono text-xs text-ink-faint break-all">{v.mountpoint}</div>
+                </div>
+                <div>
+                  <div className="microlabel mb-1">used by</div>
                   {v.usedBy.length ? (
                     <div className="flex flex-wrap gap-1">
                       {v.usedBy.map((c) => (
@@ -62,43 +103,12 @@ export default function VolumesPage() {
                   ) : (
                     <Badge>orphaned</Badge>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="md:hidden space-y-2">
-        {(data?.volumes ?? []).map((v) => (
-          <div key={v.name} className="panel p-3 space-y-2">
-            <div>
-              <div className="microlabel">name</div>
-              <div className="font-mono text-sm break-all">{v.name}</div>
-            </div>
-            <div>
-              <div className="microlabel">driver</div>
-              <div className="text-xs text-ink-dim">{v.driver}</div>
-            </div>
-            <div>
-              <div className="microlabel">mountpoint</div>
-              <div className="font-mono text-xs text-ink-faint break-all">{v.mountpoint}</div>
-            </div>
-            <div>
-              <div className="microlabel mb-1">used by</div>
-              {v.usedBy.length ? (
-                <div className="flex flex-wrap gap-1">
-                  {v.usedBy.map((c) => (
-                    <Badge key={c} variant="accent">{c}</Badge>
-                  ))}
                 </div>
-              ) : (
-                <Badge>orphaned</Badge>
-              )}
-            </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </div>
   );
 }
