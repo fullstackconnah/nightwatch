@@ -14,6 +14,10 @@ import {
   LogOut,
   Activity,
   Gauge,
+  House,
+  Globe,
+  GitBranch,
+  Tv,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContainers } from "@/lib/client";
@@ -28,6 +32,9 @@ const NAV = [
   // it is this box's network (uplink throughput, bridges, container footprint, ports).
   { href: "/networks", label: "Network", icon: Network },
   { href: "/logs", label: "Logs", icon: ScrollText },
+  { href: "/smarthome", label: "Home", icon: House },
+  { href: "/proxy", label: "Proxy", icon: Globe },
+  { href: "/git", label: "Git", icon: GitBranch },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -97,6 +104,13 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
 
         {/* external + logout */}
         <div className="px-2 pb-4 space-y-0.5 border-t border-line pt-3">
+          <Link
+            href="/kiosk"
+            className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[0.8rem] text-ink-dim hover:text-ink hover:bg-panel-2"
+          >
+            <Tv size={15} />
+            Kiosk mode
+          </Link>
           <a
             href={dockgeUrl}
             target="_blank"
@@ -148,9 +162,14 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
       </header>
 
       {/* mobile bottom tab bar */}
+      {/* Eleven destinations no longer fit a fixed grid on a 360px phone (the
+          grid idiom capped out at eight ~45px cells), so the bar becomes a
+          horizontally scrolling snap rail — the same idiom the log console's
+          chip rail uses on touch. Cells keep a fixed width so the rail reads
+          as a row of equal tabs, and snap keeps a whole cell always landing. */}
       <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-40 grid grid-cols-8 border-t border-line bg-panel/95 backdrop-blur"
-        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 flex overflow-x-auto snap-x border-t border-line bg-panel/95 backdrop-blur"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)", scrollbarWidth: "none" }}
       >
         {NAV.map(({ href, label, icon: Icon }) => {
           const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -159,11 +178,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
               key={href}
               href={href}
               className={cn(
-                // overflow-hidden + px-0.5: the bar carries eight cells since the
-                // log console joined it, which is ~45px each on a 360px phone.
-                // "Containers" does not fit at that width and would collide with
-                // its neighbours rather than clip, so the cell clamps its label.
-                "relative flex flex-col items-center justify-center gap-0.5 min-h-14 overflow-hidden px-0.5 transition-colors active:bg-panel-2",
+                "relative flex flex-col items-center justify-center gap-0.5 min-h-14 w-[4.05rem] flex-none snap-start overflow-hidden px-0.5 transition-colors active:bg-panel-2",
                 active ? "text-accent" : "text-ink-dim",
               )}
             >

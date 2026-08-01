@@ -46,6 +46,19 @@ export interface AppConfig {
    *  would GET Jellyfin's web root, fail to parse HTML as JSON, and render an error
    *  tile on the Overview. */
   jellyfin?: { url?: string; key?: string };
+  /** Home Assistant connection for the /smarthome entity panel. Token is a
+   *  long-lived access token minted in HA (Profile → Security). Same
+   *  deliberate not-a-widgets[]-entry reasoning as jellyfin above. */
+  homeassistant?: { url?: string; token?: string };
+  /** Nginx Proxy Manager admin API (port 81) for the /proxy route map.
+   *  NPM only exposes its API to an authenticated admin, so this is the
+   *  admin login; a bearer token is requested server-side per session. */
+  npm?: { url?: string; email?: string; password?: string };
+  /** Forgejo API for the /git commit stream (token: user settings →
+   *  Applications → access token, read scopes only). */
+  forgejo?: { url?: string; token?: string };
+  /** GitHub PAT (read-only) for the local→cloud mirror sync visualizer. */
+  github?: { token?: string };
 }
 
 const DEFAULT_CONFIG: AppConfig = {
