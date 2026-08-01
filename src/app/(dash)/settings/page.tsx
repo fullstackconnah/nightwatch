@@ -13,6 +13,8 @@ import {
   type AppConfig,
 } from "@/lib/client";
 import type { WidgetInstance } from "@/lib/config";
+import { SettingsIntegrations } from "@/components/settings-integrations";
+import { SettingsHermes } from "@/components/settings-hermes";
 
 // ---------------------------------------------------------------------------
 
@@ -185,6 +187,10 @@ export default function SettingsPage() {
           <p>The dashboard should also sit behind an NPM access list — two layers, always.</p>
         </CardContent>
       </Card>
+
+      <SettingsIntegrations />
+
+      <SettingsHermes />
 
       {/* widgets */}
       <section className="space-y-3">
