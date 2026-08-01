@@ -190,9 +190,9 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
           </Button>
         )}
       </div>
-      <p className="text-ink-faint text-[0.68rem] leading-relaxed">
+      <p className="text-ink-dim text-[0.7rem] leading-relaxed">
         Reads file contents to compare them — heavy on spinning disks. Results are{" "}
-        <span className="text-ink-dim">likely duplicates (size + partial content match)</span>, never a certainty.
+        <span className="text-ink">likely duplicates (size + partial content match)</span>, never a certainty.
       </p>
 
       {running && job && job.root === scanRoot && (

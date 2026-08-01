@@ -6,8 +6,9 @@
    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md */
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { ChevronDown, ExternalLink, Play, RotateCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -539,6 +540,16 @@ function ContainerRow({
 }
 
 export default function ResourcesPage() {
+  // useSearchParams in the inner component needs a Suspense boundary for the
+  // static prerender (Next 15 CSR-bailout rule).
+  return (
+    <Suspense fallback={null}>
+      <ResourcesPageInner />
+    </Suspense>
+  );
+}
+
+function ResourcesPageInner() {
   const { data, mutate } = useResources(10000);
   const { data: widgetData } = useWidgets(20000);
   const { samples, status } = useTelemetryStream();
@@ -553,33 +564,40 @@ export default function ResourcesPage() {
   const [expandedDiskLabel, setExpandedDiskLabel] = useState<string | null>(null);
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Mount-only: adopt ?metric= from the URL if present and valid (deep-linkable, e.g.
-  // /resources?metric=net). Reading in an effect rather than the useState initialiser
-  // avoids a server/client hydration mismatch.
+  // Adopt ?metric= from the URL (deep-linkable, e.g. /resources?metric=all&q=bazarr).
+  // Read via useSearchParams, NOT window.location: on a client-side <Link>
+  // navigation, effects can run before Next has committed the new URL to
+  // history, so window.location still shows the previous page's search and the
+  // deep link is lost — then the sync effect below stamps the stale default
+  // back over the real URL. useSearchParams always carries the target route's
+  // params. (Reading in an effect rather than the useState initialiser still
+  // matters: it avoids a server/client hydration mismatch on hard loads.)
+  const searchParams = useSearchParams();
   useEffect(() => {
-    const requested = new URLSearchParams(window.location.search).get("metric");
+    const requested = searchParams.get("metric");
     if (isMetric(requested)) setMetric(requested);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
-  // ?q= deep link into the ALL tab's process/container filter (G5 item 6 —
-  // ProcessTable now takes an initialQuery prop; this is the other half, run
-  // once alongside the ?metric= adoption above so both land in the same
-  // render when ALL is the requested tab). Same hydration-mismatch reasoning
-  // as the effect above: read after mount, not in the useState initialiser.
+  // ?q= deep link into the ALL tab's process/container filter (ProcessTable
+  // takes an initialQuery prop; this is the other half).
   const [initialQuery, setInitialQuery] = useState<string | undefined>(undefined);
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search).get("q");
+    const q = searchParams.get("q");
     if (q) setInitialQuery(q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
-  // Keep the URL in sync with the selected metric without a Next navigation/scroll.
-  useEffect(() => {
+  // Keep the URL in sync with the selected metric from the CLICK HANDLER, never
+  // from an effect. A [metric]-dependent sync effect races the deep-link
+  // adoption above on mount — and dev StrictMode's double effect pass defeats
+  // any skip-first-run ref, stamping the stale default over ?metric=all before
+  // the adopted value has re-rendered. User selection is the only moment the
+  // URL should change, so that is the only place that writes it.
+  const selectMetric = (m: Metric) => {
+    setMetric(m);
     const params = new URLSearchParams(window.location.search);
-    params.set("metric", metric);
+    params.set("metric", m);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
-  }, [metric]);
+  };
 
   const containers = data?.containers ?? [];
   const latest = samples[samples.length - 1];
@@ -786,7 +804,7 @@ export default function ResourcesPage() {
                 // DISK owns a sub-view (STORAGE / I/O). Re-tapping the tab you are
                 // already on must not silently reset you from I/O back to STORAGE.
                 if (m === "disk" && diskActive) return;
-                setMetric(m);
+                selectMetric(m);
               }}
             >
               {METRIC_LABELS[m]}
@@ -803,10 +821,10 @@ export default function ResourcesPage() {
         <div className="space-y-1.5">
           <div className="microlabel">disk view</div>
           <div className="panel p-1 flex gap-1 w-fit">
-            <SegmentButton active={metric === "disk"} onClick={() => setMetric("disk")}>
+            <SegmentButton active={metric === "disk"} onClick={() => selectMetric("disk")}>
               STORAGE
             </SegmentButton>
-            <SegmentButton active={metric === "blkio"} onClick={() => setMetric("blkio")}>
+            <SegmentButton active={metric === "blkio"} onClick={() => selectMetric("blkio")}>
               I/O
             </SegmentButton>
           </div>

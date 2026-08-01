@@ -171,7 +171,7 @@ export function NetConnections({
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-sm font-semibold tracking-tight">Established connections</h2>
-          <p className="text-[0.7rem] text-ink-faint mt-0.5">
+          <p className="text-[0.7rem] text-ink-dim mt-0.5">
             live traffic the footprint above only counts in aggregate · busiest remote first
           </p>
         </div>

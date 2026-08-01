@@ -309,21 +309,32 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
       if (ownerName && row.name !== ownerName) row.name = ownerName;
     }
 
+    // A single zero-traffic tick must not unmount the section (and with it the
+    // comparison chips): keep any namespace that moved bytes at ANY point in the
+    // sample window, or is currently selected for comparison, even if this tick
+    // reads 0. Only namespaces idle for the whole window drop out.
+    const recentlyActive = new Set<string>();
+    for (const s of samples) {
+      for (const [id, row] of Object.entries(s.containers)) {
+        if (row.rxRate + row.txRate > 0) recentlyActive.add(id);
+      }
+    }
+
     return [...groups.values()]
-      .filter((r) => r.rx + r.tx > 0)
+      .filter((r) => r.rx + r.tx > 0 || recentlyActive.has(r.id) || compareIds.includes(r.id))
       .sort((a, b) => b.rx + b.tx - (a.rx + a.tx));
-  }, [data, latest]);
+  }, [data, latest, samples, compareIds]);
 
   const total = rows.reduce((a, r) => a + r.rx + r.tx, 0);
 
-  if (total === 0) {
+  if (rows.length === 0) {
     return (
       <div className="panel p-4">
         <h2 className="text-sm font-semibold tracking-tight">Container footprint</h2>
         <p className="text-sm text-ink-dim mt-1">
           {samples.length === 0
             ? "Waiting for the first telemetry tick…"
-            : "No container is moving traffic right now."}
+            : "No container traffic in the last minute."}
         </p>
       </div>
     );
@@ -361,7 +372,7 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
             <span className="text-ink-faint">across {rows.length} namespaces</span>
           </span>
         </div>
-        <p className="text-[0.7rem] text-ink-faint mt-0.5">
+        <p className="text-[0.7rem] text-ink-dim mt-0.5">
           one row per network namespace, not per container — containers behind a VPN
           container report its counters, and host-network containers are left out
           {shown.length > 0 && " · select up to 4 to compare their throughput above"}
@@ -372,7 +383,7 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
             <div
               key={r.id}
               title={`${r.name}: ${formatRate(r.rx + r.tx)}`}
-              style={{ width: `${((r.rx + r.tx) / total) * 100}%`, background: hue(i) }}
+              style={{ width: total > 0 ? `${((r.rx + r.tx) / total) * 100}%` : 0, background: hue(i) }}
               className="transition-[width] duration-700 ease-out"
             />
           ))}
