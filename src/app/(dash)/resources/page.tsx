@@ -8,31 +8,52 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import { ChevronDown, ExternalLink, Play, RotateCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/treemap";
-import { ResourceOverview, type OverviewModel } from "@/components/resource-overview";
+import {
+  ResourceOverview,
+  MetricHistoryPanel,
+  type OverviewModel,
+  type HistoryRangeOption,
+} from "@/components/resource-overview";
 import { GpuView } from "@/components/gpu-view";
 import { ProcessTable } from "@/components/process-table";
 import { DriveHealthPanel } from "@/components/drive-health";
+import { DiskContentsPanel } from "@/components/disk-contents";
+import { PinnedFoldersPanel } from "@/components/disk-pinned";
+import { DiskGrowthPanel } from "@/components/disk-growth";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
+  fetcher,
   postJson,
-  useDiskUsage,
-  refreshDiskUsage,
   useResources,
   useTelemetryStream,
   useWidgets,
   seriesFor,
   type ResourceSnapshot,
-  type DiskUsageScan,
   type TelemetryRow,
   type TelemetrySample,
 } from "@/lib/client";
+
+// Local mirror of metrics-history.ts's wire shape rather than an import — that
+// module reads node:fs and must never enter this "use client" page's bundle,
+// the same reasoning telemetry-types.ts documents for its own zero-import rule.
+interface HistoryBucketDto {
+  t: number;
+  cpuPct: number | null;
+  memBytes: number | null;
+}
+interface HistoryApiResponse {
+  recordingSince: number | null;
+  host: HistoryBucketDto[];
+  containers: Record<string, HistoryBucketDto[]>;
+}
 
 type Metric = "all" | "cpu" | "mem" | "disk" | "net" | "gpu" | "blkio";
 
@@ -100,152 +121,6 @@ const SEGMENT_LEGEND: DiskSegment[] = [
   { key: "free", label: "free", value: 0, fill: "var(--color-panel-2)" },
 ];
 
-const CONTENTS_RAMP = ["#134e4a", "#0f766e", "#0d9488", "#14b8a6"];
-const NEUTRAL_FILL = "#2a3a50";
-
-interface ContentsRow {
-  key: string;
-  label: string;
-  bytes: number;
-  fill: string;
-  badge?: "mount" | "file";
-  /** Overrides the default "label · value" tooltip. */
-  title?: string;
-}
-
-function contentsRows(scan: DiskUsageScan): ContentsRow[] {
-  const rows: ContentsRow[] = scan.entries.map((e, i) => ({
-    key: `${e.kind}-${e.name}`,
-    label: e.name,
-    bytes: e.bytes,
-    fill: CONTENTS_RAMP[i % CONTENTS_RAMP.length],
-    badge: e.kind === "mount" || e.kind === "file" ? e.kind : undefined,
-  }));
-  if (scan.otherBytes > 0) rows.push({ key: "other", label: "other", bytes: scan.otherBytes, fill: NEUTRAL_FILL });
-  // Two distinct, honestly-labeled buckets for the remainder — never both at once (see
-  // DiskUsageScan's docstring): permission-denied space is NOT "filesystem overhead".
-  if (scan.unreadableBytes > 0)
-    rows.push({
-      key: "unreadable",
-      label: `unreadable · ${scan.deniedCount} paths denied`,
-      bytes: scan.unreadableBytes,
-      fill: NEUTRAL_FILL,
-      title: "not readable as the dashboard's unprivileged user",
-    });
-  if (scan.unaccountedBytes > 0)
-    rows.push({
-      key: "unaccounted",
-      label: "unaccounted (filesystem overhead)",
-      bytes: scan.unaccountedBytes,
-      fill: NEUTRAL_FILL,
-    });
-  return rows;
-}
-
-/** Drill-in "what's using the space" breakdown for one HOST DISK row, fetched on expand. */
-function DiskContentsPanel({ label }: { label: string }) {
-  const { data: scan, isLoading } = useDiskUsage(label);
-  const [rescanning, setRescanning] = useState(false);
-  const [rescanError, setRescanError] = useState<string | null>(null);
-
-  async function handleRescan() {
-    setRescanning(true);
-    setRescanError(null);
-    try {
-      await refreshDiskUsage(label);
-    } catch (e) {
-      setRescanError(e instanceof Error ? e.message : "rescan failed");
-    } finally {
-      setRescanning(false);
-    }
-  }
-
-  if (isLoading && !scan) {
-    return (
-      <div className="py-2 space-y-1">
-        <div className="microlabel">scanning contents…</div>
-        <div className="text-ink-faint text-xs">large drives can take a few minutes</div>
-      </div>
-    );
-  }
-
-  if (!scan) {
-    return <div className="py-2 text-ink-faint text-xs">no contents data</div>;
-  }
-
-  const rows = contentsRows(scan);
-  const maxBytes = Math.max(1, ...rows.map((r) => r.bytes));
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <div className="microlabel">CONTENTS</div>
-        {scan.deniedCount > 0 && (
-          <div className="microlabel !text-warn/80">
-            {Math.round(100 - scan.readablePct)}% of used space not readable
-          </div>
-        )}
-      </div>
-
-      <div className="h-5 rounded-md overflow-hidden flex gap-[2px] bg-line">
-        {rows.map((r) => {
-          const pct = scan.usedBytes > 0 ? (r.bytes / scan.usedBytes) * 100 : 0;
-          const showLabel = pct >= 9;
-          return (
-            <div
-              key={r.key}
-              title={r.title ?? `${r.label} · ${formatBytes(r.bytes)}`}
-              className="h-full flex items-center justify-center px-1 overflow-hidden"
-              style={{ width: `${pct}%`, background: r.fill }}
-            >
-              {showLabel && <span className="text-[0.625rem] font-medium truncate text-ink">{r.label}</span>}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="divide-y divide-line/50">
-        {rows.map((r) => (
-          <div
-            key={r.key}
-            title={r.title}
-            className="flex items-center gap-2.5 min-h-11 md:min-h-8 py-1.5"
-          >
-            <span className="font-mono text-[0.75rem] break-all flex-1 min-w-0">
-              {r.badge && <span className="microlabel mr-1.5">{r.badge}</span>}
-              {r.label}
-            </span>
-            <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden shrink-0">
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${Math.min(100, (r.bytes / maxBytes) * 100)}%`, background: "#2dd4bf" }}
-              />
-            </div>
-            <span className="font-mono text-[0.75rem] text-ink w-20 text-right shrink-0">
-              {formatBytes(r.bytes)}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-        <div className="microlabel">
-          scanned {relativeTime(scan.scannedAt)} · {(scan.durationMs / 1000).toFixed(1)}s
-        </div>
-        <Button size="sm" variant="ghost" disabled={rescanning} onClick={handleRescan}>
-          <RotateCw size={12} className={rescanning ? "animate-spin" : ""} /> Rescan
-        </Button>
-      </div>
-
-      {rescanError && <div className="microlabel !text-warn/80">{rescanError}</div>}
-
-      {(scan.partial || scan.error) && (
-        <div className="microlabel !text-warn/80">{scan.error ?? "partial scan — some data may be incomplete"}</div>
-      )}
-    </div>
-  );
-}
-
 function valueOf(c: ResourceContainer, metric: Metric, row: TelemetryRow | undefined): number | null {
   // ALL ranks host PROCESSES, not containers — ProcessTable owns that list and does
   // its own sorting, so there is no container magnitude to report here.
@@ -283,9 +158,14 @@ function emptyOverview(): OverviewModel {
 
 function buildCpuOverview(
   host: OverviewHost | undefined,
+  samples: TelemetrySample[],
   containers: Record<string, TelemetryRow> | undefined,
 ): OverviewModel {
   if (!host) return emptyOverview();
+  // 60s trend, same idiom buildNetOverview/buildBlkioOverview already use — CPU
+  // and MEM previously lacked this `series`, the one asymmetry this closes; the
+  // LIVE range of the new history panel below is exactly this ring, unmodified.
+  const series = samples.map((s) => Math.max(0, finite(s.host?.cpuPct ?? 0)));
   const rows = containers ? Object.values(containers) : [];
   // row.cpuPct is Docker-style (one busy core = 100, so a 16-core box can sum to 1600);
   // host.cpuPct is already 0-100 for the whole box. Dividing by cores puts them in the
@@ -314,14 +194,17 @@ function buildCpuOverview(
     headline: `${formatPercent(hostPct, 0)} of ${host.cores} cores`,
     caption: `containers ${formatPercent(containersSeg, 1)} · other ${formatPercent(otherSeg, 1)}`,
     figures,
+    series,
   };
 }
 
 function buildMemOverview(
   host: OverviewHost | undefined,
+  samples: TelemetrySample[],
   containers: Record<string, TelemetryRow> | undefined,
 ): OverviewModel {
   if (!host) return emptyOverview();
+  const series = samples.map((s) => Math.max(0, finite(s.host?.memUsed ?? 0)));
   const rows = containers ? Object.values(containers) : [];
   const containerBytes = Math.max(0, finite(rows.reduce((a, r) => a + r.memBytes, 0)));
   const memUsed = Math.max(0, finite(host.memUsed));
@@ -345,6 +228,7 @@ function buildMemOverview(
       { label: "other", value: formatBytes(otherSeg) },
       { label: "available", value: formatBytes(memAvailable) },
     ],
+    series,
   };
 }
 
@@ -447,9 +331,9 @@ function buildOverviewModel(
 ): OverviewModel {
   switch (metric) {
     case "cpu":
-      return buildCpuOverview(host, containers);
+      return buildCpuOverview(host, samples, containers);
     case "mem":
-      return buildMemOverview(host, containers);
+      return buildMemOverview(host, samples, containers);
     case "net":
       return buildNetOverview(host, samples, containers);
     case "blkio":
@@ -678,6 +562,18 @@ export default function ResourcesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ?q= deep link into the ALL tab's process/container filter (G5 item 6 —
+  // ProcessTable now takes an initialQuery prop; this is the other half, run
+  // once alongside the ?metric= adoption above so both land in the same
+  // render when ALL is the requested tab). Same hydration-mismatch reasoning
+  // as the effect above: read after mount, not in the useState initialiser.
+  const [initialQuery, setInitialQuery] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) setInitialQuery(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Keep the URL in sync with the selected metric without a Next navigation/scroll.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -711,6 +607,45 @@ export default function ResourcesPage() {
     [metric, latest, samples],
   );
 
+  // Metrics history (G1): CPU/MEM only, one shared range + comparison selection so
+  // flipping between the two tabs keeps whatever the owner was just comparing.
+  const historyMetric = metric === "cpu" || metric === "mem" ? metric : null;
+  const [historyRange, setHistoryRange] = useState<HistoryRangeOption>("live");
+  const [historyContainers, setHistoryContainers] = useState<string[]>([]);
+  function toggleHistoryContainer(name: string) {
+    setHistoryContainers((prev) => {
+      if (prev.includes(name)) return prev.filter((n) => n !== name);
+      if (prev.length >= 4) return prev; // cap — matches the picker's own disabled state
+      return [...prev, name];
+    });
+  }
+  const historyKey =
+    historyMetric && historyRange !== "live"
+      ? `/api/telemetry/history?range=${historyRange}&containers=${encodeURIComponent(historyContainers.join(","))}`
+      : null;
+  // ~30s cadence, and only while a history range is actually selected — LIVE mode
+  // (the default) polls nothing extra beyond the existing 1Hz SSE stream.
+  const { data: historyData, isLoading: historyLoading } = useSWR<HistoryApiResponse>(historyKey, fetcher, {
+    refreshInterval: 30000,
+    keepPreviousData: true,
+  });
+  const historyBucketTimes = useMemo(() => historyData?.host.map((b) => b.t) ?? [], [historyData]);
+  const historyHostPoints = useMemo(() => {
+    if (!historyData || !historyMetric) return undefined;
+    return historyData.host.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
+  }, [historyData, historyMetric]);
+  const historyContainerPoints = useMemo(() => {
+    if (!historyData || !historyMetric) return {};
+    const out: Record<string, (number | null)[]> = {};
+    for (const [name, buckets] of Object.entries(historyData.containers)) {
+      out[name] = buckets.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
+    }
+    return out;
+  }, [historyData, historyMetric]);
+  // Busiest-first, mirroring the ranked rows below — the containers worth
+  // comparing are usually the ones already leading the current metric.
+  const historyContainerOptions = useMemo(() => [...active, ...idle].map((c) => c.name), [active, idle]);
+
   const treemapItems: TreemapItem[] = useMemo(
     () => active.map((c) => ({ id: c.id, label: c.name, value: valueOf(c, metric, latest?.containers[c.id]) ?? 0 })),
     [active, metric, latest],
@@ -732,6 +667,16 @@ export default function ResourcesPage() {
   const maxVolume = Math.max(1, ...sortedVolumes.map((v) => v.sizeBytes ?? 0));
 
   const hostDisks = data?.hostDisks ?? null;
+  // Flattened, deduped mountpoints across every disk group — feeds the DISK
+  // GROWTH panel's mount picker. Growth is charted per raw mountpoint (what
+  // metrics-history actually records), not per disk-group label, so a
+  // multi-partition disk still shows one line per partition.
+  const allMountpoints = useMemo(() => {
+    if (!hostDisks) return [];
+    const set = new Set<string>();
+    for (const d of hostDisks) for (const m of d.mounts ?? [d.mount]) set.add(m);
+    return [...set];
+  }, [hostDisks]);
   const dockerRootDir = data?.dockerRootDir ?? null;
   const writableLayers = useMemo(
     () => containers.reduce((a, c) => a + (c.sizeRw ?? 0), 0),
@@ -877,14 +822,37 @@ export default function ResourcesPage() {
         </div>
       )}
 
+      {/* CPU/MEM only: long-range history — a range control always shown, plus
+          (once off LIVE) the comparison chart. LIVE needs nothing extra here; the
+          panel above already carries the 60s trend via overviewModel.series. */}
+      {historyMetric && (
+        <div className="panel p-4">
+          <MetricHistoryPanel
+            range={historyRange}
+            onRangeChange={setHistoryRange}
+            containerOptions={historyContainerOptions}
+            selectedContainers={historyContainers}
+            onToggleContainer={toggleHistoryContainer}
+            hostPoints={historyHostPoints}
+            containerPoints={historyContainerPoints}
+            bucketTimes={historyBucketTimes}
+            formatValue={(v) => formatValue(historyMetric, v)}
+            recordingSince={historyData?.recordingSince ?? null}
+            isLoading={historyLoading}
+          />
+        </div>
+      )}
+
       {/* GPU metric view — its own band-stack (verdict, thermal/core, VRAM, NVENC,
           transcode streams), replacing the treemap/ranked-rows grammar below */}
       {gpuActive && <GpuView samples={samples} status={status} />}
 
       {/* ALL — every host process, sortable on each column, with live filtering.
           Polls /api/processes on its own cadence and only while mounted, so the
-          ~476 /proc reads never happen for the five container tabs. */}
-      {allActive && <ProcessTable />}
+          ~476 /proc reads never happen for the five container tabs. `?q=<name>`
+          prefills the filter (see the mount effect above); other container
+          surfaces link here via `/resources?metric=all&q=<name>`. */}
+      {allActive && <ProcessTable initialQuery={initialQuery} />}
 
       {/* host disk breakdown (disk view only) */}
       {metric === "disk" && hostDisks && hostDisks.length > 0 && (
@@ -979,6 +947,16 @@ export default function ResourcesPage() {
           </div>
         </div>
       )}
+
+      {/* PINNED — folders marked from a CONTENTS drill-down row, always listed
+          with their current size regardless of which disk group they live
+          under. STORAGE-only, same gate as HOST DISK above. */}
+      {metric === "disk" && <PinnedFoldersPanel />}
+
+      {/* DISK GROWTH — mount capacity over time, from G1's metrics history.
+          STORAGE-only; suppressed entirely once there are no mounts to chart
+          rather than rendering an empty chart shell. */}
+      {metric === "disk" && allMountpoints.length > 0 && <DiskGrowthPanel mountpoints={allMountpoints} />}
 
       {/* Drive health — SMART, wear, temperature, array integrity.
           Deliberately gated on diskActive rather than metric === "disk": a failing

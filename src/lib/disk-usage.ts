@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { spawn } from "node:child_process";
 import { getHostVitals, parseAllMountpoints, HOST_PROC, HOST_ROOTFS, type HostVitals } from "@/lib/host-metrics";
 
@@ -18,6 +19,12 @@ export interface DiskUsageEntry {
   name: string;
   bytes: number;
   kind: "dir" | "file" | "mount";
+  /** Absolute host-relative path (e.g. "/mnt/docker/downloads") — populated for
+   *  every dir/file entry so a client can drill into it (GET
+   *  /api/resources/contents?path=) or pin it (POST /api/resources/pins)
+   *  without reconstructing the path itself. Optional only for shape
+   *  compatibility with any caller built before this field existed. */
+  path?: string;
 }
 
 export interface DiskUsageScan {
@@ -26,6 +33,11 @@ export interface DiskUsageScan {
   durationMs: number;
   entries: DiskUsageEntry[]; // top 10 desc
   otherBytes: number; // sum of entries beyond top 10
+  /** Absolute host-relative path this scan describes — the disk group's primary
+   *  mountpoint for a root scan (scanDiskUsage), or the requested subpath for a
+   *  drill-down scan (scanDirectoryContents). Optional only for shape
+   *  compatibility with any caller built before this field existed. */
+  path?: string;
   /**
    * max(0, group.used - (all scanned + otherBytes)), attributed to ONE of these two
    * buckets depending on why it's missing — never invented, and never both at once:
@@ -75,7 +87,7 @@ function errMsg(e: unknown): string {
  * /proc/mounts (dev mode / PID-1 unreadable) which won't see the host's
  * pseudo-mounts, so exclusion is best-effort in that fallback path.
  */
-function getAllHostMountpoints(): Set<string> {
+export function getAllHostMountpoints(): Set<string> {
   try {
     const content = fs.readFileSync(`${HOST_PROC}/1/mounts`, "utf8");
     return new Set(parseAllMountpoints(content));
@@ -230,11 +242,13 @@ async function performScan(label: string, group: DiskGroup): Promise<DiskUsageSc
       deniedCount,
     } = await runDu(dirChildren.map((c) => c.fullPath), SCAN_TIMEOUT_MS);
 
+    const entryPath = (name: string) => (primary === "/" ? `/${name}` : `${primary}/${name}`);
+
     const entries: DiskUsageEntry[] = [];
     for (const c of dirChildren) {
       const bytes = duSizes.get(c.fullPath);
       if (bytes == null && duPartial) continue; // scan was killed before reaching this one
-      entries.push({ name: c.name, bytes: bytes ?? 0, kind: "dir" });
+      entries.push({ name: c.name, bytes: bytes ?? 0, kind: "dir", path: entryPath(c.name) });
     }
     for (const c of fileChildren) {
       let bytes = 0;
@@ -243,7 +257,7 @@ async function performScan(label: string, group: DiskGroup): Promise<DiskUsageSc
       } catch {
         continue;
       }
-      entries.push({ name: c.name, bytes, kind: "file" });
+      entries.push({ name: c.name, bytes, kind: "file", path: entryPath(c.name) });
     }
 
     entries.sort((a, b) => b.bytes - a.bytes);
@@ -260,6 +274,7 @@ async function performScan(label: string, group: DiskGroup): Promise<DiskUsageSc
 
     return {
       label,
+      path: primary,
       scannedAt: Date.now(),
       durationMs: Date.now() - startedAt,
       entries: top,
@@ -308,4 +323,219 @@ export async function scanDiskUsage(label: string, opts?: { refresh?: boolean })
     });
   inFlight.set(label, promise);
   return promise;
+}
+
+/* -----------------------------------------------------------------------
+ * Path-based drill-down (G5): scans an arbitrary directory one level deep,
+ * for any depth below a disk group's root. Unlike scanDiskUsage above (which
+ * is keyed by a trusted disk-group label and reads its "used" total from
+ * host-metrics's statfs pass) this is keyed by a CLIENT-SUPPLIED absolute
+ * path, so every entry point validates it first via resolveAbsolutePath and
+ * every scan reports its own ground-truth "usedBytes" — a `du -sxk` on the
+ * scanned directory itself, requested in the SAME batched du invocation as
+ * its children so this costs one extra path in one existing process rather
+ * than a second spawn. That total (not a statfs figure — no filesystem-level
+ * "capacity" exists for an arbitrary directory) is what unaccountedBytes/
+ * unreadableBytes/readablePct are measured against, preserving the same
+ * honesty story scanDiskUsage tells at the disk-group root.
+ * --------------------------------------------------------------------- */
+
+/**
+ * Validates and normalizes a client-supplied absolute path before it ever
+ * reaches the filesystem. `path.posix.normalize` cannot climb above "/" for a
+ * rooted input (excess ".." at the root collapse to root, they don't go
+ * negative), so a traversal attempt like "/../../etc" normalizes to "/etc" —
+ * still safely inside HOST_ROOTFS once prefixed, never outside it. Returns
+ * null (→ 400 at the route) for anything malformed rather than guessing.
+ */
+export function resolveAbsolutePath(requested: string): string | null {
+  if (typeof requested !== "string" || requested.length === 0 || !requested.startsWith("/")) return null;
+  const normalized = path.posix.normalize(requested);
+  if (normalized.length > 1 && normalized.endsWith("/")) return null;
+  return normalized;
+}
+
+function hostPathFor(absolutePath: string): string {
+  return absolutePath === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${absolutePath}`;
+}
+
+function childAbsolutePath(parentAbs: string, name: string): string {
+  return parentAbs === "/" ? `/${name}` : `${parentAbs}/${name}`;
+}
+
+async function performPathScan(absolutePath: string): Promise<DiskUsageScan> {
+  const startedAt = Date.now();
+  const target = hostPathFor(absolutePath);
+
+  try {
+    const mountpoints = getAllHostMountpoints();
+
+    let names: string[];
+    try {
+      names = fs.readdirSync(target);
+    } catch (e) {
+      return {
+        label: absolutePath,
+        path: absolutePath,
+        scannedAt: Date.now(),
+        durationMs: Date.now() - startedAt,
+        entries: [],
+        otherBytes: 0,
+        unaccountedBytes: 0,
+        unreadableBytes: 0,
+        deniedCount: 0,
+        readablePct: 0,
+        usedBytes: 0,
+        totalBytes: 0,
+        partial: true,
+        error: `readdir failed: ${errMsg(e)}`,
+      };
+    }
+
+    const children: ChildInfo[] = [];
+    for (const name of names) {
+      const childAbs = childAbsolutePath(absolutePath, name);
+      // Never pass a different filesystem's mountpoint to du (see performScan's
+      // module docstring for the same rule at the disk-group root) — and never
+      // let the drill-down itself step onto one either.
+      if (mountpoints.has(childAbs)) continue;
+
+      const fullPath = `${target}/${name}`;
+      let st: fs.Stats;
+      try {
+        st = fs.lstatSync(fullPath);
+      } catch {
+        continue; // permission denied or vanished mid-scan — skip silently
+      }
+      children.push({ name, fullPath, kind: st.isDirectory() ? "dir" : "file" });
+    }
+
+    const dirChildren = children.filter((c) => c.kind === "dir");
+    const fileChildren = children.filter((c) => c.kind === "file");
+
+    // The scanned directory's own path rides in the SAME du call as its
+    // children (one process, one timeout) so its recursive total doubles as
+    // the ground truth `usedBytes` below, the same role group.used plays for
+    // a root scan.
+    const {
+      sizes: duSizes,
+      partial: duPartial,
+      error: duError,
+      deniedCount,
+    } = await runDu([...dirChildren.map((c) => c.fullPath), target], SCAN_TIMEOUT_MS);
+
+    const entries: DiskUsageEntry[] = [];
+    for (const c of dirChildren) {
+      const bytes = duSizes.get(c.fullPath);
+      if (bytes == null && duPartial) continue;
+      entries.push({ name: c.name, bytes: bytes ?? 0, kind: "dir", path: childAbsolutePath(absolutePath, c.name) });
+    }
+    for (const c of fileChildren) {
+      let bytes = 0;
+      try {
+        bytes = fs.lstatSync(c.fullPath).blocks * 512;
+      } catch {
+        continue;
+      }
+      entries.push({ name: c.name, bytes, kind: "file", path: childAbsolutePath(absolutePath, c.name) });
+    }
+
+    entries.sort((a, b) => b.bytes - a.bytes);
+    const top = entries.slice(0, TOP_N);
+    const rest = entries.slice(TOP_N);
+    const otherBytes = rest.reduce((a, e) => a + e.bytes, 0);
+    const scannedTotal = top.reduce((a, e) => a + e.bytes, 0) + otherBytes;
+    const groundTruth = duSizes.get(target);
+    const usedBytes = groundTruth ?? scannedTotal;
+    const remainder = Math.max(0, usedBytes - scannedTotal);
+    const unreadableBytes = deniedCount > 0 ? remainder : 0;
+    const unaccountedBytes = deniedCount > 0 ? 0 : remainder;
+    const readablePct = usedBytes > 0 ? Math.min(100, (scannedTotal / usedBytes) * 100) : 100;
+
+    return {
+      label: absolutePath,
+      path: absolutePath,
+      scannedAt: Date.now(),
+      durationMs: Date.now() - startedAt,
+      entries: top,
+      otherBytes,
+      unaccountedBytes,
+      unreadableBytes,
+      deniedCount,
+      readablePct,
+      usedBytes,
+      // No filesystem "capacity" exists for an arbitrary directory — totalBytes
+      // mirrors usedBytes so any caller reading it sees a consistent "100% of
+      // itself" rather than an invented ceiling.
+      totalBytes: usedBytes,
+      partial: duPartial,
+      error: duPartial ? "scan timed out" : duError,
+    };
+  } catch (e) {
+    return {
+      label: absolutePath,
+      path: absolutePath,
+      scannedAt: Date.now(),
+      durationMs: Date.now() - startedAt,
+      entries: [],
+      otherBytes: 0,
+      unaccountedBytes: 0,
+      unreadableBytes: 0,
+      deniedCount: 0,
+      readablePct: 0,
+      usedBytes: 0,
+      totalBytes: 0,
+      partial: true,
+      error: errMsg(e),
+    };
+  }
+}
+
+const globalForDiskPathScan = globalThis as unknown as {
+  __diskPathCache?: Map<string, CacheEntry>;
+  __diskPathInFlight?: Map<string, Promise<DiskUsageScan>>;
+};
+const pathCache = globalForDiskPathScan.__diskPathCache ?? new Map<string, CacheEntry>();
+globalForDiskPathScan.__diskPathCache = pathCache;
+const pathInFlight = globalForDiskPathScan.__diskPathInFlight ?? new Map<string, Promise<DiskUsageScan>>();
+globalForDiskPathScan.__diskPathInFlight = pathInFlight;
+
+export type DirectoryScanResult =
+  | { ok: true; scan: DiskUsageScan }
+  | { ok: false; status: 400; error: string };
+
+/**
+ * Scans an arbitrary directory (client-supplied `absolutePath`, validated via
+ * resolveAbsolutePath) one level deep — the CONTENTS drill-down's "enter this
+ * folder" request, and also how the PINNED panel learns a pinned folder's
+ * current size (it just reads `.usedBytes` off the same cached response, see
+ * disk-pinned.tsx). Cached per-path for 30 minutes, same TTL and in-flight
+ * dedupe pattern as scanDiskUsage, in a separate cache keyed by path rather
+ * than disk-group label.
+ */
+export async function scanDirectoryContents(
+  absolutePath: string,
+  opts?: { refresh?: boolean },
+): Promise<DirectoryScanResult> {
+  const normalized = resolveAbsolutePath(absolutePath);
+  if (!normalized) return { ok: false, status: 400, error: "invalid or unsafe path" };
+
+  if (!opts?.refresh) {
+    const cached = pathCache.get(normalized);
+    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return { ok: true, scan: cached.data };
+  }
+
+  const existing = pathInFlight.get(normalized);
+  if (existing) return { ok: true, scan: await existing };
+
+  const promise = performPathScan(normalized)
+    .then((data) => {
+      pathCache.set(normalized, { data, ts: Date.now() });
+      return data;
+    })
+    .finally(() => {
+      pathInFlight.delete(normalized);
+    });
+  pathInFlight.set(normalized, promise);
+  return { ok: true, scan: await promise };
 }

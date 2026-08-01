@@ -59,6 +59,14 @@ export interface AppConfig {
   forgejo?: { url?: string; token?: string };
   /** GitHub PAT (read-only) for the local→cloud mirror sync visualizer. */
   github?: { token?: string };
+  /** Absolute host paths (e.g. "/mnt/docker/downloads") pinned from the
+   *  Resources page's CONTENTS drill-down for always-visible size tracking on
+   *  the DISK tab's PINNED panel — media folders and the like the owner wants
+   *  watched without re-drilling into them every time. Persisted here rather
+   *  than derived, so a pin survives even if its folder is later denied by du
+   *  or moved; the panel degrades that one row honestly instead of dropping
+   *  it. Mutated via POST /api/resources/pins, not the settings PUT route. */
+  pinnedFolders?: string[];
 }
 
 const DEFAULT_CONFIG: AppConfig = {
