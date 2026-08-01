@@ -43,6 +43,9 @@ export interface SettingsFullResponse {
     authConfigured: boolean;
     dataDir: string;
     hermesModelUpdatedAt: string | null;
+    mcpEnabled: boolean;
+    mcpEndpoint: string;
+    kioskPinConfigured: boolean;
   };
   integrations: {
     homeassistant: IntegrationStatus;

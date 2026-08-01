@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadConfig, saveConfig, readHermesModelFile, dockgeUrl, publicHost, type AppConfig } from "@/lib/config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
+import { mcpEnabled } from "@/lib/mcp/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ function integrationsMeta(config: AppConfig) {
   };
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const config = loadConfig();
   return NextResponse.json({
     config: sanitizeConfig(config),
@@ -62,6 +63,13 @@ export async function GET() {
       authConfigured: Boolean(process.env.ADMIN_PASSWORD_HASH),
       dataDir: process.env.DATA_DIR || "./data",
       hermesModelUpdatedAt: readHermesModelFile()?.updatedAt ?? null,
+      // Surfaced on the Settings "System access" panel — never the token
+      // itself, just whether the feature is on and where it lives, computed
+      // from the request's own URL so it's correct on both :3005 and a test
+      // stack's :3006 without a dedicated env var.
+      mcpEnabled: mcpEnabled(),
+      mcpEndpoint: `${req.nextUrl.origin}/api/mcp`,
+      kioskPinConfigured: Boolean(process.env.KIOSK_PIN),
     },
     integrations: integrationsMeta(config),
   });

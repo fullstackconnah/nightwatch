@@ -1,131 +1,46 @@
 "use client";
 
+/* THESIS: Settings accreted section by section (auth, then integrations,
+   then hermes, then widgets/tiles) with each addition copying whatever
+   idiom was nearest rather than a shared one. This pass ranks that into five
+   deliberate sections — Access, Integrations, Hermes, Dashboard, Reference —
+   ordered by what the single owner actually reaches for: the gate first,
+   then the services this app calls, then the model that drives hermes, then
+   the bulk container-tuning work, then read-only reference material last.
+   A sticky quick-jump rail (settings-section-nav.tsx) makes that order
+   navigable instead of just scrollable. Every panel now shares one grammar —
+   Card title + note + status badge, SecretField's write-only masked
+   treatment, the same Save placement — via settings-access.tsx,
+   settings-integrations.tsx, settings-hermes.tsx, settings-widgets.tsx,
+   settings-tiles.tsx and settings-reference.tsx. This file only owns the
+   config draft, the PUT, and section order. */
+
 import { useEffect, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label, Select } from "@/components/ui/input";
-import {
-  putJson,
-  useContainers,
-  useSettings,
-  type AppConfig,
-} from "@/lib/client";
-import type { WidgetInstance } from "@/lib/config";
-import { SettingsIntegrations } from "@/components/settings-integrations";
+import { putJson, useContainers } from "@/lib/client";
+import type { AppConfig, WidgetInstance } from "@/lib/config";
+import { SettingsIntegrations, useSettingsFull } from "@/components/settings-integrations";
 import { SettingsHermes } from "@/components/settings-hermes";
+import { SettingsAccess } from "@/components/settings-access";
+import { SettingsWidgets } from "@/components/settings-widgets";
+import { SettingsTiles } from "@/components/settings-tiles";
+import { SettingsReference } from "@/components/settings-reference";
+import { SettingsSectionNav, type SettingsSection } from "@/components/settings-section-nav";
 
-// ---------------------------------------------------------------------------
-
-function WidgetEditor({
-  widget,
-  types,
-  containers,
-  onSave,
-  onCancel,
-}: {
-  widget: WidgetInstance;
-  types: string[];
-  containers: string[];
-  onSave: (w: WidgetInstance) => void;
-  onCancel: () => void;
-}) {
-  const [w, setW] = useState<WidgetInstance>(widget);
-  const set = (patch: Partial<WidgetInstance>) => setW({ ...w, ...patch });
-  const generic = w.type === "generic";
-
-  return (
-    <div className="panel p-4 space-y-3 border-accent/30">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <Label>Container</Label>
-          <Select value={w.container} onChange={(e) => set({ container: e.target.value })}>
-            <option value="">— pick —</option>
-            {containers.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <Label>Type</Label>
-          <Select value={w.type} onChange={(e) => set({ type: e.target.value })}>
-            {types.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-        </div>
-        <div className="col-span-2">
-          <Label>Service URL</Label>
-          <Input placeholder="http://192.168.1.70:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
-        </div>
-        <div>
-          <Label>API key</Label>
-          <Input type="password" value={w.key ?? ""} onChange={(e) => set({ key: e.target.value || undefined })} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <Label>Username</Label>
-            <Input value={w.username ?? ""} onChange={(e) => set({ username: e.target.value || undefined })} />
-          </div>
-          <div>
-            <Label>Password</Label>
-            <Input type="password" value={w.password ?? ""} onChange={(e) => set({ password: e.target.value || undefined })} />
-          </div>
-        </div>
-        {generic && (
-          <>
-            <div className="col-span-2">
-              <Label>Endpoint (appended to URL, or absolute)</Label>
-              <Input placeholder="/api/stats" value={w.endpoint ?? ""} onChange={(e) => set({ endpoint: e.target.value || undefined })} />
-            </div>
-            <div className="col-span-2">
-              <div className="flex items-center justify-between mb-1.5">
-                <Label className="!mb-0">Fields (label + JSON dot-path)</Label>
-                <Button size="sm" variant="ghost"
-                  onClick={() => set({ fields: [...(w.fields ?? []), { label: "", path: "", format: "text" }] })}>
-                  <Plus size={12} /> field
-                </Button>
-              </div>
-              {(w.fields ?? []).map((f, i) => (
-                <div key={i} className="flex flex-wrap gap-2 mb-1.5">
-                  <Input placeholder="Queries" value={f.label} className="min-w-0 flex-1 basis-[10rem]"
-                    onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
-                  <Input placeholder="queries.total" value={f.path} className="min-w-0 flex-1 basis-[10rem]"
-                    onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, path: e.target.value } : x)) })} />
-                  <Select className="w-28" value={f.format ?? "text"}
-                    onChange={(e) => set({ fields: w.fields!.map((x, j) => (j === i ? { ...x, format: e.target.value as never } : x)) })}>
-                    {["text", "number", "bytes", "rate", "percent"].map((fm) => (
-                      <option key={fm}>{fm}</option>
-                    ))}
-                  </Select>
-                  <Button size="icon" variant="ghost" onClick={() => set({ fields: w.fields!.filter((_, j) => j !== i) })}>
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>Cancel</Button>
-        <Button disabled={!w.container || !w.url} onClick={() => onSave(w)}>
-          <Save size={13} /> Save widget
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
+const SECTIONS: SettingsSection[] = [
+  { id: "access", label: "Access" },
+  { id: "integrations", label: "Integrations" },
+  { id: "hermes", label: "Hermes" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "reference", label: "Reference" },
+];
 
 export default function SettingsPage() {
-  const { data, mutate } = useSettings();
+  const { data, mutate } = useSettingsFull();
   const { data: containersData } = useContainers(30000);
-  const [editing, setEditing] = useState<WidgetInstance | null>(null);
   const [tileDraft, setTileDraft] = useState<AppConfig | null>(null);
   const [saved, setSaved] = useState(false);
+  const [savingTiles, setSavingTiles] = useState(false);
 
   useEffect(() => {
     if (data && !tileDraft) setTileDraft(data.config);
@@ -147,7 +62,6 @@ export default function SettingsPage() {
       ? data.config.widgets.map((x) => (x.id === w.id ? w : x))
       : [...data.config.widgets, w];
     await persist({ ...data.config, widgets });
-    setEditing(null);
   }
 
   async function deleteWidget(id: string) {
@@ -155,11 +69,21 @@ export default function SettingsPage() {
     await persist({ ...data.config, widgets: data.config.widgets.filter((w) => w.id !== id) });
   }
 
+  async function saveTiles() {
+    if (!tileDraft) return;
+    setSavingTiles(true);
+    try {
+      await persist(tileDraft);
+    } finally {
+      setSavingTiles(false);
+    }
+  }
+
   const cfg = tileDraft;
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <header className="flex items-center justify-between">
+    <div className="space-y-6 max-w-5xl">
+      <header className="flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
           <p className="text-xs text-ink-dim mt-0.5">
@@ -169,276 +93,48 @@ export default function SettingsPage() {
         {saved && <Badge variant="ok">saved</Badge>}
       </header>
 
-      {/* auth status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Auth</CardTitle>
-          {data?.meta.authConfigured ? (
-            <Badge variant="ok">password set</Badge>
-          ) : (
-            <Badge variant="bad">NO PASSWORD — login disabled outside dev</Badge>
-          )}
-        </CardHeader>
-        <CardContent className="text-xs text-ink-dim space-y-1">
-          <p>
-            Login uses <span className="font-mono">ADMIN_PASSWORD_HASH</span> (bcrypt) from the environment.
-            Generate one with <span className="font-mono text-accent">npm run hash-password -- &apos;pass&apos;</span> and set it in the compose file.
+      <SettingsSectionNav sections={SECTIONS} />
+
+      <div id="access" className="scroll-mt-20">
+        <SettingsAccess />
+      </div>
+
+      <div id="integrations" className="scroll-mt-20">
+        <SettingsIntegrations />
+      </div>
+
+      <div id="hermes" className="scroll-mt-20">
+        <SettingsHermes />
+      </div>
+
+      <div id="dashboard" className="scroll-mt-20 space-y-5">
+        <div>
+          <h2 className="microlabel !text-accent">Dashboard</h2>
+          <p className="text-[0.7rem] text-ink-dim mt-0.5">
+            How containers present on the Overview — widgets pull live stats, tiles control grouping,
+            links and visibility.
           </p>
-          <p>The dashboard should also sit behind an NPM access list — two layers, always.</p>
-        </CardContent>
-      </Card>
-
-      <SettingsIntegrations />
-
-      <SettingsHermes />
-
-      {/* widgets */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="microlabel !text-accent">Service widgets</h2>
-          <Button
-            size="sm"
-            onClick={() =>
-              setEditing({
-                id: `w_${Math.random().toString(36).slice(2, 9)}`,
-                container: "",
-                type: "generic",
-                url: "",
-              })
-            }
-          >
-            <Plus size={13} /> Add widget
-          </Button>
         </div>
-
-        {editing && (
-          <WidgetEditor
-            widget={editing}
-            types={data?.meta.widgetTypes ?? ["generic"]}
-            containers={containerNames}
-            onSave={saveWidget}
-            onCancel={() => setEditing(null)}
+        <SettingsWidgets
+          widgets={data?.config.widgets ?? []}
+          types={data?.meta.widgetTypes ?? ["generic"]}
+          containerNames={containerNames}
+          onSave={saveWidget}
+          onDelete={deleteWidget}
+        />
+        {cfg && (
+          <SettingsTiles
+            cfg={cfg}
+            containerNames={containerNames}
+            onChange={setTileDraft}
+            onSave={saveTiles}
+            saving={savingTiles}
           />
         )}
+      </div>
 
-        <div className="panel divide-y divide-line/50">
-          {(data?.config.widgets ?? []).map((w) => (
-            <div key={w.id} className="flex items-center gap-3 px-4 py-2.5">
-              <Badge variant="accent">{w.type}</Badge>
-              <span className="text-sm font-medium">{w.container}</span>
-              <span className="font-mono text-xs text-ink-faint flex-1 truncate">{w.url}</span>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(w)}>edit</Button>
-              <Button size="icon" variant="ghost" onClick={() => deleteWidget(w.id)}>
-                <Trash2 size={13} />
-              </Button>
-            </div>
-          ))}
-          {!data?.config.widgets.length && (
-            <div className="px-4 py-6 text-center text-xs text-ink-faint">
-              No widgets configured yet. Containers with <span className="font-mono">dashboard.widget.*</span> labels appear automatically.
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* tiles */}
-      {cfg && (
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="microlabel !text-accent">Tiles — groups, URLs, icons, visibility</h2>
-            <Button size="sm" onClick={() => persist(cfg)}>
-              <Save size={13} /> Save tiles
-            </Button>
-          </div>
-          <div className="panel overflow-x-auto hidden md:block">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line">
-                  {["Container", "Group", "App URL", "Icon (slug or URL)", "Hide"].map((h) => (
-                    <th key={h} className="microlabel text-left px-3 py-2 font-semibold">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {containerNames.map((name) => {
-                  const groupOf = cfg.groups.find((g) => g.containers.includes(name))?.name ?? "";
-                  return (
-                    <tr key={name} className="border-b border-line/50 last:border-0">
-                      <td className="px-3 py-1.5 font-mono text-xs">{name}</td>
-                      <td className="px-3 py-1.5">
-                        <Input
-                          className="h-7"
-                          placeholder="(compose project)"
-                          value={groupOf}
-                          onChange={(e) => {
-                            const groups = cfg.groups
-                              .map((g) => ({ ...g, containers: g.containers.filter((c) => c !== name) }))
-                              .filter((g) => g.containers.length > 0 || g.name === e.target.value);
-                            const target = e.target.value.trim();
-                            if (target) {
-                              const existing = groups.find((g) => g.name === target);
-                              if (existing) existing.containers.push(name);
-                              else groups.push({ name: target, containers: [name] });
-                            }
-                            setTileDraft({ ...cfg, groups });
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input
-                          className="h-7"
-                          placeholder="(inferred)"
-                          value={cfg.urls[name] ?? ""}
-                          onChange={(e) => {
-                            const urls = { ...cfg.urls };
-                            if (e.target.value) urls[name] = e.target.value;
-                            else delete urls[name];
-                            setTileDraft({ ...cfg, urls });
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <Input
-                          className="h-7"
-                          placeholder="(auto)"
-                          value={cfg.icons[name] ?? ""}
-                          onChange={(e) => {
-                            const icons = { ...cfg.icons };
-                            if (e.target.value) icons[name] = e.target.value;
-                            else delete icons[name];
-                            setTileDraft({ ...cfg, icons });
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-1.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={cfg.hidden.includes(name)}
-                          onChange={(e) =>
-                            setTileDraft({
-                              ...cfg,
-                              hidden: e.target.checked
-                                ? [...cfg.hidden, name]
-                                : cfg.hidden.filter((h) => h !== name),
-                            })
-                          }
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="md:hidden space-y-2">
-            {containerNames.map((name) => {
-              const groupOf = cfg.groups.find((g) => g.containers.includes(name))?.name ?? "";
-              return (
-                <div key={name} className="panel p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-sm truncate">{name}</span>
-                    <label className="flex items-center gap-2 min-h-11 pl-2 cursor-pointer text-xs text-ink-dim">
-                      hide
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4"
-                        checked={cfg.hidden.includes(name)}
-                        onChange={(e) =>
-                          setTileDraft({
-                            ...cfg,
-                            hidden: e.target.checked
-                              ? [...cfg.hidden, name]
-                              : cfg.hidden.filter((h) => h !== name),
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div>
-                    <Label>Group</Label>
-                    <Input
-                      placeholder="(compose project)"
-                      value={groupOf}
-                      onChange={(e) => {
-                        const groups = cfg.groups
-                          .map((g) => ({ ...g, containers: g.containers.filter((c) => c !== name) }))
-                          .filter((g) => g.containers.length > 0 || g.name === e.target.value);
-                        const target = e.target.value.trim();
-                        if (target) {
-                          const existing = groups.find((g) => g.name === target);
-                          if (existing) existing.containers.push(name);
-                          else groups.push({ name: target, containers: [name] });
-                        }
-                        setTileDraft({ ...cfg, groups });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <Label>App URL</Label>
-                    <Input
-                      placeholder="(inferred)"
-                      value={cfg.urls[name] ?? ""}
-                      onChange={(e) => {
-                        const urls = { ...cfg.urls };
-                        if (e.target.value) urls[name] = e.target.value;
-                        else delete urls[name];
-                        setTileDraft({ ...cfg, urls });
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <Label>Icon</Label>
-                    <Input
-                      placeholder="(auto)"
-                      value={cfg.icons[name] ?? ""}
-                      onChange={(e) => {
-                        const icons = { ...cfg.icons };
-                        if (e.target.value) icons[name] = e.target.value;
-                        else delete icons[name];
-                        setTileDraft({ ...cfg, icons });
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
-
-      {/* references */}
-      <div className="grid md:grid-cols-2 gap-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Label convention</CardTitle>
-          </CardHeader>
-          <CardContent className="font-mono text-[0.7rem] text-ink-dim space-y-1">
-            <div>dashboard.enable=false <span className="text-ink-faint"># hide tile</span></div>
-            <div>dashboard.url=http://…</div>
-            <div>dashboard.icon=jellyfin <span className="text-ink-faint"># selfh.st slug or URL</span></div>
-            <div>dashboard.group=Media</div>
-            <div>dashboard.widget.type=generic</div>
-            <div>dashboard.widget.endpoint=http://…/api/stats</div>
-            <div>dashboard.widget.path=Queries:queries.total,Hits:cache.hits</div>
-            <div>dashboard.widget.key=&lt;api key&gt;</div>
-            <div>Jellyfin transcodes: jellyfin.url=http://…, jellyfin.key=&lt;api key&gt; <span className="text-ink-faint"># Dashboard → API Keys</span></div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Socket-proxy scopes (reference)</CardTitle>
-          </CardHeader>
-          <CardContent className="font-mono text-[0.7rem] text-ink-dim space-y-1">
-            <div className="text-accent"># read</div>
-            <div>CONTAINERS=1 IMAGES=1 INFO=1</div>
-            <div>NETWORKS=1 VOLUMES=1 PING=1</div>
-            <div className="text-accent"># write (start/stop/restart/create)</div>
-            <div>POST=1 ALLOW_START=1 ALLOW_STOP=1 ALLOW_RESTARTS=1</div>
-            <div className="text-bad"># never: EXEC=1</div>
-          </CardContent>
-        </Card>
+      <div id="reference" className="scroll-mt-20">
+        <SettingsReference />
       </div>
     </div>
   );
