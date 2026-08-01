@@ -521,6 +521,32 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted: result.VolumesDeleted ?? [] };
 }
 
+export interface ImageRemoveResult {
+  /** Untagged/Deleted entries Docker itself reports, normalised to one string
+   *  each — the same shape pruneReclaimable() already returns for prune. */
+  deleted: string[];
+}
+
+/**
+ * Removes one image by ID, no force flag — mirrors the deliberate restraint of
+ * pruneReclaimable(): this dashboard never forces past a container still using
+ * an image, it only offers the deletion once nothing depends on it. The route
+ * calling this already re-checks in-use itself (defence in depth against a
+ * stale poll), so a 409 reaching here is Docker's own last word on it.
+ * The df cache is dropped afterwards, same as pruneReclaimable, so the next
+ * Reclaimable read reflects the removal rather than a stale minute-old figure.
+ */
+export async function removeImage(id: string): Promise<ImageRemoveResult> {
+  const result = (await docker.getImage(id).remove({})) as
+    | { Untagged?: string; Deleted?: string }[]
+    | undefined;
+  globalForDocker.__dfCache = undefined;
+  const deleted = (result ?? [])
+    .map((d) => d.Deleted || d.Untagged)
+    .filter((v): v is string => !!v);
+  return { deleted };
+}
+
 const DOCKER_ROOT_TTL_MS = 60 * 60 * 1000; // never changes without a daemon restart
 
 /** GET /info, just for DockerRootDir — cached for an hour since it's effectively static. */
