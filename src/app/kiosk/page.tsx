@@ -10,6 +10,7 @@ import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { KioskAppearance } from "@/components/kiosk-appearance";
+import { KioskAttentionCard } from "@/components/kiosk-attention";
 import { useNow } from "@/lib/use-now";
 
 // Interactions slide the elevation window, but there's no need to hit the
@@ -167,6 +168,9 @@ function KioskPageInner() {
               ABOVE the hub: someone who just entered a PIN came for these,
               not to scroll past the home controls to find them. */}
           <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6">
+            {/* Alert-by-exception: renders null when the homelab is healthy.
+                First in the column — when it does speak, it matters most. */}
+            <KioskAttentionCard />
             <KioskDisplay period={displayPeriod} />
 
             {elevated && expiresAt !== null && (

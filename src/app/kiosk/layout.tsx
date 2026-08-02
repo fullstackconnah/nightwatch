@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { KioskThemeScope } from "@/components/kiosk-theme";
+import { KioskSky } from "@/components/kiosk-sky";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",
@@ -50,5 +51,13 @@ export default function KioskLayout({ children }: { children: React.ReactNode })
   // The shell div (bg, safe-area padding, and the device-local theme
   // attribute) lives in KioskThemeScope so this layout stays a server
   // component and keeps its metadata/viewport exports.
-  return <KioskThemeScope>{children}</KioskThemeScope>;
+  // KioskSky mounts here (as a child of the scope) rather than inside
+  // KioskThemeScope itself: kiosk-sky imports useKioskTheme from
+  // kiosk-theme, so the reverse import would create a module cycle.
+  return (
+    <KioskThemeScope>
+      <KioskSky />
+      {children}
+    </KioskThemeScope>
+  );
 }

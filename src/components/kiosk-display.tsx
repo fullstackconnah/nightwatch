@@ -136,11 +136,20 @@ function clockOf(isoLocal: string): string {
   return t >= 0 ? isoLocal.slice(t + 1) : isoLocal;
 }
 
+/** Mirrors weather.ts's WeatherRain — 15-min precip nowcast (~90 min) plus a
+ *  12-hour probability outlook and server-composed summary microcopy. */
+interface WeatherRain {
+  nowcast: Array<{ minutesFromNow: number; precipMmHr: number }>;
+  hours: Array<{ hourIso: string; probabilityPct: number; precipMm: number }>;
+  summary: string | null;
+}
+
 interface WeatherOk {
   status: "ok";
   place: string;
   current: WeatherCurrent;
   days: WeatherDay[];
+  rain?: WeatherRain;
 }
 
 type WeatherResponse =
@@ -312,38 +321,44 @@ function CurrentWeatherLarge({
   today,
   place,
   stale,
+  rain,
 }: {
   current: WeatherCurrent;
   today: WeatherDay;
   place: string;
   stale: boolean;
+  rain?: WeatherRain;
 }) {
   const Icon = WEATHER_ICON[current.code];
   return (
-    <div className="flex flex-wrap items-start justify-between gap-4">
-      <div className="flex items-center gap-4">
-        <Icon size={44} className="shrink-0 text-ink-dim" aria-hidden />
-        <div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-mono text-4xl leading-none text-ink">{Math.round(current.tempC)}°</span>
-            <span className="text-sm text-ink-dim">{current.label}</span>
-          </div>
-          <div className="mt-1 font-mono text-xs text-ink-faint">
-            feels like {Math.round(current.feelsC)}°{place ? ` · ${place}` : ""}
-          </div>
-          {stale && (
-            <div className="mt-1">
-              <StaleTag />
+    <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Icon size={44} className="shrink-0 text-ink-dim" aria-hidden />
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-4xl leading-none text-ink">{Math.round(current.tempC)}°</span>
+              <span className="text-sm text-ink-dim">{current.label}</span>
             </div>
-          )}
+            <div className="mt-1 font-mono text-xs text-ink-faint">
+              feels like {Math.round(current.feelsC)}°{place ? ` · ${place}` : ""}
+            </div>
+            {stale && (
+              <div className="mt-1">
+                <StaleTag />
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <MicroDatum icon={Droplets} label="rain" value={`${current.precipMm.toFixed(1)} mm`} />
+          <MicroDatum icon={Wind} label="wind" value={`${Math.round(current.windKmh)} km/h`} />
+          <MicroDatum label="humidity" value={`${Math.round(current.humidityPct)}%`} />
+          <MicroDatum icon={Sunrise} label="sunrise" value={clockOf(today.sunrise)} />
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-4">
-        <MicroDatum icon={Droplets} label="rain" value={`${current.precipMm.toFixed(1)} mm`} />
-        <MicroDatum icon={Wind} label="wind" value={`${Math.round(current.windKmh)} km/h`} />
-        <MicroDatum label="humidity" value={`${Math.round(current.humidityPct)}%`} />
-        <MicroDatum icon={Sunrise} label="sunrise" value={clockOf(today.sunrise)} />
-      </div>
+      {rain && <RainNowcastBand rain={rain} />}
+      {rain && <RainHourlyRibbon hours={rain.hours} />}
     </div>
   );
 }
@@ -353,11 +368,13 @@ function CurrentWeatherCompact({
   today,
   mode,
   stale,
+  rain,
 }: {
   current: WeatherCurrent;
   today: WeatherDay;
   mode: "day" | "evening";
   stale: boolean;
+  rain?: WeatherRain;
 }) {
   const Icon = WEATHER_ICON[current.code];
   return (
@@ -377,6 +394,7 @@ function CurrentWeatherCompact({
           sunset {clockOf(today.sunset)}
         </span>
       )}
+      {rain?.summary && <RainSummaryText summary={rain.summary} className="text-xs text-ink-dim" />}
       {stale && <StaleTag />}
     </div>
   );
@@ -428,6 +446,110 @@ function ForecastStrip({ days, emphasizeIndex }: { days: WeatherDay[]; emphasize
   );
 }
 
+/* ── rain timeline ───────────────────────────────────────────────────────── */
+// Server-shaped nowcast/hourly data rendered as two small hand-rolled SVG/DOM
+// pieces, morning-card only (day/evening get the summary sentence alone —
+// see CurrentWeatherCompact). Mono-Is-Data: the sentence is prose (sans),
+// but the minute/clock figures inside it are numbers, so they're pulled out
+// into mono spans rather than left in the sans run.
+
+const RAIN_FIGURE_RE = /(\d+\s*min|\d{1,2}:\d{2})/g;
+
+function RainSummaryText({ summary, className }: { summary: string; className?: string }) {
+  const parts = summary.split(RAIN_FIGURE_RE);
+  return (
+    <span className={className}>
+      {parts.map((part, i) => (i % 2 === 1 ? <span key={i} className="font-mono">{part}</span> : <span key={i}>{part}</span>))}
+    </span>
+  );
+}
+
+const NOWCAST_W = 320;
+const NOWCAST_H = 36;
+// Fixed 0/15/30/45/60/75/90-minute grid: bar position comes from this slot
+// count, never from how many points the server actually returned, so a
+// short/uneven nowcast array can't push a bar past the viewBox.
+const NOWCAST_SLOTS = 7;
+const NOWCAST_SLOT_W = NOWCAST_W / NOWCAST_SLOTS;
+
+/** ~36px SVG band: 15-min precip bars over a hairline baseline. Renders no
+ *  bars at all when every bucket is dry — the summary sentence alone carries
+ *  "dry for the next 90 min" rather than drawing a flat empty strip. Renders
+ *  nothing whatsoever when there's no nowcast and no summary to show, so a
+ *  data-missing morning never leaves a dead box under the current reading. */
+function RainNowcastBand({ rain }: { rain: WeatherRain }) {
+  const { nowcast, summary } = rain;
+  if (nowcast.length === 0 && !summary) return null;
+
+  const hasBars = nowcast.some((p) => p.precipMmHr > 0);
+  const peak = hasBars ? Math.max(...nowcast.map((p) => p.precipMmHr)) : 1;
+  const baselineY = NOWCAST_H - 5;
+
+  return (
+    <div className="mt-3">
+      {summary && <RainSummaryText summary={summary} className="text-xs text-ink-dim" />}
+      {hasBars && (
+        <svg
+          viewBox={`0 0 ${NOWCAST_W} ${NOWCAST_H}`}
+          preserveAspectRatio="none"
+          className="mt-1 h-9 w-full"
+          aria-hidden
+        >
+          <line
+            x1={0}
+            y1={baselineY}
+            x2={NOWCAST_W}
+            y2={baselineY}
+            stroke="var(--color-line-bright)"
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+          />
+          {nowcast.map((p) => {
+            const slot = Math.min(NOWCAST_SLOTS - 1, Math.round(p.minutesFromNow / 15));
+            const x = slot * NOWCAST_SLOT_W;
+            const barH = Math.max(1.5, (p.precipMmHr / peak) * (baselineY - 4));
+            return (
+              <rect
+                key={p.minutesFromNow}
+                x={x + NOWCAST_SLOT_W * 0.15}
+                y={baselineY - barH}
+                width={Math.max(1, NOWCAST_SLOT_W * 0.7)}
+                height={barH}
+                rx={1}
+                fill="var(--color-blue)"
+                opacity={0.85}
+              />
+            );
+          })}
+        </svg>
+      )}
+    </div>
+  );
+}
+
+/** 12 tiny cells, opacity-mapped to rain probability, with a "now" tick at
+ *  the left edge (hours[0] is the current/next hour bucket). Omitted
+ *  entirely — no hatched placeholder — when the hourly block didn't come
+ *  back, per spec: this is outlook furniture, not a reading that failed. */
+function RainHourlyRibbon({ hours }: { hours: WeatherRain["hours"] }) {
+  if (hours.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="microlabel mb-1.5">next 12h rain</div>
+      <div className="relative flex h-3 gap-0.5">
+        <span aria-hidden className="absolute -top-1.5 left-0 h-1.5 w-px bg-ink-faint" />
+        {hours.slice(0, 12).map((h) => (
+          <div
+            key={h.hourIso}
+            className="h-full min-w-0 flex-1 rounded-sm"
+            style={{ backgroundColor: "var(--color-blue)", opacity: Math.max(0.08, Math.min(1, h.probabilityPct / 100)) }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── weather band ────────────────────────────────────────────────────────── */
 
 function WeatherBand({ period, weather }: { period: KioskPeriod; weather: WeatherView }) {
@@ -435,16 +557,22 @@ function WeatherBand({ period, weather }: { period: KioskPeriod; weather: Weathe
   if (weather.status === "unreachable-empty") return <WeatherUnreachable detail={weather.detail} />;
   if (weather.status === "loading" || !weather.ok) return <WeatherSkeleton />;
 
-  const { current, days, place } = weather.ok;
+  const { current, days, place, rain } = weather.ok;
   const today = days[0];
   const stale = weather.status === "ready-stale";
 
   return (
     <section className="panel p-4">
       {period === "morning" ? (
-        <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} />
+        <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} rain={rain} />
       ) : (
-        <CurrentWeatherCompact current={current} today={today} mode={period === "evening" ? "evening" : "day"} stale={stale} />
+        <CurrentWeatherCompact
+          current={current}
+          today={today}
+          mode={period === "evening" ? "evening" : "day"}
+          stale={stale}
+          rain={rain}
+        />
       )}
       {days.length > 0 && <ForecastStrip days={days} emphasizeIndex={period === "evening" ? 1 : null} />}
     </section>

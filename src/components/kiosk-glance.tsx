@@ -28,6 +28,7 @@ import {
   type KioskPeriod,
 } from "@/components/kiosk-display";
 import { useKioskHa } from "@/components/kiosk-hub";
+import { KioskTimersButton } from "@/components/kiosk-timers";
 
 interface KioskHealthCounts {
   running: number;
@@ -188,6 +189,9 @@ export function KioskGlance({
 
       <GlanceTiles period={period} />
 
+      <div className="fixed bottom-4 left-5">
+        <KioskTimersButton />
+      </div>
       <button
         type="button"
         onClick={onAdminClick}

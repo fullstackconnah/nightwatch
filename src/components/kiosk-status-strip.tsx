@@ -17,6 +17,7 @@ import { Activity, ShieldAlert } from "lucide-react";
 import { useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
+import { KioskTimersButton } from "@/components/kiosk-timers";
 
 const TIME_FMT = new Intl.DateTimeFormat("en-AU", {
   hour: "2-digit",
@@ -107,6 +108,7 @@ export function KioskStatusStrip({
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
+        <KioskTimersButton />
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">
             <span className="dot dot-live" aria-hidden />

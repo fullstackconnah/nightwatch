@@ -216,6 +216,11 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       data-kiosk-theme={theme === "default" ? undefined : theme}
       className={cn("min-h-screen bg-bg overflow-x-hidden", ...FONT_VARIABLE_CLASSES)}
       style={{
+        // isolate: gives this div its own stacking context so KioskSky's
+        // z-index:-1 layer paints ABOVE this ground color but below content.
+        // Without it, CSS painting order puts negative-z descendants behind
+        // the shared context's in-flow backgrounds — invisible by construction.
+        isolation: "isolate",
         paddingTop: "env(safe-area-inset-top)",
         paddingBottom: "env(safe-area-inset-bottom)",
         paddingLeft: "env(safe-area-inset-left)",
