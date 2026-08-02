@@ -211,7 +211,7 @@ function ToggleTile({
       disabled={!available}
       onClick={onToggle}
       className={cn(
-        "flex min-h-[64px] flex-col justify-between gap-2 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+        "flex min-h-16 flex-col justify-between gap-2 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -225,7 +225,7 @@ function ToggleTile({
       </div>
       <div className="min-w-0">
         <div className="truncate text-xs text-ink">{name}</div>
-        <div className={cn("mt-0.5 truncate font-mono text-[0.7rem]", error ? "text-bad" : "text-ink-faint")}>
+        <div className={cn("mt-0.5 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")}>
           {error ?? subtitle}
         </div>
       </div>
@@ -262,7 +262,7 @@ function SceneTile({
       disabled={!scene.available || pending}
       onClick={onActivate}
       className={cn(
-        "flex min-h-[64px] flex-col items-start justify-center gap-1.5 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+        "flex min-h-16 flex-col items-start justify-center gap-1.5 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -270,7 +270,7 @@ function SceneTile({
       <Sparkles size={16} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
       <span className="truncate text-xs text-ink">{scene.name}</span>
       <span
-        className={cn("font-mono text-[0.7rem]", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}
+        className={cn("font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}
       >
         {statusText}
       </span>
@@ -536,7 +536,7 @@ function ClimateCard({
         </div>
       )}
 
-      {error && <div className="mt-2 text-[0.7rem] text-bad">{error}</div>}
+      {error && <div className="mt-2 text-2xs text-bad">{error}</div>}
     </div>
   );
 }
@@ -579,7 +579,7 @@ function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
             >
               <Icon size={12} className="shrink-0 text-ink-faint" aria-hidden />
               <div className="min-w-0">
-                <div className="microlabel max-w-[8rem] truncate" title={s.name}>
+                <div className="microlabel max-w-32 truncate" title={s.name}>
                   {s.name}
                 </div>
                 <div className={cn("font-mono text-xs", s.available ? batteryTone(s) : "text-ink-faint")}>
@@ -611,7 +611,7 @@ function HubSkeleton() {
             {Array.from({ length: 4 }).map((_, j) => (
               <div
                 key={j}
-                className="min-h-[64px] animate-pulse rounded-lg bg-panel-2 motion-reduce:animate-none"
+                className="min-h-16 animate-pulse rounded-lg bg-panel-2 motion-reduce:animate-none"
                 style={{ animationDelay: `${(i * 4 + j) * 60}ms` }}
               />
             ))}
@@ -624,29 +624,29 @@ function HubSkeleton() {
 
 function HubLoadError({ error }: { error: unknown }) {
   return (
-    <div className="panel flex flex-1 items-center justify-center p-10 text-center">
-      <div className="flex flex-col items-center gap-2">
-        <div className="microlabel !text-bad">load failed</div>
-        <p className="max-w-sm text-sm text-ink-dim">
-          {error instanceof Error ? error.message : "Could not reach nightwatch's own /kiosk/api/ha/states."}
-        </p>
-      </div>
+    <div className="panel flex flex-wrap items-center gap-3 px-4 py-3">
+      <span className="microlabel !text-bad">load failed</span>
+      <p className="text-xs text-ink-dim">
+        {error instanceof Error ? error.message : "Could not reach nightwatch's own /kiosk/api/ha/states."}
+      </p>
     </div>
   );
 }
 
-// The pre-HA-token state is what the wall tablet actually shows for now, so
-// it owns the whole hub surface (centered in the flex-1 column page.tsx
-// provides) rather than floating as a small notice above a black void.
+// Compact by design (impeccable layout assessment 2026-08-03): this state
+// once deliberately owned the whole surface, back when the kiosk was only
+// strip + hub and everything below it was void. The weather/display band now
+// carries the page, so a flex-1 hero of hatch texture was measured eating
+// 57-73% of the viewport as dead air. A placeholder should size to its
+// sentence; the page's open ground below is the glance-board idiom, not
+// emptiness to be papered over.
 function HubUnconfigured() {
   return (
-    <div className="panel relative flex flex-1 items-center justify-center overflow-hidden p-10 text-center">
+    <div className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
-      <div className="relative flex flex-col items-center gap-3">
-        <House size={28} className="text-ink-faint" aria-hidden />
-        <div className="microlabel !text-warn">Home Assistant not connected</div>
-        <p className="max-w-sm text-sm text-ink-dim">Connect Home Assistant in Settings → Integrations, and your lights, scenes and climate appear here.</p>
-      </div>
+      <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
+      <span className="microlabel relative !text-warn">Home Assistant not connected</span>
+      <p className="relative text-xs text-ink-dim">Connect it in Settings → Integrations, and your lights, scenes and climate appear here.</p>
     </div>
   );
 }
@@ -666,15 +666,13 @@ function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"
 
 function HubEmpty() {
   return (
-    <div className="panel relative flex flex-1 items-center justify-center overflow-hidden p-10 text-center">
+    <div className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
-      <div className="relative flex flex-col items-center gap-3">
-        <House size={28} className="text-ink-faint" aria-hidden />
-        <div className="microlabel">Nothing to control yet</div>
-        <p className="max-w-sm text-sm text-ink-dim">
-          Home Assistant is connected but exposes no lights, switches, scenes, climate or sensors.
-        </p>
-      </div>
+      <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
+      <span className="microlabel relative">Nothing to control yet</span>
+      <p className="relative text-xs text-ink-dim">
+        Home Assistant is connected but exposes no lights, switches, scenes, climate or sensors.
+      </p>
     </div>
   );
 }

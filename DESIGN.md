@@ -97,6 +97,7 @@ rounded:
   sm: "0.125rem"
   base: "0.25rem"
   md: "0.375rem"
+  tile: "0.5rem" # kiosk touch tiles (56px+): between control and panel, matching their in-between scale
   panel: "0.625rem"
   full: "9999px"
 spacing:

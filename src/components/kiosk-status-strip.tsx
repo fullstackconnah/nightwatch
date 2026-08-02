@@ -54,7 +54,7 @@ export function KioskStatusStrip({
         <span className="font-mono tabular-nums leading-none text-ink text-lg md:text-xl">
           {date ? TIME_FMT.format(date) : "--:--:--"}
         </span>
-        <span className="hidden text-[0.7rem] text-ink-dim sm:inline">
+        <span className="hidden text-2xs text-ink-dim sm:inline">
           {date ? DATE_FMT.format(date) : ""}
         </span>
       </div>

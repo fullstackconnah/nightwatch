@@ -22,7 +22,7 @@ function AdminRow({ c, onChanged }: { c: TiledContainer; onChanged: () => void }
         <span className={cn("dot", stateDotClass(c))} />
         <div className="min-w-0 flex-1">
           <div className="font-mono text-sm truncate">{c.name}</div>
-          <ContainerStatus c={c} className="text-[0.7rem]" />
+          <ContainerStatus c={c} className="text-2xs" />
         </div>
         <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
       </div>

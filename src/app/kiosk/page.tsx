@@ -160,18 +160,25 @@ function KioskPageInner() {
         <>
           <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
 
-          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+          {/* gap-6 between the page's major sections, gap-4 inside the
+              elevated tool cluster — rhythm signals grouping strength
+              (impeccable layout assessment: one uniform gap everywhere said
+              nothing about what belongs together). The elevated tools sit
+              ABOVE the hub: someone who just entered a PIN came for these,
+              not to scroll past the home controls to find them. */}
+          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6">
             <KioskDisplay period={displayPeriod} />
+
+            {elevated && expiresAt !== null && (
+              <div className="flex flex-col items-center gap-4">
+                <KioskVoicePanel />
+                <KioskAppearance layout={layout} onLayoutChange={chooseLayout} />
+                <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
+              </div>
+            )}
+
             <KioskHub />
           </div>
-
-          {elevated && expiresAt !== null && (
-            <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
-              <KioskVoicePanel />
-              <KioskAppearance layout={layout} onLayoutChange={chooseLayout} />
-              <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
-            </div>
-          )}
         </>
       )}
 

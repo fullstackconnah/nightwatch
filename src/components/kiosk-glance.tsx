@@ -57,7 +57,7 @@ function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeather
 
 function ServerSentence() {
   const { data: health, error } = useGlanceHealth();
-  if (error && !health) return <span className="text-ink-faint">server status unreachable</span>;
+  if (error && !health) return <span className="text-ink-dim">server status unreachable</span>;
   if (!health) return <span className="text-ink-faint"> </span>;
   const bad = health.dead > 0;
   const warn = health.unhealthy > 0;
@@ -125,7 +125,7 @@ function GlanceTiles({ period }: { period: KioskPeriod }) {
               }
             }}
             className={cn(
-              "min-h-[64px] min-w-[128px] rounded-lg border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.97]",
+              "min-h-16 min-w-32 rounded-lg border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.97]",
               p.on
                 ? "border-accent/40 bg-accent/10 text-ink"
                 : "border-line bg-transparent text-ink-dim hover:border-line-bright hover:text-ink",

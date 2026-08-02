@@ -413,7 +413,7 @@ function ForecastStrip({ days, emphasizeIndex }: { days: WeatherDay[]; emphasize
             >
               <span className={cn("microlabel", emphasized && "!text-accent")}>{dayLabel(day.date, i)}</span>
               <Icon size={16} className={emphasized ? "text-accent" : "text-ink-dim"} aria-hidden />
-              <span className="font-mono text-[0.7rem] text-ink">
+              <span className="font-mono text-2xs text-ink">
                 {Math.round(day.maxC)}°<span className="text-ink-faint">/{Math.round(day.minC)}°</span>
               </span>
               <span className="flex items-center gap-0.5 font-mono text-[0.6rem] text-ink-faint">
@@ -461,7 +461,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
     return (
       <section className="panel p-4">
         <SectionLabel icon={Newspaper} label="Morning Briefing" />
-        <div className="mt-2 flex items-center gap-2 text-xs text-ink-faint">
+        <div className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-faint motion-reduce:animate-none" aria-hidden />
           briefing is being prepared…
         </div>
@@ -493,7 +493,21 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
       {digest && (
         <div className="mt-2">
           <div className="text-sm font-semibold text-ink">{digest.headline}</div>
-          <p className="mt-1 text-xs text-ink-dim">{digest.body}</p>
+          {/* The digest body arrives as inline "- x - y - z" prose; on a
+              glance-first surface that reads as a log dump. Split it back
+              into the list it was born as (impeccable layout finding). */}
+          <ul className="mt-1 space-y-1 text-xs text-ink-dim">
+            {digest.body
+              .split(/(?:^|\s)-\s+/)
+              .map((item) => item.trim())
+              .filter(Boolean)
+              .map((item, i) => (
+                <li key={i} className="flex gap-2">
+                  <span aria-hidden className="text-ink-faint">–</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+          </ul>
           {actionWarn && (
             <div className="mt-2 flex items-center gap-1.5 text-xs text-warn">
               <AlertTriangle size={12} aria-hidden />
