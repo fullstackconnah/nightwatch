@@ -311,3 +311,109 @@ body {
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
   }
 }
+
+/* ── kiosk themes ──────────────────────────────────────────────────────────
+   Device-local IDENTITIES for the /kiosk surface only (picked in the kiosk's
+   elevated admin area; localStorage, never server config). Each theme is a
+   committed world — its own palette, typefaces (font variables provided by
+   KioskThemeScope via next/font), corner geometry and texture — applied by
+   re-declaring the @theme tokens inside the scope. Tailwind v4 utilities
+   resolve var(--color-*)/var(--font-*) at paint time, and these blocks sit
+   after the utility layer, so equal-specificity overrides win by cascade
+   order. The dashboard proper stays dark-console-only (DESIGN.md brand
+   commitment); the wall display is the one surface allowed to dress up. */
+
+/* Terminal — a CRT ops console. Pure black (OLED burn-in friendly),
+   phosphor green, EVERYTHING monospace, square corners, scanlines, a faint
+   glow on text. "alive" and "good" share the accent hue on purpose. */
+[data-kiosk-theme="terminal"] {
+  --color-bg: #000000;
+  --color-panel: #050705;
+  --color-panel-2: #0a0f0b;
+  --color-line: #16301c;
+  --color-line-bright: #275231;
+  --color-ink: #c9f5d1;
+  --color-ink-dim: #7fbe8b;
+  --color-ink-faint: #40693f;
+  --color-accent: #4ade80;
+  --color-accent-dim: #22c55e;
+  --color-blue: #67e8f9;
+  --color-ok: #4ade80;
+  --color-warn: #facc15;
+  --color-bad: #f87171;
+  --font-sans: var(--font-theme-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
+  --font-mono: var(--font-theme-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
+  text-shadow: 0 0 6px rgba(74, 222, 128, 0.16);
+}
+[data-kiosk-theme="terminal"] * {
+  border-radius: 0 !important;
+}
+/* CRT glass: scanlines over the whole surface, including modals — it's the
+   screen itself, not a layer of the UI. */
+[data-kiosk-theme="terminal"]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+}
+
+/* Journal — a printed broadsheet. Warm newsprint ground (a deliberate
+   editorial identity, not a default), near-black ink, serif numerals
+   (Newsreader carries everything the console renders in mono), hard 1px
+   rules instead of hairlines, newspaper-red accent, sharp corners. */
+[data-kiosk-theme="journal"] {
+  color-scheme: light;
+  --color-bg: #f5f2ec;
+  --color-panel: #fcfaf5;
+  --color-panel-2: #ece8e0;
+  --color-line: #b5b1a7;
+  --color-line-bright: #1e1d1a;
+  --color-ink: #1e1d1a;
+  --color-ink-dim: #52504a;
+  --color-ink-faint: #8b887f;
+  --color-accent: #9f1239;
+  --color-accent-dim: #881337;
+  --color-blue: #1e40af;
+  --color-ok: #166534;
+  --color-warn: #92400e;
+  --color-bad: #b91c1c;
+  --font-mono: var(--font-theme-journal), Georgia, "Times New Roman", serif;
+}
+[data-kiosk-theme="journal"] * {
+  border-radius: 0 !important;
+  text-shadow: none;
+}
+[data-kiosk-theme="journal"] .panel {
+  border-width: 1px;
+  box-shadow: none;
+}
+
+/* Lounge — hotel-bar warmth. Deep amber dark, Fraunces display numerals,
+   pill buttons, big radii, and a faint candle-glow pooled at the top of the
+   ground. The heat-lamp answer to the default's server-room teal. */
+[data-kiosk-theme="lounge"] {
+  --color-bg: #120b06;
+  --color-panel: #1c130b;
+  --color-panel-2: #261a10;
+  --color-line: #3b2b1b;
+  --color-line-bright: #5a4229;
+  --color-ink: #f4e9db;
+  --color-ink-dim: #bfa88e;
+  --color-ink-faint: #77624a;
+  --color-accent: #fb923c;
+  --color-accent-dim: #f97316;
+  --color-blue: #93c5fd;
+  --color-ok: #86efac;
+  --color-warn: #eab308;
+  --color-bad: #f87171;
+  --font-mono: var(--font-theme-lounge), Georgia, serif;
+  background-image: radial-gradient(900px 480px at 50% -12%, rgba(251, 146, 60, 0.07), transparent 62%);
+}
+[data-kiosk-theme="lounge"] .panel {
+  border-radius: 1.25rem;
+}
+[data-kiosk-theme="lounge"] button {
+  border-radius: 9999px !important;
+}

@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { KioskThemeScope } from "@/components/kiosk-theme";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",
@@ -46,17 +47,8 @@ export const viewport: Viewport = {
  * dashboard shell leaks in here, since /kiosk is reachable without a session.
  */
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="min-h-screen bg-bg overflow-x-hidden"
-      style={{
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-        paddingLeft: "env(safe-area-inset-left)",
-        paddingRight: "env(safe-area-inset-right)",
-      }}
-    >
-      {children}
-    </div>
-  );
+  // The shell div (bg, safe-area padding, and the device-local theme
+  // attribute) lives in KioskThemeScope so this layout stays a server
+  // component and keeps its metadata/viewport exports.
+  return <KioskThemeScope>{children}</KioskThemeScope>;
 }

@@ -9,6 +9,7 @@ import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
+import { KIOSK_THEMES, setKioskTheme, useKioskTheme } from "@/components/kiosk-theme";
 import { useNow } from "@/lib/use-now";
 
 // Interactions slide the elevation window, but there's no need to hit the
@@ -63,6 +64,7 @@ function KioskPageInner() {
     const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
     if (isKioskLayout(stored)) setLayout(stored);
   }, []);
+  const theme = useKioskTheme();
   const chooseLayout = useCallback((next: KioskLayout) => {
     setLayout(next);
     try {
@@ -167,22 +169,41 @@ function KioskPageInner() {
           {elevated && expiresAt !== null && (
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
               <KioskVoicePanel />
-              <div className="flex items-center gap-2">
-                <span className="microlabel">layout</span>
-                {(["standard", "glance"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => chooseLayout(option)}
-                    className={
-                      layout === option
-                        ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-4 text-xs text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                        : "h-11 rounded-md border border-line px-4 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
-                    }
-                  >
-                    {option === "standard" ? "Standard" : "Glance"}
-                  </button>
-                ))}
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="microlabel">layout</span>
+                  {(["standard", "glance"] as const).map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => chooseLayout(option)}
+                      className={
+                        layout === option
+                          ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-4 text-xs text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                          : "h-11 rounded-md border border-line px-4 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                      }
+                    >
+                      {option === "standard" ? "Standard" : "Glance"}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="microlabel">theme</span>
+                  {KIOSK_THEMES.map((option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setKioskTheme(option)}
+                      className={
+                        theme === option
+                          ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-4 text-xs capitalize text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                          : "h-11 rounded-md border border-line px-4 text-xs capitalize text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                      }
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
               </div>
               <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
             </div>
