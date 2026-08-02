@@ -15,6 +15,14 @@ export const metadata: Metadata = {
   icons: {
     apple: "/kiosk-icon-180.png",
   },
+  // Next's appleWebApp.capable emits only the MODERN standard tag
+  // (mobile-web-app-capable), but iOS full-screen launch still keys off the
+  // legacy apple- variant — and on a plain-HTTP origin iOS also ignores the
+  // manifest's display:standalone, so this tag is the only thing standing
+  // between Add-to-Home-Screen and a Safari-chromed bookmark. Observed live.
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {
