@@ -3,7 +3,7 @@
   "short_name": "nightwatch",
   "description": "Smart display and home hub for the home server",
   "start_url": "/kiosk",
-  "scope": "/kiosk",
+  "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#070b11",
