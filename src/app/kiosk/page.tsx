@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Activity } from "lucide-react";
-import { KioskClock } from "@/components/kiosk-clock";
-import { KioskVitals } from "@/components/kiosk-vitals";
-import { KioskHealth } from "@/components/kiosk-health";
+import { KioskStatusStrip } from "@/components/kiosk-status-strip";
+import { KioskHub } from "@/components/kiosk-hub";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
@@ -63,34 +61,23 @@ export default function KioskPage() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center gap-8 px-6 py-12"
+      className="min-h-screen flex flex-col gap-4 px-3 py-3 md:px-5 md:py-4"
       // Any tap/click anywhere on the elevated surface counts as activity —
       // capture phase so it fires even when the click lands on a button that
       // stops propagation for its own purposes.
       onPointerDownCapture={elevated ? slideExpiry : undefined}
     >
-      <div className="flex items-center gap-2 text-ink-faint">
-        <Activity size={13} className="text-accent" />
-        <span className="microlabel">nightwatch · ambient</span>
+      <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
+
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col">
+        <KioskHub />
       </div>
 
-      <KioskClock />
-      <KioskVitals />
-      <KioskHealth />
-
-      {elevated && expiresAt !== null ? (
-        <>
+      {elevated && expiresAt !== null && (
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
           <KioskVoicePanel />
           <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
-        </>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setPinOpen(true)}
-          className="h-11 px-5 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent"
-        >
-          Admin
-        </button>
+        </div>
       )}
 
       {pinOpen && (

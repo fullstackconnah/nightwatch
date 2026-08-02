@@ -7,6 +7,7 @@ import type {
   HaLight,
   HaLock,
   HaLockState,
+  HaScene,
   HaSensor,
   HaSensorKind,
   HaStatesResponse,
@@ -169,6 +170,17 @@ function mapSensor(e: HaRawEntity, kind: HaSensorKind): HaSensor {
   };
 }
 
+function mapScene(e: HaRawEntity): HaScene {
+  return {
+    entityId: e.entity_id,
+    name: friendlyName(e),
+    // Scene's `state` is the ISO timestamp it last fired, never "unavailable"/
+    // "unknown" in the on/off sense used elsewhere — isUnavailable still
+    // applies, it just means the entity itself dropped off rather than "off".
+    available: !isUnavailable(e.state),
+  };
+}
+
 function byName<T extends { name: string }>(a: T, b: T): number {
   return a.name.localeCompare(b.name);
 }
@@ -179,6 +191,7 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
   const climates: HaClimate[] = [];
   const locks: HaLock[] = [];
   const sensors: HaSensor[] = [];
+  const scenes: HaScene[] = [];
 
   for (const e of raw) {
     if (typeof e?.entity_id !== "string") continue;
@@ -201,6 +214,9 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
         if (kind) sensors.push(mapSensor(e, kind));
         break;
       }
+      case "scene":
+        scenes.push(mapScene(e));
+        break;
       default:
         // Every other domain (automation, person, zone, update, ...) is dropped
         // here — deliberately never proxied to the client, wholesale or otherwise.
@@ -214,6 +230,7 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
     climates: climates.sort(byName),
     locks: locks.sort(byName),
     sensors: sensors.sort(byName),
+    scenes: scenes.sort(byName),
   };
 }
 
@@ -427,6 +444,16 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
         return { ok: false, status: "invalid", detail: "nudge_temp requires a numeric delta." };
       }
       return nudgeClimateTemp(creds, req.entityId, req.delta);
+
+    case "activate_scene":
+      if (domain !== "scene") {
+        return {
+          ok: false,
+          status: "invalid",
+          detail: `activate_scene is not valid for entity domain "${domain || "?"}"`,
+        };
+      }
+      return callService(creds, "scene", "turn_on", req.entityId);
 
     default:
       return { ok: false, status: "invalid", detail: "Unknown action." };

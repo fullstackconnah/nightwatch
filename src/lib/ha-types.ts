@@ -70,12 +70,21 @@ export interface HaSensor {
   available: boolean;
 }
 
+/** Scene's own `state` is the timestamp it was last activated, not a status —
+ *  there is no "on/off" for a scene, only "exists and can be fired". */
+export interface HaScene {
+  entityId: string;
+  name: string;
+  available: boolean;
+}
+
 export interface HaEntities {
   lights: HaLight[];
   switches: HaSwitch[];
   climates: HaClimate[];
   locks: HaLock[];
   sensors: HaSensor[];
+  scenes: HaScene[];
 }
 
 export interface HaStatesResponse {
@@ -85,7 +94,7 @@ export interface HaStatesResponse {
   entities?: HaEntities;
 }
 
-export type HaActionName = "toggle" | "lock" | "unlock" | "set_hvac_mode" | "nudge_temp";
+export type HaActionName = "toggle" | "lock" | "unlock" | "set_hvac_mode" | "nudge_temp" | "activate_scene";
 
 export interface HaActionRequest {
   entityId: string;
