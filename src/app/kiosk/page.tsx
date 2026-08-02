@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { KioskStatusStrip } from "@/components/kiosk-status-strip";
 import { KioskHub } from "@/components/kiosk-hub";
+import { KioskDisplay, KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
@@ -15,10 +16,30 @@ import { useNow } from "@/lib/use-now";
 // touching the screen.
 const SLIDE_MIN_INTERVAL_MS = 15_000;
 
+// Tapping the night overlay wakes the full layout so the tablet stays usable
+// after dark, then lets it settle back into the calm clock-only state once
+// nobody's touched it for a minute.
+const NIGHT_WAKE_MS = 60_000;
+
+// useKioskPeriod reads useSearchParams (the ?period= test override), which
+// Next requires behind a Suspense boundary for the static prerender of this
+// page — hence the thin default-export wrapper. The fallback is null on
+// purpose: the shell paints on hydration a frame later anyway.
 export default function KioskPage() {
+  return (
+    <Suspense fallback={null}>
+      <KioskPageInner />
+    </Suspense>
+  );
+}
+
+function KioskPageInner() {
   const [pinOpen, setPinOpen] = useState(false);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const lastSlideRef = useRef(0);
+  const period = useKioskPeriod();
+  const [nightWoken, setNightWoken] = useState(false);
+  const nightWakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guards a race between the capture-phase slide-on-interaction handler and
   // an explicit Lock tap: both fire from the same pointerdown, and without
   // this a slide response that resolves after the lock response could
@@ -42,6 +63,33 @@ export default function KioskPage() {
   useEffect(() => {
     if (expiresAt !== null && now >= expiresAt) setExpiresAt(null);
   }, [now, expiresAt]);
+
+  const isNight = period === "night";
+  const showNightOverlay = isNight && !elevated && !nightWoken;
+  // Night has no display-band design of its own — the calm overlay below *is*
+  // the night treatment. Once it's dismissed (a wake tap) or the surface is
+  // elevated, fall back to the day band's compact layout rather than invent a
+  // fifth period nobody specified.
+  const displayPeriod = isNight ? "day" : period;
+
+  const wakeNight = useCallback(() => {
+    setNightWoken(true);
+    if (nightWakeTimerRef.current) clearTimeout(nightWakeTimerRef.current);
+    nightWakeTimerRef.current = setTimeout(() => setNightWoken(false), NIGHT_WAKE_MS);
+  }, []);
+
+  // Leaving night (clock rolls past 5am, or a `?period=` override changes it)
+  // drops any pending wake state rather than letting a stale timer flip it
+  // back on after the fact.
+  useEffect(() => {
+    if (!isNight) setNightWoken(false);
+  }, [isNight]);
+
+  useEffect(() => {
+    return () => {
+      if (nightWakeTimerRef.current) clearTimeout(nightWakeTimerRef.current);
+    };
+  }, []);
 
   const slideExpiry = useCallback(() => {
     const t = Date.now();
@@ -67,17 +115,24 @@ export default function KioskPage() {
       // stops propagation for its own purposes.
       onPointerDownCapture={elevated ? slideExpiry : undefined}
     >
-      <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
+      {showNightOverlay ? (
+        <KioskNightOverlay onAdminClick={() => setPinOpen(true)} onWake={wakeNight} />
+      ) : (
+        <>
+          <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
 
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col">
-        <KioskHub />
-      </div>
+          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4">
+            <KioskDisplay period={displayPeriod} />
+            <KioskHub />
+          </div>
 
-      {elevated && expiresAt !== null && (
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
-          <KioskVoicePanel />
-          <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
-        </div>
+          {elevated && expiresAt !== null && (
+            <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
+              <KioskVoicePanel />
+              <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
+            </div>
+          )}
+        </>
       )}
 
       {pinOpen && (

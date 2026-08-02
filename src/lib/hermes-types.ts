@@ -60,7 +60,7 @@ export interface HermesStatusProblem {
 
 export type HermesStatusResponse = HermesStatusOk | HermesStatusProblem;
 
-export type HermesJobKind = "digest" | "alert-test" | "ask";
+export type HermesJobKind = "digest" | "alert-test" | "ask" | "summarize";
 export type HermesJobState = "running" | "done" | "error";
 
 export interface HermesJobResult {

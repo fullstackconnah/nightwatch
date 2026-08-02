@@ -76,6 +76,21 @@ export interface AppConfig {
     openrouterApiKey?: string;
     anthropicApiKey?: string;
   };
+  /** Smart-display config for the public /kiosk weather + morning-briefing
+   *  cards. Coordinates are server-only config, never echoed to the client —
+   *  /kiosk/api/weather returns `place` alone (see weather.ts). Same
+   *  not-a-widgets[]-entry reasoning as jellyfin/homeassistant above: this
+   *  feeds two dedicated lib modules (weather.ts, briefing.ts), not the
+   *  generic widget fetcher. Optional as a whole — installs that haven't set
+   *  it get the "unconfigured" status vocabulary from those modules rather
+   *  than a crash. */
+  display?: {
+    lat?: number;
+    lon?: number;
+    place?: string;
+    timezone?: string;
+    newsFeeds?: string[];
+  };
   /** Absolute host paths (e.g. "/mnt/docker/downloads") pinned from the
    *  Resources page's CONTENTS drill-down for always-visible size tracking on
    *  the DISK tab's PINNED panel — media folders and the like the owner wants
