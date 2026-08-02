@@ -114,7 +114,7 @@ interface UseKioskHaResult {
   isPending: (entityId: string) => boolean;
 }
 
-function useKioskHa(): UseKioskHaResult {
+export function useKioskHa(): UseKioskHaResult {
   const [paused, setPaused] = useState(false);
   const { data, error, isLoading, mutate } = useSWR<HaStatesResponse>(HA_STATES_KEY, fetcher, {
     refreshInterval: paused ? 0 : POLL_MS,

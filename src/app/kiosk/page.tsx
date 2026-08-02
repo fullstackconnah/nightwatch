@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { KioskStatusStrip } from "@/components/kiosk-status-strip";
 import { KioskHub } from "@/components/kiosk-hub";
 import { KioskDisplay, KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
+import { KioskGlance } from "@/components/kiosk-glance";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
@@ -20,6 +21,17 @@ const SLIDE_MIN_INTERVAL_MS = 15_000;
 // after dark, then lets it settle back into the calm clock-only state once
 // nobody's touched it for a minute.
 const NIGHT_WAKE_MS = 60_000;
+
+// The layout choice is DEVICE-local (localStorage), not server config: a
+// wall-mounted iPad wants Glance while a bench iPad wants Standard, and both
+// point at the same server. `?layout=` overrides for testing/demos, same
+// contract as ?period=.
+type KioskLayout = "standard" | "glance";
+const LAYOUT_STORAGE_KEY = "kiosk-layout";
+
+function isKioskLayout(v: string | null): v is KioskLayout {
+  return v === "standard" || v === "glance";
+}
 
 // useKioskPeriod reads useSearchParams (the ?period= test override), which
 // Next requires behind a Suspense boundary for the static prerender of this
@@ -38,6 +50,27 @@ function KioskPageInner() {
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const lastSlideRef = useRef(0);
   const period = useKioskPeriod();
+  // Seeded "standard" for the SSR pass (localStorage doesn't exist there),
+  // resolved in an effect — same hydration-safety shape as useKioskPeriod.
+  const [layout, setLayout] = useState<KioskLayout>("standard");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const override = params.get("layout");
+    if (isKioskLayout(override)) {
+      setLayout(override);
+      return;
+    }
+    const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (isKioskLayout(stored)) setLayout(stored);
+  }, []);
+  const chooseLayout = useCallback((next: KioskLayout) => {
+    setLayout(next);
+    try {
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, next);
+    } catch {
+      // Private-mode storage failures just mean the choice doesn't persist.
+    }
+  }, []);
   const [nightWoken, setNightWoken] = useState(false);
   const nightWakeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Guards a race between the capture-phase slide-on-interaction handler and
@@ -117,6 +150,11 @@ function KioskPageInner() {
     >
       {showNightOverlay ? (
         <KioskNightOverlay onAdminClick={() => setPinOpen(true)} onWake={wakeNight} />
+      ) : layout === "glance" && !elevated ? (
+        // Glance Board: open-ground wall-clock layout. Elevation always falls
+        // back to the standard layout below — admin work needs the hub and
+        // panels, and that's also where the layout switcher lives.
+        <KioskGlance period={displayPeriod} onAdminClick={() => setPinOpen(true)} />
       ) : (
         <>
           <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
@@ -129,6 +167,23 @@ function KioskPageInner() {
           {elevated && expiresAt !== null && (
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-4">
               <KioskVoicePanel />
+              <div className="flex items-center gap-2">
+                <span className="microlabel">layout</span>
+                {(["standard", "glance"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => chooseLayout(option)}
+                    className={
+                      layout === option
+                        ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-4 text-xs text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                        : "h-11 rounded-md border border-line px-4 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                    }
+                  >
+                    {option === "standard" ? "Standard" : "Glance"}
+                  </button>
+                ))}
+              </div>
               <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
             </div>
           )}

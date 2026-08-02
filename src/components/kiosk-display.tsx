@@ -148,7 +148,7 @@ type WeatherResponse =
   | { status: "unconfigured"; detail?: string }
   | { status: "unreachable"; detail?: string };
 
-const WEATHER_ICON: Record<WeatherIconKey, LucideIcon> = {
+export const WEATHER_ICON: Record<WeatherIconKey, LucideIcon> = {
   clear: Sun,
   "partly-cloudy": CloudSun,
   cloudy: Cloud,
@@ -176,7 +176,7 @@ interface WeatherView {
  *  last good payload is tracked here rather than relied on from
  *  keepPreviousData (which only bridges a revalidation in flight, not a
  *  fetch that completed with a different shape). */
-function useWeatherView(): WeatherView {
+export function useWeatherView(): WeatherView {
   const { data, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", fetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
@@ -226,7 +226,7 @@ const BRIEFING_POLL_MS = 10_000;
 /** The endpoint is expensive on the first call of the day (~45s) — poll every
  *  10s until content actually lands, then stop; `unavailable` also stops,
  *  there is nothing to wait for. */
-function useKioskBriefing(active: boolean) {
+export function useKioskBriefing(active: boolean) {
   return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, fetcher, {
     refreshInterval: (latest?: BriefingResponse) => {
       if (!latest) return BRIEFING_POLL_MS;
