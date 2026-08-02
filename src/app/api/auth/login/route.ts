@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { candidatePasswordHashes, createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { candidatePasswordHashes } from "@/lib/auth-server";
 
 export const dynamic = "force-dynamic";
 

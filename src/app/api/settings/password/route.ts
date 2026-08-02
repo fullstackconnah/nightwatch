@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { candidatePasswordHashes } from "@/lib/auth";
+import { candidatePasswordHashes } from "@/lib/auth-server";
 import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";

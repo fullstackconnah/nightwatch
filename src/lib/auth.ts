@@ -1,5 +1,4 @@
 import { SignJWT, jwtVerify } from "jose";
-import { loadConfig } from "@/lib/config";
 
 export const SESSION_COOKIE = "hd_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -15,41 +14,10 @@ export function secretKey(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-// --- admin password: config-over-env, but tried BOTH ways -------------------
-//
-// Every other operational setting (see systemSetting() in src/lib/config.ts)
-// uses strict config-wins-over-env precedence: one effective value, config
-// if present else env. The admin password hash is deliberately NOT built on
-// that same helper, because a single wrong pick here is the one failure mode
-// that can lock the owner out entirely — a corrupted/mistyped config.json
-// hash must never shadow a still-good env hash. So login (and the
-// change-password flow's "verify current password" step) try EVERY
-// available hash and accept a match against any of them, config first.
-
-export interface PasswordHashCandidate {
-  hash: string;
-  source: "config" | "env";
-}
-
-/** Every bcrypt hash a submitted password should be checked against, config
- *  first then env, filtered to only the ones actually set. Callers iterate
- *  and accept on the first match — see the module comment above for why
- *  this tries both instead of picking one by precedence. */
-export function candidatePasswordHashes(): PasswordHashCandidate[] {
-  const candidates: PasswordHashCandidate[] = [];
-  const configHash = loadConfig().system?.adminPasswordHash?.trim();
-  if (configHash) candidates.push({ hash: configHash, source: "config" });
-  const envHash = process.env.ADMIN_PASSWORD_HASH?.trim();
-  if (envHash) candidates.push({ hash: envHash, source: "env" });
-  return candidates;
-}
-
-/** True once either source has a hash set — used for the "password set" vs
- *  "login disabled outside dev" status the settings page and login form
- *  both show. */
-export function isPasswordConfigured(): boolean {
-  return candidatePasswordHashes().length > 0;
-}
+// The admin password-hash lookup lives in src/lib/auth-server.ts, NOT here:
+// this module is imported by client components and the edge middleware, so
+// it must never reach node:fs (loadConfig). See auth-server.ts for the
+// try-both-hashes lockout-safety design.
 
 export async function createSessionToken(): Promise<string> {
   return new SignJWT({ sub: "admin" })
