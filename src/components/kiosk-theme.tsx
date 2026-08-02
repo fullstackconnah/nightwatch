@@ -8,11 +8,12 @@
    knowing themes exist. The per-tablet choice lives in localStorage,
    exactly like the layout: same server, different rooms, different moods.
 
-   Fonts are loaded here with next/font (build-time, self-hosted, zero
-   runtime deps) and exposed as CSS variables on the scope div; each theme's
-   CSS maps --font-sans/--font-mono onto the variable it wants. Loading all
-   three families costs a few tens of KB of woff2 — acceptable for an
-   always-on wall surface that never re-downloads them.
+   Fonts are loaded with next/font (build-time, self-hosted, zero runtime
+   deps) and exposed as CSS variables on the scope div; each theme's CSS
+   maps --font-sans/--font-mono onto the variables it wants. Every theme
+   font is `preload: false`: @font-face only downloads a face when text on
+   screen actually uses it, so a tablet pays for its OWN theme's fonts and
+   nothing else — 20 families defined, one or two ever fetched.
 
    Cross-component sync is a window CustomEvent rather than context: the
    switcher (page.tsx, inside the scope) and the scope itself (layout.tsx,
@@ -20,41 +21,120 @@
    without converting the kiosk layout to a client boundary wholesale. */
 
 import { useEffect, useState } from "react";
-import { IBM_Plex_Mono, Newsreader, Fraunces } from "next/font/google";
+import {
+  Archivo,
+  Bodoni_Moda,
+  Bricolage_Grotesque,
+  Chakra_Petch,
+  Courier_Prime,
+  Fragment_Mono,
+  Fraunces,
+  IBM_Plex_Mono,
+  Instrument_Serif,
+  JetBrains_Mono,
+  Karla,
+  Lora,
+  Newsreader,
+  Orbitron,
+  Plus_Jakarta_Sans,
+  Quicksand,
+  Red_Hat_Mono,
+  Silkscreen,
+  Sora,
+  Source_Serif_4,
+  Space_Mono,
+  Spline_Sans_Mono,
+  Work_Sans,
+} from "next/font/google";
 import { cn } from "@/lib/utils";
 
-// Terminal: a true engineer's mono with enough weight range for the clock.
-const themeTerminalFont = IBM_Plex_Mono({
-  weight: ["400", "500"],
-  subsets: ["latin"],
-  variable: "--font-theme-terminal",
-  display: "swap",
-});
+// next/font calls are build-time macros: every argument must be a literal
+// object (no spread, no variables) or SWC rejects it with "Unexpected spread".
 
-// Journal: an editorial text serif whose old-style numerals make the clock
-// and temperatures read like a broadsheet masthead.
-const themeJournalFont = Newsreader({
-  subsets: ["latin"],
-  variable: "--font-theme-journal",
-  display: "swap",
-});
+// Original trio
+const fTerminal = IBM_Plex_Mono({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500"], variable: "--font-t-terminal" });
+const fJournal = Newsreader({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-journal" });
+const fLounge = Fraunces({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-lounge" });
+// Light & calm
+const fFolioSans = Work_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-folio-sans" });
+const fFolioMono = Spline_Sans_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-folio-mono" });
+const fSlateSerif = Source_Serif_4({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-slate-serif" });
+const fSlateMono = Courier_Prime({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "700"], variable: "--font-t-slate-mono" });
+const fSunroomSans = Quicksand({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-sunroom-sans" });
+const fSunroomMono = Red_Hat_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-sunroom-mono" });
+const fAerogelSans = Plus_Jakarta_Sans({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-aerogel-sans" });
+const fAerogelMono = Fragment_Mono({ subsets: ["latin"], display: "swap", preload: false, weight: "400", variable: "--font-t-aerogel-mono" });
+// Warm & editorial
+const fBulletinSerif = Instrument_Serif({ subsets: ["latin"], display: "swap", preload: false, weight: "400", variable: "--font-t-bulletin-serif" });
+const fBulletinSans = Bricolage_Grotesque({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-bulletin-sans" });
+const fUnderstorySerif = Lora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-understory-serif" });
+const fUnderstorySans = Karla({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-understory-sans" });
+const fDuotoneSerif = Bodoni_Moda({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-duotone-serif" });
+const fCinderSans = Archivo({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-cinder-sans" });
+const fCinderMono = Space_Mono({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "700"], variable: "--font-t-cinder-mono" });
+// Dark & expressive
+const fAuroraSans = Sora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-aurora-sans" });
+const fAuroraMono = JetBrains_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-aurora-mono" });
+const fChromeSans = Chakra_Petch({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500"], variable: "--font-t-chrome-sans" });
+const fNeonMono = Orbitron({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-neon-mono" });
+const fPixelMono = Silkscreen({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "700"], variable: "--font-t-pixel-mono" });
 
-// Lounge: a soft display serif — warm, round, a little indulgent.
-const themeLoungeFont = Fraunces({
-  subsets: ["latin"],
-  variable: "--font-theme-lounge",
-  display: "swap",
-});
+const FONT_VARIABLE_CLASSES = [
+  fTerminal, fJournal, fLounge,
+  fFolioSans, fFolioMono, fSlateSerif, fSlateMono, fSunroomSans, fSunroomMono, fAerogelSans, fAerogelMono,
+  fBulletinSerif, fBulletinSans, fUnderstorySerif, fUnderstorySans, fDuotoneSerif, fCinderSans, fCinderMono,
+  fAuroraSans, fAuroraMono, fChromeSans, fNeonMono, fPixelMono,
+].map((f) => f.variable);
 
-export type KioskTheme = "default" | "terminal" | "journal" | "lounge";
+export type KioskTheme =
+  | "default"
+  | "terminal"
+  | "journal"
+  | "lounge"
+  | "folio"
+  | "slate"
+  | "sunroom"
+  | "aerogel"
+  | "bulletin"
+  | "understory"
+  | "duotone"
+  | "cinderblock"
+  | "aurora"
+  | "chrome"
+  | "neon"
+  | "pixel";
 
-export const KIOSK_THEMES: readonly KioskTheme[] = ["default", "terminal", "journal", "lounge"];
+export const KIOSK_THEMES: readonly KioskTheme[] = [
+  "default", "terminal", "journal", "lounge",
+  "folio", "slate", "sunroom", "aerogel",
+  "bulletin", "understory", "duotone", "cinderblock",
+  "aurora", "chrome", "neon", "pixel",
+];
+
+export const KIOSK_THEME_LABELS: Record<KioskTheme, string> = {
+  default: "Default",
+  terminal: "Terminal",
+  journal: "Journal",
+  lounge: "Lounge",
+  folio: "Folio",
+  slate: "Slate & Paper",
+  sunroom: "Sunroom",
+  aerogel: "Aerogel",
+  bulletin: "Bulletin",
+  understory: "Understory",
+  duotone: "Duotone Press",
+  cinderblock: "Cinderblock",
+  aurora: "Aurora",
+  chrome: "Chrome Panel",
+  neon: "Neon Static",
+  pixel: "Pixel Forecast",
+};
 
 const STORAGE_KEY = "kiosk-theme";
 const CHANGE_EVENT = "kiosk-theme-change";
 
 function isKioskTheme(v: unknown): v is KioskTheme {
-  return v === "default" || v === "terminal" || v === "journal" || v === "lounge";
+  return typeof v === "string" && (KIOSK_THEMES as readonly string[]).includes(v);
 }
 
 /** Persist + broadcast a theme choice. Storage failures (private mode) still
@@ -95,19 +175,14 @@ export function useKioskTheme(): KioskTheme {
 
 /** The kiosk shell div (moved here from kiosk/layout.tsx so the layout stays
  *  a server component and keeps its metadata exports). Carries the safe-area
- *  padding for standalone-PWA mode, the theme attribute, and the theme font
- *  variables. */
+ *  padding for standalone-PWA mode, the theme attribute, and every theme's
+ *  font variable (variables are free; faces download only on use). */
 export function KioskThemeScope({ children }: { children: React.ReactNode }) {
   const theme = useKioskTheme();
   return (
     <div
       data-kiosk-theme={theme === "default" ? undefined : theme}
-      className={cn(
-        "min-h-screen bg-bg overflow-x-hidden",
-        themeTerminalFont.variable,
-        themeJournalFont.variable,
-        themeLoungeFont.variable,
-      )}
+      className={cn("min-h-screen bg-bg overflow-x-hidden", ...FONT_VARIABLE_CLASSES)}
       style={{
         paddingTop: "env(safe-area-inset-top)",
         paddingBottom: "env(safe-area-inset-bottom)",

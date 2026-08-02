@@ -45,6 +45,17 @@ body {
   min-height: 100vh;
 }
 
+/* Kiosk theme scope: re-declare font-family so a theme's --font-sans
+   override (set on this same element) actually reaches rendered text.
+   body's font-family is computed once, OUTSIDE the scope, and merely
+   inherited — descendants never re-invoke var(--font-sans) on their own
+   (only the .font-mono utility re-resolves its var, which is why themed
+   mono worked while themed sans silently stayed Inter). Found live by all
+   three theme-QA agents independently, 2026-08-03. */
+[data-kiosk-theme] {
+  font-family: var(--font-sans);
+}
+
 ::selection {
   background: rgba(94, 234, 212, 0.25);
 }
@@ -341,8 +352,8 @@ body {
   --color-ok: #4ade80;
   --color-warn: #facc15;
   --color-bad: #f87171;
-  --font-sans: var(--font-theme-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
-  --font-mono: var(--font-theme-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
+  --font-sans: var(--font-t-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
+  --font-mono: var(--font-t-terminal), ui-monospace, "Cascadia Code", Menlo, monospace;
   text-shadow: 0 0 6px rgba(74, 222, 128, 0.16);
 }
 [data-kiosk-theme="terminal"] * {
@@ -379,7 +390,7 @@ body {
   --color-ok: #166534;
   --color-warn: #92400e;
   --color-bad: #b91c1c;
-  --font-mono: var(--font-theme-journal), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-t-journal), Georgia, "Times New Roman", serif;
 }
 [data-kiosk-theme="journal"] * {
   border-radius: 0 !important;
@@ -408,7 +419,7 @@ body {
   --color-ok: #86efac;
   --color-warn: #eab308;
   --color-bad: #f87171;
-  --font-mono: var(--font-theme-lounge), Georgia, serif;
+  --font-mono: var(--font-t-lounge), Georgia, serif;
   background-image: radial-gradient(900px 480px at 50% -12%, rgba(251, 146, 60, 0.07), transparent 62%);
 }
 [data-kiosk-theme="lounge"] .panel {
@@ -416,4 +427,372 @@ body {
 }
 [data-kiosk-theme="lounge"] button {
   border-radius: 9999px !important;
+}
+
+/* ── 2026 catalog: light & calm ─────────────────────────────────────────── */
+
+/* Folio — Swiss / International Typographic Style. White ground, hard black
+   rules, cobalt as the single functional color, poster-scale type contrast. */
+[data-kiosk-theme="folio"] {
+  color-scheme: light;
+  --color-bg: #ffffff;
+  --color-panel: #ffffff;
+  --color-panel-2: #f2f2f2;
+  --color-line: #d4d4d4;
+  --color-line-bright: #101010;
+  --color-ink: #101010;
+  --color-ink-dim: #3d3d3d;
+  --color-ink-faint: #767676;
+  --color-accent: #0033cc;
+  --color-accent-dim: #002ba8;
+  --color-blue: #0033cc;
+  --color-ok: #1a7f37;
+  --color-warn: #b45309;
+  --color-bad: #cc0022;
+  --font-sans: var(--font-t-folio-sans), "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-t-folio-mono), ui-monospace, monospace;
+}
+[data-kiosk-theme="folio"] * {
+  border-radius: 0 !important;
+  text-shadow: none;
+}
+[data-kiosk-theme="folio"] .panel {
+  border-color: var(--color-line-bright);
+}
+
+/* Slate & Paper — the e-ink dashboard aesthetic. Matte warm grey, near-mono
+   palette, e-paper dither grain, one rust color reserved for trouble. */
+[data-kiosk-theme="slate"] {
+  color-scheme: light;
+  --color-bg: #e7e4dc;
+  --color-panel: #efece4;
+  --color-panel-2: #dedad0;
+  --color-line: #c5c1b5;
+  --color-line-bright: #9d988a;
+  --color-ink: #17171a;
+  --color-ink-dim: #3f3f3f;
+  --color-ink-faint: #696660;
+  --color-accent: #8a3b2f;
+  --color-accent-dim: #6f2f26;
+  --color-blue: #3f5a6b;
+  --color-ok: #3d6b4f;
+  --color-warn: #7f621d;
+  --color-bad: #8a3b2f;
+  --font-sans: var(--font-t-slate-serif), Georgia, serif;
+  --font-mono: var(--font-t-slate-mono), "Courier New", monospace;
+  background-image: radial-gradient(rgba(23, 23, 26, 0.05) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+[data-kiosk-theme="slate"] * {
+  border-radius: 2px !important;
+  text-shadow: none;
+}
+
+/* Sunroom — neumorphism / Soft UI. Borderless embossed panels floating on a
+   pale blue-grey ground; presence without glow. */
+[data-kiosk-theme="sunroom"] {
+  color-scheme: light;
+  --color-bg: #e3e7ee;
+  --color-panel: #e9edf3;
+  --color-panel-2: #dde2ea;
+  --color-line: #d3d9e3;
+  --color-line-bright: #b9c2d1;
+  --color-ink: #2c3542;
+  --color-ink-dim: #55606f;
+  --color-ink-faint: #606872;
+  --color-accent: #3964bf;
+  --color-accent-dim: #3560ba;
+  --color-blue: #3964bf;
+  --color-ok: #2c8f57;
+  --color-warn: #886017;
+  --color-bad: #c24e4e;
+  --font-sans: var(--font-t-sunroom-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-sunroom-mono), ui-monospace, monospace;
+}
+[data-kiosk-theme="sunroom"] .panel {
+  border-color: transparent;
+  border-radius: 1.25rem;
+  box-shadow:
+    7px 7px 14px rgba(163, 177, 198, 0.55),
+    -7px -7px 14px rgba(255, 255, 255, 0.85);
+}
+[data-kiosk-theme="sunroom"] button {
+  border-radius: 0.875rem !important;
+}
+
+/* Aerogel — Liquid Glass. Frosted translucent panels with a bright glass
+   edge, floating over a soft two-hue gradient ground. */
+[data-kiosk-theme="aerogel"] {
+  color-scheme: light;
+  --color-bg: #eef1f6;
+  --color-panel: #ffffff8c;
+  --color-panel-2: #ffffffc4;
+  --color-line: #ffffffd9;
+  --color-line-bright: #b9c4dd;
+  --color-ink: #1c2430;
+  --color-ink-dim: #45505f;
+  --color-ink-faint: #646e7b;
+  --color-accent: #4f5fd8;
+  --color-accent-dim: #4351bd;
+  --color-blue: #4f5fd8;
+  --color-ok: #1f9d6c;
+  --color-warn: #956410;
+  --color-bad: #d1453d;
+  --font-sans: var(--font-t-aerogel-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-aerogel-mono), ui-monospace, monospace;
+  background-image:
+    radial-gradient(700px 420px at 18% -8%, rgba(91, 110, 232, 0.16), transparent 62%),
+    radial-gradient(640px 400px at 88% 14%, rgba(79, 216, 196, 0.14), transparent 60%);
+}
+[data-kiosk-theme="aerogel"] .panel {
+  border-radius: 1.5rem;
+  border-color: rgba(255, 255, 255, 0.9);
+  background-color: var(--color-panel);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  /* The glass READ lives here, not in the blur: light catching the top
+     inner edge + a soft tinted contact shadow lifting it off the ground.
+     Without these the near-white border vanishes on the near-white bg and
+     the panel reads as a flat card (agent-verified with a 2x edge crop). */
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    0 12px 28px -14px rgba(46, 58, 122, 0.28),
+    0 1px 2px rgba(28, 36, 48, 0.07);
+}
+
+/* ── 2026 catalog: warm & editorial ─────────────────────────────────────── */
+
+/* Bulletin — bento grid + display-serif maximalism. Oversized Instrument
+   Serif numerals, warm grotesque labels, sharp hero vs rounded tiles. */
+[data-kiosk-theme="bulletin"] {
+  color-scheme: light;
+  --color-bg: #faf6ee;
+  --color-panel: #faf6ee;
+  --color-panel-2: #f1ead9;
+  --color-line: #171512;
+  --color-line-bright: #171512;
+  --color-ink: #171512;
+  --color-ink-dim: #4a453d;
+  --color-ink-faint: #837c6e;
+  --color-accent: #2a52d4;
+  --color-accent-dim: #2343ae;
+  --color-blue: #2a52d4;
+  --color-ok: #2f7a4a;
+  --color-warn: #a8701c;
+  --color-bad: #c22e40;
+  --font-sans: var(--font-t-bulletin-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-bulletin-serif), Georgia, serif;
+}
+[data-kiosk-theme="bulletin"] .panel {
+  border-radius: 0;
+  border-top-width: 3px;
+}
+[data-kiosk-theme="bulletin"] button {
+  border-radius: 1rem !important;
+}
+
+/* Understory — biophilic / cozy UI. Moss and clay on sage, organic
+   asymmetric leaf corners, no hard shadows anywhere. */
+[data-kiosk-theme="understory"] {
+  color-scheme: light;
+  --color-bg: #eef1e4;
+  --color-panel: #f5f7ec;
+  --color-panel-2: #e2e7d3;
+  --color-line: #c6cfb2;
+  --color-line-bright: #a3b088;
+  --color-ink: #24301f;
+  --color-ink-dim: #4b5a3f;
+  --color-ink-faint: #5c6850;
+  --color-accent: #b05a32;
+  --color-accent-dim: #96491f;
+  --color-blue: #4c7a8a;
+  --color-ok: #4c7a3d;
+  --color-warn: #a1761f;
+  --color-bad: #b34a3a;
+  --font-sans: var(--font-t-understory-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-understory-serif), Georgia, serif;
+}
+[data-kiosk-theme="understory"] .panel {
+  border-radius: 1.5rem 0.375rem 1.5rem 0.375rem;
+}
+[data-kiosk-theme="understory"] button {
+  border-radius: 1rem 0.25rem 1rem 0.25rem !important;
+}
+
+/* Duotone Press — risograph two-ink print. Indigo ink + orange second ink
+   as a misregistered offset shadow; warm cream stock. */
+[data-kiosk-theme="duotone"] {
+  color-scheme: light;
+  --color-bg: #f5ede0;
+  --color-panel: #faf4e8;
+  --color-panel-2: #eee4d2;
+  --color-line: #1c1f3d;
+  --color-line-bright: #1c1f3d;
+  --color-ink: #1c1f3d;
+  --color-ink-dim: #454875;
+  --color-ink-faint: #62648a;
+  --color-accent: #c2410c;
+  --color-accent-dim: #9a3412;
+  --color-blue: #2a52d4;
+  --color-ok: #1f7a68;
+  --color-warn: #b45309;
+  --color-bad: #be123c;
+  --font-mono: var(--font-t-duotone-serif), "Bodoni MT", Georgia, serif;
+}
+[data-kiosk-theme="duotone"] .panel {
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-ink);
+  box-shadow: 3px 3px 0 0 rgba(194, 65, 12, 0.55);
+}
+
+/* Cinderblock — expressive neo-brutalism. Bone ground, thick ink outlines,
+   hard offset shadows, zero curvature, one hot accent. */
+[data-kiosk-theme="cinderblock"] {
+  color-scheme: light;
+  --color-bg: #f2ede1;
+  --color-panel: #f7f3e8;
+  --color-panel-2: #e9e2d0;
+  --color-line: #14110d;
+  --color-line-bright: #14110d;
+  --color-ink: #14110d;
+  --color-ink-dim: #3a352c;
+  --color-ink-faint: #6b6455;
+  --color-accent: #c93a10;
+  --color-accent-dim: #a52e0b;
+  --color-blue: #1d4ed8;
+  --color-ok: #2f7a38;
+  --color-warn: #a16207;
+  --color-bad: #c92c2c;
+  --font-sans: var(--font-t-cinder-sans), Arial, sans-serif;
+  --font-mono: var(--font-t-cinder-mono), ui-monospace, monospace;
+}
+[data-kiosk-theme="cinderblock"] * {
+  border-radius: 0 !important;
+  text-shadow: none;
+}
+[data-kiosk-theme="cinderblock"] .panel {
+  border: 3px solid var(--color-ink);
+  box-shadow: 6px 6px 0 0 var(--color-ink);
+}
+[data-kiosk-theme="cinderblock"] button {
+  border-width: 2px;
+}
+
+/* ── 2026 catalog: dark & expressive ────────────────────────────────────── */
+
+/* Aurora — aura / mesh-gradient. Static borealis blobs glowing behind
+   slightly translucent panels; ambient depth with zero motion. */
+[data-kiosk-theme="aurora"] {
+  --color-bg: #0b0c14;
+  --color-panel: #151329d9;
+  --color-panel-2: #1c1936d9;
+  --color-line: #2c2850;
+  --color-line-bright: #453f78;
+  --color-ink: #f2f0ff;
+  --color-ink-dim: #b9b6d6;
+  --color-ink-faint: #7c7896;
+  --color-accent: #9d7bff;
+  --color-accent-dim: #7c57e6;
+  --color-blue: #4fd8c4;
+  --color-ok: #4fd8a0;
+  --color-warn: #ffb454;
+  --color-bad: #ff6b81;
+  --font-sans: var(--font-t-aurora-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-aurora-mono), ui-monospace, monospace;
+  background-image:
+    radial-gradient(760px 460px at 12% -6%, rgba(157, 123, 255, 0.16), transparent 60%),
+    radial-gradient(700px 420px at 92% 8%, rgba(79, 216, 196, 0.11), transparent 58%),
+    radial-gradient(600px 500px at 50% 100%, rgba(255, 107, 129, 0.1), transparent 55%);
+}
+[data-kiosk-theme="aurora"] .panel {
+  border-radius: 1.5rem;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Chrome Panel — skeuomorphic hardware revival. Brushed metal, bevels,
+   amber indicator lamps; a control panel bolted to the wall. */
+[data-kiosk-theme="chrome"] {
+  --color-bg: #26292e;
+  --color-panel: #2f3339;
+  --color-panel-2: #383d44;
+  --color-line: #1b1d21;
+  --color-line-bright: #565d66;
+  --color-ink: #f1f2f0;
+  --color-ink-dim: #b7bcc2;
+  --color-ink-faint: #7d838a;
+  --color-accent: #ff9f1c;
+  --color-accent-dim: #e08a0f;
+  --color-blue: #6fb7ff;
+  --color-ok: #34d17c;
+  --color-warn: #ffd45e;
+  --color-bad: #ff4d4d;
+  --font-sans: var(--font-t-chrome-sans), "Segoe UI", sans-serif;
+  --font-mono: var(--font-t-aerogel-mono), ui-monospace, monospace;
+}
+[data-kiosk-theme="chrome"] .panel {
+  border-radius: 0.625rem;
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 4px);
+  box-shadow:
+    inset 1px 1px 0 rgba(255, 255, 255, 0.12),
+    inset -2px -2px 0 rgba(0, 0, 0, 0.45);
+}
+
+/* Neon Static — Y2K / vaporwave revival. Magenta/cyan glow on deep indigo;
+   arcade signage, deliberately playful. (No gradient text — the chrome-text
+   trope stays banned even here.) */
+[data-kiosk-theme="neon"] {
+  --color-bg: #16102e;
+  --color-panel: #1f1740;
+  --color-panel-2: #2a1f52;
+  --color-line: #4c3a8c;
+  --color-line-bright: #7a5ad6;
+  --color-ink: #fdf4ff;
+  --color-ink-dim: #d9b8f0;
+  --color-ink-faint: #9a7bc4;
+  --color-accent: #ff5ec4;
+  --color-accent-dim: #e63fa8;
+  --color-blue: #4dfff0;
+  --color-ok: #4dffb8;
+  --color-warn: #ffe94d;
+  --color-bad: #ff5e7a;
+  --font-mono: var(--font-t-neon-mono), ui-monospace, monospace;
+  text-shadow: 0 0 10px rgba(255, 94, 196, 0.18);
+}
+[data-kiosk-theme="neon"] .panel {
+  border-radius: 0.25rem;
+  box-shadow:
+    0 0 14px rgba(255, 94, 196, 0.18),
+    inset 0 0 18px rgba(77, 255, 240, 0.09);
+}
+
+/* Pixel Forecast — 8-bit revival. Chunky pixel edges, Silkscreen digits,
+   flat retro palette; crisp at any distance by construction. */
+[data-kiosk-theme="pixel"] {
+  --color-bg: #10142a;
+  --color-panel: #171c38;
+  --color-panel-2: #1f2547;
+  --color-line: #2c3364;
+  --color-line-bright: #454f8f;
+  --color-ink: #eef1ff;
+  --color-ink-dim: #9aa3d6;
+  --color-ink-faint: #5a6199;
+  --color-accent: #ffd23f;
+  --color-accent-dim: #eab308;
+  --color-blue: #38e1ff;
+  --color-ok: #38e17a;
+  --color-warn: #ff9f38;
+  --color-bad: #ff4f6d;
+  --font-mono: var(--font-t-pixel-mono), ui-monospace, monospace;
+  background-image: radial-gradient(rgba(238, 241, 255, 0.03) 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+[data-kiosk-theme="pixel"] * {
+  border-radius: 0 !important;
+  text-shadow: none;
+}
+[data-kiosk-theme="pixel"] .panel {
+  border: 2px solid var(--color-line-bright);
+  box-shadow: 4px 4px 0 0 #000000;
 }

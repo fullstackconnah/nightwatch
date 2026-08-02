@@ -9,7 +9,7 @@ import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
-import { KIOSK_THEMES, setKioskTheme, useKioskTheme } from "@/components/kiosk-theme";
+import { KIOSK_THEMES, KIOSK_THEME_LABELS, setKioskTheme, useKioskTheme } from "@/components/kiosk-theme";
 import { useNow } from "@/lib/use-now";
 
 // Interactions slide the elevation window, but there's no need to hit the
@@ -196,11 +196,11 @@ function KioskPageInner() {
                       onClick={() => setKioskTheme(option)}
                       className={
                         theme === option
-                          ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-4 text-xs capitalize text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
-                          : "h-11 rounded-md border border-line px-4 text-xs capitalize text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                          ? "h-11 rounded-md border border-accent/40 bg-accent/10 px-3 text-xs text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                          : "h-11 rounded-md border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
                       }
                     >
-                      {option}
+                      {KIOSK_THEME_LABELS[option]}
                     </button>
                   ))}
                 </div>
