@@ -15,8 +15,10 @@ import useSWR from "swr";
 import { Save, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input, Label, Select } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
+import { HaSwitchControl } from "@/components/ha-toggle";
 import { fetcher, postJson } from "@/lib/client";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -266,6 +268,246 @@ function HermesSkeleton() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// GOAL B: the daemon's own hot-read settings file (data/hermes/hermes-settings.json),
+// entirely separate from config.json's hermes.tier/model above — Discord
+// wiring, the digest schedule, and the pipeline budget/model picks. Keys
+// present here override the daemon's own env var; keys absent fall back to
+// its env, so this card's fields are individually optional overrides, not a
+// full replacement config. Same write-only SecretField semantics as every
+// other secret in this app for the two Discord credentials.
+
+const DIGEST_HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DIGEST_MINUTES = [0, 15, 30, 45];
+
+function HermesDaemonCard() {
+  const { data, mutate } = useSettingsFull();
+  const daemon = data?.hermesDaemon;
+
+  const [webhookDraft, setWebhookDraft] = useState("");
+  const [botTokenDraft, setBotTokenDraft] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [allowedUserIds, setAllowedUserIds] = useState("");
+  const [dryRun, setDryRun] = useState(false);
+  const [digestHour, setDigestHour] = useState(9);
+  const [digestMinute, setDigestMinute] = useState(0);
+  const [pipelineEnabled, setPipelineEnabled] = useState(false);
+  const [pipelineBudget, setPipelineBudget] = useState("");
+  const [pipelineModel, setPipelineModel] = useState("");
+  const [pipelineModelHard, setPipelineModelHard] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (daemon && !seeded) {
+      setChannelId(daemon.discordChannelId ?? "");
+      setAllowedUserIds((daemon.discordAllowedUserIds ?? []).join(", "));
+      setDryRun(daemon.dryRun ?? false);
+      setDigestHour(daemon.digestHour ?? 9);
+      setDigestMinute(daemon.digestMinute ?? 0);
+      setPipelineEnabled(daemon.pipelineEnabled ?? false);
+      setPipelineBudget(daemon.pipelineDailyBudgetUsd != null ? String(daemon.pipelineDailyBudgetUsd) : "");
+      setPipelineModel(daemon.pipelineModel ?? "");
+      setPipelineModelHard(daemon.pipelineModelHard ?? "");
+      setSeeded(true);
+    }
+  }, [daemon, seeded]);
+
+  const commandsReady = Boolean(
+    (daemon?.discordBotTokenConfigured || botTokenDraft.trim()) && channelId.trim() && allowedUserIds.trim(),
+  );
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {
+        discordChannelId: channelId,
+        discordAllowedUserIds: allowedUserIds
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        dryRun,
+        digestHour,
+        digestMinute,
+        pipelineEnabled,
+        pipelineModel,
+        pipelineModelHard,
+      };
+      if (webhookDraft.trim()) body.discordWebhookUrl = webhookDraft.trim();
+      if (botTokenDraft.trim()) body.discordBotToken = botTokenDraft.trim();
+      if (pipelineBudget.trim()) {
+        const n = Number(pipelineBudget);
+        if (!Number.isFinite(n) || n < 0) throw new Error("Daily budget must be a non-negative number");
+        body.pipelineDailyBudgetUsd = n;
+      }
+      await postJson("/api/settings/hermes-daemon", body);
+      await mutate();
+      setWebhookDraft("");
+      setBotTokenDraft("");
+      setSaveVersion((v) => v + 1);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="microlabel !text-accent">Hermes · daemon</h2>
+        {saved && <Badge variant="ok">saved</Badge>}
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Discord &amp; pipeline</CardTitle>
+          {daemon?.updatedAt ? (
+            <span className="text-[0.7rem] text-ink-faint">last saved {relativeTime(daemon.updatedAt)}</span>
+          ) : (
+            <Badge variant="neutral">never saved</Badge>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!data && <HermesSkeleton />}
+          {data && (
+            <>
+              <p className="text-[0.7rem] text-ink-dim">
+                Read by the ops daemon on its own loop — changes reach it on the next tick (≤60s), no
+                restart needed. A field left blank falls back to the daemon&apos;s own environment.
+              </p>
+
+              <div className="space-y-3">
+                <div className="microlabel">Discord</div>
+                <SecretField
+                  key={`webhook-${saveVersion}`}
+                  label="Webhook URL"
+                  configured={daemon?.discordWebhookConfigured ?? false}
+                  updatedAt={daemon?.updatedAt ?? undefined}
+                  draft={webhookDraft}
+                  onDraftChange={setWebhookDraft}
+                  placeholder="https://discord.com/api/webhooks/…"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <SecretField
+                    key={`bot-${saveVersion}`}
+                    label="Bot token"
+                    configured={daemon?.discordBotTokenConfigured ?? false}
+                    updatedAt={daemon?.updatedAt ?? undefined}
+                    draft={botTokenDraft}
+                    onDraftChange={setBotTokenDraft}
+                  />
+                  <div>
+                    <Label>Channel ID</Label>
+                    <Input value={channelId} onChange={(e) => setChannelId(e.target.value)} placeholder="123456789012345678" />
+                  </div>
+                </div>
+                <div>
+                  <Label>Allowed user IDs (comma-separated)</Label>
+                  <Input value={allowedUserIds} onChange={(e) => setAllowedUserIds(e.target.value)} placeholder="111…, 222…" />
+                </div>
+                <p className={cn("text-[0.7rem]", commandsReady ? "text-ink-faint" : "text-warn/80")}>
+                  Bot token, channel ID and at least one allowed user ID are all required before Discord
+                  commands work — the webhook alone only covers outbound digests/alerts.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div>
+                  <span className="text-xs font-medium text-ink">Dry run</span>
+                  <p className="text-[0.7rem] text-ink-dim">Reports print to logs instead of posting to Discord.</p>
+                </div>
+                <HaSwitchControl on={dryRun} onToggle={() => setDryRun((v) => !v)} label="Dry run" />
+              </div>
+              {dryRun && (
+                <p className="text-[0.7rem] text-warn/80 -mt-2">
+                  Dry run is on — reports print to logs, not Discord.
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Digest hour</Label>
+                  <Select value={digestHour} onChange={(e) => setDigestHour(Number(e.target.value))}>
+                    {DIGEST_HOURS.map((h) => (
+                      <option key={h} value={h}>
+                        {String(h).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label>Digest minute</Label>
+                  <Select value={digestMinute} onChange={(e) => setDigestMinute(Number(e.target.value))}>
+                    {DIGEST_MINUTES.map((m) => (
+                      <option key={m} value={m}>
+                        {String(m).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              <div className="border-t border-line/50 space-y-3 pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-medium text-ink">Pipeline</span>
+                    <p className="text-[0.7rem] text-ink-dim">Automated multi-step ticket handling.</p>
+                  </div>
+                  <HaSwitchControl on={pipelineEnabled} onToggle={() => setPipelineEnabled((v) => !v)} label="Pipeline enabled" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <Label>Daily budget (USD)</Label>
+                    <Input
+                      inputMode="decimal"
+                      value={pipelineBudget}
+                      onChange={(e) => setPipelineBudget(e.target.value)}
+                      placeholder="5.00"
+                    />
+                  </div>
+                  <div>
+                    <Label>Model</Label>
+                    <Input
+                      className="font-mono"
+                      value={pipelineModel}
+                      onChange={(e) => setPipelineModel(e.target.value)}
+                      placeholder="claude-sonnet-5"
+                    />
+                  </div>
+                  <div>
+                    <Label>Hard-ticket model</Label>
+                    <Input
+                      className="font-mono"
+                      value={pipelineModelHard}
+                      onChange={(e) => setPipelineModelHard(e.target.value)}
+                      placeholder="claude-opus-5"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+                <Button size="sm" disabled={saving} onClick={handleSave}>
+                  <Save size={13} /> Save
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+export { HermesDaemonCard as SettingsHermesDaemon };
 
 export function SettingsHermes() {
   const { data, mutate } = useSettingsFull();

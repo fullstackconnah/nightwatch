@@ -46,6 +46,9 @@ export interface SettingsFullResponse {
     mcpEnabled: boolean;
     mcpEndpoint: string;
     kioskPinConfigured: boolean;
+    hermesApiConfigured?: boolean;
+    ssoConfigured?: boolean;
+    ssoIssuerHost?: string | null;
   };
   integrations: {
     homeassistant: IntegrationStatus;
@@ -53,6 +56,34 @@ export interface SettingsFullResponse {
     forgejo: IntegrationStatus;
     github: IntegrationStatus;
     hermes: { openrouterConfigured: boolean; anthropicConfigured: boolean };
+  };
+  /** GOAL A: config.json's `system` block — MCP token, kiosk PIN, Hermes API,
+   *  voice server, SSO. `configured` fields are systemSetting()-aware (true
+   *  for either a config.json value or the matching env var). */
+  system: {
+    mcpTokenConfigured: boolean;
+    kioskPinConfigured: boolean;
+    hermesApiConfigured: boolean;
+    voiceConfigured: boolean;
+    oidcClientSecretConfigured: boolean;
+    updatedAt?: string;
+  };
+  /** GOAL B: data/hermes/hermes-settings.json's read model for the Hermes ·
+   *  Daemon card. Discord secrets reduced to booleans, everything else
+   *  passed through as-is (none of it is sensitive). */
+  hermesDaemon: {
+    discordWebhookConfigured: boolean;
+    discordBotTokenConfigured: boolean;
+    discordChannelId?: string;
+    discordAllowedUserIds: string[];
+    dryRun?: boolean;
+    digestHour?: number;
+    digestMinute?: number;
+    pipelineEnabled?: boolean;
+    pipelineDailyBudgetUsd?: number;
+    pipelineModel?: string;
+    pipelineModelHard?: string;
+    updatedAt: string | null;
   };
 }
 
@@ -479,11 +510,108 @@ function GithubPanel({ data, mutate }: { data: SettingsFullResponse | undefined;
 }
 
 // ---------------------------------------------------------------------------
+// Voice: server URL, TTS URL, STT/TTS model, voice — all non-secret text,
+// per GOAL C. Persisted into config.json's system block via
+// POST /api/settings/system, alongside MCP/kiosk/Hermes API/SSO. Honest
+// configured/not hinting reuses the same isVoiceConfigured() boolean that
+// backs GET /api/voice/status (surfaced here as data.system.voiceConfigured
+// so this card doesn't need a second fetch for the same value).
+
+function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+  const configured = data?.system.voiceConfigured ?? false;
+  const [serverUrl, setServerUrl] = useState("");
+  const [ttsUrl, setTtsUrl] = useState("");
+  const [sttModel, setSttModel] = useState("");
+  const [ttsModel, setTtsModel] = useState("");
+  const [ttsVoice, setTtsVoice] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setServerUrl(data.config.system?.voiceServerUrl ?? "");
+      setTtsUrl(data.config.system?.voiceTtsUrl ?? "");
+      setSttModel(data.config.system?.voiceSttModel ?? "");
+      setTtsModel(data.config.system?.voiceTtsModel ?? "");
+      setTtsVoice(data.config.system?.voiceTtsVoice ?? "");
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await postJson("/api/settings/system", {
+        voiceServerUrl: serverUrl,
+        voiceTtsUrl: ttsUrl,
+        voiceSttModel: sttModel,
+        voiceTtsModel: ttsModel,
+        voiceTtsVoice: ttsVoice,
+      });
+      await mutate();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Voice</CardTitle>
+        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[0.7rem] text-ink-dim">
+          STT/TTS speech server for the mic on the dashboard and the kiosk voice panel. Wins over{" "}
+          <span className="font-mono">VOICE_SERVER_URL</span> and friends when set here.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Label>Server URL</Label>
+            <Input placeholder="http://192.168.1.70:8970" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+          </div>
+          <div>
+            <Label>TTS URL (optional — defaults to server URL)</Label>
+            <Input placeholder="http://192.168.1.70:8971" value={ttsUrl} onChange={(e) => setTtsUrl(e.target.value)} />
+          </div>
+          <div>
+            <Label>STT model</Label>
+            <Input placeholder="leave blank for the server's default" value={sttModel} onChange={(e) => setSttModel(e.target.value)} />
+          </div>
+          <div>
+            <Label>TTS model</Label>
+            <Input placeholder="leave blank for the server's default" value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} />
+          </div>
+          <div>
+            <Label>TTS voice</Label>
+            <Input placeholder="leave blank for the server's default" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+          {saved && <Badge variant="ok">saved</Badge>}
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button size="sm" disabled={saving} onClick={handleSave}>
+            <Save size={13} /> Save
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 function IntegrationsSkeleton() {
   return (
     <div className="grid md:grid-cols-2 gap-3">
-      {["Home Assistant", "Nginx Proxy Manager", "Forgejo", "GitHub"].map((label, i) => (
+      {["Home Assistant", "Nginx Proxy Manager", "Forgejo", "GitHub", "Voice"].map((label, i) => (
         <div key={label} className="panel p-4 space-y-3">
           <div className="microlabel">{label}</div>
           <div className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none" style={{ animationDelay: `${i * 90}ms` }} />
@@ -543,6 +671,7 @@ export function SettingsIntegrations() {
             mutate={mutate}
           />
           <GithubPanel data={data} mutate={mutate} />
+          <VoiceCard data={data} mutate={mutate} />
         </div>
       )}
     </section>

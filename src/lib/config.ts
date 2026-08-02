@@ -84,7 +84,38 @@ export interface AppConfig {
    *  or moved; the panel degrades that one row honestly instead of dropping
    *  it. Mutated via POST /api/resources/pins, not the settings PUT route. */
   pinnedFolders?: string[];
+  /** Config-over-env overrides for nightwatch's own operational settings —
+   *  the MCP bearer token, kiosk PIN, Hermes/voice sibling-daemon
+   *  credentials, OIDC SSO config and the admin password hash. Every field
+   *  is optional: an absent or empty-string field means "use the matching
+   *  env var" (see systemSetting() below). Written by POST /api/settings/system
+   *  (all fields except adminPasswordHash) and POST /api/settings/password
+   *  (adminPasswordHash only). NOT env-only: NODE_EXTRA_CA_CERTS and
+   *  SESSION_SECRET stay env-only by design (process-start semantics — a
+   *  live config write can't retroactively change the Node TLS trust store
+   *  or re-sign already-issued session JWTs), so they have no field here. */
+  system?: {
+    mcpToken?: string;
+    kioskPin?: string;
+    hermesApiUrl?: string;
+    hermesApiToken?: string;
+    voiceServerUrl?: string;
+    voiceTtsUrl?: string;
+    voiceSttModel?: string;
+    voiceTtsModel?: string;
+    voiceTtsVoice?: string;
+    oidcIssuer?: string;
+    oidcClientId?: string;
+    oidcClientSecret?: string;
+    /** bcrypt hash, same shape as env ADMIN_PASSWORD_HASH. Only ever written
+     *  by POST /api/settings/password after verifying the CURRENT password
+     *  against the effective hash — never editable as a raw field. */
+    adminPasswordHash?: string;
+    updatedAt?: string;
+  };
 }
+
+export type SystemSettings = NonNullable<AppConfig["system"]>;
 
 const DEFAULT_CONFIG: AppConfig = {
   groups: [],
@@ -118,15 +149,48 @@ export function loadConfig(): AppConfig {
 }
 
 export function saveConfig(config: AppConfig): void {
-  fs.mkdirSync(dataDir(), { recursive: true });
-  const tmp = configPath() + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(config, null, 2), "utf8");
-  fs.renameSync(tmp, configPath());
+  writeJsonAtomic(configPath(), config);
   cache = null;
 }
 
+/** Shared atomic tmp+rename writer: write to a sibling `.tmp` file, then
+ *  rename over the target. The rename is what makes this safe for a
+ *  concurrently-hot-reading process (the daemon's readers below, and this
+ *  module's own loadConfig()) — a reader never observes a half-written
+ *  file, only the old version or the fully-written new one. */
+function writeJsonAtomic(filePath: string, data: unknown): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmp = filePath + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+  fs.renameSync(tmp, filePath);
+}
+
+/** Best-effort JSON read, shared by every hermes/*.json reader below — a
+ *  missing or unparsable file (never written yet, or a hand-edited slip)
+ *  just means "nothing to report", not an error. */
+function readJsonBestEffort<T>(filePath: string): T | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (parsed && typeof parsed === "object") return parsed as T;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// A dedicated SUBDIRECTORY, not files at the data-dir root: the hermes
+// daemon bind-mounts this directory read-only. Mounting a single file
+// doesn't work — our atomic tmp+rename replaces the inode, and a Docker
+// file bind-mount pins the old inode, so the daemon would never see another
+// update (observed live 2026-08-02). Mounting all of data/ would hand
+// hermes every secret in config.json; the subdir carries only these two
+// contract files (hermes-model.json, hermes-settings.json).
+function hermesDir(): string {
+  return path.join(dataDir(), "hermes");
+}
+
 /**
- * Shape written verbatim to data/hermes-model.json by POST /api/hermes/model.
+ * Shape written verbatim to data/hermes/hermes-model.json by POST /api/hermes/model.
  * This is a hot-read contract with the separate hermes daemon process — keep
  * every field name and optionality EXACT, since the daemon parses this file
  * directly rather than going through this module.
@@ -140,36 +204,94 @@ export interface HermesModelFile {
 }
 
 function hermesModelPath(): string {
-  // A dedicated SUBDIRECTORY, not a file at the data-dir root: the hermes
-  // daemon bind-mounts this directory read-only. Mounting the single file
-  // doesn't work — our atomic tmp+rename replaces the inode, and a Docker
-  // file bind-mount pins the old inode, so the daemon would never see
-  // another update (observed live 2026-08-02). Mounting all of data/ would
-  // hand hermes every secret in config.json; the subdir carries only this
-  // contract file.
-  return path.join(dataDir(), "hermes", "hermes-model.json");
+  return path.join(hermesDir(), "hermes-model.json");
 }
 
-/** Best-effort read for the settings UI's "last saved" display — a missing or
- *  unparsable file (never saved yet, or a hand-edited slip) just means the
- *  panel has nothing to report, not an error. */
+/** Best-effort read for the settings UI's "last saved" display. */
 export function readHermesModelFile(): HermesModelFile | null {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(hermesModelPath(), "utf8"));
-    if (parsed && typeof parsed === "object") return parsed as HermesModelFile;
-    return null;
-  } catch {
-    return null;
-  }
+  return readJsonBestEffort<HermesModelFile>(hermesModelPath());
 }
 
 /** Same atomic tmp+rename pattern as saveConfig, so the daemon's hot-read
  *  never observes a half-written file. */
 export function writeHermesModelFile(data: HermesModelFile): void {
-  fs.mkdirSync(path.dirname(hermesModelPath()), { recursive: true });
-  const tmp = hermesModelPath() + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
-  fs.renameSync(tmp, hermesModelPath());
+  writeJsonAtomic(hermesModelPath(), data);
+}
+
+/**
+ * Shape written verbatim to data/hermes/hermes-settings.json by
+ * POST /api/settings/hermes-daemon — the hermes ops daemon's second hot-read
+ * file, living in the SAME bind-mounted subdirectory as hermes-model.json
+ * (see hermesDir() above for why it must be a directory mount). Keys present
+ * override the daemon's own env var; keys absent fall back to the daemon's
+ * env, same config-over-env precedence as systemSetting() below — but this
+ * file is a contract with a SEPARATE process, so that precedence is the
+ * daemon's own responsibility to implement, not this module's. Field names
+ * and optionality are EXACT per that contract; do not deviate.
+ */
+export interface HermesSettingsFile {
+  discordWebhookUrl?: string;
+  discordBotToken?: string;
+  discordChannelId?: string;
+  discordAllowedUserIds?: string[];
+  dryRun?: boolean;
+  digestHour?: number;
+  digestMinute?: number;
+  pipelineEnabled?: boolean;
+  pipelineDailyBudgetUsd?: number;
+  pipelineModel?: string;
+  pipelineModelHard?: string;
+  /** Kept in lockstep with config.json's system.mcpToken by
+   *  syncHermesMcpToken() below whenever the settings page sets or
+   *  regenerates the MCP token — hermes uses this to call back into
+   *  nightwatch's own MCP server, so the two must never desync. */
+  nightwatchMcpToken?: string;
+  updatedAt: string;
+}
+
+function hermesSettingsPath(): string {
+  return path.join(hermesDir(), "hermes-settings.json");
+}
+
+/** Best-effort read for the settings UI's Hermes · Daemon card. */
+export function readHermesSettingsFile(): HermesSettingsFile | null {
+  return readJsonBestEffort<HermesSettingsFile>(hermesSettingsPath());
+}
+
+/** Same atomic tmp+rename pattern as writeHermesModelFile. */
+export function writeHermesSettingsFile(data: HermesSettingsFile): void {
+  writeJsonAtomic(hermesSettingsPath(), data);
+}
+
+/**
+ * CRITICAL SYNC RULE: whenever POST /api/settings/system sets or regenerates
+ * system.mcpToken, it must call this in the SAME request so hermes-settings.json's
+ * nightwatchMcpToken never drifts from the token nightwatch's own MCP server
+ * actually expects. Preserves every other key already in hermes-settings.json —
+ * a best-effort read (missing/corrupt file just means "start fresh") so a
+ * slip in that file can never block the mcpToken save that triggered this. */
+export function syncHermesMcpToken(token: string): void {
+  const existing = readHermesSettingsFile() ?? { updatedAt: new Date().toISOString() };
+  writeHermesSettingsFile({ ...existing, nightwatchMcpToken: token, updatedAt: new Date().toISOString() });
+}
+
+/**
+ * The one precedence rule for every nightwatch-consumed operational setting:
+ * a non-empty config.json value under `system` WINS over the matching env
+ * var, which stays as the fallback for installs that haven't moved a
+ * setting into the UI yet (or for the two env-only exceptions documented on
+ * AppConfig.system above, which never call this at all). Every hot-read
+ * consumer (mcp/auth.ts, the kiosk PIN check, hermes-ctl.ts, voice.ts,
+ * oidc.ts, auth.ts's password check) routes through this one function
+ * rather than reading process.env directly, so the precedence rule lives in
+ * exactly one place. Cheap by construction: loadConfig() is already an
+ * mtime-cached read, so this costs nothing extra on the hot per-request path.
+ */
+export function systemSetting(key: keyof SystemSettings, envName: string): string | undefined {
+  const fromConfig = loadConfig().system?.[key];
+  if (typeof fromConfig === "string" && fromConfig.trim()) return fromConfig.trim();
+  const fromEnv = process.env[envName];
+  return fromEnv?.trim() ? fromEnv.trim() : undefined;
 }
 
 export function publicHost(): string {

@@ -1,19 +1,23 @@
 import { timingSafeEqual } from "node:crypto";
+import { systemSetting } from "@/lib/config";
 
 /**
  * Bearer-token auth for /api/mcp, entirely separate from the cookie-session
  * auth the rest of the app uses (src/lib/auth.ts) — MCP clients are not
  * browsers and never hold the `hd_session` cookie.
  *
- * The server is opt-in: MCP_TOKEN unset means "feature not turned on", not
- * "open". The route handler is expected to check mcpEnabled() first and
- * return 503 before ever calling isAuthorized().
+ * The token is config-over-env via systemSetting("mcpToken", "MCP_TOKEN"): a
+ * value saved on the settings page's System card wins over MCP_TOKEN, which
+ * remains the fallback for installs that provision it via compose only. The
+ * server is opt-in either way: no value from config or env means "feature
+ * not turned on", not "open". The route handler is expected to check
+ * mcpEnabled() first and return 503 before ever calling isAuthorized().
  */
 
 const BEARER_PREFIX = "Bearer ";
 
 export function mcpEnabled(): boolean {
-  return !!process.env.MCP_TOKEN;
+  return !!systemSetting("mcpToken", "MCP_TOKEN");
 }
 
 /**
@@ -25,7 +29,7 @@ export function mcpEnabled(): boolean {
  * inputs, so it can't be called directly on attacker-controlled input.
  */
 export function isAuthorized(authorizationHeader: string | null): boolean {
-  const token = process.env.MCP_TOKEN;
+  const token = systemSetting("mcpToken", "MCP_TOKEN");
   if (!token) return false;
   if (!authorizationHeader || !authorizationHeader.startsWith(BEARER_PREFIX)) return false;
 

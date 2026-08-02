@@ -1,5 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadConfig, saveConfig, readHermesModelFile, dockgeUrl, publicHost, type AppConfig } from "@/lib/config";
+import {
+  loadConfig,
+  saveConfig,
+  readHermesModelFile,
+  readHermesSettingsFile,
+  systemSetting,
+  dockgeUrl,
+  publicHost,
+  type AppConfig,
+} from "@/lib/config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
@@ -33,6 +42,25 @@ function sanitizeConfig(config: AppConfig): AppConfig {
       : config.forgejo,
     github: config.github ? { updatedAt: config.github.updatedAt } : config.github,
     hermes: config.hermes ? { tier: config.hermes.tier, model: config.hermes.model } : config.hermes,
+    // system: only the fields the settings page's System/Voice/SSO cards
+    // render as plain editable text (URLs, model/voice names, the OIDC
+    // issuer + client ID). mcpToken/kioskPin/hermesApiToken/oidcClientSecret/
+    // adminPasswordHash never leave the server — same bar as every secret
+    // above, applied field-by-field because system is one flat block rather
+    // than one block per service.
+    system: config.system
+      ? {
+          hermesApiUrl: config.system.hermesApiUrl,
+          voiceServerUrl: config.system.voiceServerUrl,
+          voiceTtsUrl: config.system.voiceTtsUrl,
+          voiceSttModel: config.system.voiceSttModel,
+          voiceTtsModel: config.system.voiceTtsModel,
+          voiceTtsVoice: config.system.voiceTtsVoice,
+          oidcIssuer: config.system.oidcIssuer,
+          oidcClientId: config.system.oidcClientId,
+          updatedAt: config.system.updatedAt,
+        }
+      : config.system,
   };
 }
 
@@ -53,6 +81,46 @@ function integrationsMeta(config: AppConfig) {
   };
 }
 
+/** Configured-booleans for the settings page's System/Voice/SSO cards —
+ *  systemSetting()-aware, so "configured" reflects config OR env, matching
+ *  what the app will actually use on the next request (GOAL A precedence). */
+function systemMeta(config: AppConfig) {
+  return {
+    mcpTokenConfigured: Boolean(systemSetting("mcpToken", "MCP_TOKEN")),
+    kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
+    hermesApiConfigured: Boolean(
+      systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
+    ),
+    voiceConfigured: Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL")),
+    oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
+    updatedAt: config.system?.updatedAt,
+  };
+}
+
+/** GOAL B read model for the Hermes · Daemon card — strips
+ *  discordWebhookUrl/discordBotToken down to booleans (same secret bar as
+ *  everything else here) and passes the rest of hermes-settings.json through
+ *  as-is, since none of it is sensitive. A missing file (daemon never
+ *  written one, or nightwatch never saved one yet) reads as "nothing
+ *  configured" rather than an error. */
+function hermesDaemonMeta() {
+  const file = readHermesSettingsFile();
+  return {
+    discordWebhookConfigured: Boolean(file?.discordWebhookUrl),
+    discordBotTokenConfigured: Boolean(file?.discordBotToken),
+    discordChannelId: file?.discordChannelId,
+    discordAllowedUserIds: file?.discordAllowedUserIds ?? [],
+    dryRun: file?.dryRun,
+    digestHour: file?.digestHour,
+    digestMinute: file?.digestMinute,
+    pipelineEnabled: file?.pipelineEnabled,
+    pipelineDailyBudgetUsd: file?.pipelineDailyBudgetUsd,
+    pipelineModel: file?.pipelineModel,
+    pipelineModelHard: file?.pipelineModelHard,
+    updatedAt: file?.updatedAt ?? null,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const config = loadConfig();
   return NextResponse.json({
@@ -61,7 +129,10 @@ export async function GET(req: NextRequest) {
       widgetTypes: WIDGET_TYPE_NAMES,
       publicHost: publicHost(),
       dockgeUrl: dockgeUrl(),
-      authConfigured: Boolean(process.env.ADMIN_PASSWORD_HASH),
+      // Config-over-env, same as every field below: a password rotated on
+      // the settings page (system.adminPasswordHash) counts the same as
+      // ADMIN_PASSWORD_HASH.
+      authConfigured: Boolean(process.env.ADMIN_PASSWORD_HASH || config.system?.adminPasswordHash),
       dataDir: process.env.DATA_DIR || "./data",
       hermesModelUpdatedAt: readHermesModelFile()?.updatedAt ?? null,
       // Surfaced on the Settings "System access" panel — never the token
@@ -70,19 +141,25 @@ export async function GET(req: NextRequest) {
       // stack's :3006 without a dedicated env var.
       mcpEnabled: mcpEnabled(),
       mcpEndpoint: `${req.nextUrl.origin}/api/mcp`,
-      kioskPinConfigured: Boolean(process.env.KIOSK_PIN),
+      // Config-over-env via systemSetting() (GOAL A) — true whether the PIN
+      // came from the settings page or KIOSK_PIN.
+      kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
       // Additive: whether the /hermes control page has anything to talk to.
-      // Same "env var presence, never the value" idiom as mcpEnabled/kioskPinConfigured —
-      // src/lib/hermes-ctl.ts is the only place HERMES_API_TOKEN is ever read for real.
-      hermesApiConfigured: Boolean(process.env.HERMES_API_URL?.trim() && process.env.HERMES_API_TOKEN?.trim()),
-      // Additive: whether OIDC SSO (Authelia) is wired up. Same "env var
-      // presence, never the value" idiom — src/lib/oidc.ts is the only place
-      // OIDC_CLIENT_SECRET is ever read for real. Host only, never the full
+      // Same "configured, never the value" idiom as mcpEnabled/kioskPinConfigured —
+      // src/lib/hermes-ctl.ts is the only place the Hermes API token is ever read for real.
+      hermesApiConfigured: Boolean(
+        systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
+      ),
+      // Additive: whether OIDC SSO (Authelia) is wired up. Same "configured,
+      // never the value" idiom — src/lib/oidc.ts is the only place the OIDC
+      // client secret is ever read for real. Host only, never the full
       // issuer URL or the secret, mirrors mcpEndpoint's "safe to show" bar.
       ssoConfigured: oidcConfig() !== null,
       ssoIssuerHost: oidcIssuerHost(),
     },
     integrations: integrationsMeta(config),
+    system: systemMeta(config),
+    hermesDaemon: hermesDaemonMeta(),
   });
 }
 

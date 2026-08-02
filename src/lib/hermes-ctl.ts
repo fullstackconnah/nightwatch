@@ -7,21 +7,25 @@ import type {
   HermesStatusOk,
   HermesStatusResponse,
 } from "@/lib/hermes-types";
+import { systemSetting } from "@/lib/config";
 
 /**
  * Server-only client for the Hermes ops daemon's HTTP control API.
- * Credentials are process.env, deliberately never data/config.json: Hermes is
- * a sibling daemon container on this same box, not a third-party integration
- * with a UI-editable admin login, so its address/token are provisioned the
- * same way ADMIN_PASSWORD_HASH/MCP_TOKEN/KIOSK_PIN are — set once in the
- * compose environment and read fresh on every request (no restart-to-pick-up
- * caching, same as loadConfig()'s mtime-keyed reread).
+ * Credentials are config-over-env via systemSetting() — a value saved on the
+ * settings page's System card (config.json's system.hermesApiUrl/hermesApiToken)
+ * wins over HERMES_API_URL/HERMES_API_TOKEN, which remain the fallback for
+ * installs that provision them via compose only. Hermes is a sibling daemon
+ * container on this same box, not a third-party integration with a UI-editable
+ * admin login, so this never round-trips through the rest of data/config.json —
+ * just the same fresh-read-every-request idiom as before (no restart-to-pick-up
+ * caching, same as loadConfig()'s mtime-keyed reread underneath systemSetting()).
  *
  * Same distinguishable-failure vocabulary as ha.ts/npm.ts: unconfigured (no
- * env vars) / unreachable (transport failure or non-2xx) / unauthorized
- * (401/403) / ok. Every raw field from the daemon is read defensively — it is
- * being built in parallel against this same contract, so a missing or
- * malformed field degrades to a safe fallback rather than throwing.
+ * config value or env var) / unreachable (transport failure or non-2xx) /
+ * unauthorized (401/403) / ok. Every raw field from the daemon is read
+ * defensively — it is being built in parallel against this same contract, so
+ * a missing or malformed field degrades to a safe fallback rather than
+ * throwing.
  */
 
 const TIMEOUT_MS = 5000;
@@ -32,16 +36,16 @@ interface HermesCredentials {
 }
 
 function hermesCredentials(): HermesCredentials | null {
-  const url = process.env.HERMES_API_URL?.trim();
-  const token = process.env.HERMES_API_TOKEN?.trim();
+  const url = systemSetting("hermesApiUrl", "HERMES_API_URL");
+  const token = systemSetting("hermesApiToken", "HERMES_API_TOKEN");
   if (!url || !token) return null;
   return { url: url.replace(/\/+$/, ""), token };
 }
 
 export const HERMES_UNCONFIGURED_DETAIL =
-  "Hermes is not connected. Set HERMES_API_URL (e.g. http://192.168.1.70:8722) and " +
-  "HERMES_API_TOKEN in the server environment, then recreate this container — both are " +
-  "read fresh on every request, so nothing else needs to change once they're set.";
+  "Hermes is not connected. Set the Hermes API URL and token on the settings page's System " +
+  "card (or HERMES_API_URL / HERMES_API_TOKEN in the server environment) — both are read " +
+  "fresh on every request, so nothing else needs to change once they're set.";
 
 function unreachableDetail(url: string, extra?: string): string {
   return extra ?? `Hermes at ${url} did not respond within ${TIMEOUT_MS / 1000}s.`;

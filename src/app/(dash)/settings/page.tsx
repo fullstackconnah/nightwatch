@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { putJson, useContainers } from "@/lib/client";
 import type { AppConfig, WidgetInstance } from "@/lib/config";
 import { SettingsIntegrations, useSettingsFull } from "@/components/settings-integrations";
-import { SettingsHermes } from "@/components/settings-hermes";
+import { SettingsHermes, SettingsHermesDaemon } from "@/components/settings-hermes";
 import { SettingsAccess } from "@/components/settings-access";
 import { SettingsWidgets } from "@/components/settings-widgets";
 import { SettingsTiles } from "@/components/settings-tiles";
@@ -103,8 +103,9 @@ export default function SettingsPage() {
         <SettingsIntegrations />
       </div>
 
-      <div id="hermes" className="scroll-mt-20">
+      <div id="hermes" className="scroll-mt-20 space-y-5">
         <SettingsHermes />
+        <SettingsHermesDaemon />
       </div>
 
       <div id="dashboard" className="scroll-mt-20 space-y-5">

@@ -1,13 +1,17 @@
 import { createHash, randomBytes } from "node:crypto";
 import { SignJWT, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { secretKey } from "@/lib/auth";
+import { systemSetting } from "@/lib/config";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
 // Hand-rolled authorization-code + PKCE flow on top of jose + fetch — no new
-// dependency. Every piece of server config comes from three optional env vars
-// (see oidcConfig()); when any is absent the whole feature stays invisible:
-// GET /api/auth/oidc/login 404s and the login page renders unchanged.
+// dependency. Every piece of server config comes from three optional
+// config-over-env values (see oidcConfig() — config.json's system.oidcIssuer/
+// oidcClientId/oidcClientSecret win over OIDC_ISSUER/OIDC_CLIENT_ID/
+// OIDC_CLIENT_SECRET, which remain the fallback); when any is absent the
+// whole feature stays invisible: GET /api/auth/oidc/login 404s and the login
+// page renders unchanged.
 //
 // Flow: /api/auth/oidc/login builds an authorization URL (buildAuthorizationUrl),
 // stashes {state, nonce, verifier} in a short-lived signed cookie, and 302s to
@@ -38,9 +42,9 @@ export interface OidcConfig {
  *  not exist. Never throws — callers use this to decide whether to expose
  *  any OIDC surface at all (404 the routes, hide the login button). */
 export function oidcConfig(): OidcConfig | null {
-  const issuer = process.env.OIDC_ISSUER?.trim();
-  const clientId = process.env.OIDC_CLIENT_ID?.trim();
-  const clientSecret = process.env.OIDC_CLIENT_SECRET?.trim();
+  const issuer = systemSetting("oidcIssuer", "OIDC_ISSUER");
+  const clientId = systemSetting("oidcClientId", "OIDC_CLIENT_ID");
+  const clientSecret = systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET");
   if (!issuer || !clientId || !clientSecret) return null;
   return { issuer: issuer.replace(/\/+$/, ""), clientId, clientSecret };
 }

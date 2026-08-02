@@ -1,10 +1,15 @@
+import { systemSetting } from "@/lib/config";
+
 /**
  * Server-only client for the voice speech server (STT + TTS), same shape as
- * hermes-ctl.ts: one process.env read (VOICE_SERVER_URL, plus optional
- * VOICE_STT_MODEL / VOICE_TTS_MODEL / VOICE_TTS_VOICE), read fresh on every
- * request, never cached, never routed through data/config.json — this is a
- * sibling daemon on the same box, not a third-party integration with a
- * UI-editable key.
+ * hermes-ctl.ts: config-over-env via systemSetting() for VOICE_SERVER_URL
+ * (plus optional VOICE_TTS_URL / VOICE_STT_MODEL / VOICE_TTS_MODEL /
+ * VOICE_TTS_VOICE) — a value saved on the settings page's Voice card
+ * (config.json's system.voice*) wins over the matching env var, which
+ * remains the fallback. Read fresh on every request either way (no
+ * restart-to-pick-up caching, same as loadConfig()'s mtime-keyed reread
+ * underneath systemSetting()) — this is a sibling daemon on the same box,
+ * not a third-party integration with a separately-modeled admin login.
  *
  * Being built in parallel against this contract:
  *   POST {url}/v1/audio/transcriptions  multipart file+model  -> { text }
@@ -37,29 +42,29 @@ interface VoiceCredentials {
 }
 
 function voiceCredentials(): VoiceCredentials | null {
-  const url = process.env.VOICE_SERVER_URL?.trim();
+  const url = systemSetting("voiceServerUrl", "VOICE_SERVER_URL");
   if (!url) return null;
   return {
     url: url.replace(/\/+$/, ""),
-    ttsUrl: (process.env.VOICE_TTS_URL?.trim() || url).replace(/\/+$/, ""),
-    sttModel: process.env.VOICE_STT_MODEL?.trim() ?? "",
-    ttsModel: process.env.VOICE_TTS_MODEL?.trim() ?? "",
-    ttsVoice: process.env.VOICE_TTS_VOICE?.trim() ?? "",
+    ttsUrl: (systemSetting("voiceTtsUrl", "VOICE_TTS_URL") || url).replace(/\/+$/, ""),
+    sttModel: systemSetting("voiceSttModel", "VOICE_STT_MODEL") ?? "",
+    ttsModel: systemSetting("voiceTtsModel", "VOICE_TTS_MODEL") ?? "",
+    ttsVoice: systemSetting("voiceTtsVoice", "VOICE_TTS_VOICE") ?? "",
   };
 }
 
 /** Cheap, credential-free presence check for /api/voice/status — lets the
  *  client hide every voice affordance outright when the operator hasn't set
- *  VOICE_SERVER_URL yet, rather than rendering a mic button that only fails
- *  once tapped. */
+ *  a voice server URL yet, rather than rendering a mic button that only
+ *  fails once tapped. */
 export function isVoiceConfigured(): boolean {
-  return Boolean(process.env.VOICE_SERVER_URL?.trim());
+  return Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL"));
 }
 
 export const VOICE_UNCONFIGURED_DETAIL =
-  "Voice is not connected. Set VOICE_SERVER_URL (e.g. http://192.168.1.70:8970) in the server " +
-  "environment, then recreate this container — it's read fresh on every request, so nothing else " +
-  "needs to change once it's set.";
+  "Voice is not connected. Set the server URL on the settings page's Voice card (or " +
+  "VOICE_SERVER_URL, e.g. http://192.168.1.70:8970, in the server environment) — it's read " +
+  "fresh on every request, so nothing else needs to change once it's set.";
 
 function unreachableDetail(url: string): string {
   return `Voice server at ${url} did not respond within ${TIMEOUT_MS / 1000}s.`;
