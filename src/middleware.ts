@@ -10,7 +10,11 @@ import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "
 // session cookie); the route 503s outright when MCP_TOKEN is unset.
 // /api/auth/oidc (login + callback) must be reachable pre-session the same
 // way — that's the whole point of an SSO entry point on the login page.
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth/oidc", "/kiosk", "/api/mcp"];
+// /dashboard.webmanifest: iOS fetches the PWA manifest without cookies when
+// adding to the home screen, and it contains nothing but names/colors/icon
+// paths. (The kiosk's manifest + icons need no entry — the "/kiosk" prefix
+// happens to cover /kiosk.webmanifest and /kiosk-icon-*.png too.)
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth/oidc", "/kiosk", "/api/mcp", "/dashboard.webmanifest"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
