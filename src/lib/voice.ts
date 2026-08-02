@@ -29,6 +29,11 @@ interface VoiceCredentials {
   sttModel: string;
   ttsModel: string;
   ttsVoice: string;
+  /** TTS may live on a different server than STT (VOICE_TTS_URL overrides;
+   *  defaults to VOICE_SERVER_URL). Added when the single-container speech
+   *  server proved unstable and the stack split into dedicated STT and TTS
+   *  containers (2026-08-02). */
+  ttsUrl: string;
 }
 
 function voiceCredentials(): VoiceCredentials | null {
@@ -36,6 +41,7 @@ function voiceCredentials(): VoiceCredentials | null {
   if (!url) return null;
   return {
     url: url.replace(/\/+$/, ""),
+    ttsUrl: (process.env.VOICE_TTS_URL?.trim() || url).replace(/\/+$/, ""),
     sttModel: process.env.VOICE_STT_MODEL?.trim() ?? "",
     ttsModel: process.env.VOICE_TTS_MODEL?.trim() ?? "",
     ttsVoice: process.env.VOICE_TTS_VOICE?.trim() ?? "",
@@ -148,7 +154,7 @@ export async function speakText(text: string): Promise<VoiceSpeakResult> {
 
   let res: Response;
   try {
-    res = await fetch(`${creds.url}/v1/audio/speech`, {
+    res = await fetch(`${creds.ttsUrl}/v1/audio/speech`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -156,7 +162,7 @@ export async function speakText(text: string): Promise<VoiceSpeakResult> {
       cache: "no-store",
     });
   } catch {
-    return { status: "unreachable", detail: unreachableDetail(creds.url) };
+    return { status: "unreachable", detail: unreachableDetail(creds.ttsUrl) };
   }
 
   if (!res.ok || !res.body) {
