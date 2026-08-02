@@ -130,6 +130,38 @@ export const KIOSK_THEME_LABELS: Record<KioskTheme, string> = {
   pixel: "Pixel Forecast",
 };
 
+/** The catalog's own taxonomy — the same families the font/CSS blocks are
+ *  organized by. The appearance picker renders one chip row per group. */
+export const KIOSK_THEME_GROUPS: readonly { label: string; themes: readonly KioskTheme[] }[] = [
+  { label: "core", themes: ["default", "terminal", "journal", "lounge"] },
+  { label: "light & calm", themes: ["folio", "slate", "sunroom", "aerogel"] },
+  { label: "warm & editorial", themes: ["bulletin", "understory", "duotone", "cinderblock"] },
+  { label: "dark & expressive", themes: ["aurora", "chrome", "neon", "pixel"] },
+];
+
+/** Ground + accent per theme, MIRRORING the [data-kiosk-theme] blocks in
+ *  globals.css — the one place theme colors are legitimately duplicated,
+ *  so the picker chips can preview an identity before it's applied (CSS
+ *  vars can't cross scopes to do this). Update alongside the CSS. */
+export const KIOSK_THEME_SWATCHES: Record<KioskTheme, { bg: string; accent: string }> = {
+  default: { bg: "#070b11", accent: "#5eead4" },
+  terminal: { bg: "#000000", accent: "#4ade80" },
+  journal: { bg: "#f5f2ec", accent: "#9f1239" },
+  lounge: { bg: "#120b06", accent: "#fb923c" },
+  folio: { bg: "#ffffff", accent: "#0033cc" },
+  slate: { bg: "#e7e4dc", accent: "#8a3b2f" },
+  sunroom: { bg: "#e3e7ee", accent: "#3964bf" },
+  aerogel: { bg: "#eef1f6", accent: "#4f5fd8" },
+  bulletin: { bg: "#faf6ee", accent: "#2a52d4" },
+  understory: { bg: "#eef1e4", accent: "#b05a32" },
+  duotone: { bg: "#f5ede0", accent: "#c2410c" },
+  cinderblock: { bg: "#f2ede1", accent: "#c93a10" },
+  aurora: { bg: "#0b0c14", accent: "#9d7bff" },
+  chrome: { bg: "#26292e", accent: "#ff9f1c" },
+  neon: { bg: "#16102e", accent: "#ff5ec4" },
+  pixel: { bg: "#10142a", accent: "#ffd23f" },
+};
+
 const STORAGE_KEY = "kiosk-theme";
 const CHANGE_EVENT = "kiosk-theme-change";
 
