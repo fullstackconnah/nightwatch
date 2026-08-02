@@ -22,5 +22,8 @@ ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 USER node
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+# Next's standalone output does NOT bundle public/ — without this the PWA
+# manifest and kiosk icons 404 in production (while next dev serves them fine).
+COPY --from=builder --chown=node:node /app/public ./public
 EXPOSE 3000
 CMD ["node", "server.js"]
