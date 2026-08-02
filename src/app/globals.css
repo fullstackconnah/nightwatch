@@ -285,3 +285,29 @@ body {
   background: var(--color-accent);
   box-shadow: 0 0 6px 1px color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
+
+/* Voice (kiosk + /hermes mic): the one authored moment on the mic button — a
+   breathing ring while armed, so "listening" reads before the bar display
+   below it even moves. Reuses the accent glow vocabulary status dots and
+   .dot-live already established (teal = "this is live"), not a new colour,
+   and animates box-shadow only so it can't fight the button's own border.
+   Reduced motion drops the animation for a static ring at the same colour —
+   "recording" must still be legible, just not moving. */
+.voice-mic-recording {
+  animation: voice-mic-pulse 1.6s ease-in-out infinite;
+}
+@keyframes voice-mic-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-accent) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-mic-recording {
+    animation: none;
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+}

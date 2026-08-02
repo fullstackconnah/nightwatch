@@ -47,7 +47,11 @@ function AuthPanel({ data }: { data: SettingsFullResponse | undefined }) {
  *  than editing settings-integrations.tsx's SettingsFullResponse, which is
  *  out of this feature's touch scope. Same "env var presence, never the
  *  value" idiom as mcpEnabled/kioskPinConfigured above it. */
-type SettingsMetaWithHermes = SettingsFullResponse["meta"] & { hermesApiConfigured?: boolean };
+type SettingsMetaWithHermes = SettingsFullResponse["meta"] & {
+  hermesApiConfigured?: boolean;
+  ssoConfigured?: boolean;
+  ssoIssuerHost?: string | null;
+};
 
 function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined }) {
   const meta = data?.meta as SettingsMetaWithHermes | undefined;
@@ -56,6 +60,8 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
   const customPin = meta?.kioskPinConfigured ?? false;
   const dockgeUrl = meta?.dockgeUrl;
   const hermesOn = meta?.hermesApiConfigured ?? false;
+  const ssoOn = meta?.ssoConfigured ?? false;
+  const ssoIssuerHost = meta?.ssoIssuerHost;
 
   return (
     <Card>
@@ -111,6 +117,29 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
           >
             Open <ExternalLink size={12} />
           </Link>
+        </div>
+
+        {/* SSO / Authelia */}
+        <div className="flex items-start justify-between gap-2 pb-3 border-b border-line/50">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-ink">SSO / Authelia</span>
+              {ssoOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
+            </div>
+            <p className="mt-1 text-[0.7rem] text-ink-dim">
+              {ssoOn ? (
+                <>
+                  OIDC sign-in via <span className="font-mono text-ink-dim">{ssoIssuerHost}</span>.
+                </>
+              ) : (
+                <>
+                  Set <span className="font-mono">OIDC_ISSUER</span>, <span className="font-mono">OIDC_CLIENT_ID</span> and{" "}
+                  <span className="font-mono">OIDC_CLIENT_SECRET</span> to add a &quot;Sign in with SSO&quot; option on
+                  the login page.
+                </>
+              )}
+            </p>
+          </div>
         </div>
 
         {/* Kiosk mode */}

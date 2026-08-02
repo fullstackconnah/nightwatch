@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadConfig, saveConfig, readHermesModelFile, dockgeUrl, publicHost, type AppConfig } from "@/lib/config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
+import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,12 @@ export async function GET(req: NextRequest) {
       // Same "env var presence, never the value" idiom as mcpEnabled/kioskPinConfigured —
       // src/lib/hermes-ctl.ts is the only place HERMES_API_TOKEN is ever read for real.
       hermesApiConfigured: Boolean(process.env.HERMES_API_URL?.trim() && process.env.HERMES_API_TOKEN?.trim()),
+      // Additive: whether OIDC SSO (Authelia) is wired up. Same "env var
+      // presence, never the value" idiom — src/lib/oidc.ts is the only place
+      // OIDC_CLIENT_SECRET is ever read for real. Host only, never the full
+      // issuer URL or the secret, mirrors mcpEndpoint's "safe to show" bar.
+      ssoConfigured: oidcConfig() !== null,
+      ssoIssuerHost: oidcIssuerHost(),
     },
     integrations: integrationsMeta(config),
   });

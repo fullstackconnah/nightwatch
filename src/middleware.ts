@@ -8,7 +8,9 @@ import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "
 // unauthenticated surface, the same way /api/auth/login is exempted for /login.
 // /api/mcp carries its own Bearer-token auth (MCP clients never hold the
 // session cookie); the route 503s outright when MCP_TOKEN is unset.
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/kiosk", "/api/mcp"];
+// /api/auth/oidc (login + callback) must be reachable pre-session the same
+// way — that's the whole point of an SSO entry point on the login page.
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth/oidc", "/kiosk", "/api/mcp"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

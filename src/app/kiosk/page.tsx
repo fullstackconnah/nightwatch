@@ -7,6 +7,7 @@ import { KioskVitals } from "@/components/kiosk-vitals";
 import { KioskHealth } from "@/components/kiosk-health";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
+import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 
@@ -78,7 +79,10 @@ export default function KioskPage() {
       <KioskHealth />
 
       {elevated && expiresAt !== null ? (
-        <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
+        <>
+          <KioskVoicePanel />
+          <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
+        </>
       ) : (
         <button
           type="button"

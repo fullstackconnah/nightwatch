@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { HermesVoiceMic } from "@/components/hermes-voice-mic";
 import { useHermesRun } from "@/lib/use-hermes";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,9 @@ function formatElapsed(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
+// Exported so kiosk-voice.tsx's full voice panel can show the same "how
+// long has this ask job been running" readout without a second copy of it.
+export function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
   const now = useNow(true);
   const startMs = startedAt ? Date.parse(startedAt) : NaN;
   if (!Number.isFinite(startMs) || now === 0) return null;
@@ -58,17 +61,23 @@ export function HermesAsk({ tier }: { tier: string | null }) {
       </div>
 
       <div className="space-y-1.5">
-        <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          disabled={Boolean(running)}
-          placeholder="Ask about anything Hermes has seen — a container, a trend, tonight's digest…"
-          rows={3}
-          maxLength={MAX_LENGTH + 40}
-          className={cn(
-            "w-full rounded-md border border-line bg-bg px-2.5 py-2 text-sm text-ink placeholder:text-ink-faint outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 font-mono resize-y disabled:opacity-60",
-          )}
-        />
+        <div className="flex items-start gap-2">
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            disabled={Boolean(running)}
+            placeholder="Ask about anything Hermes has seen — a container, a trend, tonight's digest…"
+            rows={3}
+            maxLength={MAX_LENGTH + 40}
+            className={cn(
+              "flex-1 min-w-0 rounded-md border border-line bg-bg px-2.5 py-2 text-sm text-ink placeholder:text-ink-faint outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/30 font-mono resize-y disabled:opacity-60",
+            )}
+          />
+          <HermesVoiceMic
+            disabled={Boolean(running)}
+            onTranscript={(text) => setQuestion((q) => (q ? `${q} ${text}` : text).slice(0, MAX_LENGTH))}
+          />
+        </div>
         <div className="flex items-center justify-between gap-2">
           <span className={cn("font-mono text-[0.65rem] tabular-nums", overLimit ? "text-bad" : "text-ink-faint")}>
             {question.length}/{MAX_LENGTH}

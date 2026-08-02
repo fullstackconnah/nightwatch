@@ -3,7 +3,10 @@ import { SignJWT, jwtVerify } from "jose";
 export const SESSION_COOKIE = "hd_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 
-function secretKey(): Uint8Array {
+// Exported so src/lib/oidc.ts can sign/verify its own short-lived transient
+// cookie (state/nonce/PKCE verifier) with the same secret/pattern as the
+// session and kiosk-elevation tokens below — no behavior change here.
+export function secretKey(): Uint8Array {
   const secret =
     process.env.SESSION_SECRET ||
     process.env.ADMIN_PASSWORD_HASH || // fallback: sessions die if the password changes

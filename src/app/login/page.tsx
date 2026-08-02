@@ -1,59 +1,24 @@
-"use client";
+import { oidcConfig } from "@/lib/oidc";
+import { LoginForm } from "./login-form";
 
-import { useState } from "react";
-import { Activity } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+/** The four codes /api/auth/oidc/callback can redirect back with — anything
+ *  else in the query string is ignored rather than echoed to the page. */
+const SSO_ERROR_CODES = new Set(["denied", "exchange_failed", "verify_failed", "config"]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Login failed");
-      window.location.href = "/";
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
-      setBusy(false);
-    }
-  }
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sso_error?: string }>;
+}) {
+  const { sso_error } = await searchParams;
 
-  return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <form onSubmit={submit} className="panel w-full max-w-xs p-6 space-y-4">
-        <div className="flex items-center gap-2 justify-center pb-2">
-          <Activity size={18} className="text-accent" />
-          <span className="font-mono text-lg font-semibold tracking-wide">
-            night<span className="text-accent">watch</span>
-          </span>
-        </div>
-        <div>
-          <Label htmlFor="password">Admin password</Label>
-          <Input
-            id="password"
-            type="password"
-            autoFocus
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-          />
-        </div>
-        {error && <p className="text-bad text-xs">{error}</p>}
-        <Button type="submit" disabled={busy || !password} className="w-full">
-          {busy ? "Checking…" : "Unlock"}
-        </Button>
-      </form>
-    </div>
-  );
+  // Server-only check: oidcConfig() reads three env vars and returns null
+  // unless all three are set. Only a boolean crosses into the client
+  // component below — never the issuer, client id, or secret.
+  const ssoConfigured = oidcConfig() !== null;
+  const ssoError = sso_error && SSO_ERROR_CODES.has(sso_error) ? sso_error : null;
+
+  return <LoginForm ssoConfigured={ssoConfigured} ssoError={ssoError} />;
 }
