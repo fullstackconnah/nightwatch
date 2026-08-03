@@ -1,11 +1,20 @@
 "use client";
 
-/* THESIS: replaces the old boxed ClimateCard with a borderless, distance-
-   legible row (redesign-06 §B) — a wall panel read from 2-3m needs the
-   current/target numbers to carry the hierarchy, not a bordered card. Advanced
+/* THESIS: a compact per-room TILE (2026-08-03 follow-up — supersedes the
+   full-width row this file used to render), laid out by kiosk-hub.tsx's
+   ClimateSection as a grid instead of stacked rows: at 4 climate entities,
+   four tiles now fit in a single row at both 1024×768 and 1180×820 where
+   four stacked rows cost ~326px of the panel's own height. Advanced
    controls (HVAC mode, dual setpoint) that don't need to be visible at a
-   glance move into a full-screen modal reachable from a single icon button,
-   keeping the resting row down to one line per room.
+   glance still move into the full-screen modal, reachable from a small
+   corner button rather than a fourth inline control — a tile this narrow
+   has no room for a fourth 56px target sitting flush with the others, and
+   the corner keeps it clearly separate from the −/target/+ cluster it must
+   not be mistaken for.
+
+   The `[−]  target  [+]` shape (target BETWEEN the two buttons, not beside
+   them) is the specific layout the owner asked for — this is a from-scratch
+   arrangement, not the old row's controls simply narrowed.
 
    OWN-WORLD: mirrors kiosk-hub.tsx's own composition choice (THESIS there) —
    this file owns NUDGE_STEP/HVAC_LABEL/formatTemp as its own copies rather
@@ -57,20 +66,45 @@ function formatTemp(v: number | null, unit: string | null): string {
   return `${v.toFixed(1)}${degree}${unitTrimmed}`;
 }
 
+/** A heat_cool range is ONE reading, not two. Rendering the low and high as
+ *  separate stacked lines dropped the relationship between them entirely —
+ *  "19.0°C" above "22.0°C" scans as two unrelated numbers rather than a band.
+ *  One line, an en dash, and the unit stated once at the end. */
+function formatTempRange(low: number | null, high: number | null, unit: string | null): string {
+  // Either bound missing means this isn't really a range — fall back to
+  // whichever value exists rather than rendering a half-open "19.0–—".
+  if (low == null || high == null) return formatTemp(low ?? high, unit);
+  const unitTrimmed = (unit ?? "").trim();
+  const degree = unitTrimmed.startsWith("°") ? "" : "°";
+  return `${low.toFixed(1)}–${high.toFixed(1)}${degree}${unitTrimmed}`;
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-// Shared visual for every 56px row control (−, +, advanced) — borderless at
-// rest, a hairline ring only on hover/active/focus so the row reads as open
-// ground rather than a cluster of buttons (redesign-06 ban on decorative
+// Shared visual for the 56px −/+ nudge buttons — borderless at rest, a
+// hairline ring only on hover/active/focus so the cluster reads as open
+// ground rather than a boxed control pair (redesign-06 ban on decorative
 // chrome).
-const ROW_BUTTON =
+const NUDGE_BUTTON =
   "flex h-14 w-14 shrink-0 items-center justify-center rounded-tile font-mono text-lg text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 
-/* ── row ─────────────────────────────────────────────────────────────────── */
+// The corner expand button is still a real 56px hit target (touch floor
+// invariant holds regardless of where a control sits), but it visually reads
+// small — deliberately offset outside the tile's own padding box on two
+// edges (see its `-top-1.5 -right-1.5` below) so its footprint doesn't eat
+// into the name row's line height, and so it's unambiguously NOT part of the
+// −/target/+ cluster beneath it (the owner's ask: don't let it compete with
+// the nudge controls). The gap between the two is a full row of content
+// (name, then current-temp), not just a few px — the strongest possible
+// separation short of moving it off the tile entirely.
+const EXPAND_BUTTON =
+  "absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center rounded-tile text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 
-export function KioskClimateRow({
+/* ── tile ────────────────────────────────────────────────────────────────── */
+
+export function KioskClimateTile({
   ha,
   climate,
   entities,
@@ -90,7 +124,7 @@ export function KioskClimateRow({
   // Unchanged from the old ClimateCard: hvac mode set and the temp nudge both
   // build a full optimistic HaEntities snapshot (mapping over entities.climates)
   // and hand it to ha.runAction, which flips it in immediately and rolls back
-  // on failure. The modal and the row share these two functions rather than
+  // on failure. The modal and the tile share these two functions rather than
   // each re-deriving the optimistic payload.
   const setMode = (mode: string) => {
     const next: HaEntities = {
@@ -126,75 +160,19 @@ export function KioskClimateRow({
   };
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 first:pt-0 last:pb-0", !climate.available && "opacity-60")}>
-      {/* Bounded column, not flex-1: at 1440px the old elastic wrapper
-          stretched the name to fill the row, stranding current/target/controls
-          ~1000px away at the far right — a row scanned as three unrelated
-          things, not one. A fixed width keeps the controls right beside the
-          name regardless of viewport, and bumps the room name from the
-          smallest text in its own row (14px) to the largest after the
-          current-temp figure, since it's the identifier a 2-3m reader needs
-          first (redesign-06 follow-up, 2026-08-03). */}
-      <div className="w-28 min-w-0 shrink-0 sm:w-40">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-base text-ink sm:text-lg">{climate.name}</span>
-          {!climate.available && <span className="microlabel !text-warn shrink-0">unavailable</span>}
-        </div>
-      </div>
-
-      {/* Distance-readable figure — the number a person 2-3m away actually
-          needs, sized well above the old card's text-lg. Fixed width, not
-          content-sized: a dual-setpoint room's longer target string used to
-          push THIS row's own −/+/advanced buttons right of every other
-          row's, so the controls a person reaches for shift depending on
-          which room they're in. Current/target are now fixed columns
-          regardless of string length, so the controls land at the same x on
-          every row (2026-08-03 follow-up). */}
-      <div className="w-32 shrink-0 font-mono text-3xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
-
-      <div className="w-44 shrink-0 text-center">
-        {/* Error replaces the "Target" microlabel in place rather than
-            adding a stacked line — the row must not grow or rewrap when a
-            nudge fails. Same string the modal shows; the two are never on
-            screen together (see the modal's fixed inset-0 backdrop, which
-            fully occludes this row while open), so there's no duplicate
-            announcement, just one visible location per state. */}
-        {error ? (
-          <div role="alert" title={error} className="microlabel !text-bad truncate">
-            {error}
-          </div>
-        ) : (
-          <div className="microlabel">Target</div>
-        )}
-        <div className="mt-0.5 truncate font-mono text-xl text-accent">
-          {dualSetpoint
-            ? `${formatTemp(climate.targetTempLow, climate.unit)}–${formatTemp(climate.targetTempHigh, climate.unit)}`
-            : formatTemp(climate.targetTemp, climate.unit)}
-        </div>
-      </div>
-
-      {nudgeable && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label={`Lower target temperature for ${climate.name}`}
-            disabled={pending}
-            onClick={() => nudge(-NUDGE_STEP)}
-            className={ROW_BUTTON}
-          >
-            −
-          </button>
-          <button
-            type="button"
-            aria-label={`Raise target temperature for ${climate.name}`}
-            disabled={pending}
-            onClick={() => nudge(NUDGE_STEP)}
-            className={ROW_BUTTON}
-          >
-            +
-          </button>
-        </div>
+    <div
+      className={cn(
+        "relative flex flex-col items-center gap-2 rounded-tile border border-line bg-panel-2 p-3 text-center",
+        !climate.available && "opacity-60",
       )}
+    >
+      {/* Name row: reserves space on the right (pr-8) so the absolutely
+          positioned expand button never overlaps the text; name truncates
+          before the "unavailable" badge ever does (badge is shrink-0). */}
+      <div className="flex w-full items-center justify-center gap-1.5 pr-8">
+        <span className="min-w-0 truncate text-sm text-ink sm:text-base">{climate.name}</span>
+        {!climate.available && <span className="microlabel !text-warn shrink-0">unavailable</span>}
+      </div>
 
       <button
         ref={advancedButtonRef}
@@ -202,10 +180,73 @@ export function KioskClimateRow({
         disabled={!climate.available}
         aria-label={`Advanced controls for ${climate.name}`}
         onClick={() => setModalOpen(true)}
-        className={ROW_BUTTON}
+        className={EXPAND_BUTTON}
       >
-        <SlidersHorizontal size={18} aria-hidden />
+        <SlidersHorizontal size={15} aria-hidden />
       </button>
+
+      {/* Distance-readable figure — the number a person 2-3m away actually
+          needs, unchanged in size from the row version. */}
+      <div className="font-mono text-3xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
+
+      {/* [−]  target  [+] — target BETWEEN the two buttons, the shape asked
+          for, not beside them. `min-h-14` on the cluster (not just the
+          buttons) keeps every tile the same height whether or not this room
+          is nudgeable — a non-nudgeable/unavailable room still reserves the
+          same vertical footprint even though it renders no buttons here. */}
+      <div className="flex min-h-14 items-center justify-center gap-2">
+        {nudgeable && (
+          <button
+            type="button"
+            aria-label={`Lower target temperature for ${climate.name}`}
+            disabled={pending}
+            onClick={() => nudge(-NUDGE_STEP)}
+            className={NUDGE_BUTTON}
+          >
+            −
+          </button>
+        )}
+
+        {/* min-h reserves TWO mono lines' worth of height always, so a
+            dual-setpoint tile's stacked low/high pair doesn't make that one
+            tile taller than its neighbours (owner's constraint: tiles must
+            stay the same size as each other) — a single-value tile just has
+            one line sitting centred in the same reserved space. */}
+        <div className="flex min-h-[2.5rem] w-20 shrink-0 flex-col items-center justify-center">
+          {error ? (
+            <div role="alert" title={error} className="microlabel !text-bad w-full truncate">
+              {error}
+            </div>
+          ) : (
+            <div className="microlabel">Target</div>
+          )}
+          <div
+            className={cn(
+              "mt-0.5 truncate font-mono text-accent",
+              // The range is ~11 glyphs against a single value's ~6, in a tile
+              // whose width is already spoken for by two 56px nudge buttons —
+              // one step down keeps it on its own line instead of truncating.
+              dualSetpoint ? "text-sm" : "text-base",
+            )}
+          >
+            {dualSetpoint
+              ? formatTempRange(climate.targetTempLow, climate.targetTempHigh, climate.unit)
+              : formatTemp(climate.targetTemp, climate.unit)}
+          </div>
+        </div>
+
+        {nudgeable && (
+          <button
+            type="button"
+            aria-label={`Raise target temperature for ${climate.name}`}
+            disabled={pending}
+            onClick={() => nudge(NUDGE_STEP)}
+            className={NUDGE_BUTTON}
+          >
+            +
+          </button>
+        )}
+      </div>
 
       {modalOpen && (
         <KioskClimateModal

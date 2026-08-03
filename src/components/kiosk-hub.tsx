@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 import { ApiError, fetcher, postJson } from "@/lib/client";
 import { StaleTag } from "@/components/kiosk-stale-tag";
-import { KioskClimateRow } from "@/components/kiosk-climate";
+import { KioskClimateTile } from "@/components/kiosk-climate";
 import type {
   HaActionRequest,
   HaClimate,
@@ -442,13 +442,22 @@ const ClimateSection = memo(function ClimateSection({
   return (
     <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={Thermometer} label="Climate" />
-      {/* Rows, not cards (redesign-06 §B): a hairline divider between rooms
-          rather than each room boxed on its own. The section wrapper itself
-          lost its `.panel p-4` box in the density pass (agent E) along with
-          every other pure-container section here. */}
-      <div className="divide-y divide-line">
+      {/* Compact tiles in a grid, not stacked rows (2026-08-03 follow-up —
+          supersedes the divide-y row list this used to be): fixed breakpoint
+          columns rather than `repeat(auto-fit, minmax(...))` because the
+          panel's two verification sizes (1024×768, 1180×820) both land in
+          Tailwind's `lg` bucket (≥1024px) — a single `lg:grid-cols-4`
+          predictably puts 4 tiles in one row at BOTH sizes, matching "4
+          across at 1180" while landing at the top of "2-4 at 1024" for the
+          biggest vertical win; a fluid auto-fit minmax would have made that
+          column count depend on exactly where the tuned minmax happened to
+          fall relative to those two specific widths. A box on the tile is
+          legitimate here — it's a touch target, same as the toggle/scene
+          pills below (kiosk-climate.tsx's own THESIS has the full tile
+          layout rationale). */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {climates.map((c) => (
-          <KioskClimateRow key={c.entityId} ha={ha} climate={c} entities={entities} />
+          <KioskClimateTile key={c.entityId} ha={ha} climate={c} entities={entities} />
         ))}
       </div>
     </section>
