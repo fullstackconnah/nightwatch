@@ -15,9 +15,9 @@
    tray/badge/count plumbing doesn't have to change if the route ever grows
    a second concurrent condition. */
 
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import useSWR from "swr";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, X } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import type { AttentionResult, AttentionSeverity } from "@/lib/attention";
 import { formatUptime } from "@/lib/format";
@@ -76,6 +76,11 @@ export interface UseKioskAlertsResult {
   /** The one entry that still owes its takeover, or null. */
   activeTakeover: KioskAlertEntry | null;
   dismissTakeover: (id: string) => void;
+  /** Acknowledge an active alert — removes it from `entries` (and so from the
+   *  tray and the button) until the reported condition changes. */
+  dismissAlert: (id: string) => void;
+  /** Remove one row from the cleared-history list. */
+  dismissResolved: (id: string, clearedAt: number) => void;
   worstSeverity: AttentionSeverity | null;
 }
 
@@ -122,9 +127,24 @@ interface AlertsState {
    *  returns makes the decision and its consequence atomic — there is no
    *  window where one has updated and the other hasn't. */
   seeded: boolean;
+  /** Ids the user has explicitly dismissed from the tray.
+   *
+   *  Dismissal here CANNOT mean "delete", because nothing in this component
+   *  owns the alert: `active` is re-derived from every poll of
+   *  /kiosk/api/attention, so a removed entry would simply reappear a few
+   *  seconds later and the button would blink back. What dismissal actually
+   *  means is "I have seen this one, stop showing it to me" — an
+   *  acknowledgement that suppresses the entry while the underlying condition
+   *  is unchanged, and lapses the moment it changes, because a NEW id is by
+   *  definition a condition the user has not acknowledged yet.
+   *
+   *  Ids are dropped from here as soon as they stop being reported (see the
+   *  poll reducer), so a condition that clears and later recurs alerts again
+   *  rather than staying silently suppressed forever. */
+  dismissed: string[];
 }
 
-const EMPTY_STATE: AlertsState = { active: [], resolved: [], seeded: false };
+const EMPTY_STATE: AlertsState = { active: [], resolved: [], seeded: false, dismissed: [] };
 
 export function useKioskAlerts(): UseKioskAlertsResult {
   const { data } = useSWR<AttentionResult>("/kiosk/api/attention", fetcher, {
@@ -155,7 +175,11 @@ export function useKioskAlerts(): UseKioskAlertsResult {
           prev.active.length > 0
             ? [...toResolved(prev.active, now), ...prev.resolved].slice(0, RESOLVED_HISTORY_LIMIT)
             : prev.resolved;
-        return { active: [], resolved, seeded: true };
+        // Nothing is being reported, so no acknowledgement is still standing:
+        // clearing `dismissed` here is what makes a condition that clears and
+        // later recurs alert again instead of staying suppressed for the life
+        // of the page.
+        return { active: [], resolved, seeded: true, dismissed: [] };
       }
       const id = alertId(data);
       if (prev.active.some((e) => e.id === id)) return prev; // same condition as last poll
@@ -173,7 +197,9 @@ export function useKioskAlerts(): UseKioskAlertsResult {
       const active: KioskAlertEntry[] = [
         { id, severity: data.severity, headline: data.headline, detail: data.detail, since: data.since, seen },
       ];
-      return { active, resolved, seeded: true };
+      // Only ids still being reported stay acknowledged. Anything else is a
+      // condition that has gone away, and its dismissal goes with it.
+      return { active, resolved, seeded: true, dismissed: prev.dismissed.filter((d) => d === id) };
     });
   }, [data]);
 
@@ -181,14 +207,52 @@ export function useKioskAlerts(): UseKioskAlertsResult {
     setState((prev) => ({ ...prev, active: prev.active.map((e) => (e.id === id ? { ...e, seen: true } : e)) }));
   }, []);
 
+  /** Acknowledge an active alert: it leaves the tray and the button, and stays
+   *  gone until the reported condition changes. See `dismissed`'s doc comment
+   *  for why this can't be a delete. */
+  const dismissAlert = useCallback((id: string) => {
+    setState((prev) =>
+      prev.dismissed.includes(id) ? prev : { ...prev, dismissed: [...prev.dismissed, id] },
+    );
+  }, []);
+
+  /** Drop one row from the cleared-history list. This one IS a true delete —
+   *  resolved entries are owned here and nothing re-derives them. */
+  const dismissResolved = useCallback((id: string, clearedAt: number) => {
+    setState((prev) => ({
+      ...prev,
+      resolved: prev.resolved.filter((e) => !(e.id === id && e.clearedAt === clearedAt)),
+    }));
+  }, []);
+
+  // Everything downstream — tray rows, the button, the count badge and the
+  // severity that drives the pulse — reads the FILTERED list, so acknowledging
+  // the last standing alert genuinely takes the button off the screen rather
+  // than leaving a badge showing zero.
+  const entries = useMemo(
+    () => state.active.filter((e) => !state.dismissed.includes(e.id)),
+    [state.active, state.dismissed],
+  );
+
+  // The takeover deliberately still reads the UNFILTERED list: a takeover only
+  // ever fires for an id the user has not seen, and an unseen id cannot have
+  // been dismissed.
   const activeTakeover = state.active.find((e) => !e.seen) ?? null;
-  const worstSeverity: AttentionSeverity | null = state.active.some((e) => e.severity === "bad")
+  const worstSeverity: AttentionSeverity | null = entries.some((e) => e.severity === "bad")
     ? "bad"
-    : state.active.length > 0
+    : entries.length > 0
       ? "warn"
       : null;
 
-  return { entries: state.active, resolved: state.resolved, activeTakeover, dismissTakeover, worstSeverity };
+  return {
+    entries,
+    resolved: state.resolved,
+    activeTakeover,
+    dismissTakeover,
+    dismissAlert,
+    dismissResolved,
+    worstSeverity,
+  };
 }
 
 /* ── button ──────────────────────────────────────────────────────────────── */
@@ -349,10 +413,42 @@ interface KioskAlertTrayProps {
   resolved: KioskResolvedAlertEntry[];
   open: boolean;
   onClose: () => void;
+  /** Acknowledge an active alert. See `dismissAlert` in useKioskAlerts. */
+  onDismissAlert: (id: string) => void;
+  /** Remove a cleared row from history. */
+  onDismissResolved: (id: string, clearedAt: number) => void;
   anchorRef: RefObject<HTMLButtonElement | null>;
 }
 
-const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry }>(function AlertRow({ entry }, ref) {
+/** The dismiss affordance shared by both row kinds. 44px square rather than
+ *  the 56px this surface uses for primary touch targets: a tray row is
+ *  secondary, reached only after deliberately opening the tray, and a 56px
+ *  button would be taller than the row it sits in. 44px is still at or above
+ *  every published minimum, and the whole row is only ~56px tall itself. */
+function DismissButton({ label, onDismiss }: { label: string; onDismiss: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        // The tray closes on outside-press and resets its auto-close timer on
+        // any press inside; neither should treat a dismiss as "the user is
+        // reading this, keep it open longer" once the row is gone.
+        e.stopPropagation();
+        onDismiss();
+      }}
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-ink-faint outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+    >
+      <X size={16} aria-hidden />
+    </button>
+  );
+}
+
+const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry; onDismiss: () => void }>(function AlertRow(
+  { entry, onDismiss },
+  ref,
+) {
   const sinceLabel = alertSinceLabel(entry.since);
   return (
     <div
@@ -370,10 +466,11 @@ const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry }>(function
         {entry.detail && <div className="text-xs text-ink-dim">{entry.detail}</div>}
       </div>
       {sinceLabel && (
-        <span className="shrink-0 rounded-md bg-panel-2 px-2 py-1 font-mono text-2xs text-ink-dim tabular-nums">
+        <span className="shrink-0 self-center rounded-md bg-panel-2 px-2 py-1 font-mono text-2xs text-ink-dim tabular-nums">
           for {sinceLabel}
         </span>
       )}
+      <DismissButton label={`Dismiss alert: ${entry.headline}`} onDismiss={onDismiss} />
     </div>
   );
 });
@@ -389,7 +486,7 @@ const clearedTimeFormatter = new Intl.DateTimeFormat("en-AU", {
  *  no background tint at all, and its own timestamp reads "cleared HH:MM"
  *  rather than reusing AlertRow's "for <uptime>" tag — that tag means "still
  *  ongoing", which would misstate a condition that has since stopped. */
-function ResolvedAlertRow({ entry }: { entry: KioskResolvedAlertEntry }) {
+function ResolvedAlertRow({ entry, onDismiss }: { entry: KioskResolvedAlertEntry; onDismiss: () => void }) {
   return (
     <div className="flex items-start gap-3 rounded-md px-2 py-2 text-ink-dim">
       <AlertTriangle size={14} className="mt-0.5 shrink-0 opacity-60" aria-hidden />
@@ -397,12 +494,15 @@ function ResolvedAlertRow({ entry }: { entry: KioskResolvedAlertEntry }) {
         <div className="text-sm">{entry.headline}</div>
         {entry.detail && <div className="text-xs opacity-80">{entry.detail}</div>}
       </div>
-      <span className="shrink-0 font-mono text-2xs tabular-nums">cleared {clearedTimeFormatter.format(entry.clearedAt)}</span>
+      <span className="shrink-0 self-center font-mono text-2xs tabular-nums">
+        cleared {clearedTimeFormatter.format(entry.clearedAt)}
+      </span>
+      <DismissButton label={`Remove from history: ${entry.headline}`} onDismiss={onDismiss} />
     </div>
   );
 }
 
-export function KioskAlertTray({ entries, resolved, open, onClose, anchorRef }: KioskAlertTrayProps) {
+export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAlert, onDismissResolved, anchorRef }: KioskAlertTrayProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const firstRowRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -421,6 +521,13 @@ export function KioskAlertTray({ entries, resolved, open, onClose, anchorRef }: 
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [open, resetAutoClose]);
+
+  // Dismissing the last row leaves `open` true with nothing to show, so the
+  // tray has to close itself rather than waiting out its 20s auto-close as an
+  // invisible node that still owns focus.
+  useEffect(() => {
+    if (open && entries.length === 0 && resolved.length === 0) onClose();
+  }, [open, entries.length, resolved.length, onClose]);
 
   // Focus returns to the button specifically on the open→close transition,
   // not on every render — otherwise a re-render while already closed would
@@ -446,7 +553,14 @@ export function KioskAlertTray({ entries, resolved, open, onClose, anchorRef }: 
     return () => anim.cancel();
   }, [open]);
 
-  if (!open) return null;
+  /* A tray with nothing in it is not a tray, it's an empty box floating in the
+     corner. This can genuinely happen — dismiss the last active alert while
+     the history is also empty, or open it just as the final row is
+     acknowledged — so emptiness is checked here rather than assumed away by
+     the button's own visibility. The effect above closes it too, so `open`
+     doesn't stay stuck true behind a component that renders nothing. */
+  const isEmpty = entries.length === 0 && resolved.length === 0;
+  if (!open || isEmpty) return null;
 
   return (
     <div
@@ -470,13 +584,13 @@ export function KioskAlertTray({ entries, resolved, open, onClose, anchorRef }: 
       className="fixed z-(--z-toast) panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {entries.map((entry, i) => (
-        <AlertRow key={entry.id} entry={entry} ref={i === 0 ? firstRowRef : undefined} />
+        <AlertRow key={entry.id} entry={entry} ref={i === 0 ? firstRowRef : undefined} onDismiss={() => onDismissAlert(entry.id)} />
       ))}
       {resolved.length > 0 && (
         <>
           <div className="microlabel mt-1 border-t border-line px-2 pb-1.5 pt-2.5">Recently cleared</div>
           {resolved.map((entry) => (
-            <ResolvedAlertRow key={`${entry.id}-${entry.clearedAt}`} entry={entry} />
+            <ResolvedAlertRow key={`${entry.id}-${entry.clearedAt}`} entry={entry} onDismiss={() => onDismissResolved(entry.id, entry.clearedAt)} />
           ))}
         </>
       )}
@@ -586,7 +700,8 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
 /* ── composition ─────────────────────────────────────────────────────────── */
 
 export function KioskAlerts({ onOverlayStateChange }: { onOverlayStateChange?: (open: boolean) => void }) {
-  const { entries, resolved, activeTakeover, dismissTakeover, worstSeverity } = useKioskAlerts();
+  const { entries, resolved, activeTakeover, dismissTakeover, dismissAlert, dismissResolved, worstSeverity } =
+    useKioskAlerts();
   const [trayOpen, setTrayOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -621,6 +736,8 @@ export function KioskAlerts({ onOverlayStateChange }: { onOverlayStateChange?: (
         resolved={resolved}
         open={trayOpen}
         onClose={() => setTrayOpen(false)}
+        onDismissAlert={dismissAlert}
+        onDismissResolved={dismissResolved}
         anchorRef={buttonRef}
       />
       {activeTakeover && (
