@@ -598,6 +598,10 @@ body {
 @property --sr-shadow-a { syntax: "<number>"; inherits: true; initial-value: 0.55; }
 @property --sr-highlight-a { syntax: "<number>"; inherits: true; initial-value: 0.85; }
 @property --sr-warmth { syntax: "<number>"; inherits: true; initial-value: 0.16; }
+/* The ground wash. --sr-wash-rgb is a bare triple so it cannot be registered
+   (same reason as the shadow/highlight triples) and therefore snaps; --sr-wash-a
+   is registered and tweens, which is the half the eye follows. */
+@property --sr-wash-a { syntax: "<number>"; inherits: true; initial-value: 0.42; }
 /* --sr-shadow-rgb / --sr-highlight-rgb hold bare "r, g, b" triples for use
    inside rgba(), which is not a registrable <syntax> — so they stay
    unregistered and carry their fallback in the var() call instead. They
@@ -647,8 +651,8 @@ body {
   background-image:
     radial-gradient(
       130% 100% at calc(50% - var(--sr-light-x) * 4) -15%,
-      rgba(255, 255, 255, calc(0.5 * var(--sr-highlight-a))) 0%,
-      rgba(255, 255, 255, 0) 62%
+      rgba(var(--sr-wash-rgb, 255, 255, 255), var(--sr-wash-a)) 0%,
+      rgba(var(--sr-wash-rgb, 255, 255, 255), 0) 62%
     ),
     radial-gradient(
       130% 100% at calc(50% + var(--sr-light-x) * 5) 115%,

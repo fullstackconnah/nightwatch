@@ -237,6 +237,8 @@ export function KioskSunroomLight() {
   --sr-shadow-rgb: ${light.shadowRgb};
   --sr-highlight-rgb: ${light.highlightRgb};
   --sr-warmth: ${num(light.warmth)};
+  --sr-wash-rgb: ${light.washRgb};
+  --sr-wash-a: ${num(Math.max(0, light.washA))};
 }`;
   }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick, tweening]);
 

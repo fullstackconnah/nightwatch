@@ -86,6 +86,16 @@ export interface SunroomLight {
    *  rgba() in a box-shadow where the alpha is a separate animatable var. */
   shadowRgb: string;
   highlightRgb: string;
+  /** The ground wash's own colour and strength — the pool of light (or of
+   *  dark) that falls on the room itself, as distinct from the shadow a panel
+   *  casts. On the light stops this is white and the pool BRIGHTENS the lit
+   *  side. On the dark stop it inverts to a near-black and DEEPENS instead: a
+   *  white pool on a near-black ground reads as a lamp shining on the wall,
+   *  which is precisely wrong for 2am, and it was the most visible thing on
+   *  the screen at night. Kept near-achromatic at both ends because KioskSky
+   *  already paints the coloured sun and two tinted washes fight. */
+  washRgb: string;
+  washA: number;
   /** 0..1, peaks at golden and floors at night. Drives the live-state bloom.
    *  Deliberately not derived from the palette — it is the one channel that
    *  is allowed to say "it is late afternoon" loudly. */
@@ -193,6 +203,12 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "0, 1, 4",
       highlightRgb: "44, 60, 94",
       warmth: 0.02,
+      // Inverted: at night the pool DEEPENS the lit side instead of
+      // brightening it. lightX is 0 here anyway (no sun to point anywhere), so
+      // what this actually reads as is a soft dark vignette rather than a
+      // direction — which is what an unlit room at 2am looks like.
+      washRgb: "0, 1, 6",
+      washA: 0.5,
     },
   },
   {
@@ -216,6 +232,8 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "150, 150, 178",
       highlightRgb: "255, 246, 240",
       warmth: 0.38,
+      washRgb: "255, 255, 255",
+      washA: 0.3,
     },
   },
   {
@@ -242,6 +260,8 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "163, 177, 198",
       highlightRgb: "255, 255, 255",
       warmth: 0.16,
+      washRgb: "255, 255, 255",
+      washA: 0.42,
     },
   },
   {
@@ -273,6 +293,8 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "158, 172, 196",
       highlightRgb: "255, 255, 255",
       warmth: 0.05,
+      washRgb: "255, 255, 255",
+      washA: 0.45,
     },
   },
   {
@@ -299,6 +321,8 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "170, 156, 168",
       highlightRgb: "255, 248, 235",
       warmth: 1,
+      washRgb: "255, 255, 255",
+      washA: 0.4,
     },
   },
   {
@@ -322,6 +346,8 @@ export const SUNROOM_STOPS: readonly {
       shadowRgb: "146, 140, 170",
       highlightRgb: "250, 240, 244",
       warmth: 0.5,
+      washRgb: "255, 255, 255",
+      washA: 0.28,
     },
   },
 ];
@@ -600,6 +626,7 @@ export function sunroomStateAt(
   };
 
   const cloud = clamp01(opts?.cloud01 ?? 0);
+  const rain = clamp01(opts?.rain01 ?? 0);
   // Elevation nudge, centred on 1: a low sun lengthens and softens, a high sun
   // shortens and tightens, by at most 15% either way. Defaults to the shape
   // `t` itself already implies (see `defaultElev01`) rather than a flat
@@ -618,10 +645,27 @@ export function sunroomStateAt(
     shadowRgb: desaturateTriple(lerpTriple(a.light.shadowRgb, b.light.shadowRgb, k), cloud * 0.7),
     highlightRgb: desaturateTriple(lerpTriple(a.light.highlightRgb, b.light.highlightRgb, k), cloud * 0.7),
     warmth: lerp(a.light.warmth, b.light.warmth, k) * (1 - cloud * 0.55),
+    washRgb: lerpTriple(a.light.washRgb, b.light.washRgb, k),
+    /* The wash is where daytime weather actually gets to speak, because the
+       token palette can't: darkening a light ground eats every contrast
+       margin at once (the gate capped it at 3.5%), while the wash sits behind
+       the text rather than under it and costs nothing. So the two sides pull
+       in opposite directions on purpose.
+
+       LIGHT side — cloud FLATTENS the pool. Overcast light is diffuse; it has
+       no pool, and a bright directional patch under a grey sky is the tell
+       that a UI is faking weather. Rain flattens it further still.
+
+       DARK side — cloud and rain DEEPEN it. An overcast, rainy night is
+       darker and heavier than a clear one, and here that costs no contrast at
+       all: the ground moving away from light ink only improves it. */
+    washA:
+      lerp(a.light.washA, b.light.washA, k) *
+      (nearer.dark ? 1 + cloud * 0.35 + rain * 0.45 : 1 - cloud * 0.55 - rain * 0.2),
   };
 
   return {
-    palette: applyWeather(palette, cloud, clamp01(opts?.rain01 ?? 0), isDark),
+    palette: applyWeather(palette, cloud, rain, isDark),
     light,
     t: pos,
     isDark,
