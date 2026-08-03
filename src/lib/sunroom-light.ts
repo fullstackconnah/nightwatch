@@ -16,17 +16,27 @@
  *    ground would also spend contrast headroom on all eight foreground tokens
  *    at once, and this theme has none to spend (see rule 2).
  *
- * 2. THE FOREGROUND DOES NOT TRAVEL AT ALL. ink/ink-dim/ink-faint/accent/
- *    ok/warn/bad are identical at all six stops, tuned to clear WCAG AA 4.5:1
- *    against the DARKEST surface any stop produces (night's panel-2). Holding
- *    them constant is what makes the ramp safe to interpolate: contrast
- *    against a ground is monotonic in that ground's luminance, so a
- *    foreground that passes on the darkest ground passes on every lighter one
- *    — and every point in between. The alternative (animating text colour
- *    alongside the ground) puts a contrast failure at some unnamed midpoint
- *    between two stops that both pass, which is exactly the class of bug
- *    scripts/sunroom-contrast.mjs exists to catch. Don't "improve" this by
- *    making the ink warm at sunset.
+ * 2. THE FOREGROUND HAS EXACTLY TWO STATES AND NEVER BLENDS BETWEEN THEM.
+ *    There is one ink set for the lit half of the day and one for the dark
+ *    half, each tuned to clear WCAG AA 4.5:1 against the darkest surface its
+ *    own side produces. Within a side nothing moves at all, which is what
+ *    makes that side safe to interpolate: contrast against a ground is
+ *    monotonic in the ground's luminance, so ink that passes on the darkest
+ *    ground passes on every lighter one and every point between.
+ *
+ *    Across the two sides it does NOT interpolate, and that is not a
+ *    preference. Between a light ground and a dark one lies a band of ground
+ *    luminance (roughly 0.18 to 0.33) where NO ink colour reaches 4.5:1 —
+ *    dark ink needs the ground above ~0.33, light ink needs it below ~0.18,
+ *    and nothing lives in between. Blending the ink through that band would
+ *    put mid-grey text on a mid-grey ground at dusk every single day. So the
+ *    ink SNAPS at the halfway point, only the ground crosses continuously,
+ *    and the crossing is made short enough (a few hundred ms, not the 90s
+ *    used elsewhere) that the illegible band is never a state anyone reads
+ *    in. scripts/sunroom-contrast.mjs gates both ends and prints how many
+ *    samples it exempted, so the exemption can't quietly widen.
+ *
+ *    Don't "improve" this by tweening the ink across dusk.
  *
  * So what actually carries the time of day? The SHADOWS. Sunroom is the only
  * theme in the catalog whose surface treatment is a directional light model,
@@ -86,6 +96,14 @@ export interface SunroomState {
   palette: SunroomPalette;
   light: SunroomLight;
   t: number;
+  /** The ground is dark and the ink is light. Consumers must forward this to
+   *  `color-scheme`, or form controls and scrollbars keep rendering for a
+   *  light page on a near-black one. */
+  isDark: boolean;
+  /** We are mid-way between a light stop and the dark one, in the band where
+   *  no ink colour clears AA against the ground. Consumers must make this
+   *  transition SHORT — see the comment in `sunroomStateAt`. */
+  crossing: boolean;
 }
 
 /* Held constant across all six stops — see rule 2 in the thesis. Every value
@@ -94,55 +112,86 @@ export interface SunroomState {
  * night's darker panel-2. Verified, not estimated: scripts/sunroom-contrast.mjs
  * prints the worst ratio these produce at every stop and every interpolated
  * midpoint between stops. */
-const INK = "#2c3542";
-const INK_DIM = "#4e5867";
-const INK_FAINT = "#565d68";
-const ACCENT = "#33559f";
-const ACCENT_DIM = "#2f4f96";
-// ok and bad are the two that bind: at 4.46 on night's panel-2 they were the
-// only tokens the gate failed, so both are darkened past the line rather than
-// onto it. Everything else clears with room to spare.
-const OK = "#19603a";
-const WARN = "#7a5613";
-const BAD = "#9d3232";
+/* Dark ink for the lit half of the day. `ok` and `bad` are the two that bind:
+ * at 4.46 on night's old light panel-2 they were the only tokens the gate
+ * failed, so both sit past the line rather than on it. */
+const LIGHT_FG = {
+  ink: "#2c3542",
+  inkDim: "#4e5867",
+  inkFaint: "#4f5662",
+  accent: "#33559f",
+  accentDim: "#2f4f96",
+  ok: "#19603a",
+  // Darkened again from #7a5613 to buy headroom for rain: `warn` is the
+  // binding token on every light stop, so whatever margin it has IS the
+  // budget for darkening the ground under it.
+  warn: "#6b4a0f",
+  bad: "#9d3232",
+} as const;
 
-const FOREGROUND = {
-  ink: INK,
-  inkDim: INK_DIM,
-  inkFaint: INK_FAINT,
-  accent: ACCENT,
-  accentDim: ACCENT_DIM,
-  ok: OK,
-  warn: WARN,
-  bad: BAD,
+/* Light ink for the dark half. Not a mechanical inversion of LIGHT_FG — on a
+ * near-black ground the status hues have to lift AND desaturate or they
+ * vibrate, and this surface is read from a bed at 2am. */
+const DARK_FG = {
+  ink: "#e4eaf4",
+  inkDim: "#b0bdd0",
+  inkFaint: "#8fa0b7",
+  accent: "#93b6ff",
+  accentDim: "#7ea5f5",
+  ok: "#5ecf99",
+  warn: "#edbe61",
+  bad: "#ff9292",
 } as const;
 
 /** The ramp, in order. `t` indexes this array continuously and wraps 5 → 0
  *  through the small hours, so index 5 (dusk) interpolates into index 0
  *  (night) rather than snapping back through the whole day. */
-export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; light: SunroomLight }[] = [
+export const SUNROOM_STOPS: readonly {
+  name: string;
+  palette: SunroomPalette;
+  light: SunroomLight;
+  /** Marks the stops whose ground is dark enough to need light ink. Exactly
+   *  one today (`night`), but declared per-stop rather than hardcoded to
+   *  index 0 so the light/dark boundary stays a property of the data — adding
+   *  a second dark stop must not require finding every `=== 0` in this file. */
+  dark?: boolean;
+}[] = [
   {
     name: "night",
+    dark: true,
     palette: {
-      bg: "#d4d9e4",
-      panel: "#d9dee8",
-      panel2: "#d0d6e2",
-      line: "#c4cbd9",
-      lineBright: "#adb6c8",
-      ...FOREGROUND,
+      // A CLEAR night: blue, not black. This is the only stop on the dark
+      // side of the ramp — cloud and rain deepen and grey it from here (see
+      // `applyWeather`), so this palette is the clear-sky extreme and the
+      // "really dark grey overcast night" is the same stop with cloud01 at 1.
+      bg: "#0d1425",
+      panel: "#141d31",
+      panel2: "#0a1020",
+      line: "#1f2b45",
+      lineBright: "#35466e",
+      ...DARK_FG,
     },
     // No sun means no direction: the shadow collapses to a short ambient drop
     // with no horizontal component at all. This is the one stop where the
     // neumorphic pair stops pointing anywhere, and that reads correctly —
     // a room at 2am is lit by the hallway, not by the sky.
+    /* Neumorphism inverts on a dark ground, and getting this wrong is the
+       classic dark-soft-UI failure: keep the near-white highlight from the
+       light stops and every panel reads as OUTLINED in light rather than
+       lifted out of the surface. The effect comes from the pair straddling
+       the surface's own tone, so on a near-black ground the shadow goes to
+       true black and the highlight becomes a small LIFT of the panel colour
+       (a dark blue-grey), never white. Same emboss, no glow. */
     light: {
       lightX: 0,
       lightY: 3,
       blur: 10,
-      shadowA: 0.32,
-      highlightA: 0.5,
-      shadowRgb: "120, 132, 158",
-      highlightRgb: "244, 246, 252",
+      // Black on near-black needs more alpha than grey on pale did, or the
+      // shadow half of the pair simply disappears.
+      shadowA: 0.7,
+      highlightA: 0.55,
+      shadowRgb: "0, 1, 4",
+      highlightRgb: "44, 60, 94",
       warmth: 0.02,
     },
   },
@@ -154,7 +203,7 @@ export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; li
       panel2: "#d6dae4",
       line: "#cbd1dd",
       lineBright: "#b4bccc",
-      ...FOREGROUND,
+      ...LIGHT_FG,
     },
     // Sun barely over the horizon: the longest, softest, most horizontal
     // shadow of the day. Light from the left, faint rose in the highlight.
@@ -180,7 +229,7 @@ export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; li
       panel2: "#dde2ea",
       line: "#d3d9e3",
       lineBright: "#b9c2d1",
-      ...FOREGROUND,
+      ...LIGHT_FG,
     },
     // The shipped 7px/7px/14px neumorphic pair and its exact shadow and
     // highlight colours, preserved to the digit.
@@ -210,7 +259,7 @@ export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; li
       panel2: "#e0e5f0",
       line: "#d5dae7",
       lineBright: "#bcc4d5",
-      ...FOREGROUND,
+      ...LIGHT_FG,
     },
     // Overhead: no horizontal component, the shortest and tightest shadow of
     // the day, and the whitest light. lightX crossing zero here is what makes
@@ -236,7 +285,7 @@ export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; li
       panel2: "#e7e4e1",
       line: "#dcd8d5",
       lineBright: "#c4c0bc",
-      ...FOREGROUND,
+      ...LIGHT_FG,
     },
     // Light from the right now — lightX has crossed zero. Warm violet-grey
     // shadow against an amber-white highlight is the whole hour in two
@@ -260,7 +309,7 @@ export const SUNROOM_STOPS: readonly { name: string; palette: SunroomPalette; li
       panel2: "#d8d7de",
       line: "#cdccd5",
       lineBright: "#b6b5c1",
-      ...FOREGROUND,
+      ...LIGHT_FG,
     },
     // Mirror of dawn on the other side of the sky: long, soft, low, and
     // cooling back toward night.
@@ -376,6 +425,20 @@ function defaultElev01(t: number): number {
   return 1 - distFromMidday / 3;
 }
 
+/**
+ * Whether sunroom is currently on the dark side of its ramp.
+ *
+ * Exists so consumers that branch on "is this theme's ground light or dark"
+ * have one answer to ask rather than restating the rule. `KIOSK_LIGHT_THEMES`
+ * in kiosk-theme.tsx is a STATIC set and sunroom is the first theme for which
+ * that question has a time-dependent answer — anything reading that set for
+ * sunroom (KioskSky's ambient-opacity cap, for one) has to come through here
+ * instead, or it will treat a near-black midnight ground as a pale one.
+ */
+export function sunroomIsDark(sun: { elevationDeg: number; hourAngleDeg: number }): boolean {
+  return sunroomStateAt(sunroomT(sun)).isDark;
+}
+
 function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
   return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
@@ -401,6 +464,66 @@ function lerpTriple(a: string, b: string, k: number): string {
   const pa = a.split(",").map((n) => Number(n.trim()));
   const pb = b.split(",").map((n) => Number(n.trim()));
   return pa.map((n, i) => Math.round(lerp(n, pb[i] ?? n, k))).join(", ");
+}
+
+/** Mixes one hex toward its own perceptual grey by `k` — removes hue while
+ *  holding lightness, which is what an overcast sky actually does to a room:
+ *  the colour goes out of the light, the light doesn't go out. */
+function greyHex(hex: string, k: number): string {
+  if (k <= 0) return hex;
+  const [r, g, b] = hexToRgb(hex);
+  const grey = 0.299 * r + 0.587 * g + 0.114 * b;
+  return rgbToHex(lerp(r, grey, k), lerp(g, grey, k), lerp(b, grey, k));
+}
+
+/** Scales a hex toward black by `k`. Multiplicative, not a mix toward a fixed
+ *  dark: heavy rain should deepen a blue night into a blue-black, never slide
+ *  every ground toward the same charcoal. */
+function darkenHex(hex: string, k: number): string {
+  if (k <= 0) return hex;
+  const [r, g, b] = hexToRgb(hex);
+  const f = 1 - k;
+  return rgbToHex(r * f, g * f, b * f);
+}
+
+/**
+ * Weather's effect on the ground, applied after the solar interpolation.
+ *
+ * `cloud01` greys — overcast strips the hue and leaves the lightness, so a
+ * clear blue night becomes the "really dark grey" one without needing a
+ * separate palette to blend toward. `rain01` darkens on top, multiplicatively,
+ * so heavier rain keeps deepening whatever colour the sky already is.
+ *
+ * THE SURFACES MOVE AND THE INK DOES NOT. That asymmetry is the whole reason
+ * this is safe: every foreground token is already tuned against its side's
+ * darkest surface, and darkening a light ground eats that margin directly.
+ * Hence the caps below, which are not round numbers — they are the largest
+ * values that still clear 4.5:1 everywhere when the gate sweeps the full
+ * t x cloud x rain cube. On the dark side the cap is far higher, because
+ * there darkening the ground INCREASES contrast against light ink.
+ */
+function applyWeather(p: SunroomPalette, cloud01: number, rain01: number, isDark: boolean): SunroomPalette {
+  const grey = cloud01 * (isDark ? 0.85 : 0.5);
+  /* The asymmetry here is severe and it is the honest answer, not a fudge.
+     On the DARK side, rain deepening the ground pushes it away from light ink
+     and contrast IMPROVES, so it can go far — 45%, enough that a downpour at
+     2am is unmistakably blacker than a clear night. On the LIGHT side the
+     same move eats the margin under every token at once, and the gate proved
+     it: at 10% the `warn` pair fell to 3.78:1. So daytime rain barely touches
+     the palette, and the fact that it is raining is carried by the
+     atmosphere instead — heavier, greyer, more diffuse light — which costs no
+     contrast because it is not what the text sits on. Weather lives in the
+     light, the same way the hour does. */
+  const dark = rain01 * (isDark ? 0.45 : 0.035);
+  const move = (hex: string) => darkenHex(greyHex(hex, grey), dark);
+  return {
+    ...p,
+    bg: move(p.bg),
+    panel: move(p.panel),
+    panel2: move(p.panel2),
+    line: move(p.line),
+    lineBright: move(p.lineBright),
+  };
 }
 
 /** Mixes an "r, g, b" triple toward its own perceptual grey by `k`. The
@@ -429,12 +552,36 @@ function desaturateTriple(rgb: string, k: number): string {
  * live elevation reading; the stops already encode the coarse shape, so this
  * only nudges. Omitting it is fine and is the common case.
  */
-export function sunroomStateAt(t: number, opts?: { cloud01?: number; elev01?: number }): SunroomState {
+export function sunroomStateAt(
+  t: number,
+  opts?: { cloud01?: number; elev01?: number; rain01?: number },
+): SunroomState {
   const pos = wrapT(t);
   const i = Math.floor(pos);
   const k = pos - i;
   const a = SUNROOM_STOPS[i];
   const b = SUNROOM_STOPS[(i + 1) % STOP_COUNT];
+
+  /* THE FOREGROUND SNAPS, IT DOES NOT INTERPOLATE — and this is the single
+     most important line in the file now that night is dark.
+
+     Between a light ground and a dark one there is a band of ground luminance
+     (roughly 0.18 to 0.33) where NEITHER dark ink nor light ink reaches
+     4.5:1. That is arithmetic, not a tuning failure: dark ink needs the
+     ground above ~0.33 and light ink needs it below ~0.18, and nothing lives
+     in between. Interpolating the ink across that band would produce mid-grey
+     text on a mid-grey ground — the worst possible reading — so instead the
+     ink jumps at the halfway point and only the GROUND crosses continuously.
+     The crossing itself is made short by the caller (see `crossing` below);
+     `scripts/sunroom-contrast.mjs` gates both ends of it and deliberately
+     exempts the transit rather than pretending it passes. */
+  const nearer = k < 0.5 ? a : b;
+  const isDark = nearer.dark === true;
+  /* True while one side of this blend is the dark stop and the other isn't —
+     i.e. we are physically inside the illegible band. The component reads
+     this and drops the transition from 90s to a few hundred ms, so the band
+     is crossed faster than anyone can start reading a word in it. */
+  const crossing = a.dark !== b.dark;
 
   const palette: SunroomPalette = {
     bg: lerpHex(a.palette.bg, b.palette.bg, k),
@@ -442,17 +589,14 @@ export function sunroomStateAt(t: number, opts?: { cloud01?: number; elev01?: nu
     panel2: lerpHex(a.palette.panel2, b.palette.panel2, k),
     line: lerpHex(a.palette.line, b.palette.line, k),
     lineBright: lerpHex(a.palette.lineBright, b.palette.lineBright, k),
-    // Constant across stops, so these are pass-throughs — but they are still
-    // read from the stop rather than from the module constants, so that a
-    // future decision to let one of them breathe needs no change here.
-    ink: lerpHex(a.palette.ink, b.palette.ink, k),
-    inkDim: lerpHex(a.palette.inkDim, b.palette.inkDim, k),
-    inkFaint: lerpHex(a.palette.inkFaint, b.palette.inkFaint, k),
-    accent: lerpHex(a.palette.accent, b.palette.accent, k),
-    accentDim: lerpHex(a.palette.accentDim, b.palette.accentDim, k),
-    ok: lerpHex(a.palette.ok, b.palette.ok, k),
-    warn: lerpHex(a.palette.warn, b.palette.warn, k),
-    bad: lerpHex(a.palette.bad, b.palette.bad, k),
+    ink: nearer.palette.ink,
+    inkDim: nearer.palette.inkDim,
+    inkFaint: nearer.palette.inkFaint,
+    accent: nearer.palette.accent,
+    accentDim: nearer.palette.accentDim,
+    ok: nearer.palette.ok,
+    warn: nearer.palette.warn,
+    bad: nearer.palette.bad,
   };
 
   const cloud = clamp01(opts?.cloud01 ?? 0);
@@ -476,5 +620,11 @@ export function sunroomStateAt(t: number, opts?: { cloud01?: number; elev01?: nu
     warmth: lerp(a.light.warmth, b.light.warmth, k) * (1 - cloud * 0.55),
   };
 
-  return { palette, light, t: pos };
+  return {
+    palette: applyWeather(palette, cloud, clamp01(opts?.rain01 ?? 0), isDark),
+    light,
+    t: pos,
+    isDark,
+    crossing,
+  };
 }

@@ -27,6 +27,7 @@
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import { KIOSK_LIGHT_THEMES, useKioskTheme } from "@/components/kiosk-theme";
+import { sunroomIsDark } from "@/lib/sunroom-light";
 
 const SKY_REFRESH_MS = 15 * 60_000;
 
@@ -35,7 +36,7 @@ type SunPhase = "night" | "dawn" | "day" | "dusk";
 interface SkyWeatherOk {
   status: "ok";
   current?: { cloudCoverPct?: number };
-  sun?: { elevationDeg: number; phase: SunPhase; progress01: number };
+  sun?: { elevationDeg: number; phase: SunPhase; progress01: number; hourAngleDeg?: number };
 }
 
 type SkyWeatherResponse = SkyWeatherOk | { status: "unconfigured" | "unreachable"; detail?: string };
@@ -107,7 +108,17 @@ export function KioskSky() {
   // Intensity discipline: ambience, not decoration. Dark themes cap at
   // ~0.10 total layer opacity, light ones at ~0.05 (KIOSK_LIGHT_THEMES,
   // imported from kiosk-theme.tsx) so a pale ground never gets muddied.
-  const themeCap = KIOSK_LIGHT_THEMES.has(theme) ? 0.05 : 0.1;
+  /* Sunroom is the one theme whose ground lightness is not a constant — it
+     runs on the same sun this layer does and goes genuinely dark at night, so
+     reading the static KIOSK_LIGHT_THEMES set for it would cap a near-black
+     midnight ground at the pale-ground opacity and leave this layer invisible
+     exactly when it has the most room. Every other theme is still answered by
+     the set, which is correct for them. */
+  const groundIsLight =
+    theme === "sunroom"
+      ? !sunroomIsDark({ elevationDeg: sun.elevationDeg, hourAngleDeg: sun.hourAngleDeg ?? 0 })
+      : KIOSK_LIGHT_THEMES.has(theme);
+  const themeCap = groundIsLight ? 0.05 : 0.1;
   const glowOpacity = themeCap * tuning.glowPeak * cloudFactor;
   const washOpacity = themeCap * tuning.washPeak * cloudFactor;
 

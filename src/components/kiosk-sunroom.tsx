@@ -95,9 +95,28 @@ const TRANSITION = `
 
 type SunPhase = "night" | "dawn" | "day" | "dusk";
 
+/* The crossing between the light and dark halves of the ramp gets its own,
+   much shorter duration. Everything else drifts over 60-90s because it is
+   meant to be imperceptible; this one is the opposite — it passes through a
+   band of ground luminance where no ink colour clears AA, so the only correct
+   move is to be through it before anyone can read a word. Long enough not to
+   read as a flashbang on a dark wall at dusk, short enough that the illegible
+   state is never a state. */
+const CROSSING_MS = 650;
+
+/** Rain intensity, 0..1. mm/hr is the honest measure (a 90-minute nowcast of
+ *  actual precipitation), and 4 mm/hr is treated as the top of the scale —
+ *  that is solidly "heavy" in temperate rain; anything above it is already as
+ *  dark as the design goes and clamps. */
+function rainIntensity01(mmPerHour: number | undefined): number {
+  if (typeof mmPerHour !== "number" || !Number.isFinite(mmPerHour)) return 0;
+  return Math.min(1, Math.max(0, mmPerHour / 4));
+}
+
 interface SunroomWeatherOk {
   status: "ok";
-  current?: { cloudCoverPct?: number };
+  current?: { cloudCoverPct?: number; precipMm?: number };
+  rain?: { nowcast?: Array<{ minutesFromNow: number; precipMmHr: number }> };
   sun?: {
     elevationDeg: number;
     phase: SunPhase;
@@ -131,6 +150,8 @@ export function KioskSunroomLight() {
   const ok = data && data.status === "ok" ? data : null;
   const sun = ok?.sun ?? null;
   const cloudCoverPct = ok?.current?.cloudCoverPct;
+  const nowcastMmHr = ok?.rain?.nowcast?.[0]?.precipMmHr;
+  const currentPrecipMm = ok?.current?.precipMm;
 
   /* Minutes since the anchor landed. Kept as state (not a ref) because the
      rendered output has to change when it advances; kept as a COUNT of ticks
@@ -172,7 +193,11 @@ export function KioskSunroomLight() {
     const hourAngle = anchorHourAngle(sun) + tick * DEG_PER_MINUTE;
     const t = sunroomT({ elevationDeg: sun.elevationDeg, hourAngleDeg: hourAngle });
     const cloud01 = typeof cloudCoverPct === "number" ? cloudCoverPct / 100 : 0;
-    const { palette, light } = sunroomStateAt(t, { cloud01 });
+    // Prefer the nowcast's first bucket over `current.precipMm`: it is what is
+    // falling in the next quarter hour rather than what has accumulated, and
+    // the ground should darken while it rains, not after.
+    const rain01 = rainIntensity01(nowcastMmHr ?? currentPrecipMm);
+    const { palette, light, isDark, crossing } = sunroomStateAt(t, { cloud01, rain01 });
 
     // Rounded on the way out: sub-pixel and sub-percent precision here buys
     // nothing visually and would churn the emitted string on every tick,
@@ -180,7 +205,17 @@ export function KioskSunroomLight() {
     const px = (n: number) => `${Math.round(n * 10) / 10}px`;
     const num = (n: number) => `${Math.round(n * 1000) / 1000}`;
 
-    return `${STYLE_SELECTOR} {${tweening ? TRANSITION : ""}
+    /* color-scheme has to move with the ground or the browser keeps drawing
+       scrollbars, form controls and the tap-highlight for a light page on a
+       near-black one. It is not animatable and shouldn't be — it flips with
+       the ink, at the same instant, by construction. */
+    const scheme = `\n  color-scheme: ${isDark ? "dark" : "light"};`;
+    /* While crossing, every tween collapses to CROSSING_MS. Using the normal
+       90s here would leave the surface sitting in the illegible band for a
+       minute and a half. */
+    const transition = tweening ? (crossing ? TRANSITION.replace(/\d+s linear/g, `${CROSSING_MS}ms linear`) : TRANSITION) : "";
+
+    return `${STYLE_SELECTOR} {${transition}${scheme}
   --sr-bg: ${palette.bg};
   --sr-panel: ${palette.panel};
   --sr-panel-2: ${palette.panel2};
@@ -203,7 +238,7 @@ export function KioskSunroomLight() {
   --sr-highlight-rgb: ${light.highlightRgb};
   --sr-warmth: ${num(light.warmth)};
 }`;
-  }, [sun, cloudCoverPct, tick, tweening]);
+  }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick, tweening]);
 
   useEffect(() => {
     if (!css || emittedRef.current) return;
