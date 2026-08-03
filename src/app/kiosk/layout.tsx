@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { KioskThemeScope } from "@/components/kiosk-theme";
 import { KioskSky } from "@/components/kiosk-sky";
+import { KioskSunroomLight } from "@/components/kiosk-sunroom";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",
@@ -56,9 +57,15 @@ export default function KioskLayout({ children }: { children: React.ReactNode })
   // KioskSky mounts here (as a child of the scope) rather than inside
   // KioskThemeScope itself: kiosk-sky imports useKioskTheme from
   // kiosk-theme, so the reverse import would create a module cycle.
+  // KioskSunroomLight mounts here for the same reason KioskSky does — it
+  // imports useKioskTheme from kiosk-theme, so living inside KioskThemeScope
+  // would close a module cycle. It renders no visible box of its own (only a
+  // <style> element, and only on the sunroom theme), so its position among
+  // these siblings carries no stacking consequence the way KioskSky's does.
   return (
     <KioskThemeScope>
       <KioskSky />
+      <KioskSunroomLight />
       {children}
     </KioskThemeScope>
   );

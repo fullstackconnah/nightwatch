@@ -177,7 +177,16 @@ export const KIOSK_THEME_SWATCHES: Record<KioskTheme, { bg: string; accent: stri
   lounge: { bg: "#120b06", accent: "#fb923c" },
   folio: { bg: "#ffffff", accent: "#0033cc" },
   slate: { bg: "#e7e4dc", accent: "#8a3b2f" },
-  sunroom: { bg: "#e3e7ee", accent: "#3964bf" },
+  // Sunroom's tokens are no longer literals in globals.css — they come from
+  // SUNROOM_STOPS (src/lib/sunroom-light.ts) via the solar ramp, so this chip
+  // mirrors the `morning` stop: the one stop pinned to the theme's original
+  // shipped ground, and the closest thing this theme still has to a canonical
+  // resting appearance. The accent is constant across all six stops by design
+  // (see that file's rule 2), so it needs no stop chosen for it. This entry
+  // had already desynced once — it still read #3964bf after the real token
+  // moved to #3760b7 — which is exactly what the comment above this table
+  // warns about.
+  sunroom: { bg: "#e3e7ee", accent: "#33559f" },
   aerogel: { bg: "#eef1f6", accent: "#4f5fd8" },
   bulletin: { bg: "#faf6ee", accent: "#2a52d4" },
   understory: { bg: "#eef1e4", accent: "#a95630" },

@@ -55,6 +55,12 @@ export interface WeatherSun {
   elevationDeg: number;
   phase: "night" | "dawn" | "day" | "dusk";
   progress01: number;
+  /** Degrees of Earth rotation since solar noon at the configured lon,
+   *  range -180..180: negative before solar noon (sun to the east),
+   *  positive after (sun to the west). Advances a uniform 15°/hour, so a
+   *  client can extrapolate the sun's position between this module's
+   *  15-minute weather fetches without another round trip. */
+  hourAngleDeg: number;
 }
 
 /** 15-minute precipitation nowcast (next ~90 min) plus a 12-hour probability
@@ -299,7 +305,7 @@ function buildSun(cfg: DisplayConfig, currentIso: string | null, sunriseIso: str
     }
   }
 
-  return { elevationDeg, phase, progress01 };
+  return { elevationDeg, phase, progress01, hourAngleDeg };
 }
 
 // --- rain nowcast + summary microcopy ----------------------------------------
