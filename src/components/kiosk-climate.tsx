@@ -26,7 +26,7 @@
    its consumer. */
 
 import { useEffect, useRef, useState } from "react";
-import { SlidersHorizontal, X } from "lucide-react";
+import { Power, SlidersHorizontal, X } from "lucide-react";
 import type { HaClimate, HaEntities } from "@/lib/ha-types";
 import type { UseKioskHaResult } from "@/components/kiosk-hub";
 import { cn } from "@/lib/utils";
@@ -102,6 +102,29 @@ const NUDGE_BUTTON =
 const EXPAND_BUTTON =
   "absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center rounded-tile text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
 
+/** Mirrors EXPAND_BUTTON on the opposite corner. Same 56px touch target, same
+ *  negative offset so it overhangs the tile's own padding rather than stealing
+ *  a column from the two rows of text between them. */
+const POWER_BUTTON =
+  "absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center rounded-tile outline-none ring-1 ring-transparent transition hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
+
+/** Which mode "on" means for a given unit.
+ *
+ *  Home Assistant has no generic "turn on" for climate — every unit exposes
+ *  its own `hvac_modes`, and picking the wrong one is the difference between
+ *  heating a room and air-conditioning it. Preference order runs from the most
+ *  self-managing to the most specific: `heat_cool`/`auto` let the unit decide,
+ *  which is what someone pressing a bare power button almost always wants;
+ *  `heat` and `cool` are only reached when the unit can't. Falls back to the
+ *  first non-off mode it advertises rather than guessing a name that might not
+ *  exist on this unit. */
+function preferredOnMode(modes: string[]): string | null {
+  for (const wanted of ["heat_cool", "auto", "heat", "cool"]) {
+    if (modes.includes(wanted)) return wanted;
+  }
+  return modes.find((m) => m !== "off") ?? null;
+}
+
 /* ── tile ────────────────────────────────────────────────────────────────── */
 
 export function KioskClimateTile({
@@ -119,6 +142,13 @@ export function KioskClimateTile({
   const pending = ha.isPending(climate.entityId);
   const error = ha.actionErrors[climate.entityId];
   const dualSetpoint = climate.targetTempLow != null && climate.targetTempHigh != null;
+  const isOn = climate.hvacMode !== "off";
+  const onMode = preferredOnMode(climate.hvacModes);
+  // No mode to switch INTO means the power button would be a control that
+  // can't do anything — better absent than dead. (A unit that only reports
+  // "off" is a broken integration, but this surface shouldn't render a lie
+  // about it either way.)
+  const canPower = climate.available && (isOn || onMode !== null);
   const nudgeable = climate.available && (climate.targetTemp != null || dualSetpoint);
 
   // Unchanged from the old ClimateCard: hvac mode set and the temp nudge both
@@ -162,14 +192,35 @@ export function KioskClimateTile({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center gap-2 rounded-tile border border-line bg-panel-2 p-3 text-center",
+        "relative flex flex-col items-center gap-2 rounded-tile border p-3 text-center transition-colors",
+        // The SAME on-state vocabulary the light and switch pills already use
+        // (kiosk-hub.tsx's ToggleChip): accent border, accent wash, accent
+        // glyph. A climate unit that's running is the same kind of fact as a
+        // lamp that's on, and it should not need its own colour language —
+        // this pairing is also already contrast-checked across all 16 themes,
+        // which a newly invented tint would not be.
+        isOn ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2",
         !climate.available && "opacity-60",
       )}
     >
-      {/* Name row: reserves space on the right (pr-8) so the absolutely
-          positioned expand button never overlaps the text; name truncates
-          before the "unavailable" badge ever does (badge is shrink-0). */}
-      <div className="flex w-full items-center justify-center gap-1.5 pr-8">
+      {canPower && (
+        <button
+          type="button"
+          onClick={() => setMode(isOn ? "off" : (onMode as string))}
+          disabled={pending}
+          aria-pressed={isOn}
+          aria-label={`${isOn ? "Turn off" : "Turn on"} ${climate.name}`}
+          title={isOn ? `Turn off ${climate.name}` : `Turn on ${climate.name}`}
+          className={cn(POWER_BUTTON, isOn ? "text-accent" : "text-ink-faint hover:text-ink")}
+        >
+          <Power size={20} aria-hidden />
+        </button>
+      )}
+
+      {/* Name row reserves space on BOTH sides now (px-8): the power button
+          overhangs the left corner and the expand button the right, and the
+          name has to truncate before it reaches either. */}
+      <div className="flex w-full items-center justify-center gap-1.5 px-8">
         <span className="min-w-0 truncate text-sm text-ink sm:text-base">{climate.name}</span>
         {!climate.available && <span className="microlabel !text-warn shrink-0">unavailable</span>}
       </div>

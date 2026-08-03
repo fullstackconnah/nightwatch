@@ -27,7 +27,7 @@
    props just to hand it back up on every interaction. */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ShieldAlert } from "lucide-react";
+import { Minimize2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFreshness, useKioskHealth } from "@/lib/kiosk-client";
 import {
@@ -137,7 +137,23 @@ function useKioskMode(pinned: boolean, suspended: boolean, initial: KioskViewMod
     return () => document.removeEventListener("keydown", onInteraction);
   }, [onInteraction]);
 
-  return { mode: pinned ? "full" : viewMode, onInteraction } as const;
+  /** Drop straight back to glance without waiting out the idle timer.
+   *
+   *  The timer is cleared as well as the mode being set — leaving it armed
+   *  would fire a redundant `setViewMode("glance")` up to KIOSK_IDLE_MS later,
+   *  which is harmless today but is exactly the kind of stray timer that turns
+   *  into a bug the moment glance stops being the idle destination.
+   *
+   *  Does nothing while pinned: `mode` below is hard-wired to "full" in that
+   *  case (elevated sessions need the hub), so silently accepting the call and
+   *  changing nothing would leave a button that looks live and isn't. The
+   *  caller doesn't render it while pinned. */
+  const returnToGlance = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setViewMode("glance");
+  }, []);
+
+  return { mode: pinned ? "full" : viewMode, onInteraction, returnToGlance } as const;
 }
 
 /** Timing + which mode's content is actually mounted for the non-shared
@@ -383,7 +399,11 @@ export function KioskSurface({
   // showing when the PIN was entered.
   const suspended = modalOpenDom || alertOverlayOpen;
   const pinned = layout === "standard" || elevated;
-  const { mode, onInteraction } = useKioskMode(pinned, suspended, initialMode ?? "glance");
+  const { mode, onInteraction, returnToGlance: onReturnToGlance } = useKioskMode(
+    pinned,
+    suspended,
+    initialMode ?? "glance",
+  );
 
   const flip = useFlipGroup(mode);
   const { displayMode, visible, durationMs } = useModeContent(mode);
@@ -465,7 +485,31 @@ export function KioskSurface({
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
         {contentFull && (
-          <div className="order-2 flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
+          <div className="order-2 flex min-w-0 flex-col items-end gap-1.5">
+            {/* Sits ABOVE the timer/Admin row rather than beside it: those two
+                are destinations (a tool, a login), this one is the way back,
+                and stacking it keeps the exit distinct from them at a glance.
+                Hidden while pinned — an elevated session is held in full mode
+                on purpose, so the control would be inert. */}
+            {!pinned && (
+              <button
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  // The surface root treats any pointer press as "someone is
+                  // using this" and flips to full. Without stopping the event
+                  // here, pressing this button would return to glance and be
+                  // thrown straight back to full by its own click.
+                  e.stopPropagation();
+                  onReturnToGlance();
+                }}
+                aria-label="Back to glance view"
+                className="flex h-11 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <Minimize2 size={14} aria-hidden />
+                Glance
+              </button>
+            )}
             <KioskStatusStripExtras
               elevated={elevated}
               onAdminClick={onAdminClick}
