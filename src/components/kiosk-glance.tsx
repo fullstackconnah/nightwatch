@@ -1,48 +1,35 @@
 "use client";
 
-/* THESIS: the "Glance Board" kiosk layout — a wall clock that happens to
-   know things. Distance-first: the clock and temperature are the only
-   large elements (legible from across a room), everything else is one or
-   two quiet sentences plus a single row of four auto-picked control tiles.
+/* THESIS: the glance-only remainder of the old "Glance Board" layout. Since
+   redesign-06 §5 merges Glance and Standard into one surface, the clock,
+   the current-temperature reading and the server/health line all moved out
+   of this file into kiosk-surface.tsx's shared header — those three are
+   FLIP shared elements (same DOM node in both modes, see that file's
+   structural-rule comment), and this component only ever renders while the
+   surface is in glance mode, so it can't own a node that has to survive
+   into full mode too. What's left here is genuinely glance-exclusive: the
+   weather-outlook sentence, the morning briefing line, the four auto-picked
+   control tiles, and the two fixed corner buttons — content that fades out
+   entirely (never travels) when the surface flips to full.
+
    OWN-WORLD, inverted: where the standard layout is hairline panels, this
-   surface is deliberately OPEN GROUND — no .panel boxes at all; type and
-   spacing carry the whole composition, and the one accent hue only appears
-   on live state (a tile that's on) or a real problem (dead/unhealthy
-   containers, digest action line). That inversion is the point: on a
-   surface this quiet, the single warn line is unmissable.
+   content is deliberately OPEN GROUND — no .panel boxes at all; type and
+   spacing carry the composition, and the one accent hue only appears on
+   live state (a tile that's on) or a real problem. That inversion is the
+   point: on a surface this quiet, the single warn line is unmissable.
 
    Night is NOT handled here — page.tsx's KioskNightOverlay owns 22:00–05:00
-   for both layouts (glance at night ≈ the overlay anyway; one night, not
-   two). Elevation also isn't: an elevated kiosk always shows the standard
-   layout, because admin work needs the hub and panels. */
+   regardless of mode. Elevation also isn't: kiosk-surface.tsx pins the
+   surface to full mode whenever elevated, because admin work needs the hub
+   and panels, so this component never renders while elevated. */
 
 import { useMemo } from "react";
-import { fetcher } from "@/lib/client";
-import useSWR from "swr";
 import { cn } from "@/lib/utils";
-import { KioskClock } from "@/components/kiosk-clock";
-import {
-  useWeatherView,
-  useKioskBriefing,
-  WEATHER_ICON,
-  type KioskPeriod,
-} from "@/components/kiosk-display";
+import { useWeatherView, useKioskBriefing, type KioskPeriod } from "@/components/kiosk-display";
 import { useKioskHa } from "@/components/kiosk-hub";
 import { KioskTimersButton } from "@/components/kiosk-timers";
 
-interface KioskHealthCounts {
-  running: number;
-  dead: number;
-  unhealthy: number;
-}
-
-/** Same /kiosk/api/health source the status strip polls, at a lazier cadence —
- *  the glance board reports a sentence, not a live readout. */
-function useGlanceHealth() {
-  return useSWR<KioskHealthCounts>("/kiosk/api/health", fetcher, { refreshInterval: 15_000 });
-}
-
-/* ── the two quiet sentences ────────────────────────────────────────────── */
+/* ── the quiet sentences ─────────────────────────────────────────────────── */
 
 function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeatherView>): string | null {
   const ok = view.ok;
@@ -54,29 +41,6 @@ function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeather
   }
   if (!today) return null;
   return `high ${Math.round(today.maxC)}° low ${Math.round(today.minC)}° · rain ${today.rainPct}%`;
-}
-
-function ServerSentence() {
-  const { data: health, error } = useGlanceHealth();
-  if (error && !health) return <span className="text-ink-dim">server status unreachable</span>;
-  if (!health) return <span className="text-ink-faint"> </span>;
-  const bad = health.dead > 0;
-  const warn = health.unhealthy > 0;
-  if (bad || warn) {
-    return (
-      <span className={bad ? "text-bad" : "text-warn"}>
-        {health.dead > 0 && `${health.dead} dead`}
-        {health.dead > 0 && health.unhealthy > 0 && " · "}
-        {health.unhealthy > 0 && `${health.unhealthy} unhealthy`}
-        {" — check dashboard"}
-      </span>
-    );
-  }
-  return (
-    <span>
-      server quiet · <span className="font-mono tabular-nums">{health.running}</span> running
-    </span>
-  );
 }
 
 /* ── auto-picked control tiles ──────────────────────────────────────────── */
@@ -146,7 +110,7 @@ function GlanceTiles({ period }: { period: KioskPeriod }) {
   );
 }
 
-/* ── the board ──────────────────────────────────────────────────────────── */
+/* ── the glance-only content ────────────────────────────────────────────── */
 
 export function KioskGlance({
   period,
@@ -157,50 +121,15 @@ export function KioskGlance({
 }) {
   const weather = useWeatherView();
   const briefing = useKioskBriefing(period === "morning");
-  const current = weather.ok?.current ?? null;
-  const Icon = current ? WEATHER_ICON[current.code] : null;
 
   const wLine = weatherSentence(period, weather);
   const digest = briefing.data?.status === "ok" ? briefing.data.digest : undefined;
   const digestAttention = Boolean(digest && digest.actionNeeded && digest.actionNeeded.toLowerCase() !== "no");
 
   return (
-    <div className="flex min-h-[calc(100vh-2rem)] flex-col items-center justify-center gap-10 px-6 text-center">
-      <div className="flex flex-col items-center gap-5">
-        <KioskClock />
-
-        {current && (
-          // A genuine second tier, not a caption beside the clock — this
-          // file's own thesis names the temperature (with the clock) as one
-          // of the two things that must read from across a room, but it was
-          // shipping at 30px. Scaled at the same three breakpoints as
-          // KioskClock so the ratio to the clock stays constant (~50-54%)
-          // at every width rather than the gap closing or widening as the
-          // viewport grows. Overflow is structural, not estimated: the row
-          // wraps (flex-wrap, bounded to the page's own width via
-          // max-w-full) so icon+temp can drop to their own line, and the
-          // condition label is capped with truncate — so no string this app
-          // can render, however long, can push the row past the viewport.
-          // The temperature itself keeps shrink-0: it's the one element
-          // this must never compress.
-          <div className="flex flex-wrap items-center justify-center gap-3 max-w-full text-ink">
-            {Icon && <Icon size={28} className="shrink-0 text-ink-dim" aria-hidden />}
-            <span className="shrink-0 font-mono tabular-nums text-4xl min-[420px]:text-5xl md:text-6xl">
-              {Math.round(current.tempC)}°
-            </span>
-            <span className="max-w-full truncate text-xl min-[420px]:text-2xl md:text-3xl text-ink-dim">
-              {current.label.toLowerCase()}
-            </span>
-            {weather.status === "ready-stale" && <span className="shrink-0 microlabel !text-warn">stale</span>}
-          </div>
-        )}
-      </div>
-
+    <>
       <div className="flex flex-col items-center gap-2 text-base text-ink-dim">
         {wLine && <p>{wLine}</p>}
-        <p>
-          <ServerSentence />
-        </p>
         {period === "morning" && digest && (
           <p className={cn("max-w-xl", digestAttention ? "text-warn" : "text-ink-dim")}>
             briefing: {digest.headline.replace(/\.$/, "")}
@@ -242,6 +171,6 @@ export function KioskGlance({
       >
         Admin
       </button>
-    </div>
+    </>
   );
 }

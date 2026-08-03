@@ -241,7 +241,12 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
   return (
     <div
       data-kiosk-theme={theme === "default" ? undefined : theme}
-      className={cn("min-h-screen bg-bg overflow-x-hidden", ...FONT_VARIABLE_CLASSES)}
+      // kiosk-dense: the wall-tablet type/density scope (globals.css, end of
+      // file). It belongs on this div rather than page.tsx's inner one so it
+      // also reaches the night overlay and the PIN pad, which render outside
+      // that column — everything on this surface is read from 2-3m, not just
+      // the parts inside the main layout.
+      className={cn("kiosk-dense min-h-screen bg-bg overflow-x-hidden", ...FONT_VARIABLE_CLASSES)}
       style={{
         // isolate: gives this div its own stacking context so KioskSky's
         // z-index:-1 layer paints ABOVE this ground color but below content.

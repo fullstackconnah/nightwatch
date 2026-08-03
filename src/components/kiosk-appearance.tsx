@@ -15,7 +15,18 @@
    chip leads with a swatch of its real ground + accent (KIOSK_THEME_SWATCHES);
    the KIOSK_THEME_GROUPS families become microlabel-headed rows (tight gap-2
    inside a family, roomier gap-4 between families — rhythm, not monotony);
-   the active chip gets a full-strength accent ring on top of the tint. */
+   the active chip gets a full-strength accent ring on top of the tint.
+
+   redesign-06 §5 repurposes the stored "glance"/"standard" pair rather than
+   replacing it: the device-local choice still decides between a merged,
+   auto-returning surface and a pinned one, it just isn't a straight layout
+   swap anymore (kiosk-surface.tsx handles both from one component). "Auto"
+   is the new default meaning of "glance" — the surface rests as the wall
+   clock and animates to the full view on any touch, then idles back —
+   while "Always full" ("standard") opts a bench/desk device permanently
+   into the compact view with no auto-return. Same two-option segmented
+   control, same stored values, just relabelled so the copy matches what
+   picking each one now actually does. */
 
 import { cn } from "@/lib/utils";
 import {
@@ -77,8 +88,8 @@ export function KioskAppearance({
           16-way chip field below. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="microlabel">appearance</span>
-        <div className="flex rounded-lg bg-panel-2 p-1" role="group" aria-label="Kiosk layout">
-          {(["standard", "glance"] as const).map((option) => (
+        <div className="flex rounded-lg bg-panel-2 p-1" role="group" aria-label="Kiosk auto-return">
+          {(["glance", "standard"] as const).map((option) => (
             <button
               key={option}
               type="button"
@@ -89,11 +100,15 @@ export function KioskAppearance({
                 layout === option ? "bg-panel text-ink shadow-sm ring-1 ring-line-bright" : "text-ink-dim hover:text-ink",
               )}
             >
-              {option === "standard" ? "Standard" : "Glance"}
+              {option === "glance" ? "Auto" : "Always full"}
             </button>
           ))}
         </div>
       </div>
+      <p className="-mt-1 text-2xs text-ink-faint">
+        Auto rests as the wall clock and wakes to the full view on a touch. Always full stays on the
+        full view and never returns on its own — for a bench or desk device.
+      </p>
 
       <div aria-hidden className="h-px bg-line" />
 

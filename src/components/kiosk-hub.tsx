@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { ApiError, fetcher, postJson } from "@/lib/client";
 import { StaleTag } from "@/components/kiosk-stale-tag";
+import { KioskClimateRow } from "@/components/kiosk-climate";
 import type {
   HaActionRequest,
   HaClimate,
@@ -51,7 +52,6 @@ import { cn } from "@/lib/utils";
 const HA_STATES_KEY = "/kiosk/api/ha/states";
 const POLL_MS = 7000;
 const ERROR_DISMISS_MS = 4000;
-const NUDGE_STEP = 0.5;
 // color-mix against the live --color-ink-faint token, not a literal rgb —
 // see the identical fix (and its rationale) in kiosk-display.tsx's own
 // HATCH_PATTERN const. Kept as a duplicate constant rather than a shared
@@ -67,26 +67,11 @@ const HATCH_PATTERN =
 // wants 4, and neither is a Tailwind default breakpoint.
 const TILE_GRID = "grid grid-cols-2 min-[900px]:grid-cols-3 min-[1200px]:grid-cols-4 gap-3";
 
-const HVAC_LABEL: Record<string, string> = {
-  off: "Off",
-  heat: "Heat",
-  cool: "Cool",
-  heat_cool: "Range",
-  auto: "Auto",
-  dry: "Dry",
-  fan_only: "Fan",
-};
-
 const SENSOR_ICON: Record<HaSensorKind, LucideIcon> = {
   temperature: Thermometer,
   humidity: Droplets,
   battery: BatteryFull,
 };
-
-function formatTemp(v: number | null, unit: string | null): string {
-  if (v == null) return "—";
-  return `${v.toFixed(1)}°${unit ?? ""}`;
-}
 
 function formatSensor(s: HaSensor): string {
   if (s.value == null) return "—";
@@ -106,7 +91,10 @@ function batteryTone(s: HaSensor): string {
 
 /* ── data + actions ─────────────────────────────────────────────────────── */
 
-interface UseKioskHaResult {
+// Exported type-only: kiosk-climate.tsx imports this shape rather than
+// re-declaring it, so the optimistic-update / rollback contract can't
+// silently drift between the hook and its consumer.
+export interface UseKioskHaResult {
   data: HaStatesResponse | undefined;
   error: unknown;
   isLoading: boolean;
@@ -240,8 +228,8 @@ function ToggleTile({
         />
       </div>
       <div className="min-w-0">
-        <div className="truncate text-xs text-ink">{name}</div>
-        <div className={cn("mt-0.5 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")}>
+        <div className="truncate text-sm text-ink">{name}</div>
+        <div className={cn("mt-0.5 truncate font-mono text-xs", error ? "text-bad" : "text-ink-faint")}>
           {error ?? subtitle}
         </div>
       </div>
@@ -284,9 +272,9 @@ function SceneTile({
       )}
     >
       <Sparkles size={16} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="truncate text-xs text-ink">{scene.name}</span>
+      <span className="truncate text-sm text-ink">{scene.name}</span>
       <span
-        className={cn("font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}
+        className={cn("font-mono text-xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}
       >
         {statusText}
       </span>
@@ -298,7 +286,7 @@ function SceneTile({
 
 function SectionHeader({ icon: Icon, label, note }: { icon: LucideIcon; label: string; note?: string }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between gap-2">
+    <div className="mb-2.5 flex items-baseline justify-between gap-2">
       <div className="flex items-center gap-2">
         <Icon size={13} className="text-ink-faint" aria-hidden />
         {/* Real heading, not a styled span — the page supplies an <h1>, so
@@ -329,7 +317,11 @@ const LightsSection = memo(function LightsSection({
 }) {
   const onCount = lights.filter((l) => l.on).length;
   return (
-    <section className="panel p-4">
+    // No box: a pure section wrapper, not a touch target or alert (redesign-06
+    // §E). A hairline top rule groups it from the section above; the first
+    // rendered section (whichever it is, since sections are conditional on
+    // data) sits flush with nothing above it via `first:`.
+    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
       <SectionHeader icon={Lightbulb} label="Lights" note={`${onCount} of ${lights.length} on`} />
       <div className={TILE_GRID}>
         {lights.map((light) => {
@@ -381,7 +373,7 @@ const SwitchesSection = memo(function SwitchesSection({
 }) {
   const onCount = switches.filter((s) => s.on).length;
   return (
-    <section className="panel p-4">
+    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
       <SectionHeader icon={ToggleLeft} label="Switches" note={`${onCount} of ${switches.length} on`} />
       <div className={TILE_GRID}>
         {switches.map((sw) => {
@@ -431,7 +423,7 @@ const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKiosk
   };
 
   return (
-    <section className="panel p-4">
+    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
       <SectionHeader icon={Sparkles} label="Scenes" />
       <div className={TILE_GRID}>
         {scenes.map((scene) => (
@@ -449,129 +441,6 @@ const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKiosk
   );
 });
 
-function ClimateCard({
-  ha,
-  climate,
-  entities,
-}: {
-  ha: UseKioskHaResult;
-  climate: HaClimate;
-  entities: HaEntities;
-}) {
-  const error = ha.actionErrors[climate.entityId];
-  const pending = ha.isPending(climate.entityId);
-  const dualSetpoint = climate.targetTempLow != null && climate.targetTempHigh != null;
-  const nudgeable = climate.available && (climate.targetTemp != null || dualSetpoint);
-
-  const setMode = (mode: string) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, hvacMode: mode } : c)),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "set_hvac_mode", hvacMode: mode }, next);
-  };
-
-  const nudge = (delta: number) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => {
-        if (c.entityId !== climate.entityId) return c;
-        if (dualSetpoint) {
-          return {
-            ...c,
-            targetTempLow: c.targetTempLow != null ? c.targetTempLow + delta : c.targetTempLow,
-            targetTempHigh: c.targetTempHigh != null ? c.targetTempHigh + delta : c.targetTempHigh,
-          };
-        }
-        return { ...c, targetTemp: c.targetTemp != null ? c.targetTemp + delta : c.targetTemp };
-      }),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "nudge_temp", delta }, next);
-  };
-
-  return (
-    <div
-      className={cn(
-        "rounded-tile border border-line bg-panel-2 p-4",
-        !climate.available && "opacity-60",
-      )}
-    >
-      <div className="flex items-baseline justify-between gap-2">
-        {/* min-w-0 on the flex item: flex children default to min-width:auto,
-            which lets the name grow to its full content width and never lets
-            `truncate` engage — see ToggleTile above for the same pattern. */}
-        <div className="min-w-0">
-          <div className="truncate text-xs text-ink">{climate.name}</div>
-        </div>
-        {!climate.available && <span className="microlabel !text-warn">unavailable</span>}
-      </div>
-
-      <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-3">
-        <div>
-          <div className="microlabel">Current</div>
-          <div className="mt-0.5 font-mono text-lg text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
-        </div>
-
-        {nudgeable && (
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              aria-label={`Lower target temperature for ${climate.name}`}
-              disabled={pending}
-              onClick={() => nudge(-NUDGE_STEP)}
-              className="flex h-14 w-14 items-center justify-center rounded-md border border-line font-mono text-lg text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-            >
-              −
-            </button>
-            <div className="text-center">
-              <div className="microlabel">Target</div>
-              <div className="mt-0.5 font-mono text-lg text-accent">
-                {dualSetpoint
-                  ? `${formatTemp(climate.targetTempLow, climate.unit)} – ${formatTemp(climate.targetTempHigh, climate.unit)}`
-                  : formatTemp(climate.targetTemp, climate.unit)}
-              </div>
-            </div>
-            <button
-              type="button"
-              aria-label={`Raise target temperature for ${climate.name}`}
-              disabled={pending}
-              onClick={() => nudge(NUDGE_STEP)}
-              className="flex h-14 w-14 items-center justify-center rounded-md border border-line font-mono text-lg text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-            >
-              +
-            </button>
-          </div>
-        )}
-      </div>
-
-      {climate.hvacModes.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={`${climate.name} mode`}>
-          {climate.hvacModes.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              aria-pressed={climate.hvacMode === mode}
-              aria-label={`Set ${climate.name} to ${HVAC_LABEL[mode] ?? mode} mode`}
-              disabled={pending}
-              onClick={() => setMode(mode)}
-              className={cn(
-                "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
-                climate.hvacMode === mode
-                  ? "border-accent/30 bg-accent/10 text-accent"
-                  : "border-line text-ink-dim hover:bg-panel hover:text-ink",
-              )}
-            >
-              {HVAC_LABEL[mode] ?? mode}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {error && <div className="mt-2 text-2xs text-bad">{error}</div>}
-    </div>
-  );
-}
-
 const ClimateSection = memo(function ClimateSection({
   ha,
   climates,
@@ -582,11 +451,15 @@ const ClimateSection = memo(function ClimateSection({
   entities: HaEntities;
 }) {
   return (
-    <section className="panel p-4">
+    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
       <SectionHeader icon={Thermometer} label="Climate" />
-      <div className="grid grid-cols-1 gap-3 min-[900px]:grid-cols-2">
+      {/* Rows, not cards (redesign-06 §B): a hairline divider between rooms
+          rather than each room boxed on its own. The section wrapper itself
+          lost its `.panel p-4` box in the density pass (agent E) along with
+          every other pure-container section here. */}
+      <div className="divide-y divide-line">
         {climates.map((c) => (
-          <ClimateCard key={c.entityId} ha={ha} climate={c} entities={entities} />
+          <KioskClimateRow key={c.entityId} ha={ha} climate={c} entities={entities} />
         ))}
       </div>
     </section>
@@ -595,28 +468,23 @@ const ClimateSection = memo(function ClimateSection({
 
 const SensorsSection = memo(function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
   return (
-    <section className="panel p-4">
+    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
       <SectionHeader icon={Battery} label="Sensors" />
-      <div className="flex flex-wrap gap-2">
+      {/* Read-only readings, no touch target and no alert — the chip box and
+          the stacked name/value are both chrome the density pass drops:
+          open ground, name and value collapsed onto one line. */}
+      <div className="flex flex-wrap gap-x-5 gap-y-2">
         {sensors.map((s) => {
           const Icon = SENSOR_ICON[s.kind];
           return (
-            <div
-              key={s.entityId}
-              className={cn(
-                "flex min-h-11 items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2",
-                !s.available && "opacity-50",
-              )}
-            >
-              <Icon size={12} className="shrink-0 text-ink-faint" aria-hidden />
-              <div className="min-w-0">
-                <div className="microlabel max-w-32 truncate" title={s.name}>
-                  {s.name}
-                </div>
-                <div className={cn("font-mono text-xs", s.available ? batteryTone(s) : "text-ink-faint")}>
-                  {s.available ? formatSensor(s) : "unavailable"}
-                </div>
-              </div>
+            <div key={s.entityId} className={cn("flex items-center gap-2", !s.available && "opacity-50")}>
+              <Icon size={13} className="shrink-0 text-ink-faint" aria-hidden />
+              <span className="microlabel max-w-32 truncate" title={s.name}>
+                {s.name}
+              </span>
+              <span className={cn("font-mono text-sm", s.available ? batteryTone(s) : "text-ink-faint")}>
+                {s.available ? formatSensor(s) : "unavailable"}
+              </span>
             </div>
           );
         })}
@@ -634,9 +502,9 @@ function HubSkeleton() {
     { label: "Scenes", icon: Sparkles },
   ];
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {labels.map(({ label, icon: Icon }, i) => (
-        <div key={label} className="panel p-4">
+        <div key={label} className="border-t border-line pt-3 first:border-t-0 first:pt-0">
           <SectionHeader icon={Icon} label={label} />
           <div className={TILE_GRID}>
             {Array.from({ length: 4 }).map((_, j) => (
@@ -742,7 +610,7 @@ export function KioskHub() {
   if (total === 0) return <HubEmpty />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {stale && (
         <div className="flex items-center gap-2 px-1">
           <StaleTag />

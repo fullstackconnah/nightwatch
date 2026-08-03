@@ -41,7 +41,6 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import { useNow } from "@/lib/use-now";
-import { cn } from "@/lib/utils";
 import { StaleTag } from "@/components/kiosk-stale-tag";
 
 // color-mix against the live --color-ink-faint token, not a literal rgb: the
@@ -124,7 +123,7 @@ interface WeatherCurrent {
   label: string;
 }
 
-interface WeatherDay {
+export interface WeatherDay {
   date: string;
   code: WeatherIconKey;
   label: string;
@@ -276,7 +275,7 @@ function MicroDatum({ icon: Icon, label, value }: { icon?: LucideIcon; label: st
         {Icon && <Icon size={11} aria-hidden />}
         <span className="microlabel">{label}</span>
       </div>
-      <span className="font-mono text-xs text-ink">{value}</span>
+      <span className="font-mono text-sm text-ink">{value}</span>
     </div>
   );
 }
@@ -306,11 +305,7 @@ function WeatherUnreachable({ detail }: { detail?: string }) {
 }
 
 function WeatherSkeleton() {
-  return (
-    <div className="panel p-4">
-      <div className="h-16 animate-pulse rounded-md bg-panel-2 motion-reduce:animate-none" />
-    </div>
-  );
+  return <div className="h-16 animate-pulse rounded-md bg-panel-2 motion-reduce:animate-none" />;
 }
 
 /* ── current weather ─────────────────────────────────────────────────────── */
@@ -384,63 +379,17 @@ function CurrentWeatherCompact({
         <span className="text-xs text-ink-dim">{current.label}</span>
       </div>
       {mode === "day" ? (
-        <span className="font-mono text-xs text-ink-faint">
+        <span className="font-mono text-sm text-ink-faint">
           H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° · {today.rainPct}% rain
         </span>
       ) : (
-        <span className="flex items-center gap-1 font-mono text-xs text-ink-faint">
+        <span className="flex items-center gap-1 font-mono text-sm text-ink-faint">
           <Sunset size={12} aria-hidden />
           sunset {clockOf(today.sunset)}
         </span>
       )}
       {rain?.summary && <RainSummaryText summary={rain.summary} className="text-xs text-ink-dim" />}
       {stale && <StaleTag />}
-    </div>
-  );
-}
-
-/* ── forecast strip ──────────────────────────────────────────────────────── */
-
-const DAY_FMT = new Intl.DateTimeFormat("en-AU", { weekday: "short" });
-
-function dayLabel(dateStr: string, index: number): string {
-  if (index === 0) return "Today";
-  const d = new Date(`${dateStr}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? "" : DAY_FMT.format(d);
-}
-
-// 5 fixed columns, no scroll: the emphasized (tomorrow, evening only) column
-// borrows the segmented-control idiom — accent tint marks "the featured one",
-// same as an active tab — rather than inventing a new emphasis device.
-function ForecastStrip({ days, emphasizeIndex }: { days: WeatherDay[]; emphasizeIndex: number | null }) {
-  return (
-    <div className="mt-4">
-      <div className="microlabel mb-2">5-Day Forecast</div>
-      <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
-        {days.map((day, i) => {
-          const Icon = WEATHER_ICON[day.code];
-          const emphasized = i === emphasizeIndex;
-          return (
-            <div
-              key={day.date}
-              className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-md border px-1 py-1.5 text-center",
-                emphasized ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2",
-              )}
-            >
-              <span className={cn("microlabel", emphasized && "!text-accent")}>{dayLabel(day.date, i)}</span>
-              <Icon size={16} className={emphasized ? "text-accent" : "text-ink-dim"} aria-hidden />
-              <span className="font-mono text-2xs text-ink">
-                {Math.round(day.maxC)}°<span className="text-ink-faint">/{Math.round(day.minC)}°</span>
-              </span>
-              <span className="flex items-center gap-0.5 font-mono text-[0.6rem] text-ink-faint">
-                <Droplets size={8} aria-hidden />
-                {day.rainPct}%
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -560,8 +509,17 @@ function WeatherBand({ period, weather }: { period: KioskPeriod; weather: Weathe
   const today = days[0];
   const stale = weather.status === "ready-stale";
 
+  // The forecast rail used to render here (a `days.length > 0 &&` block
+  // below the current reading). redesign-06 §5 moves it out: the rail is
+  // now owned by kiosk-surface.tsx's shared header in both glance and full
+  // mode (see that file's structural-rule comment), so it's the same DOM
+  // node across the mode transition instead of two separate copies. This
+  // band keeps the current reading and the rain nowcast/ribbon, unchanged.
+  // No box: not a touch target or alert, just open ground (redesign-06 §E).
+  // It's the first thing in the full-view content stack, so nothing sits
+  // above it to separate from.
   return (
-    <section className="panel p-4">
+    <section>
       {period === "morning" ? (
         <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} rain={rain} />
       ) : (
@@ -573,7 +531,6 @@ function WeatherBand({ period, weather }: { period: KioskPeriod; weather: Weathe
           rain={rain}
         />
       )}
-      {days.length > 0 && <ForecastStrip days={days} emphasizeIndex={period === "evening" ? 1 : null} />}
     </section>
   );
 }
@@ -584,9 +541,12 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
   const { data } = briefing;
   const preparing = !data || (data.status === "ok" && !data.digest && !data.news);
 
+  // No box: a hairline top rule groups it with the weather band above
+  // instead (redesign-06 §E) — the same "type and space do the grouping"
+  // treatment as the hub's sections.
   if (preparing) {
     return (
-      <section className="panel p-4">
+      <section className="border-t border-line pt-3">
         <SectionLabel icon={Newspaper} label="Morning Briefing" />
         <div className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-faint motion-reduce:animate-none" aria-hidden />
@@ -598,7 +558,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
 
   if (data.status !== "ok") {
     return (
-      <section className="panel p-4">
+      <section className="border-t border-line pt-3">
         <SectionLabel icon={Newspaper} label="Morning Briefing" />
         <p className="mt-2 text-xs text-ink-faint">Briefing unavailable.</p>
       </section>
@@ -614,7 +574,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
     : [];
 
   return (
-    <section className="panel p-4">
+    <section className="border-t border-line pt-3">
       <SectionLabel icon={Newspaper} label="Morning Briefing" />
 
       {digest && (
@@ -667,7 +627,7 @@ export function KioskDisplay({ period }: { period: KioskPeriod }) {
   const briefing = useKioskBriefing(period === "morning");
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <WeatherBand period={period} weather={weather} />
       {period === "morning" && <BriefingCard briefing={briefing} />}
     </div>

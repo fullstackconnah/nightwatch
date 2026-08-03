@@ -1,16 +1,10 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { KioskStatusStrip } from "@/components/kiosk-status-strip";
-import { KioskHub } from "@/components/kiosk-hub";
-import { KioskDisplay, KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
-import { KioskGlance } from "@/components/kiosk-glance";
+import { KioskSurface } from "@/components/kiosk-surface";
+import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
-import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
-import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
-import { KioskAppearance } from "@/components/kiosk-appearance";
-import { KioskAttentionCard } from "@/components/kiosk-attention";
 import { useNow } from "@/lib/use-now";
 
 // Interactions slide the elevation window, but there's no need to hit the
@@ -31,6 +25,14 @@ const NIGHT_WAKE_MS = 60_000;
 // and once someone picks it explicitly it keeps winning (see the resolving
 // effect below). `?layout=` overrides for testing/demos, same contract as
 // ?period=.
+//
+// redesign-06 §5 repurposes what these two values MEAN without touching the
+// key or the override contract: KioskSurface now merges Glance and Standard
+// into one surface that changes shape, so "glance" selects that merged,
+// auto-returning behaviour (mode animates glance⇄full on interaction/idle)
+// while "standard" pins the surface to full and disables auto-return — see
+// kiosk-appearance.tsx's relabelled copy ("Auto" / "Always full") for how
+// this reads to whoever's picking it.
 type KioskLayout = "standard" | "glance";
 const LAYOUT_STORAGE_KEY = "kiosk-layout";
 
@@ -199,38 +201,23 @@ function KioskPageInner() {
 
       {showNightOverlay ? (
         <KioskNightOverlay onAdminClick={() => setPinOpen(true)} onWake={wakeNight} />
-      ) : layout === "glance" && !elevated ? (
-        // Glance Board: open-ground wall-clock layout. Elevation always falls
-        // back to the standard layout below — admin work needs the hub and
-        // panels, and that's also where the layout switcher lives.
-        <KioskGlance period={displayPeriod} onAdminClick={() => setPinOpen(true)} />
       ) : (
-        <>
-          <KioskStatusStrip elevated={elevated} onAdminClick={() => setPinOpen(true)} />
-
-          {/* gap-6 between the page's major sections, gap-4 inside the
-              elevated tool cluster — rhythm signals grouping strength
-              (impeccable layout assessment: one uniform gap everywhere said
-              nothing about what belongs together). The elevated tools sit
-              ABOVE the hub: someone who just entered a PIN came for these,
-              not to scroll past the home controls to find them. */}
-          <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6">
-            {/* Alert-by-exception: renders null when the homelab is healthy.
-                First in the column — when it does speak, it matters most. */}
-            <KioskAttentionCard />
-            <KioskDisplay period={displayPeriod} />
-
-            {elevated && expiresAt !== null && (
-              <div className="flex flex-col items-center gap-4">
-                <KioskVoicePanel />
-                <KioskAppearance layout={layout} onLayoutChange={chooseLayout} />
-                <KioskAdminPanel expiresAt={expiresAt} onLock={lock} />
-              </div>
-            )}
-
-            <KioskHub />
-          </div>
-        </>
+        // KioskSurface owns the glance⇄full merge (redesign-06 §5) — it
+        // replaces both the old KioskGlance branch and the old "standard"
+        // tree below. `initialMode="full"` only matters on the render where
+        // this mounts fresh right after a night wake tap (nightWoken flips
+        // true and showNightOverlay above goes false in the same commit);
+        // every other mount rests in glance, per the contract.
+        <KioskSurface
+          period={displayPeriod}
+          layout={layout}
+          onLayoutChange={chooseLayout}
+          elevated={elevated}
+          expiresAt={expiresAt}
+          onAdminClick={() => setPinOpen(true)}
+          onLock={lock}
+          initialMode={nightWoken ? "full" : "glance"}
+        />
       )}
 
       {pinOpen && (
