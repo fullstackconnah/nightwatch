@@ -433,17 +433,27 @@ export function KioskSurface({
       >
         <KioskClock ref={flip.register("clock")} size={full ? "full" : "glance"} />
         <TempNode mode={mode} weather={weather} registerRef={flip.register("temp")} />
-        {/* `basis-full` in full mode only: this rail's own day-drop
-            breakpoints (kiosk-forecast.tsx) are viewport-width media
-            queries written assuming the rail owns the full page width. As a
-            plain flex-wrap item sharing a row with the clock/temp/server-
-            line/extras it could get squeezed into a much narrower box than
-            that while a wide breakpoint still asks it to show 5 days —
-            basis-full forces it onto its own line (pushing whatever's after
-            it in source order to the next line too), restoring the width
-            assumption its breakpoints were written against. Glance's header
-            is a flex-col already, where basis-full is a no-op. */}
-        <div ref={flip.register("forecast")} className={cn(full && "basis-full")}>
+        {/* Full mode puts the rail at the RIGHT end of the clock row
+            (`ml-auto`) rather than on a line of its own: the clock and the
+            current reading are small here, so a left-aligned rail left the
+            band visibly lopsided with dead space between it and the edge.
+            Pushed right, the row reads as one composed band — time and
+            conditions now, the week ahead opposite. Glance's header is a
+            flex-col where ml-auto is a no-op, so the rail stays centred
+            under the clock. */}
+        {/* `order`, not source order. The clock / temp / forecast / server-
+            line are shared FLIP nodes identified by their position in the
+            tree: moving them in JSX to get the visual arrangement would
+            change that position between modes and can remount them, which is
+            the one thing that kills a FLIP. CSS order rearranges the row
+            without touching the DOM sequence at all — so the visual layout is
+            clock · condition · running-count ····· forecast · controls, while
+            the tree stays exactly as the animation needs it.
+
+            `ml-auto` then pushes the forecast and everything ordered after it
+            to the right end, so the band reads as one line: what it is now on
+            the left, the week ahead on the right. */}
+        <div ref={flip.register("forecast")} className={cn(full && "order-1 ml-auto")}>
           {days.length > 0 && (
             <KioskForecastRail
               days={days}
@@ -455,7 +465,7 @@ export function KioskSurface({
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
         {contentFull && (
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-x-4 gap-y-2">
+          <div className="order-2 flex min-w-0 flex-wrap items-center justify-end gap-x-4 gap-y-2">
             <KioskStatusStripExtras
               elevated={elevated}
               onAdminClick={onAdminClick}

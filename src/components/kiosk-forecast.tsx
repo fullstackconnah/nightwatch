@@ -1,35 +1,42 @@
 "use client";
 
-/* THESIS: the forecast used to be a labelled block of its own — a
-   "5-Day Forecast" microlabel sitting on its own line, then a grid of
-   bordered boxes underneath (kiosk-display.tsx's old ForecastStrip) —
-   which is exactly the chrome-down/type-up redesign is removing: ~110px
-   of vertical space and a box per day nobody needs to touch. This is one
-   row. The caption is the row's first cell, not a heading stacked above
-   it, so the "5-Day" line disappears as a line and reappears as 40px of
-   width instead. Separation between days comes from `divide-x` hairlines
-   (spacing + a rule, never a bg tint or a border box), and emphasis (the
-   evening's "tomorrow" column) is ink colour only — the old
-   `border-accent/40 bg-accent/10` treatment is exactly the tinted-box
-   pattern the redesign contract bans.
+/* THESIS: five days, five distinct objects. The previous rail put every day
+   on one horizontal line — `Today🌧13°/7°87% │ Tue🌧11°/5°100%` — so the eye
+   had no way to chunk one day from the next at 2-3m: the dividers were doing
+   all the separating work and a hairline is not enough separation for a wall.
+   Each day is now a small stack (identifier / condition+high / low+rain), and
+   the stack itself is the boundary — whitespace and a shared column rhythm,
+   never a box or a tint, because on this surface a border is reserved for a
+   touch target or an alert.
 
-   Narrow widths drop columns via plain min-width variants (`hidden` →
-   `min-[Npx]:flex`) rather than wrapping or scrolling — the row either
-   fits or a column disappears, decided by CSS at layout time, never
-   measured in JS. The caption + Today + the next day are unconditional
-   (that trio is what's left once nothing else fits); the 3rd/4th/5th
-   columns reveal at breakpoints wide enough for what's already on screen
-   to actually fit alongside them — measured empirically in a real
-   browser across 390–1440px (min-content, not estimated from font
-   metrics), because `document.documentElement.scrollWidth` doesn't catch
-   overflow here: on the full-mode call site the rail sits inside a
-   `position: sticky` ancestor, and sticky subtrees don't propagate into
-   document scroll width even when their own content is clipped. */
+   ONLY WHAT'S REQUIRED: high, low and the icon always earn their place. Rain
+   probability does not — a row of `87% 100% 86% 38% 7%` makes five numbers
+   compete when at most one of them changes anyone's behaviour. It appears
+   only at RAIN_THRESHOLD_PCT and above, so a dry day reads as dry by the
+   absence of a figure, and a wet one is the only percentage on screen. The
+   `5-Day` caption is gone too: the first column says "Today" and the rest say
+   weekdays, which is the caption, spelled out.
+
+   Narrow widths still drop whole columns via plain min-width variants rather
+   than wrapping or scrolling. Note that `document.documentElement.scrollWidth`
+   does NOT catch overflow at the full-mode call site: the rail sits inside a
+   `position: sticky` ancestor, and sticky subtrees don't propagate their
+   overflow into document scroll width even when clipped — so the reveal
+   breakpoints below were measured per-cell in a real browser
+   (getBoundingClientRect against the rail's own box), never estimated. */
 
 import { cn } from "@/lib/utils";
 import { WEATHER_ICON, type WeatherDay } from "@/components/kiosk-display";
 
 const DAY_FMT = new Intl.DateTimeFormat("en-AU", { weekday: "short" });
+
+/** Below this, a rain probability is noise on a glance surface: it doesn't
+ *  change whether anyone takes a coat, and printing it costs the same visual
+ *  weight as the figure that would. Chosen (rather than 20 or 50) because it
+ *  is roughly where a forecast stops reading as "dry" — low enough to still
+ *  flag a genuinely uncertain day, high enough that a settled week shows no
+ *  percentages at all. */
+const RAIN_THRESHOLD_PCT = 30;
 
 function dayLabel(dateStr: string, index: number): string {
   if (index === 0) return "Today";
@@ -39,49 +46,32 @@ function dayLabel(dateStr: string, index: number): string {
 
 type RailSize = "full" | "glance";
 
-/* Two type ramps, not a runtime scale factor — but only from 480px up.
-   `size="glance"` steps every figure ~25% bigger than `size="full"`'s
-   floor (the glance board is read from further across the room), using
-   arbitrary values rather than the next Tailwind step so the ratio stays
-   the specific number the redesign contract names. Below 480px both
-   sizes render at `full`'s own floor: that's the phone-width regression
-   check, not the primary (iPad) target, and measurement showed even the
-   floor size only just fits two columns + the caption at 390px — glance's
-   bigger glyphs have no room to spare there. `min-[480px]:` variants on
-   the label/temp/rain spans carry the jump; nothing about `full`'s own
-   sizing changes at any width. Each size also carries its own column
-   breakpoints, offset to match where its *current* type (floor below
-   480px, the 25%-bigger ramp above it) actually has room — measured in a
-   real browser, not estimated from font metrics. */
+/* Two type ramps rather than a runtime scale factor. `glance` steps up from
+   480px (the wall board is read from further back); below that both sizes sit
+   on `full`'s floor, since 390px is the phone regression check and glance's
+   bigger glyphs have no room to spare there. Each size carries its own column
+   reveal points, offset to where its own type actually fits. */
 const SIZE: Record<
   RailSize,
-  {
-    label: string;
-    temp: string;
-    rain: string;
-    icon: string;
-    revealThird: string;
-    revealFourth: string;
-    revealFifth: string;
-  }
+  { day: string; temp: string; low: string; icon: string; gap: string; revealFourth: string; revealFifth: string }
 > = {
   full: {
-    label: "text-sm", // 0.875rem — the spec's label floor
-    temp: "text-lg", // 1.125rem — the spec's temp floor
-    rain: "text-2xs",
-    icon: "h-3 w-3",
-    revealThird: "hidden min-[560px]:flex",
-    revealFourth: "hidden min-[720px]:flex",
-    revealFifth: "hidden min-[900px]:flex",
+    day: "text-xs",
+    temp: "text-xl",
+    low: "text-xs",
+    icon: "h-4 w-4",
+    gap: "gap-x-5",
+    revealFourth: "hidden min-[560px]:flex",
+    revealFifth: "hidden min-[680px]:flex",
   },
   glance: {
-    label: "text-sm min-[480px]:text-[1.09375rem]", // floor below 480px, 0.875rem * 1.25 above it
-    temp: "text-lg min-[480px]:text-[1.40625rem]", // floor below 480px, 1.125rem * 1.25 above it
-    rain: "text-2xs min-[480px]:text-[0.875rem]", // floor below 480px, 0.7rem * 1.25 above it
-    icon: "h-3 w-3 min-[480px]:h-[1.125rem] min-[480px]:w-[1.125rem]",
-    revealThird: "hidden min-[660px]:flex",
-    revealFourth: "hidden min-[840px]:flex",
-    revealFifth: "hidden min-[1010px]:flex",
+    day: "text-xs min-[480px]:text-sm",
+    temp: "text-xl min-[480px]:text-3xl",
+    low: "text-xs min-[480px]:text-base",
+    icon: "h-4 w-4 min-[480px]:h-6 min-[480px]:w-6",
+    gap: "gap-x-5 min-[480px]:gap-x-8",
+    revealFourth: "hidden min-[640px]:flex",
+    revealFifth: "hidden min-[820px]:flex",
   },
 };
 
@@ -97,34 +87,45 @@ export function KioskForecastRail({
   const s = SIZE[size];
 
   return (
-    <div data-testid="kiosk-forecast-rail" className={cn("flex items-center divide-x divide-line", "overflow-hidden")}>
-      {/* The caption always fits (measured, including at 390px) — only the
-          3rd/4th/5th day columns ever need to hide for room. */}
-      <h3 className="microlabel shrink-0 pr-1">5-Day</h3>
+    <div
+      data-testid="kiosk-forecast-rail"
+      className={cn("flex items-start overflow-hidden", s.gap)}
+    >
       {days.map((day, i) => {
         const Icon = WEATHER_ICON[day.code];
         const emphasized = i === emphasizeIndex;
-        // Only Today + the next day are unconditional. The 3rd/4th/5th
-        // columns reveal at widths wide enough for what's already on
-        // screen to actually fit alongside them (measured, not guessed) —
-        // "5 → 4 → 3" from the wide end, "→ 2" is the floor at phone width.
-        const visibility = i === 2 ? s.revealThird : i === 3 ? s.revealFourth : i === 4 ? s.revealFifth : "flex";
+        const wet = day.rainPct >= RAIN_THRESHOLD_PCT;
+        // Today and the next two are unconditional — that trio is what
+        // survives at phone width. The 4th and 5th reveal where they measurably
+        // fit alongside what's already on screen.
+        const visibility = i === 3 ? s.revealFourth : i === 4 ? s.revealFifth : "flex";
         return (
-          <div key={day.date} className={cn(visibility, "shrink-0 items-center gap-x-[1px] pl-1")}>
-            <span className={cn(s.label, emphasized ? "text-accent" : "text-ink-dim")}>
+          <div key={day.date} className={cn(visibility, "shrink-0 flex-col items-center")}>
+            <span
+              className={cn(
+                s.day,
+                "font-semibold uppercase tracking-wider",
+                emphasized ? "text-accent" : "text-ink-dim",
+              )}
+            >
               {dayLabel(day.date, i)}
             </span>
-            <Icon className={cn(s.icon, emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
-            <span className={cn("font-mono leading-none text-ink", s.temp)}>
-              {Math.round(day.maxC)}°<span className="text-ink-faint">/{Math.round(day.minC)}°</span>
+
+            <span className="mt-0.5 flex items-center gap-1.5">
+              <Icon className={cn(s.icon, emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
+              <span className={cn("font-mono leading-none text-ink", s.temp)}>{Math.round(day.maxC)}°</span>
             </span>
-            {/* Visually just a number — the old per-day Droplets icon is
-                gone (the spec's one icon per day is the weather icon), so
-                the percentage needs its own aria-label to still read as a
-                rain probability rather than a bare "20%" to a screen
-                reader. */}
-            <span className={cn(s.rain, "text-ink-faint")} aria-label={`${day.rainPct}% chance of rain`}>
-              {day.rainPct}%
+
+            <span className={cn("mt-0.5 flex items-baseline gap-1.5 font-mono leading-none", s.low)}>
+              <span className="text-ink-faint">{Math.round(day.minC)}°</span>
+              {/* Below the threshold this renders nothing at all — the absence
+                  IS the reading. `text-blue` (not ink) so the one percentage on
+                  a settled week is unmistakably the wet day. */}
+              {wet && (
+                <span className="text-blue" aria-label={`${day.rainPct}% chance of rain`}>
+                  {day.rainPct}%
+                </span>
+              )}
             </span>
           </div>
         );

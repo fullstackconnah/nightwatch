@@ -199,6 +199,7 @@ export function useKioskHa(): UseKioskHaResult {
 function ToggleChip({
   icon: Icon,
   name,
+  fullName,
   on,
   available,
   subtitle,
@@ -206,7 +207,14 @@ function ToggleChip({
   onToggle,
 }: {
   icon: LucideIcon;
+  /** Visible pill label — may be `fullName` with a shared section prefix
+   *  stripped (see shortenSharedPrefix below). */
   name: string;
+  /** Unabbreviated entity name. Always used for the accessible name and
+   *  hover title, even when `name` has been shortened, so screen-reader
+   *  users and anyone hovering on a non-touch display still get the full
+   *  entity (2026-08-03 legibility pass — see kiosk-hub THESIS). */
+  fullName: string;
   on: boolean;
   available: boolean;
   subtitle: string;
@@ -218,7 +226,8 @@ function ToggleChip({
       type="button"
       role="switch"
       aria-checked={on}
-      aria-label={`Toggle ${name}`}
+      aria-label={`Toggle ${fullName}`}
+      title={fullName}
       disabled={!available}
       onClick={onToggle}
       className={cn(
@@ -228,7 +237,7 @@ function ToggleChip({
       )}
     >
       <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="max-w-28 truncate text-sm text-ink">{name}</span>
+      <span className="max-w-72 truncate text-sm text-ink">{name}</span>
       <span className={cn("max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error}>
         {error ?? subtitle}
       </span>
@@ -272,9 +281,99 @@ function SceneChip({
   );
 }
 
+/* ── label shortening ───────────────────────────────────────────────────── */
+
+// PROBLEM (production screenshot, 1024×768, 2026-08-03): 7 of 8 switch/light
+// entities share a "Front door" HA-assigned prefix, so their pill labels
+// truncated to "Front door Emai…" / "Front door FTP …" / "Front door Push…" —
+// at 2-3m every pill reads identically because the truncation always eats
+// exactly the word that would have told them apart. Fix: find the leading
+// run of whole words shared by 2+ entities in a section, strip it from each
+// covered entity's label, and surface it once as the section's own context
+// (SectionHeader's `qualifier`) instead of repeating it on every pill.
+//
+// Deliberately NOT a straight "common prefix of every name in the list":
+// this fixture also has "Front Doorbell Motion detection", which shares only
+// the word "Front" with the rest — a naive full-set LCP would strip just
+// that one meaningless word and leave every other pill still starting with
+// "door …". Instead this walks the word tree, extends through any depth
+// where the *whole current group* agrees, and — the first time they don't —
+// branches once into the largest sub-group (size 2+) and stops extending
+// after that. One branch, not recursive majority-chasing: letting it re-branch
+// at every depth would keep "distinguishing" a shrinking group all the way
+// down to single entities (e.g. "Record" vs "Record audio" would themselves
+// get "split" into a 2-item group and reduced to "" / "audio").
+function sharedLeadingWords(names: string[]): { prefixWords: string[]; coveredIndexes: Set<number> } {
+  if (names.length < 2) return { prefixWords: [], coveredIndexes: new Set() };
+  const wordLists = names.map((n) => n.trim().split(/\s+/));
+  let group = names.map((_, i) => i);
+  const prefixWords: string[] = [];
+  let depth = 0;
+  let branched = false;
+  for (;;) {
+    const buckets = new Map<string, number[]>();
+    for (const i of group) {
+      const words = wordLists[i];
+      if (depth >= words.length) continue; // this entity's name ends exactly here
+      const key = words[depth].toLowerCase();
+      const bucket = buckets.get(key);
+      if (bucket) bucket.push(i);
+      else buckets.set(key, [i]);
+    }
+    if (buckets.size === 0) break; // every remaining member ended exactly at this depth
+    if (buckets.size === 1) {
+      // Whole current group agrees on this word — keep extending.
+      const [[, ids]] = buckets;
+      prefixWords.push(wordLists[ids[0]][depth]);
+      depth++;
+      continue;
+    }
+    if (branched) break; // already spent our one branch — don't chase a deeper majority
+    let best: number[] | null = null;
+    for (const bucket of buckets.values()) {
+      if (!best || bucket.length > best.length) best = bucket;
+    }
+    if (!best || best.length < 2) break;
+    prefixWords.push(wordLists[best[0]][depth]);
+    group = best;
+    branched = true;
+    depth++;
+  }
+  return prefixWords.length === 0 ? { prefixWords: [], coveredIndexes: new Set() } : { prefixWords, coveredIndexes: new Set(group) };
+}
+
+/** Applies {@link sharedLeadingWords} to a section's entity names. Per-entity
+ *  guard: an entity whose name IS the shared prefix (nothing left after
+ *  stripping) keeps its full name rather than going blank — same for any
+ *  entity outside the covered group (e.g. "Front Doorbell Motion detection"
+ *  above), which is left completely untouched. */
+function shortenSharedPrefix(names: string[]): { labels: string[]; qualifier: string | null } {
+  const { prefixWords, coveredIndexes } = sharedLeadingWords(names);
+  if (prefixWords.length === 0) return { labels: names, qualifier: null };
+  const labels = names.map((name, i) => {
+    if (!coveredIndexes.has(i)) return name;
+    const words = name.trim().split(/\s+/);
+    if (words.length <= prefixWords.length) return name;
+    return words.slice(prefixWords.length).join(" ");
+  });
+  return { labels, qualifier: prefixWords.join(" ") };
+}
+
 /* ── sections ────────────────────────────────────────────────────────────── */
 
-function SectionHeader({ icon: Icon, label, note }: { icon: LucideIcon; label: string; note?: string }) {
+function SectionHeader({
+  icon: Icon,
+  label,
+  qualifier,
+  note,
+}: {
+  icon: LucideIcon;
+  label: string;
+  /** Shared prefix stripped from this section's pill labels (e.g. "Front
+   *  door") — surfaced once here instead of repeating it on every pill. */
+  qualifier?: string | null;
+  note?: string;
+}) {
   return (
     <div className="mb-2.5 flex items-baseline justify-between gap-2">
       <div className="flex items-center gap-2">
@@ -284,6 +383,7 @@ function SectionHeader({ icon: Icon, label, note }: { icon: LucideIcon; label: s
             Sensors) sit at <h2>. `.microlabel` carries the visuals unchanged;
             Tailwind's preflight zeroes the browser's own h2 margin/size. */}
         <h2 className="microlabel">{label}</h2>
+        {qualifier && <span className="microlabel opacity-70">{qualifier}</span>}
       </div>
       {note && <span className="microlabel">{note}</span>}
     </div>
@@ -306,15 +406,25 @@ const LightsSection = memo(function LightsSection({
   entities: HaEntities;
 }) {
   const onCount = lights.filter((l) => l.on).length;
+  // Same prefix-stripping treatment as Switches, applied for consistency
+  // rather than because today's fixture needs it: this section currently
+  // has a single light ("Front door Floodlight"), and shortenSharedPrefix
+  // requires 2+ entities before it strips anything, so it's a no-op here
+  // right now. It's still correct to run it — the moment a second light is
+  // added under a shared prefix, this section gets the same fix for free
+  // instead of silently regressing. (The single light's own truncation in
+  // the original bug report is fixed separately, by ToggleChip's widened
+  // label column — see max-w-72 above.)
+  const { labels: lightLabels, qualifier } = useMemo(() => shortenSharedPrefix(lights.map((l) => l.name)), [lights]);
   return (
     // No box: a pure section wrapper, not a touch target or alert (redesign-06
     // §E). A hairline top rule groups it from the section above; the first
     // rendered section (whichever it is, since sections are conditional on
     // data) sits flush with nothing above it via `first:`.
     <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
-      <SectionHeader icon={Lightbulb} label="Lights" note={`${onCount} of ${lights.length} on`} />
+      <SectionHeader icon={Lightbulb} label="Lights" qualifier={qualifier} note={`${onCount} of ${lights.length} on`} />
       <div className={CHIP_ROW}>
-        {lights.map((light) => {
+        {lights.map((light, i) => {
           const toggle = () => {
             const next: HaEntities = {
               ...entities,
@@ -337,7 +447,8 @@ const LightsSection = memo(function LightsSection({
             <ToggleChip
               key={light.entityId}
               icon={Lightbulb}
-              name={light.name}
+              name={lightLabels[i]}
+              fullName={light.name}
               on={light.on}
               available={light.available}
               subtitle={statusText}
@@ -361,11 +472,17 @@ const SwitchesSection = memo(function SwitchesSection({
   entities: HaEntities;
 }) {
   const onCount = switches.filter((s) => s.on).length;
+  // See sharedLeadingWords/shortenSharedPrefix above: strips a shared
+  // leading prefix (e.g. "Front door") from labels so the word that
+  // actually distinguishes each switch survives at kiosk viewing distance,
+  // and surfaces the stripped prefix once via SectionHeader's `qualifier`
+  // instead of repeating it on every pill.
+  const { labels: switchLabels, qualifier } = useMemo(() => shortenSharedPrefix(switches.map((s) => s.name)), [switches]);
   return (
     <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
-      <SectionHeader icon={ToggleLeft} label="Switches" note={`${onCount} of ${switches.length} on`} />
+      <SectionHeader icon={ToggleLeft} label="Switches" qualifier={qualifier} note={`${onCount} of ${switches.length} on`} />
       <div className={CHIP_ROW}>
-        {switches.map((sw) => {
+        {switches.map((sw, i) => {
           const toggle = () => {
             const next: HaEntities = {
               ...entities,
@@ -377,7 +494,8 @@ const SwitchesSection = memo(function SwitchesSection({
             <ToggleChip
               key={sw.entityId}
               icon={ToggleLeft}
-              name={sw.name}
+              name={switchLabels[i]}
+              fullName={sw.name}
               on={sw.on}
               available={sw.available}
               subtitle={!sw.available ? "unavailable" : sw.on ? "on" : "off"}
