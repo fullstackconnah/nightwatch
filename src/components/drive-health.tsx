@@ -138,7 +138,7 @@ function LifeTrack({
         className="h-2.5 rounded-full bg-panel-2 border border-line overflow-hidden"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(135deg, transparent 0 5px, rgba(77,97,122,0.35) 5px 6px)",
+            "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-ink-faint) 35%, transparent) 5px 6px)",
         }}
         role="img"
         aria-label="No wear telemetry for this drive"
@@ -216,7 +216,7 @@ function AttributeGauge({ attr }: { attr: AtaAttribute }) {
             className="h-1.5 rounded-full bg-panel-2 border border-line/70"
             style={{
               backgroundImage:
-                "repeating-linear-gradient(135deg, transparent 0 4px, rgba(77,97,122,0.30) 4px 5px)",
+                "repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--color-ink-faint) 30%, transparent) 4px 5px)",
             }}
             title="This drive publishes no failure threshold for this attribute — it is a counter, not a predictor"
           />
@@ -296,9 +296,26 @@ function DriveRow({ drive, swept }: { drive: DriveHealth; swept: boolean }) {
       >
         <div className="flex items-baseline justify-between gap-2 mb-2">
           <div className="flex items-baseline gap-2 min-w-0">
+            {/* Shared `.dot` vocabulary (8px + glow), not a hand-rolled circle —
+                every other status mark in the app (container-tile, process-table,
+                hermes-status) reads through this same silhouette. Colour stays
+                inline since VERDICT_FILL is a per-drive verdict, not one of the
+                fixed container-lifecycle states `.dot-*` names. Glow uses
+                color-mix rather than a template-literal alpha suffix on the
+                var() string (`${VERDICT_FILL[...]}55`), which would emit invalid
+                CSS like charts.tsx's Meter bug — color-mix wraps the var()
+                properly instead. */}
             <span
-              className="w-1.5 h-1.5 rounded-full shrink-0 self-center"
-              style={{ background: VERDICT_FILL[drive.verdict] }}
+              className="dot self-center"
+              style={{
+                background: VERDICT_FILL[drive.verdict],
+                // Unknown mirrors `.dot-stopped`: nothing assessable, so nothing
+                // glows — "unknowable" should not radiate the way a real state does.
+                boxShadow:
+                  drive.verdict === "unknown"
+                    ? "none"
+                    : `0 0 6px 1px color-mix(in srgb, ${VERDICT_FILL[drive.verdict]} 55%, transparent)`,
+              }}
               aria-hidden
             />
             <span className="text-xs text-ink truncate">{drive.model ?? drive.name}</span>

@@ -11,13 +11,13 @@
    captions, inline two-step confirm for the destructive "Clear" action
    (never a browser confirm()), same as reclaim-shared.tsx. */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label } from "@/components/ui/input";
+import { Field, Input, Label } from "@/components/ui/input";
 import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import type { AppConfig } from "@/lib/config";
@@ -104,6 +104,8 @@ export function SecretField({
   onDraftChange,
   placeholder,
   disabled,
+  action,
+  describedBy,
 }: {
   label: string;
   configured: boolean;
@@ -112,8 +114,22 @@ export function SecretField({
   onDraftChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  /** Rendered inline with the label — the System card's "Generate" button
+   *  for the MCP token uses this instead of stacking its own separate
+   *  (unlabelled-target) row above the field. */
+  action?: ReactNode;
+  /** id of an external hint/error element (owned by the caller) to fold
+   *  into this field's own aria-describedby. */
+  describedBy?: string;
 }) {
   const [replacing, setReplacing] = useState(!configured);
+  // One id backs both states: the editable <input> gets it directly, and
+  // the read-only masked view (a <div>, not a labelable element — `for`
+  // can't target it) gets an aria-labelledby pointing at the label's own id
+  // instead. Either way there is exactly one id in scope, generated here,
+  // never hand-typed at a call site.
+  const id = useId();
+  const labelId = `${id}-label`;
 
   // Once the server reports this secret as configured (right after this
   // panel's own successful save, which is also when the caller clears its
@@ -124,12 +140,33 @@ export function SecretField({
     if (configured) setReplacing(false);
   }, [configured]);
 
+  // Both `id` AND `htmlFor`, because this one label serves two different
+  // renderings: `id` is what the masked read-only view points at with
+  // aria-labelledby (a <div> can't be a label target), and `htmlFor` is what
+  // names the editable <input> below. Carrying only `id` — as this did until
+  // 2026-08-03 — left every unconfigured secret field (the editable state, the
+  // one you're in while actually typing a key) with no accessible name at all.
+  const labelRow = (label || action) && (
+    <div className="flex items-center justify-between gap-2 mb-1">
+      {label && (
+        <Label id={labelId} htmlFor={id} className="mb-0">
+          {label}
+        </Label>
+      )}
+      {action}
+    </div>
+  );
+
   if (configured && !replacing) {
     return (
       <div>
-        <Label>{label}</Label>
+        {labelRow}
         <div className="flex items-center gap-2">
-          <div className="h-11 md:h-8 flex-1 min-w-0 flex items-center rounded-md border border-line bg-bg px-2.5 font-mono text-sm md:text-xs text-ink-faint tracking-widest">
+          <div
+            role="group"
+            aria-labelledby={label ? labelId : undefined}
+            className="h-11 md:h-8 flex-1 min-w-0 flex items-center rounded-md border border-line bg-bg px-2.5 font-mono text-sm md:text-xs text-ink-faint tracking-widest"
+          >
             ••••••••••••
           </div>
           <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setReplacing(true)}>
@@ -147,13 +184,15 @@ export function SecretField({
 
   return (
     <div>
-      <Label>{label}</Label>
+      {labelRow}
       <div className="flex items-center gap-2">
         <Input
+          id={id}
           type="password"
           className="flex-1"
           value={draft}
           disabled={disabled}
+          aria-describedby={describedBy}
           onChange={(e) => onDraftChange(e.target.value)}
           placeholder={placeholder ?? (configured ? "leave blank to keep the current value" : "not set")}
         />
@@ -190,7 +229,9 @@ function ClearControl({
   if (step === "confirm") {
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[0.7rem] text-ink-dim">Remove the {label} connection?</span>
+        <span className="text-[0.7rem] text-ink-dim">
+          Remove the {label} connection? You&apos;ll need to re-enter its credentials to reconnect.
+        </span>
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel
         </Button>
@@ -227,7 +268,7 @@ function useIntegrationWrite(mutate: () => Promise<unknown>) {
       await mutate();
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setError(e instanceof Error ? e.message : "Couldn't save — check the values and try again");
       return false;
     } finally {
       setSaving(false);
@@ -247,7 +288,7 @@ function useIntegrationWrite(mutate: () => Promise<unknown>) {
       setClearStep("idle");
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "clear failed");
+      setError(e instanceof Error ? e.message : "Couldn't remove the connection — try again");
       setClearStep("idle");
       return false;
     }
@@ -303,10 +344,9 @@ function UrlTokenPanel({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[0.7rem] text-ink-dim">{hint}</p>
-        <div>
-          <Label>URL</Label>
+        <Field label="URL" required>
           <Input placeholder={urlPlaceholder} value={url} onChange={(e) => setUrl(e.target.value)} />
-        </div>
+        </Field>
         <SecretField
           key={saveVersion}
           label={secretLabel}
@@ -383,14 +423,12 @@ function NpmPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mu
           The admin login itself — NPM only exposes its API to an authenticated admin, no separate token to mint.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label>URL</Label>
+          <Field label="URL" required>
             <Input placeholder="http://192.168.1.70:81" value={url} onChange={(e) => setUrl(e.target.value)} />
-          </div>
-          <div>
-            <Label>Admin email</Label>
+          </Field>
+          <Field label="Admin email" required>
             <Input placeholder="admin@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
+          </Field>
         </div>
         <SecretField
           key={saveVersion}
@@ -573,26 +611,21 @@ function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; m
           <span className="font-mono">VOICE_SERVER_URL</span> and friends when set here.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <Label>Server URL</Label>
+          <Field label="Server URL">
             <Input placeholder="http://192.168.1.70:8970" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
-          </div>
-          <div>
-            <Label>TTS URL (optional — defaults to server URL)</Label>
+          </Field>
+          <Field label="TTS URL (optional — defaults to server URL)">
             <Input placeholder="http://192.168.1.70:8971" value={ttsUrl} onChange={(e) => setTtsUrl(e.target.value)} />
-          </div>
-          <div>
-            <Label>STT model</Label>
+          </Field>
+          <Field label="STT model">
             <Input placeholder="leave blank for the server's default" value={sttModel} onChange={(e) => setSttModel(e.target.value)} />
-          </div>
-          <div>
-            <Label>TTS model</Label>
+          </Field>
+          <Field label="TTS model">
             <Input placeholder="leave blank for the server's default" value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} />
-          </div>
-          <div>
-            <Label>TTS voice</Label>
+          </Field>
+          <Field label="TTS voice">
             <Input placeholder="leave blank for the server's default" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} />
-          </div>
+          </Field>
         </div>
         <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
           {saved && <Badge variant="ok">saved</Badge>}

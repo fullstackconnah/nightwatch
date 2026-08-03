@@ -190,7 +190,11 @@ export default function OverviewPage() {
                   type="button"
                   onClick={() => setQuery("")}
                   aria-label="Clear filter"
-                  className="inline-flex items-center justify-center h-11 w-11 md:h-6 md:w-6 text-ink-faint hover:text-ink cursor-pointer"
+                  // md:h-6/w-6 (24px) was the smallest control in the app —
+                  // bumped to md:h-7/w-7, the smallest pointer size already
+                  // established elsewhere (image-delete-action.tsx's
+                  // ICON_BUTTON), rather than inventing a new value.
+                  className="inline-flex items-center justify-center h-11 w-11 md:h-7 md:w-7 text-ink-faint hover:text-ink cursor-pointer"
                 >
                   <X size={13} />
                 </button>

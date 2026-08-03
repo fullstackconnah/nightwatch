@@ -121,13 +121,20 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
         </div>
       )}
 
-      {startError && <div className="microlabel !text-warn/80">{startError}</div>}
+      {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
       {showResults && job.state === "error" && (
-        <div className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
+        <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
       )}
 
       {showResults && job.state === "done" && job.result && (
         <div className="space-y-2">
+          {/* Short sr-only summary, separate from the (potentially long) file
+              list below — the announcement is the outcome, not a screen
+              reader reading every found file back at the user. */}
+          <span role="status" aria-live="polite" className="sr-only">
+            scan complete — {job.result.entriesScanned.toLocaleString()} entries scanned,{" "}
+            {job.result.files.length} {job.result.files.length === 1 ? "file" : "files"} found
+          </span>
           {capLabel(job.result.capHit) && (
             <div className="microlabel !text-warn/80">{capLabel(job.result.capHit)}</div>
           )}
@@ -204,13 +211,20 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
         </div>
       )}
 
-      {startError && <div className="microlabel !text-warn/80">{startError}</div>}
+      {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
       {showResults && job.state === "error" && (
-        <div className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
+        <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
       )}
 
       {showResults && job.state === "done" && job.result && (
         <div className="space-y-2">
+          {/* Same short-summary strategy as LargestFilesSection above — the
+              full group/file breakdown stays a normal (non-live) read, only
+              the outcome is announced. */}
+          <span role="status" aria-live="polite" className="sr-only">
+            scan complete — {formatBytes(job.result.totalWastedBytes)} likely wasted across{" "}
+            {job.result.groups.length} {job.result.groups.length === 1 ? "group" : "groups"}
+          </span>
           {capLabel(job.result.capHit) && (
             <div className="microlabel !text-warn/80">{capLabel(job.result.capHit)}</div>
           )}

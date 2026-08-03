@@ -16,7 +16,7 @@ import { Save, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Field, Input, Label, Select } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { HaSwitchControl } from "@/components/ha-toggle";
 import { fetcher, postJson } from "@/lib/client";
@@ -140,14 +140,13 @@ function LocalModelPicker({ model, onSelect }: { model: string; onSelect: (id: s
       {data && !data.reachable && (
         <div className="space-y-2 pt-1">
           <p className="text-[0.7rem] text-warn/80">{data.detail}</p>
-          <div>
-            <Label>Model name (manual)</Label>
+          <Field label="Model name (manual)">
             <Input
               value={model === "hermes-local" ? "" : model}
               onChange={(e) => onSelect(e.target.value)}
               placeholder="ollama/llama3:70b"
             />
-          </div>
+          </Field>
         </div>
       )}
     </div>
@@ -403,16 +402,17 @@ function HermesDaemonCard() {
                     draft={botTokenDraft}
                     onDraftChange={setBotTokenDraft}
                   />
-                  <div>
-                    <Label>Channel ID</Label>
+                  <Field label="Channel ID">
                     <Input value={channelId} onChange={(e) => setChannelId(e.target.value)} placeholder="123456789012345678" />
-                  </div>
+                  </Field>
                 </div>
-                <div>
-                  <Label>Allowed user IDs (comma-separated)</Label>
+                <Field
+                  label="Allowed user IDs (comma-separated)"
+                  describedBy="discord-commands-hint"
+                >
                   <Input value={allowedUserIds} onChange={(e) => setAllowedUserIds(e.target.value)} placeholder="111…, 222…" />
-                </div>
-                <p className={cn("text-[0.7rem]", commandsReady ? "text-ink-faint" : "text-warn/80")}>
+                </Field>
+                <p id="discord-commands-hint" className={cn("text-[0.7rem]", commandsReady ? "text-ink-faint" : "text-warn/80")}>
                   Bot token, channel ID and at least one allowed user ID are all required before Discord
                   commands work — the webhook alone only covers outbound digests/alerts.
                 </p>
@@ -432,8 +432,7 @@ function HermesDaemonCard() {
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Digest hour</Label>
+                <Field label="Digest hour">
                   <Select value={digestHour} onChange={(e) => setDigestHour(Number(e.target.value))}>
                     {DIGEST_HOURS.map((h) => (
                       <option key={h} value={h}>
@@ -441,9 +440,8 @@ function HermesDaemonCard() {
                       </option>
                     ))}
                   </Select>
-                </div>
-                <div>
-                  <Label>Digest minute</Label>
+                </Field>
+                <Field label="Digest minute">
                   <Select value={digestMinute} onChange={(e) => setDigestMinute(Number(e.target.value))}>
                     {DIGEST_MINUTES.map((m) => (
                       <option key={m} value={m}>
@@ -451,7 +449,7 @@ function HermesDaemonCard() {
                       </option>
                     ))}
                   </Select>
-                </div>
+                </Field>
               </div>
 
               <div className="border-t border-line/50 space-y-3 pt-3">
@@ -463,33 +461,30 @@ function HermesDaemonCard() {
                   <HaSwitchControl on={pipelineEnabled} onToggle={() => setPipelineEnabled((v) => !v)} label="Pipeline enabled" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <Label>Daily budget (USD)</Label>
+                  <Field label="Daily budget (USD)">
                     <Input
                       inputMode="decimal"
                       value={pipelineBudget}
                       onChange={(e) => setPipelineBudget(e.target.value)}
                       placeholder="5.00"
                     />
-                  </div>
-                  <div>
-                    <Label>Model</Label>
+                  </Field>
+                  <Field label="Model">
                     <Input
                       className="font-mono"
                       value={pipelineModel}
                       onChange={(e) => setPipelineModel(e.target.value)}
                       placeholder="claude-sonnet-5"
                     />
-                  </div>
-                  <div>
-                    <Label>Hard-ticket model</Label>
+                  </Field>
+                  <Field label="Hard-ticket model">
                     <Input
                       className="font-mono"
                       value={pipelineModelHard}
                       onChange={(e) => setPipelineModelHard(e.target.value)}
                       placeholder="claude-opus-5"
                     />
-                  </div>
+                  </Field>
                 </div>
               </div>
 
@@ -578,8 +573,11 @@ export function SettingsHermes() {
             </p>
 
             <div>
-              <Label>Tier</Label>
-              <div className="panel p-1 flex gap-1 w-fit" role="group" aria-label="Hermes model tier">
+              {/* Not a Field: this Label captions a button group, not a single
+                  control, so it's wired via aria-labelledby (valid on any
+                  role="group") rather than the htmlFor Field assumes. */}
+              <Label id="hermes-tier-label">Tier</Label>
+              <div className="panel p-1 flex gap-1 w-fit" role="group" aria-labelledby="hermes-tier-label">
                 {TIERS.map((t) => (
                   <SegmentButton key={t.id} active={tier === t.id} label={t.label} onClick={() => setTier(t.id)}>
                     {t.label}
@@ -589,16 +587,21 @@ export function SettingsHermes() {
             </div>
 
             <div>
-              <Label>Model</Label>
-              {tier === "local" && <LocalModelPicker model={model} onSelect={setModel} />}
-              {tier === "openrouter" && <OpenRouterPicker model={model} onSelect={setModel} />}
-              {tier === "anthropic" && (
-                <div className="space-y-1.5">
-                  {ANTHROPIC_MODELS.map((id) => (
-                    <ModelOptionRow key={id} id={id} selected={model === id} onSelect={() => setModel(id)} />
-                  ))}
-                </div>
-              )}
+              {/* Same reasoning as Tier above — "Model" captions a list of
+                  buttons (or a picker with its own internal controls), not
+                  one input. */}
+              <Label id="hermes-model-label">Model</Label>
+              <div role="group" aria-labelledby="hermes-model-label">
+                {tier === "local" && <LocalModelPicker model={model} onSelect={setModel} />}
+                {tier === "openrouter" && <OpenRouterPicker model={model} onSelect={setModel} />}
+                {tier === "anthropic" && (
+                  <div className="space-y-1.5">
+                    {ANTHROPIC_MODELS.map((id) => (
+                      <ModelOptionRow key={id} id={id} selected={model === id} onSelect={() => setModel(id)} />
+                    ))}
+                  </div>
+                )}
+              </div>
               {model && (
                 <p className="mt-1.5 text-[0.7rem] text-ink-faint">
                   selected: <span className="font-mono text-ink-dim">{model}</span>

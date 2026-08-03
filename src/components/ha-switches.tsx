@@ -73,7 +73,12 @@ function HaSwitchRow({ sw, ha, entities }: { sw: HaSwitch; ha: UseHaResult; enti
             type="button"
             onClick={() => ha.dismissActionError(sw.entityId)}
             aria-label="Dismiss error"
-            className="shrink-0 rounded px-1 text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+            // DESIGN.md's 44px Rule: this control had no size class at all, so
+            // it rendered at content size (~18px). min-h-11 md:min-h-0 is the
+            // idiom this app already uses for inline text dismiss buttons
+            // (reclaim-shared.tsx, log-console.tsx) — height only, since the
+            // control sits beside wrapping error text rather than in its own row.
+            className="inline-flex items-center shrink-0 rounded px-1 min-h-11 md:min-h-0 text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
           >
             ×
           </button>

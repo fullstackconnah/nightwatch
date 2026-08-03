@@ -42,10 +42,10 @@ function GroupRows({
     const tag = group.tags[0];
     return (
       <tr className="border-b border-line/50 last:border-0 hover:bg-panel-2/60">
-        <td className="px-3 py-2">
+        <td className="px-3 py-2 max-w-56">
           <div className="flex items-center gap-2 min-w-0">
             <ChevronSpacer />
-            <span className="font-mono text-xs truncate" title={tag.ref}>
+            <span className="font-mono text-xs truncate min-w-0 flex-1" title={tag.ref}>
               {tag.ref}
             </span>
             {group.registry && <RegistryChip registry={group.registry} />}
@@ -77,7 +77,7 @@ function GroupRows({
   return (
     <>
       <tr className="border-b border-line/50 last:border-0 hover:bg-panel-2/60">
-        <td className="px-3 py-2">
+        <td className="px-3 py-2 max-w-56">
           <button
             type="button"
             onClick={onToggle}
@@ -89,7 +89,7 @@ function GroupRows({
               size={13}
               className={cn("text-ink-faint transition-transform shrink-0", expanded && "rotate-180")}
             />
-            <span className="font-mono text-xs truncate" title={repoLabel}>
+            <span className="font-mono text-xs truncate min-w-0 flex-1" title={repoLabel}>
               {repoLabel}
             </span>
             {group.registry && <RegistryChip registry={group.registry} />}
@@ -113,9 +113,9 @@ function GroupRows({
             key={tag.imageId + tag.ref}
             className="border-b border-line/50 last:border-0 bg-panel-2/30 hover:bg-panel-2/60"
           >
-            <td className="px-3 py-2">
+            <td className="px-3 py-2 max-w-56">
               <div className="flex items-center gap-2 min-w-0 pl-[1.625rem]">
-                <span className="font-mono text-xs text-ink-dim truncate" title={tag.ref}>
+                <span className="font-mono text-xs text-ink-dim truncate min-w-0 flex-1" title={tag.ref}>
                   {tag.tag ?? tag.ref}
                 </span>
               </div>

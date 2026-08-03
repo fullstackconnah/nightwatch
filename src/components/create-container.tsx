@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Field, Input, Label, Select } from "@/components/ui/input";
 import { postJson } from "@/lib/client";
 
 interface PortRow { host: string; container: string; protocol: "tcp" | "udp" }
@@ -31,6 +31,57 @@ export function CreateContainerDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Initial focus lands on the first field, not the close button — same
+  // reasoning as kiosk-pin-pad.tsx's pin keys. Restoring focus to whatever
+  // opened the dialog on unmount (Cancel, a successful create, or Escape all
+  // unmount this component the same way) keeps a keyboard user anchored
+  // instead of dumped at document top.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    imageInputRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, []);
+
+  // Escape closes the dialog; Tab/Shift+Tab cycle within its own focusable
+  // elements — identical pattern to kiosk-pin-pad.tsx's onDialogKeyDown,
+  // handled as a React onKeyDown (bubbles from whatever is focused) rather
+  // than a document listener, so there's nothing to leak on unmount. The
+  // element list is recomputed on every Tab press rather than cached, since
+  // add/remove row buttons change it while the dialog is open.
+  function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const container = dialogRef.current;
+    if (!container) return;
+    const focusable = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !container.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !container.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -54,40 +105,60 @@ export function CreateContainerDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-bg/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] md:py-10">
-      <div className="panel w-full max-w-lg p-5 space-y-4 relative">
-        <button onClick={onClose} className="absolute right-3 top-3 text-ink-dim hover:text-ink cursor-pointer">
+    <div
+      className="fixed inset-0 z-50 bg-bg/80 backdrop-blur-sm flex items-start justify-center overflow-y-auto pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] md:py-10"
+      // Same guard as kiosk-pin-pad.tsx's scrim: a tap that lands on the
+      // backdrop itself (not a real control inside the dialog) would
+      // otherwise blur whatever is focused with nothing to receive it,
+      // fighting the Tab trap below. target===currentTarget keeps this from
+      // ever suppressing a real control's own pointerdown. This does not
+      // close the dialog — that stays Cancel/Escape only, so a stray tap
+      // can't silently discard a typed image name or port list.
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-container-title"
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+        className="panel w-full max-w-lg p-5 space-y-4 relative"
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-1 top-1 h-11 w-11 md:h-8 md:w-8 flex items-center justify-center text-ink-dim hover:text-ink cursor-pointer"
+        >
           <X size={16} />
         </button>
         <div>
-          <h2 className="text-base font-semibold">New container</h2>
+          <h2 id="create-container-title" className="text-base font-semibold">New container</h2>
           <p className="text-xs text-ink-dim mt-0.5">
             Pulls the image and starts it. For compose stacks use Dockge instead.
           </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <Label>Image *</Label>
-            <Input placeholder="nginx:alpine" value={image} onChange={(e) => setImage(e.target.value)} />
-          </div>
-          <div>
-            <Label>Name</Label>
+          <Field label="Image" required className="col-span-2">
+            <Input ref={imageInputRef} placeholder="nginx:alpine" value={image} onChange={(e) => setImage(e.target.value)} />
+          </Field>
+          <Field label="Name">
             <Input placeholder="(auto)" value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-          <div>
-            <Label>Restart policy</Label>
+          </Field>
+          <Field label="Restart policy">
             <Select value={restart} onChange={(e) => setRestart(e.target.value)}>
               <option value="unless-stopped">unless-stopped</option>
               <option value="always">always</option>
               <option value="on-failure">on-failure</option>
               <option value="no">no</option>
             </Select>
-          </div>
-          <div className="col-span-2">
-            <Label>Network (blank = bridge)</Label>
+          </Field>
+          <Field label="Network (blank = bridge)" className="col-span-2">
             <Input placeholder="homelab_default" value={network} onChange={(e) => setNetwork(e.target.value)} />
-          </div>
+          </Field>
         </div>
 
         {/* ports */}
@@ -144,7 +215,11 @@ export function CreateContainerDialog({
             <div key={i} className="flex flex-wrap gap-2 mb-1.5 items-center">
               <Input placeholder="/mnt/docker/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
               <Input placeholder="/data" value={v.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
-              <label className="flex items-center gap-1 text-xs text-ink-dim whitespace-nowrap cursor-pointer">
+              {/* min-h-11 md:min-h-0: same touch-floor idiom settings-tiles.tsx
+                  uses for its "hide" checkbox — this one wasn't paired with
+                  the `md:` half and so stayed a sub-44px target at every
+                  breakpoint. */}
+              <label className="flex items-center gap-1 min-h-11 md:min-h-0 text-xs text-ink-dim whitespace-nowrap cursor-pointer">
                 <input type="checkbox" checked={v.readonly} onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, readonly: e.target.checked } : x)))} />
                 ro
               </label>

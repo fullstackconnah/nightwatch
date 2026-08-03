@@ -149,23 +149,47 @@ export interface TelemetryState {
  * window of samples client-side (SWR's subscription cache only holds the latest
  * emitted value, so this hook owns the buffer rather than relying on SWR for it).
  * Pass `enabled = false` to skip subscribing entirely (null key).
+ *
+ * Background-tab handling: the stream itself is never paused — bandwidth is
+ * trivial and reconnecting would risk a gap — but `next()` (the call that
+ * triggers a React re-render in every subscribing tab, e.g. /resources'
+ * per-second container re-sort and the treemap re-layout) is skipped while
+ * `document.visibilityState !== "visible"`. Samples still accumulate in the
+ * closure so nothing is lost; on return to the foreground a single flush
+ * replays the latest accumulated state, not one render per buffered tick.
  */
 export function useTelemetryStream(enabled = true): TelemetryState {
   const { data } = useSWRSubscription<TelemetryState, Error>(
     enabled && typeof window !== "undefined" ? "/api/telemetry/stream" : null,
     (key: string, { next }: { next: (err?: Error | null, data?: TelemetryState) => void }) => {
       let samples: TelemetrySample[] = [];
+      let status: TelemetryStatus = "connecting";
+      // Set whenever the buffer above changes while hidden — tells the
+      // visibilitychange handler there's a render to catch up on.
+      let dirty = false;
+
+      const emit = () => {
+        if (document.visibilityState === "hidden") {
+          dirty = true;
+          return;
+        }
+        dirty = false;
+        next(null, { samples, status });
+      };
+
       const es = new EventSource(key);
 
-      const emit = (status: TelemetryStatus) => next(null, { samples, status });
-
-      es.addEventListener("open", () => emit("live"));
+      es.addEventListener("open", () => {
+        status = "live";
+        emit();
+      });
 
       es.addEventListener("history", (event: MessageEvent<string>) => {
         try {
           const parsed = JSON.parse(event.data) as TelemetrySample[];
           samples = parsed.slice(-RING_CAPACITY);
-          emit("live");
+          status = "live";
+          emit();
         } catch (err) {
           next(err instanceof Error ? err : new Error("failed to parse telemetry history"));
         }
@@ -175,7 +199,8 @@ export function useTelemetryStream(enabled = true): TelemetryState {
         try {
           const parsed = JSON.parse(event.data) as TelemetrySample;
           samples = [...samples, parsed].slice(-RING_CAPACITY);
-          emit("live");
+          status = "live";
+          emit();
         } catch (err) {
           next(err instanceof Error ? err : new Error("failed to parse telemetry sample"));
         }
@@ -185,9 +210,25 @@ export function useTelemetryStream(enabled = true): TelemetryState {
       // fire "open" again, so just surface "lost" via status — don't close the
       // connection or reject via next(), and keep existing samples so the UI can
       // dim stale data instead of blanking.
-      es.onerror = () => emit("lost");
+      es.onerror = () => {
+        status = "lost";
+        emit();
+      };
 
-      return () => es.close();
+      // The one moment a hidden tab is allowed to render: coming back into view.
+      // Flushes whatever accumulated while backgrounded in a single next() call.
+      const onVisibilityChange = () => {
+        if (document.visibilityState === "visible" && dirty) {
+          dirty = false;
+          next(null, { samples, status });
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibilityChange);
+
+      return () => {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        es.close();
+      };
     },
   );
 

@@ -51,7 +51,7 @@ export function HermesAsk({ tier }: { tier: string | null }) {
   return (
     <div className="panel p-4 space-y-3">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="microlabel">ask hermes</span>
+        <span id="hermes-ask-label" className="microlabel">ask hermes</span>
         {job?.ok && job.job.state === "running" && (
           <span className="flex items-center gap-1.5">
             <Loader2 size={12} className="animate-spin motion-reduce:animate-none text-ink-faint" aria-hidden />
@@ -67,6 +67,11 @@ export function HermesAsk({ tier }: { tier: string | null }) {
             onChange={(e) => setQuestion(e.target.value)}
             disabled={Boolean(running)}
             placeholder="Ask about anything Hermes has seen — a container, a trend, tonight's digest…"
+            // Programmatic name via the panel's own already-visible "ask
+            // hermes" microlabel — placeholder text disappears once typed and
+            // is not a reliable accessible-name source for AT. No new visible
+            // text, so no layout change.
+            aria-labelledby="hermes-ask-label"
             rows={3}
             maxLength={MAX_LENGTH + 40}
             className={cn(
@@ -92,10 +97,10 @@ export function HermesAsk({ tier }: { tier: string | null }) {
         <p className="text-[0.7rem] text-ink-dim">The local tier can take a few minutes to answer.</p>
       )}
 
-      {run.startError && <div className="microlabel !text-warn/80">{run.startError}</div>}
+      {run.startError && <div role="alert" className="microlabel !text-warn/80">{run.startError}</div>}
 
       {job?.ok && job.job.state === "error" && (
-        <div className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
+        <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">ask failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
             {job.job.error ?? "Hermes reported an error with no further detail."}
@@ -103,13 +108,16 @@ export function HermesAsk({ tier }: { tier: string | null }) {
         </div>
       )}
 
+      {/* Same reasoning as hermes-actions.tsx: the answer band appears once
+          per run and holds still afterward, so role="status" directly on it
+          announces the outcome without risking re-announcement on later polls. */}
       {job?.ok && job.job.state === "done" && job.job.result && (
-        <div className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5">
+        <div role="status" aria-live="polite" className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5">
           <div className="text-ink whitespace-pre-wrap break-words">{job.job.result.body || "(no answer)"}</div>
         </div>
       )}
 
-      {job && !job.ok && <div className="microlabel !text-bad">{job.detail}</div>}
+      {job && !job.ok && <div role="alert" className="microlabel !text-bad">{job.detail}</div>}
     </div>
   );
 }

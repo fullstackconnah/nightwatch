@@ -21,7 +21,7 @@ import { ExternalLink, RefreshCw, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
 import { postJson } from "@/lib/client";
 import { CopyButton } from "@/components/settings-reference";
 import { SecretField, useSettingsFull, type SettingsFullResponse } from "@/components/settings-integrations";
@@ -96,22 +96,26 @@ function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }
               Requires the current password. The new one is bcrypt-hashed and stored in config.json —
               nothing here is ever echoed back.
             </p>
-            <div>
-              <Label>Current password</Label>
+            <Field label="Current password" required>
               <Input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-            </div>
+            </Field>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label>New password</Label>
+              <Field
+                label="New password"
+                required
+                hint={!tooShort ? "at least 8 characters" : undefined}
+                error={tooShort ? "New password needs at least 8 characters." : undefined}
+              >
                 <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
-              </div>
-              <div>
-                <Label>Confirm new password</Label>
+              </Field>
+              <Field
+                label="Confirm new password"
+                required
+                error={mismatch && !tooShort ? "Passwords don't match." : undefined}
+              >
                 <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-              </div>
+              </Field>
             </div>
-            {tooShort && <p className="text-[0.7rem] text-warn/80">New password needs at least 8 characters.</p>}
-            {mismatch && !tooShort && <p className="text-[0.7rem] text-warn/80">Passwords don&apos;t match.</p>}
             <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
               {error && <span className="text-[0.7rem] text-bad">{error}</span>}
               <Button size="sm" disabled={!canSubmit} onClick={handleSave}>
@@ -200,16 +204,15 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
         </p>
 
         <div>
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <Label className="mb-0">MCP token</Label>
-            <Button type="button" size="sm" variant="outline" disabled={generating} onClick={handleGenerate}>
-              <RefreshCw size={12} className={generating ? "animate-spin motion-reduce:animate-none" : undefined} />
-              Generate
-            </Button>
-          </div>
           <SecretField
             key={saveVersion}
-            label=""
+            label="MCP token"
+            action={
+              <Button type="button" size="sm" variant="outline" disabled={generating} onClick={handleGenerate}>
+                <RefreshCw size={12} className={generating ? "animate-spin motion-reduce:animate-none" : undefined} />
+                Generate
+              </Button>
+            }
             configured={mcpConfigured}
             updatedAt={updatedAt}
             draft={mcpDraft}
@@ -245,8 +248,9 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
           draft={pinDraft}
           onDraftChange={setPinDraft}
           placeholder="4-8 digits"
+          describedBy="kiosk-pin-hint"
         />
-        <p className="text-[0.7rem] text-ink-faint -mt-2">
+        <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
           {pinConfigured ? "Clear it and save to fall back to the environment (or the default 0000)." : "Currently the default — 0000."}
         </p>
 
@@ -316,14 +320,12 @@ function SsoCard({ data, mutate }: { data: SettingsFullResponse | undefined; mut
           self-signed issuer, <span className="font-mono">NODE_EXTRA_CA_CERTS</span> must still be set in
           the environment — it&apos;s a process-start trust setting this page can&apos;t override.
         </p>
-        <div>
-          <Label>Issuer</Label>
+        <Field label="Issuer">
           <Input placeholder="http://192.168.1.70:9091" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
-        </div>
-        <div>
-          <Label>Client ID</Label>
+        </Field>
+        <Field label="Client ID">
           <Input placeholder="nightwatch" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-        </div>
+        </Field>
         <SecretField
           key={saveVersion}
           label="Client secret"

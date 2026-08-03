@@ -59,7 +59,10 @@ function ProcessesLink({ name }: { name: string }) {
       href={processesHref(name)}
       aria-label={`${name} processes`}
       title="Processes →"
-      className="inline-flex items-center justify-center h-10 w-10 md:h-7 md:w-7 rounded-md text-ink-dim hover:text-accent focus-visible:text-accent outline-none focus-visible:ring-1 focus-visible:ring-accent transition"
+      // h-11 at touch, per DESIGN.md's 44px Rule — a raw <a>, so it restates
+      // the icon scale rather than inheriting it from Button (same trade-off
+      // as OpenAppLink in container-controls.tsx).
+      className="inline-flex items-center justify-center h-11 w-11 md:h-7 md:w-7 rounded-md text-ink-dim hover:text-accent focus-visible:text-accent outline-none focus-visible:ring-1 focus-visible:ring-accent transition"
     >
       <Activity size={13} />
     </Link>
@@ -119,7 +122,7 @@ function SortableHeader({
 }
 
 export default function ContainersPage() {
-  const { data, mutate } = useContainers(5000);
+  const { data, error, mutate } = useContainers(5000);
   const { data: resourceData } = useResources(10000);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
@@ -180,6 +183,16 @@ export default function ContainersPage() {
           </Button>
         </div>
       </header>
+
+      {/* Matches (dash)/page.tsx's own "Docker unreachable" panel verbatim —
+          without this, a downed socket left `data` undefined forever and the
+          table/card empty states below just said "loading…" with no way to
+          tell a slow poll from a dead one. */}
+      {error && (
+        <div className="panel p-4 text-bad text-sm">
+          Docker unreachable: {error.message}
+        </div>
+      )}
 
       <div className="panel overflow-x-auto hidden md:block">
         <table className="w-full text-sm">
@@ -243,7 +256,7 @@ export default function ContainersPage() {
             {!rows.length && (
               <tr>
                 <td colSpan={9} className="px-3 py-8 text-center text-ink-faint text-sm">
-                  {data ? "no containers match" : "loading…"}
+                  {error ? "—" : data ? "no containers match" : "loading…"}
                 </td>
               </tr>
             )}
@@ -303,7 +316,7 @@ export default function ContainersPage() {
         })}
         {!rows.length && (
           <div className="panel p-6 text-center text-ink-faint text-sm">
-            {data ? "no containers match" : "loading…"}
+            {error ? "—" : data ? "no containers match" : "loading…"}
           </div>
         )}
       </div>

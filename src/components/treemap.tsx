@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { hierarchy, treemap, treemapSquarify } from "d3-hierarchy";
 import { cn } from "@/lib/utils";
 
@@ -108,13 +108,23 @@ export function Treemap({
 }) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
 
-  const grouped = groupIntoOthers(items, maxCells);
+  // `items` used to feed groupIntoOthers/layoutTreemap unmemoized, so the
+  // squarify layout re-ran and produced a fresh `rects` array (repositioning
+  // every cell) on every render — including renders where `items` itself was
+  // unchanged. Now that the caller (resources/page.tsx) only hands this a new
+  // `items` reference when a value that actually affects the layout changed,
+  // gating these on that same reference means an unchanged tick does none of
+  // this work at all.
+  const grouped = useMemo(() => groupIntoOthers(items, maxCells), [items, maxCells]);
   // The others cell is a synthetic aggregate, not a real item, so it must not shift the
   // quartile ranking of the items it was folded from.
-  const realItems = grouped.filter((i) => i.id !== OTHERS_ID);
-  const ranked = [...realItems].sort((a, b) => b.value - a.value);
-  const rankById = new Map(ranked.map((i, idx) => [i.id, idx]));
-  const rects = width > 0 && height > 0 ? layoutTreemap(grouped, width, height) : [];
+  const realItems = useMemo(() => grouped.filter((i) => i.id !== OTHERS_ID), [grouped]);
+  const ranked = useMemo(() => [...realItems].sort((a, b) => b.value - a.value), [realItems]);
+  const rankById = useMemo(() => new Map(ranked.map((i, idx) => [i.id, idx])), [ranked]);
+  const rects = useMemo(
+    () => (width > 0 && height > 0 ? layoutTreemap(grouped, width, height) : []),
+    [grouped, width, height],
+  );
 
   return (
     <div ref={ref} className={cn("relative w-full panel overflow-hidden", heightClassName, className)}>

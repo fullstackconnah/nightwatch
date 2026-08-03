@@ -64,7 +64,17 @@ function SyncButton({ mirror }: { mirror: GitMirror }) {
         {state === "pending" ? "syncing…" : "sync now"}
       </button>
       {message && (
-        <span className={cn("text-[0.65rem]", state === "error" ? "text-bad" : "text-ink-dim")}>{message}</span>
+        // Short, single-line outcome text — safe to announce directly, no
+        // separate sr-only mirror needed. role="alert" (assertive) for a
+        // failed sync, role="status" (polite) for the "sync requested"
+        // confirmation, matching the log-track precedent's error/success split.
+        <span
+          role={state === "error" ? "alert" : "status"}
+          aria-live={state === "error" ? undefined : "polite"}
+          className={cn("text-[0.65rem]", state === "error" ? "text-bad" : "text-ink-dim")}
+        >
+          {message}
+        </span>
       )}
     </div>
   );
@@ -89,7 +99,7 @@ export function GitMirrorPanel({ mirrors }: { mirrors: GitMirror[] }) {
           <thead>
             <tr className="border-b border-line">
               {["Repo", "Target", "Last sync", "Status", ""].map((h) => (
-                <th key={h} className="microlabel text-left px-3 py-2 font-semibold">
+                <th key={h} scope="col" className="microlabel text-left px-3 py-2 font-semibold">
                   {h}
                 </th>
               ))}

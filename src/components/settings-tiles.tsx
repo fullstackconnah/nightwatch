@@ -15,7 +15,7 @@
 import { useMemo, useState } from "react";
 import { Save, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/input";
+import { Field, Input } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import type { AppConfig } from "@/lib/config";
 
@@ -169,9 +169,18 @@ export function SettingsTiles({
                 {rows.map((name) => (
                   <tr key={name} className="border-b border-line/50 last:border-0">
                     <td className="px-3 py-1.5 font-mono text-xs">{name}</td>
+                    {/* aria-label per control, naming the column AND the row:
+                        a visible label in each cell would wreck a table whose
+                        whole point is the column header, but a screen-reader
+                        user tabbing through 35 rows of identical-looking
+                        fields otherwise hears "edit text" 105 times with no
+                        idea which container or which column they are in.
+                        Header-cell association alone doesn't carry reliably
+                        for form controls inside cells. */}
                     <td className="px-3 py-1.5">
                       <Input
                         className="h-7"
+                        aria-label={`Group for ${name}`}
                         placeholder="(compose project)"
                         value={groupOf(cfg, name)}
                         onChange={(e) => onChange(withGroup(cfg, name, e.target.value))}
@@ -180,6 +189,7 @@ export function SettingsTiles({
                     <td className="px-3 py-1.5">
                       <Input
                         className="h-7"
+                        aria-label={`App URL for ${name}`}
                         placeholder="(inferred)"
                         value={cfg.urls[name] ?? ""}
                         onChange={(e) => onChange(withUrl(cfg, name, e.target.value))}
@@ -188,6 +198,7 @@ export function SettingsTiles({
                     <td className="px-3 py-1.5">
                       <Input
                         className="h-7"
+                        aria-label={`Icon for ${name}`}
                         placeholder="(auto)"
                         value={cfg.icons[name] ?? ""}
                         onChange={(e) => onChange(withIcon(cfg, name, e.target.value))}
@@ -196,6 +207,7 @@ export function SettingsTiles({
                     <td className="px-3 py-1.5 text-center">
                       <input
                         type="checkbox"
+                        aria-label={`Hide ${name}`}
                         checked={cfg.hidden.includes(name)}
                         onChange={(e) => onChange(withHidden(cfg, name, e.target.checked))}
                       />
@@ -221,30 +233,32 @@ export function SettingsTiles({
                     />
                   </label>
                 </div>
-                <div>
-                  <Label>Group</Label>
+                {/* Field, not a bare Label beside an Input: Field wires
+                    htmlFor/id through useId, so these actually name their
+                    control. The desktop table above can't use it (a label per
+                    cell would fight the column header), which is why that half
+                    carries aria-label instead. */}
+                <Field label="Group">
                   <Input
                     placeholder="(compose project)"
                     value={groupOf(cfg, name)}
                     onChange={(e) => onChange(withGroup(cfg, name, e.target.value))}
                   />
-                </div>
-                <div>
-                  <Label>App URL</Label>
+                </Field>
+                <Field label="App URL">
                   <Input
                     placeholder="(inferred)"
                     value={cfg.urls[name] ?? ""}
                     onChange={(e) => onChange(withUrl(cfg, name, e.target.value))}
                   />
-                </div>
-                <div>
-                  <Label>Icon</Label>
+                </Field>
+                <Field label="Icon">
                   <Input
                     placeholder="(auto)"
                     value={cfg.icons[name] ?? ""}
                     onChange={(e) => onChange(withIcon(cfg, name, e.target.value))}
                   />
-                </div>
+                </Field>
               </div>
             ))}
           </div>

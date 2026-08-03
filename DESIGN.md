@@ -108,6 +108,15 @@ spacing:
   md: "0.75rem"
   lg: "1rem"
   xl: "1.25rem"
+layers:
+  # Plain :root custom properties in globals.css, not @theme tokens — z-index
+  # has no @theme namespace in Tailwind v4. Consumed via z-(--z-name).
+  dropdown: 10
+  sticky: 20
+  modal-backdrop: 30
+  modal: 40
+  toast: 50
+  tooltip: 60
 components:
   panel:
     backgroundColor: "{colors.panel}"
@@ -247,7 +256,7 @@ A fourteen-token palette that is almost entirely one desaturated blue, spent so 
 - **Signal Sky** (`blue`): the *second* series, and only ever the second. Transmit against the accent's receive in every paired throughput chart, the `restarting` status dot, and the "this attribute actually predicts failure" marker on SMART rows. It never appears alone as a primary accent.
 
 ### Tertiary
-- **Sequential Teal Ramp** (`ramp-teal-deep` → `ramp-teal-mid` → `ramp-teal` → `ramp-teal-bright`): the four-step ordered ramp used when a single bar or treemap has to separate composed parts — disk segments (images / writable layers / volumes / build cache), the treemap's magnitude quartiles, the VRAM attribution bar. Darkest carries the largest value, so light labels sitting on top keep contrast. This ramp exists in code as literal hex in three files and is **not** currently a CSS token; treat these four values as the canonical series ramp and reach for them rather than inventing hues.
+- **Sequential Teal Ramp** (`ramp-teal-deep` → `ramp-teal-mid` → `ramp-teal` → `ramp-teal-bright`): the four-step ordered ramp used when a single bar or treemap has to separate composed parts — disk segments (images / writable layers / volumes / build cache), the treemap's magnitude quartiles, the VRAM attribution bar. Darkest carries the largest value, so light labels sitting on top keep contrast. Promoted to real CSS tokens 2026-08-03 (`--color-ramp-teal-deep/mid/DEFAULT/bright` in `globals.css`, giving `bg-ramp-teal-*`/`text-ramp-teal-*` utilities and `var(--color-ramp-teal-*)`) after an audit found the four values retyped as literal hex 29 times across 6 files — reach for the token, not the hex. `resources/page.tsx` (12 occurrences) is migrated; `disk-contents.tsx`, `gpu-view.tsx`, `net-compare.tsx`, `resource-overview.tsx` and `treemap.tsx` still carry literal hex pending a follow-up pass.
 
 ### Neutral
 - **Deep Night** (`bg`): the page ground, also the browser theme colour and the resting fill of form inputs.
@@ -296,7 +305,7 @@ Twelve steps ship, and the ramp is bottom-heavy on purpose: nine of the twelve s
 - **Label** (600, 0.625rem, `0.14em`, uppercase, `ink-faint`): the microlabel. The universal caption for a figure, a legend entry, a section marker, a stack name, a unit. Available as the `.microlabel` class, and spelled as a literal size in the seven places that need the size without the uppercase-and-tracking treatment.
 - **Tick** (400, 0.5rem, `0.08em`): chart furniture only — the domain endpoints printed either side of the thermal arc and the label inside the ring gauge. The floor of the ramp; nothing else may be this small.
 
-Two sizes ship that are **not** ramp steps and should not be reached for in new work. `0.68rem` appears in eight places (container tiles, GPU rows, process-table footnotes, one resources row) and is visually indistinguishable from the `0.7rem` note step three steps above — it is drift, not a decision. `0.6rem` appears exactly once, on the `/` keycap hint in the log filter, where it is sized to sit inside a 1px-bordered box on one line; that one is a defensible one-off.
+Two sizes ship that are **not** ramp steps and should not be reached for in new work. `0.68rem` appears in 12 places across 7 files (container tiles, GPU rows, process-table footnotes, container-controls, disk-scan-jobs, one resources row) and is visually indistinguishable from the `0.7rem` note step three steps above — it is drift, not a decision. `0.6rem` was a defensible one-off on the `/` keycap hint in the log filter, sized to sit inside a 1px-bordered box on one line — but the same keycap-hint markup is now duplicated verbatim in a second file (`log-console.tsx` and `(dash)/page.tsx` both carry it), which has drifted from "one exception" toward "an uninstantiated shared component."
 
 ### Named Rules
 
@@ -324,7 +333,34 @@ Ordering is load-bearing on the data surfaces. Where a naive layout would render
 
 **The Table-Or-Cards Rule.** A table is a desktop form. Any `<table>` is `hidden md:table` and ships a `md:hidden` stacked-card rendering of the same rows beside it. A table that merely scrolls sideways on a phone is not an acceptable mobile state.
 
-**The Touch-Equivalent Rule.** No affordance may be hover-only. `.hover-reveal` is visible by default and only becomes hover-gated inside `@media (hover: hover)`; `.panel-hover` declares an `:active` state alongside its hover state; anything driven by hover (the log track's autoscroll pause) also has an explicit control.
+**The Touch-Equivalent Rule.** No affordance may be hover-only. `.panel-hover` declares an `:active` state alongside its hover state; anything driven by hover (the log track's autoscroll pause) also has an explicit control. (An earlier `.hover-reveal` utility enforced this the same way — visible by default, hover-gated only inside `@media (hover: hover)` — but had zero consumers left anywhere in the codebase and was removed 2026-08-03 rather than left as dead CSS citing a principle with no working example.)
+
+## Layering
+
+A six-tier semantic z-index scale, added 2026-08-03 after an audit found six components each picking their own `z-10`–`z-50` with no documented ordering (plus a kiosk-only `z-60`) and nothing new to check against. Wired as plain `:root` custom properties in `globals.css` rather than `@theme` tokens — z-index has no `--z-*` `@theme` namespace in Tailwind v4, so there is no `rounded-tile`-style generated utility to reach for; consume the scale with Tailwind's custom-property shorthand (`z-(--z-sticky)`) or `var(--z-name)` in hand-authored CSS. Ascending — each tier stacks above the last:
+
+- **Dropdown** (`--z-dropdown`, 10): a menu or popover anchored to a control.
+- **Sticky** (`--z-sticky`, 20): content pinned within its own scroll container — a sticky table header, a sticky filter toolbar. Below the app's fixed chrome, so it never floats over the sidebar or tab bar.
+- **Modal Backdrop** (`--z-modal-backdrop`, 30): the dimmed scrim behind a modal.
+- **Modal** (`--z-modal`, 40): the modal panel itself, and the app's fixed chrome (sidebar, mobile top/bottom bars) that must outrank ordinary sticky content.
+- **Toast** (`--z-toast`, 50): a transient notification, above any open modal.
+- **Tooltip** (`--z-tooltip`, 60): the topmost tier — today reserved for the kiosk terminal theme's CRT scanline overlay, which is drawn as the screen glass itself and must sit above every other layer, modals included.
+
+**Migrated:** `process-table.tsx`'s sticky table header and `log-console.tsx`'s sticky toolbar (both → `z-(--z-sticky)`, reconciling two different ad hoc literals — `z-10` and `z-30` — into one canonical number now that they share a name; neither collides with anything else on its own page, so this changes no visible stacking order). The kiosk terminal CRT overlay in `globals.css` (→ `var(--z-tooltip)`) is a zero-diff rename — its literal was already `60`.
+
+**Not yet migrated** — still carrying the original ad hoc literal, inventoried here for the follow-up pass:
+- `container-tile.tsx:134,174` — `z-10`, a `relative` lift above a sibling within the same card; not a cross-component layering concern, so it may not belong on this scale at all
+- `settings-section-nav.tsx:82` — `z-10`, sticky section nav → candidate `z-sticky`
+- `kiosk-status-strip.tsx:59` — `z-20`, sticky status strip → candidate `z-sticky`
+- `widget-actions.tsx:180` — `z-20`, dropdown menu → candidate `z-dropdown`
+- `side-nav.tsx:126,206,241` — `z-40`, the sidebar and mobile top/bottom bars (persistent chrome) → candidate `z-modal`, sharing modal's tier as designed above
+- `side-nav.tsx:359` — `z-50`, the mobile nav overlay dialog → candidate `z-toast` or a dedicated tier; audit before assigning
+- `create-container.tsx:109`, `kiosk-pin-pad.tsx:126`, `kiosk-timers.tsx:341` — `z-50`, modals → candidate `z-modal`, which would mean moving off `50` down to `40` since `z-modal` shares its tier with the chrome above; check against `side-nav`'s `z-40` chrome before migrating, since a modal that visually sat above chrome at `50` must still sit above it once renamed
+- `(dash)/layout.tsx:14` — `z-50`, the skip-to-content link (must outrank everything when focused) — has no obvious tier in the six above; may need its own
+
+### Named Rules
+
+**The No-Reorder Rule.** This scale documents what already exists; migrating a file onto it must never change which layer sits above which. Where a file's literal doesn't line up with the scale's canonical number for its tier (see the inventory above), that mismatch is closed in the same pass that migrates the file — never reconciled from a distance by a pass that isn't touching that file.
 
 ## Elevation & Depth
 
@@ -424,7 +460,7 @@ The companion rail is the other half of the metaphor: selecting a container does
 - **Do** build surfaces out of `.panel` with hairline `line` dividers, hovering to `panel-2` / `line-bright`.
 - **Do** carry state with a `.dot`, and reserve the pulsing variants for `unhealthy` and `restarting`.
 - **Do** keep teal as the only data hue, add `blue` only as a genuine second series, and let bar length, cell area or ramp position carry magnitude.
-- **Do** reach for the four-step teal ramp (`#134e4a` / `#0f766e` / `#0d9488` / `#14b8a6`, darkest = largest) when one bar or map has to separate composed parts.
+- **Do** reach for the four-step teal ramp — `var(--color-ramp-teal-deep/mid/DEFAULT/bright)` (`#134e4a` / `#0f766e` / `#0d9488` / `#14b8a6`), darkest = largest — when one bar or map has to separate composed parts.
 - **Do** pair touch and pointer heights on every control (`h-11 md:h-8`, `min-h-11 md:min-h-0`) and ship a `md:hidden` card rendering beside every `hidden md:table`.
 - **Do** write empty, idle and unavailable states as real copy that says what is true — "waiting for the first line — quiet is normal here", "no traffic in the window", "unattributed", "only 37 lines exist for this container". On a host this quiet, a healthy-but-idle stream must never render as "no data".
 - **Do** distinguish "measured zero" from "could not measure": dashed baseline for the former, hatched track and named reason for the latter.

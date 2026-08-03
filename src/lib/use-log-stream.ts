@@ -67,6 +67,25 @@ export interface LogStreamResult {
    *    the container whose first live line matters most.
    */
   seedCount: Record<string, number>;
+  /**
+   * Subscribe to lines as they arrive, independent of rendering.
+   *
+   * Everything above is render state, handed over through a notify that is
+   * deliberately deferred while the tab is hidden (see the hook's doc comment).
+   * That is right for anything that draws and wrong for anything that must not
+   * miss content: a consumer reading `lines` alone never sees lines that
+   * arrived in a tab that was hidden and then closed, because the render that
+   * would have delivered them never happened.
+   *
+   * This channel fires from inside the SSE handlers, on every seed and every
+   * live line, hidden or not. `useLogArchive` uses it so persistence doesn't
+   * depend on paint. Returns an unsubscribe; callers must call it on unmount.
+   *
+   * Keep subscribers cheap — they run on the arrival path, ahead of the
+   * coalescing frame. Parsing, formatting and React work belong downstream of
+   * the render state, not here.
+   */
+  subscribe: (fn: (lines: LogLine[]) => void) => () => void;
 }
 
 /** Mutable backing store for the hook. Lives in a ref (not state) because
@@ -94,6 +113,30 @@ function sortedKey(selection: string[]): string {
  * session and buffers for containers that stay selected must survive that
  * change untouched, so switching tabs back and forth doesn't re-fetch or
  * duplicate scrollback that's already in memory.
+ *
+ * Background-tab handling: unlike `useTelemetryStream` (a 1Hz sampled gauge
+ * where only the latest value matters), every log line is content a reader
+ * may need, so nothing about the SSE handling itself changes while hidden —
+ * the connection stays open and every `seed`/`line`/`state` event still
+ * mutates `storeRef` and grows the per-container ring exactly as it would in
+ * the foreground, capped at `LOG_BUFFER_CAP` either way. What's deferred is
+ * only the render notify (`bumpVersion`, gated in `scheduleRender` below):
+ * while `document.visibilityState === "hidden"` it is skipped in favour of a
+ * `dirty` flag, so a backgrounded `/logs` tab stops paying for LogTrack's
+ * per-line React nodes and ANSI re-parsing on every arrival. A single flush
+ * on return to the foreground (see the `visibilitychange` effect below)
+ * hands consumers the fully-accumulated store in one render — every line
+ * that arrived while hidden, not a "N lines while you were away" summary.
+ * `useLogArchive` does NOT read `lines` for ingestion (a downstream-of-render
+ * design was tried and dropped — see `subscribe`'s own doc comment above for
+ * why it can't guarantee a backgrounded tab's lines survive it being closed
+ * without ever returning to the foreground). It reads `subscribe` instead,
+ * which is exactly this file's escape hatch from the paragraph above: a
+ * channel that fires on every `seed`/`line` event regardless of
+ * `document.visibilityState`, so persistence doesn't wait on the deferred
+ * render notify. `bumpVersion`, `dirtyRef`, and the visibility gate in
+ * `scheduleRender` are unchanged by this — `subscribe` is additive, not a
+ * second trigger for them.
  */
 export function useLogStream(selection: string[]): LogStreamResult {
   const storeRef = useRef<LogStore>({
@@ -105,6 +148,27 @@ export function useLogStream(selection: string[]): LogStreamResult {
   });
   const connectionRef = useRef<LogConnection>("idle");
   const frameRef = useRef<number | null>(null);
+  // Render-independent fan-out of newly arrived lines. This exists so a
+  // consumer that must not miss content (the IndexedDB archive) can ingest
+  // every line as it lands, including while the tab is hidden and the render
+  // notify below is deliberately deferred. Subscribers are called from inside
+  // the SSE handlers, before scheduleRender, and must stay cheap — anything
+  // expensive belongs behind the render path, not here.
+  const subscribersRef = useRef<Set<(lines: LogLine[]) => void>>(new Set());
+  const emitLines = useCallback((batch: LogLine[]) => {
+    if (batch.length === 0) return;
+    for (const fn of subscribersRef.current) fn(batch);
+  }, []);
+  const subscribe = useCallback((fn: (lines: LogLine[]) => void) => {
+    const set = subscribersRef.current;
+    set.add(fn);
+    return () => {
+      set.delete(fn);
+    };
+  }, []);
+  // Set whenever the store mutates while hidden — tells the visibilitychange
+  // flush below there's an accumulated render to catch consumers up on.
+  const dirtyRef = useRef(false);
   const [version, bumpVersion] = useReducer((v: number) => v + 1, 0);
 
   const cancelPendingFrame = useCallback(() => {
@@ -116,14 +180,41 @@ export function useLogStream(selection: string[]): LogStreamResult {
 
   // A burst of ~200 lines on a container restart would otherwise cause ~200
   // renders; coalescing every store mutation through one rAF collapses that
-  // to one render per frame, however many events landed in it.
+  // to one render per frame, however many events landed in it. While the tab
+  // is hidden, skip scheduling the frame entirely (rAF is throttled/paused in
+  // background tabs anyway) and just mark dirty — the store itself has
+  // already been mutated by the caller before scheduleRender runs, so no
+  // line, state, or arrival count is lost by deferring the render.
   const scheduleRender = useCallback(() => {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      dirtyRef.current = true;
+      return;
+    }
     if (frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
+      dirtyRef.current = false;
       bumpVersion();
     });
   }, []);
+
+  // The one moment a hidden tab is allowed to render: coming back into view.
+  // Flushes whatever accumulated in storeRef while backgrounded in a single
+  // bumpVersion — one render for the whole hidden stretch, not one per
+  // buffered event. Registered once for the hook's lifetime (not re-created
+  // per selection change) and torn down on unmount, per the rest of this
+  // app's long-session-leak discipline (mirrors useTelemetryStream's
+  // equivalent listener in src/lib/client.ts).
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState !== "visible" || !dirtyRef.current) return;
+      dirtyRef.current = false;
+      cancelPendingFrame();
+      bumpVersion();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [cancelPendingFrame]);
 
   const key = useMemo(() => sortedKey(selection), [selection]);
 
@@ -206,6 +297,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
         // Deliberately NOT touching arrivals here — seeded scrollback is not a
         // live arrival, however recent it looks. See the LogStreamResult doc
         // comment on `arrivals` for why.
+        emitLines(parsed.lines);
         scheduleRender();
       } catch {
         // Malformed event: drop it rather than crash the hook.
@@ -221,6 +313,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
           next.length > LOG_BUFFER_CAP ? next.slice(next.length - LOG_BUFFER_CAP) : next;
         storeRef.current.arrivals[parsed.container] =
           (storeRef.current.arrivals[parsed.container] ?? 0) + 1;
+        emitLines([parsed]);
         scheduleRender();
       } catch {
         // Malformed event: drop it rather than crash the hook.
@@ -273,8 +366,11 @@ export function useLogStream(selection: string[]): LogStreamResult {
       short: { ...storeRef.current.short },
       seedCount: { ...storeRef.current.seedCount },
       connection: connectionRef.current,
+      // Stable across renders (useCallback with no deps), so a consumer can
+      // safely use it as an effect dependency without re-subscribing.
+      subscribe,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the render trigger; store/connection are refs.
-    [version],
+    [version, subscribe],
   );
 }

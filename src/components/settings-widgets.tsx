@@ -12,7 +12,7 @@ import { useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Select } from "@/components/ui/input";
+import { Field, Input, Select } from "@/components/ui/input";
 import type { WidgetInstance } from "@/lib/config";
 
 function WidgetEditor({
@@ -35,50 +35,49 @@ function WidgetEditor({
   return (
     <div className="panel p-4 space-y-3 border-accent/30">
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <Label>Container</Label>
+        <Field label="Container" required>
           <Select value={w.container} onChange={(e) => set({ container: e.target.value })}>
             <option value="">— pick —</option>
             {containers.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
           </Select>
-        </div>
-        <div>
-          <Label>Type</Label>
+        </Field>
+        <Field label="Type">
           <Select value={w.type} onChange={(e) => set({ type: e.target.value })}>
             {types.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </Select>
-        </div>
-        <div className="col-span-2">
-          <Label>Service URL</Label>
+        </Field>
+        <Field label="Service URL" required className="col-span-2">
           <Input placeholder="http://192.168.1.70:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
-        </div>
-        <div>
-          <Label>API key</Label>
+        </Field>
+        <Field label="API key">
           <Input type="password" value={w.key ?? ""} onChange={(e) => set({ key: e.target.value || undefined })} />
-        </div>
+        </Field>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <Label>Username</Label>
+          <Field label="Username">
             <Input value={w.username ?? ""} onChange={(e) => set({ username: e.target.value || undefined })} />
-          </div>
-          <div>
-            <Label>Password</Label>
+          </Field>
+          <Field label="Password">
             <Input type="password" value={w.password ?? ""} onChange={(e) => set({ password: e.target.value || undefined })} />
-          </div>
+          </Field>
         </div>
         {generic && (
           <>
-            <div className="col-span-2">
-              <Label>Endpoint (appended to URL, or absolute)</Label>
+            <Field label="Endpoint (appended to URL, or absolute)" className="col-span-2">
               <Input placeholder="/api/stats" value={w.endpoint ?? ""} onChange={(e) => set({ endpoint: e.target.value || undefined })} />
-            </div>
-            <div className="col-span-2">
+            </Field>
+            {/* A <label> element would be lying here: this captions a repeating
+                group of field rows, not one control, so there is nothing for it
+                to be `for`. It's a group caption wired by aria-labelledby —
+                same treatment settings-hermes.tsx gives its Tier/Model rows. */}
+            <div className="col-span-2" role="group" aria-labelledby="widget-fields-label">
               <div className="flex items-center justify-between mb-1.5">
-                <Label className="!mb-0">Fields (label + JSON dot-path)</Label>
+                <span id="widget-fields-label" className="microlabel">
+                  Fields (label + JSON dot-path)
+                </span>
                 <Button size="sm" variant="ghost"
                   onClick={() => set({ fields: [...(w.fields ?? []), { label: "", path: "", format: "text" }] })}>
                   <Plus size={12} /> field
@@ -173,8 +172,8 @@ export function SettingsWidgets({
         {widgets.map((w) => (
           <div key={w.id} className="flex items-center gap-3 px-4 py-2.5">
             <Badge variant="accent">{w.type}</Badge>
-            <span className="text-sm font-medium">{w.container}</span>
-            <span className="font-mono text-xs text-ink-faint flex-1 truncate">{w.url}</span>
+            <span className="text-sm font-medium min-w-0 truncate">{w.container}</span>
+            <span className="font-mono text-xs text-ink-faint flex-1 min-w-0 truncate">{w.url}</span>
             <Button size="sm" variant="ghost" onClick={() => setEditing(w)}>edit</Button>
             <Button size="icon" variant="ghost" onClick={() => onDelete(w.id)}>
               <Trash2 size={13} />

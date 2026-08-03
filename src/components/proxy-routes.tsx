@@ -164,10 +164,14 @@ export function RouteTable({ routes }: { routes: ProxyRoute[] }) {
       <table className="w-full text-sm hidden md:table">
         <thead>
           <tr className="border-b border-line">
+            {/* Health-dot column has no name to give a screen reader — its
+                state is already read from each row's dot title/aria-hidden
+                pairing, so scope="col" alone would associate cells with an
+                empty header and add noise, not information. */}
             <th className="w-px" />
-            <th className="px-3 py-2 text-left microlabel font-normal">domain</th>
-            <th className="px-3 py-2 text-left microlabel font-normal">forward target</th>
-            <th className="px-3 py-2 text-left microlabel font-normal">ssl</th>
+            <th scope="col" className="px-3 py-2 text-left microlabel font-normal">domain</th>
+            <th scope="col" className="px-3 py-2 text-left microlabel font-normal">forward target</th>
+            <th scope="col" className="px-3 py-2 text-left microlabel font-normal">ssl</th>
           </tr>
         </thead>
         <tbody>

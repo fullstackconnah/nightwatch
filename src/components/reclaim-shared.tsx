@@ -58,7 +58,7 @@ export function PruneAction({
       onPruned(result);
     } catch (e) {
       setStep("idle");
-      setError(e instanceof Error ? e.message : "prune failed");
+      setError(e instanceof Error ? e.message : "Couldn't prune — try again");
     }
   }
 
@@ -66,7 +66,7 @@ export function PruneAction({
     return (
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className="text-xs text-ink-dim">
-          Prune {count} {itemLabel}, reclaim ~<span className="font-mono">{formatBytes(bytes, 1)}</span>?
+          Prune {count} {itemLabel}, reclaim ~<span className="font-mono">{formatBytes(bytes, 1)}</span>? Can&apos;t be undone.
         </span>
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel

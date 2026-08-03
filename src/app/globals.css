@@ -12,17 +12,29 @@
   --color-line-bright: #2a3a50;
   --color-ink: #dbe7f4;
   --color-ink-dim: #8296ad;
-  /* Raised from #4d617a (2.93:1 on panel) to clear WCAG AA 4.5:1 on both
-     panel and bg — see docs/kiosk-analysis/audit-01-a11y.md. Moved along
-     the same blue hue, not flattened to grey; ink > ink-dim > ink-faint
-     contrast order still holds. */
-  --color-ink-faint: #657f9e;
+  /* Raised from #4d617a (2.93:1 on panel) to clear WCAG AA 4.5:1 on bg and
+     panel — see docs/kiosk-analysis/audit-01-a11y.md — then raised again
+     from #657f9e (4.23:1 on panel-2) once a later pass checked panel-2 too;
+     see docs/dash-analysis/00-report.md. Moved along the same blue hue, not
+     flattened to grey; ink > ink-dim > ink-faint contrast order still
+     holds. */
+  --color-ink-faint: #6c85a2;
   --color-accent: #5eead4;
   --color-accent-dim: #2dd4bf;
   --color-blue: #7dd3fc;
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
   --color-bad: #f87171;
+
+  /* Sequential teal ramp: DESIGN.md's documented four-step series colour for
+     composed-part bars (disk segments, treemap quartiles, VRAM attribution).
+     Promoted to real tokens 2026-08-03 (impeccable extract pass) after the
+     audit found the four hex values retyped 29 times across 6 files —
+     darkest carries the largest value, matching the ramp's own doc. */
+  --color-ramp-teal-deep: #134e4a;
+  --color-ramp-teal-mid: #0f766e;
+  --color-ramp-teal: #0d9488;
+  --color-ramp-teal-bright: #14b8a6;
 
   /* Sub-xs micro text: the de facto size the kiosk's mono badges/labels
      converged on across four files (found by the impeccable layout scan);
@@ -42,6 +54,31 @@
      riding Tailwind's rounded-lg by coincidence. */
   --radius-tile: 0.5rem; /* kiosk touch tiles (56px+) */
   --radius-panel: 0.625rem; /* matches .panel's own border-radius below */
+}
+
+/* Layering scale: dropdown → sticky → modal-backdrop → modal → toast → tooltip,
+   documented in DESIGN.md's "Layering" section. Plain custom properties, not
+   inside @theme, because z-index has no @theme namespace in Tailwind v4 (no
+   `--z-` entry, unlike the --radius-, --text- and --color- namespaces that DO
+   exist — note: never write a star-slash pair inside a CSS comment, it closes
+   the comment early and the rest parses as CSS). @theme variables that
+   don't match a recognised namespace still emit a CSS variable but generate no
+   utility, which would be a silent trap. Consumed via Tailwind's
+   `z-(--z-name)` custom-property shorthand (e.g. `z-(--z-sticky)`), or
+   `var(--z-name)` directly in hand-authored CSS like the kiosk rule below.
+   Values match what was already live wherever that cost nothing (tooltip's
+   60 is the kiosk CRT overlay's pre-existing literal, zero-diff); sticky's
+   20 reconciles two different literals (10 and 30) that both meant "pinned
+   within its own scroll container" into one canonical number — see
+   DESIGN.md's Layering section for the full inventory of what has and
+   hasn't migrated yet. */
+:root {
+  --z-dropdown: 10;
+  --z-sticky: 20;
+  --z-modal-backdrop: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --z-tooltip: 60;
 }
 
 html {
@@ -184,26 +221,6 @@ body {
 .panel-hover:active {
   border-color: var(--color-line-bright);
   background: var(--color-panel-2);
-}
-
-/* reveal-on-hover utility: visible by default (touch), hover-gated on pointer devices */
-.hover-reveal {
-  opacity: 1;
-}
-@media (hover: hover) {
-  .hover-reveal {
-    opacity: 0;
-    transition: opacity 120ms ease;
-  }
-  /* focus-within as well as focus-visible: a reveal that wraps more than one
-     control must show all of them when any one is tabbed to, or the keyboard
-     path leads into controls that are still invisible. */
-  .group:hover .hover-reveal,
-  .group:focus-within .hover-reveal,
-  .hover-reveal:focus-visible,
-  .hover-reveal:focus-within {
-    opacity: 1;
-  }
 }
 
 .font-mono {
@@ -389,7 +406,7 @@ body {
   --color-line-bright: #275231;
   --color-ink: #c9f5d1;
   --color-ink-dim: #7fbe8b;
-  --color-ink-faint: #50834e; /* raised from #40693f (3.19:1) for AA 4.5:1 */
+  --color-ink-faint: #538851; /* raised from #40693f (3.19:1), then from #50834e (4.33:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #4ade80;
   --color-accent-dim: #22c55e;
   --color-blue: #67e8f9;
@@ -410,7 +427,10 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  z-index: 60;
+  /* Topmost tier: the scanlines are the screen glass itself and must sit
+     above every other layer this app has, modals included — see the
+     --z-tooltip token above and DESIGN.md's Layering section. */
+  z-index: var(--z-tooltip);
   background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
 }
 
@@ -427,7 +447,7 @@ body {
   --color-line-bright: #1e1d1a;
   --color-ink: #1e1d1a;
   --color-ink-dim: #52504a;
-  --color-ink-faint: #716e66; /* darkened from #8b887f (3.40:1) for AA 4.5:1 */
+  --color-ink-faint: #6a6760; /* darkened from #8b887f (3.40:1), then from #716e66 (4.17:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #9f1239;
   --color-accent-dim: #881337;
   --color-blue: #1e40af;
@@ -459,7 +479,7 @@ body {
   --color-line-bright: #5a4229;
   --color-ink: #f4e9db;
   --color-ink-dim: #bfa88e;
-  --color-ink-faint: #947a5c; /* raised from #77624a (3.16:1) for AA 4.5:1 */
+  --color-ink-faint: #9c8061; /* raised from #77624a (3.16:1), then from #947a5c (4.20:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #fb923c;
   --color-accent-dim: #f97316;
   --color-blue: #93c5fd;
@@ -492,12 +512,12 @@ body {
   --color-line-bright: #101010;
   --color-ink: #101010;
   --color-ink-dim: #3d3d3d;
-  --color-ink-faint: #767676;
+  --color-ink-faint: #6d6d6d; /* darkened from #767676 (4.06:1 on panel-2) for AA 4.5:1 on all 3 surfaces */
   --color-accent: #0033cc;
   --color-accent-dim: #002ba8;
   --color-blue: #0033cc;
   --color-ok: #1a7f37;
-  --color-warn: #b45309;
+  --color-warn: #b15209; /* darkened from #b45309 (4.49:1 on panel-2) for AA 4.5:1 with margin */
   --color-bad: #cc0022;
   --font-sans: var(--font-t-folio-sans), "Helvetica Neue", Arial, sans-serif;
   --font-mono: var(--font-t-folio-mono), ui-monospace, monospace;
@@ -521,12 +541,12 @@ body {
   --color-line-bright: #9d988a;
   --color-ink: #17171a;
   --color-ink-dim: #3f3f3f;
-  --color-ink-faint: #696660;
+  --color-ink-faint: #615e59; /* darkened from #696660 (4.10:1 on panel-2) for AA 4.5:1 on all 3 surfaces */
   --color-accent: #8a3b2f;
   --color-accent-dim: #6f2f26;
   --color-blue: #3f5a6b;
-  --color-ok: #3d6b4f;
-  --color-warn: #7f621d;
+  --color-ok: #3c684d; /* darkened from #3d6b4f (4.41:1 on panel-2) for AA 4.5:1 with margin */
+  --color-warn: #765b1b; /* darkened from #7f621d (4.10:1 on panel-2) for AA 4.5:1 on all 3 surfaces */
   --color-bad: #8a3b2f;
   --font-sans: var(--font-t-slate-serif), Georgia, serif;
   --font-mono: var(--font-t-slate-mono), "Courier New", monospace;
@@ -549,13 +569,13 @@ body {
   --color-line-bright: #b9c2d1;
   --color-ink: #2c3542;
   --color-ink-dim: #55606f;
-  --color-ink-faint: #606872;
-  --color-accent: #3964bf;
+  --color-ink-faint: #5d646e; /* darkened from #606872 (4.34:1 on panel-2) for AA 4.5:1 with margin */
+  --color-accent: #3760b7; /* darkened from #3964bf (4.31:1 on panel-2) for AA 4.5:1 with margin */
   --color-accent-dim: #3560ba;
-  --color-blue: #3964bf;
-  --color-ok: #247648; /* darkened from #2c8f57 (3.45:1) for AA 4.5:1 */
-  --color-warn: #886017;
-  --color-bad: #b53e3e; /* darkened from #c24e4e (3.98:1) for AA 4.5:1 */
+  --color-blue: #3760b7; /* darkened from #3964bf (4.31:1 on panel-2), same value as accent — this theme's blue equals accent */
+  --color-ok: #237145; /* darkened from #2c8f57 (3.45:1), then from #247648 (4.29:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-warn: #835c16; /* darkened from #886017 (4.32:1 on panel-2) for AA 4.5:1 with margin */
+  --color-bad: #ae3c3c; /* darkened from #c24e4e (3.98:1), then from #b53e3e (4.34:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --font-sans: var(--font-t-sunroom-sans), "Segoe UI", sans-serif;
   --font-mono: var(--font-t-sunroom-mono), ui-monospace, monospace;
 }
@@ -624,12 +644,12 @@ body {
   --color-line-bright: #171512;
   --color-ink: #171512;
   --color-ink-dim: #4a453d;
-  --color-ink-faint: #777064; /* darkened from #837c6e (3.84:1) for AA 4.5:1 */
+  --color-ink-faint: #6f685d; /* darkened from #837c6e (3.84:1), then from #777064 (4.09:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #2a52d4;
   --color-accent-dim: #2343ae;
   --color-blue: #2a52d4;
-  --color-ok: #2f7a4a;
-  --color-warn: #9a671a; /* darkened from #a8701c (3.90:1) for AA 4.5:1 */
+  --color-ok: #2e7648; /* darkened from #2f7a4a (4.37:1 on panel-2) for AA 4.5:1 with margin */
+  --color-warn: #8f5f18; /* darkened from #a8701c (3.90:1), then from #9a671a (4.05:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-bad: #c22e40;
   --font-sans: var(--font-t-bulletin-sans), "Segoe UI", sans-serif;
   --font-mono: var(--font-t-bulletin-serif), Georgia, serif;
@@ -654,12 +674,12 @@ body {
   --color-ink: #24301f;
   --color-ink-dim: #4b5a3f;
   --color-ink-faint: #5c6850;
-  --color-accent: #a95630; /* darkened from #b05a32 (4.45:1) for AA 4.5:1 */
+  --color-accent: #9d502d; /* darkened from #b05a32 (4.45:1), then from #a95630 (4.09:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent-dim: #96491f;
-  --color-blue: #487383; /* darkened from #4c7a8a (4.35:1) for AA 4.5:1 */
-  --color-ok: #4b783c; /* darkened from #4c7a3d (4.41:1 vs bg) for AA 4.5:1 */
-  --color-warn: #8c671b; /* darkened from #a1761f (3.78:1) for AA 4.5:1 */
-  --color-bad: #b34a3a;
+  --color-blue: #436b7a; /* darkened from #4c7a8a (4.35:1), then from #487383 (4.09:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-ok: #456f38; /* darkened from #4c7a3d (4.41:1 vs bg), then from #4b783c (4.10:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-warn: #825f19; /* darkened from #a1761f (3.78:1), then from #8c671b (4.08:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-bad: #a94637; /* darkened from #b34a3a (4.20:1 on panel-2) for AA 4.5:1 on all 3 surfaces */
   --font-sans: var(--font-t-understory-sans), "Segoe UI", sans-serif;
   --font-mono: var(--font-t-understory-serif), Georgia, serif;
 }
@@ -681,12 +701,12 @@ body {
   --color-line-bright: #1c1f3d;
   --color-ink: #1c1f3d;
   --color-ink-dim: #454875;
-  --color-ink-faint: #62648a;
-  --color-accent: #c0400c; /* darkened from #c2410c (4.46:1 vs bg) for AA 4.5:1 */
+  --color-ink-faint: #616288; /* darkened from #62648a (4.49:1 on panel-2) for AA 4.5:1 with margin */
+  --color-accent: #b53c0b; /* darkened from #c2410c (4.46:1 vs bg), then from #c0400c (4.19:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent-dim: #9a3412;
   --color-blue: #2a52d4;
-  --color-ok: #1f7967; /* darkened from #1f7a68 (4.47:1 vs bg) for AA 4.5:1 */
-  --color-warn: #af5109; /* darkened from #b45309 (4.32:1 vs bg) for AA 4.5:1 */
+  --color-ok: #1d7261; /* darkened from #1f7a68 (4.47:1 vs bg), then from #1f7967 (4.18:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-warn: #a54c08; /* darkened from #b45309 (4.32:1 vs bg), then from #af5109 (4.16:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-bad: #be123c;
   /* --font-sans intentionally left unset (stays Inter): Bodoni is the
      second offset-print ink, reserved for numerals — body prose stays the
@@ -711,12 +731,12 @@ body {
   --color-ink: #14110d;
   --color-ink-dim: #3a352c;
   --color-ink-faint: #6b6455;
-  --color-accent: #c63910; /* darkened from #c93a10 (4.39:1 vs bg) for AA 4.5:1 */
+  --color-accent: #b7350f; /* darkened from #c93a10 (4.39:1 vs bg), then from #c63910 (4.07:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent-dim: #a52e0b;
   --color-blue: #1d4ed8;
-  --color-ok: #2f7a38;
-  --color-warn: #9a5e07; /* darkened from #a16207 (4.44:1) for AA 4.5:1 */
-  --color-bad: #c92c2c;
+  --color-ok: #2c7134; /* darkened from #2f7a38 (4.10:1 on panel-2) for AA 4.5:1 on all 3 surfaces */
+  --color-warn: #8f5707; /* darkened from #a16207 (4.44:1), then from #9a5e07 (4.09:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
+  --color-bad: #bd2929; /* darkened from #c92c2c (4.19:1 on panel-2) for AA 4.5:1 with margin */
   --font-sans: var(--font-t-cinder-sans), Arial, sans-serif;
   --font-mono: var(--font-t-cinder-mono), ui-monospace, monospace;
 }
@@ -744,13 +764,15 @@ body {
   --color-line-bright: #453f78;
   --color-ink: #f2f0ff;
   --color-ink-dim: #b9b6d6;
-  /* Raised from #7c7896 (4.36:1 vs panel) for AA 4.5:1. .panel here carries
-     backdrop-filter: blur, so "vs panel" has two legitimate readings —
-     alpha-composited onto bg (what it looks like where little sits behind
-     it: 4.82:1) and the flat declared #151329 read as opaque (what it
-     looks like at the panel's own core hue, wherever more sits behind the
-     blur: 4.50:1). Tuned to clear 4.5:1 against both. */
-  --color-ink-faint: #807c99;
+  /* Raised from #7c7896 (4.36:1 vs panel) for AA 4.5:1. .panel/.panel-2
+     here carry backdrop-filter: blur, so "vs surface" has two legitimate
+     readings — alpha-composited onto bg (what it looks like where little
+     sits behind it) and the flat declared hue read as opaque (what it
+     looks like at the surface's own core hue, wherever more sits behind
+     the blur). Raised again from #807c99 once a later pass checked
+     panel-2: flat #1c1936 read 4.24:1, composited-onto-bg read 4.37:1.
+     Tuned to clear 4.5:1 against every reading of all 3 surfaces. */
+  --color-ink-faint: #86829d;
   --color-accent: #9d7bff;
   --color-accent-dim: #7c57e6;
   --color-blue: #4fd8c4;
@@ -780,13 +802,13 @@ body {
   --color-line-bright: #565d66;
   --color-ink: #f1f2f0;
   --color-ink-dim: #b7bcc2;
-  --color-ink-faint: #969ba1; /* raised from #7d838a (3.32:1) for AA 4.5:1 */
+  --color-ink-faint: #a4a8ae; /* raised from #7d838a (3.32:1), then from #969ba1 (3.91:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #ff9f1c;
   --color-accent-dim: #e08a0f;
   --color-blue: #6fb7ff;
   --color-ok: #34d17c;
   --color-warn: #ffd45e;
-  --color-bad: #ff6969; /* raised from #ff4d4d (3.88:1 vs panel) for AA 4.5:1 */
+  --color-bad: #ff8383; /* raised from #ff4d4d (3.88:1 vs panel), then from #ff6969 (3.90:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --font-sans: var(--font-t-chrome-sans), "Segoe UI", sans-serif;
   /* Intentional share, not a hole: no dedicated Chrome mono face exists, and
      Aerogel's Fragment Mono reads as plain enough hardware-console
@@ -813,7 +835,7 @@ body {
   --color-line-bright: #7a5ad6;
   --color-ink: #fdf4ff;
   --color-ink-dim: #d9b8f0;
-  --color-ink-faint: #9a7bc4;
+  --color-ink-faint: #9f82c7; /* raised from #9a7bc4 (4.24:1 on panel-2) for AA 4.5:1 with margin */
   --color-accent: #ff5ec4;
   --color-accent-dim: #e63fa8;
   --color-blue: #4dfff0;
@@ -843,7 +865,7 @@ body {
   --color-line-bright: #454f8f;
   --color-ink: #eef1ff;
   --color-ink-dim: #9aa3d6;
-  --color-ink-faint: #7c82b2; /* raised from #5a6199 (2.86:1) for AA 4.5:1 */
+  --color-ink-faint: #878db9; /* raised from #5a6199 (2.86:1), then from #7c82b2 (4.03:1 on panel-2) — AA 4.5:1 on all 3 surfaces */
   --color-accent: #ffd23f;
   --color-accent-dim: #eab308;
   --color-blue: #38e1ff;
@@ -865,4 +887,34 @@ body {
 [data-kiosk-theme="pixel"] .panel {
   border: 2px solid var(--color-line-bright);
   box-shadow: 4px 4px 0 0 #000000;
+}
+
+/* ── kiosk density pass (redesign-06 §E — density + chrome reduction) ────
+   Kiosk-only type/spacing overrides, scoped under `.kiosk-dense` so nothing
+   here reaches the logged-in dashboard — which keeps the un-scoped
+   `.microlabel` above completely untouched by this block. The kiosk is a
+   wall tablet read from 2-3m; every rule below RAISES a size, never
+   shrinks one. Appended rather than edited in place: a concurrent session
+   already has this file open elsewhere in the working tree.
+
+   Wiring: `.kiosk-dense` must be applied on the kiosk root — the
+   `KioskThemeScope` div in src/components/kiosk-theme.tsx (the same
+   element that already carries `[data-kiosk-theme]` and the safe-area
+   padding) — so it wraps every /kiosk render, including the night overlay
+   and the PIN pad. That file is outside this pass's edit scope, so the
+   class isn't wired in here; reported back to the merge agent instead. */
+
+.kiosk-dense .microlabel {
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+}
+
+/* Floor for any text node that doesn't carry its own Tailwind text-size
+   utility. Inheritance only — an element with its own text-* class (which
+   sets font-size explicitly) always wins over this regardless of layers,
+   so this can't fight the deliberately-smaller `.microlabel`/`text-2xs`
+   captions above; it only raises what would otherwise fall back to the
+   browser default. */
+.kiosk-dense {
+  font-size: 0.875rem;
 }

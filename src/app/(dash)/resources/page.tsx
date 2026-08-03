@@ -6,7 +6,7 @@
    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md */
 "use client";
 
-import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
@@ -104,7 +104,7 @@ function isMountPrefixOf(mount: string, path: string): boolean {
 
 function otherDiskSegments(d: HostDisk): DiskSegment[] {
   const segs: DiskSegment[] = [];
-  if (d.used > 0) segs.push({ key: "used", label: "used", value: d.used, fill: "#0f766e" });
+  if (d.used > 0) segs.push({ key: "used", label: "used", value: d.used, fill: "var(--color-ramp-teal-mid)" });
   const free = Math.max(0, d.total - d.used);
   segs.push({ key: "free", label: "free", value: free, fill: "var(--color-panel-2)" });
   return segs;
@@ -113,12 +113,12 @@ function otherDiskSegments(d: HostDisk): DiskSegment[] {
 const isDockerSegKey = (k: string) => k === "images" || k === "writable" || k === "volumes" || k === "buildcache";
 
 const SEGMENT_LEGEND: DiskSegment[] = [
-  { key: "images", label: "images", value: 0, fill: "#134e4a" },
-  { key: "writable", label: "writable layers", value: 0, fill: "#0f766e" },
-  { key: "volumes", label: "volumes", value: 0, fill: "#0d9488" },
-  { key: "buildcache", label: "build cache", value: 0, fill: "#14b8a6" },
+  { key: "images", label: "images", value: 0, fill: "var(--color-ramp-teal-deep)" },
+  { key: "writable", label: "writable layers", value: 0, fill: "var(--color-ramp-teal-mid)" },
+  { key: "volumes", label: "volumes", value: 0, fill: "var(--color-ramp-teal)" },
+  { key: "buildcache", label: "build cache", value: 0, fill: "var(--color-ramp-teal-bright)" },
   { key: "other", label: "other used", value: 0, fill: "var(--color-line-bright)" },
-  { key: "used", label: "used", value: 0, fill: "#0f766e" },
+  { key: "used", label: "used", value: 0, fill: "var(--color-ramp-teal-mid)" },
   { key: "free", label: "free", value: 0, fill: "var(--color-panel-2)" },
 ];
 
@@ -144,8 +144,8 @@ type OverviewHost = NonNullable<TelemetrySample["host"]>;
 // Reused from the existing HOST DISK segment palette (dockerSegments / otherDiskSegments)
 // rather than inventing new hues — these are the fills already proven legible at
 // text-[0.625rem] inline segment-label size.
-const OVERVIEW_FILL_PRIMARY = "#0f766e"; // "writable"/"used" teal
-const OVERVIEW_FILL_SECONDARY = "#0d9488"; // "volumes" teal
+const OVERVIEW_FILL_PRIMARY = "var(--color-ramp-teal-mid)"; // "writable"/"used" teal
+const OVERVIEW_FILL_SECONDARY = "var(--color-ramp-teal)"; // "volumes" teal
 const OVERVIEW_FILL_OTHER = "var(--color-line-bright)"; // "other used" slate
 const OVERVIEW_FILL_TRACK = "var(--color-panel-2)"; // "free" track treatment
 
@@ -393,18 +393,7 @@ function ContainerActions({
   );
 }
 
-function ContainerRow({
-  c,
-  metric,
-  max,
-  row,
-  samples,
-  expanded,
-  onToggle,
-  widgetFields,
-  onActionDone,
-  rowRef,
-}: {
+interface ContainerRowProps {
   c: ResourceContainer;
   metric: Metric;
   max: number;
@@ -415,7 +404,57 @@ function ContainerRow({
   widgetFields: { label: string; value: string; intent?: "ok" | "warn" | "bad" }[] | undefined;
   onActionDone: () => void;
   rowRef: (el: HTMLDivElement | null) => void;
-}) {
+}
+
+/** Field-by-field, not `===`: `row` is a fresh object out of every 1Hz telemetry
+ * sample even when a container is genuinely idle, so comparing by reference would
+ * never let a quiet row skip a render. */
+function telemetryRowEqual(a: TelemetryRow | undefined, b: TelemetryRow | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.cpuPct === b.cpuPct &&
+    a.memBytes === b.memBytes &&
+    a.memLimit === b.memLimit &&
+    a.rxRate === b.rxRate &&
+    a.txRate === b.txRate &&
+    a.blkReadRate === b.blkReadRate &&
+    a.blkWriteRate === b.blkWriteRate &&
+    a.pids === b.pids
+  );
+}
+
+/** `onToggle`/`onActionDone`/`rowRef` are deliberately excluded: the parent
+ * recreates them every render (inline closures over `c.id`/`mutate`), but each
+ * one is behaviorally identical to its predecessor for a given row — comparing
+ * them by identity would defeat memoization for no correctness benefit.
+ * `samples` (the 60s ring, also a fresh reference every tick) only feeds the
+ * expanded panel's sparkline, so it's compared only when `expanded` is true —
+ * a collapsed row has no use for it and must not re-render over it. */
+function containerRowPropsEqual(prev: ContainerRowProps, next: ContainerRowProps): boolean {
+  return (
+    prev.c === next.c &&
+    prev.metric === next.metric &&
+    prev.max === next.max &&
+    prev.expanded === next.expanded &&
+    prev.widgetFields === next.widgetFields &&
+    telemetryRowEqual(prev.row, next.row) &&
+    (!next.expanded || prev.samples === next.samples)
+  );
+}
+
+const ContainerRow = memo(function ContainerRow({
+  c,
+  metric,
+  max,
+  row,
+  samples,
+  expanded,
+  onToggle,
+  widgetFields,
+  onActionDone,
+  rowRef,
+}: ContainerRowProps) {
   const v = valueOf(c, metric, row);
   const hasValue = v != null && v > 0;
   const pct = hasValue ? Math.min(100, ((v as number) / max) * 100) : 0;
@@ -537,7 +576,8 @@ function ContainerRow({
       )}
     </div>
   );
-}
+},
+containerRowPropsEqual);
 
 export default function ResourcesPage() {
   // useSearchParams in the inner component needs a Suspense boundary for the
@@ -602,6 +642,18 @@ function ResourcesPageInner() {
   const containers = data?.containers ?? [];
   const latest = samples[samples.length - 1];
 
+  // latest is a new object reference every 1Hz tick (client.ts appends a fresh
+  // sample), so using it directly as a useMemo dep below would re-sort and
+  // rebuild the whole active/idle split every second even when every
+  // container's value is unchanged (e.g. an idle box). valueSignature reduces
+  // "did anything that affects sort order actually change" to a primitive
+  // string, which useMemo can compare by value instead of by reference — this
+  // is cheap (one pass building a string) versus the O(n log n) sort +
+  // fresh-array-of-every-row cost it guards.
+  const valueSignature = containers
+    .map((c) => `${c.id}:${valueOf(c, metric, latest?.containers[c.id]) ?? ""}`)
+    .join("|");
+
   const { active, idle } = useMemo(() => {
     const a: ResourceContainer[] = [];
     const i: ResourceContainer[] = [];
@@ -616,7 +668,8 @@ function ResourcesPageInner() {
     );
     i.sort((x, y) => x.name.localeCompare(y.name));
     return { active: a, idle: i };
-  }, [containers, metric, latest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- valueSignature stands in for `latest`: the factory still reads the current tick's `latest` via closure, it just only re-runs when the signature actually changed.
+  }, [containers, metric, valueSignature]);
 
   const max = Math.max(1, ...active.map((c) => valueOf(c, metric, latest?.containers[c.id]) ?? 0));
 
@@ -664,9 +717,13 @@ function ResourcesPageInner() {
   // comparing are usually the ones already leading the current metric.
   const historyContainerOptions = useMemo(() => [...active, ...idle].map((c) => c.name), [active, idle]);
 
+  // `active` above is now only a fresh reference when valueSignature actually
+  // changed, so keying off `active` here (instead of `latest` directly) gets
+  // treemapItems the same stability for free — no separate signature needed.
   const treemapItems: TreemapItem[] = useMemo(
     () => active.map((c) => ({ id: c.id, label: c.name, value: valueOf(c, metric, latest?.containers[c.id]) ?? 0 })),
-    [active, metric, latest],
+    [active, metric],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `latest` intentionally omitted: it changes every tick, but `active`'s identity already tracks every value change latest could contribute (see valueSignature above).
   );
   // The d3-hierarchy squarify layout re-runs on every 1Hz sample; deferring it keeps
   // hover/click/resize interactions from queuing behind that work.
@@ -730,10 +787,10 @@ function ResourcesPageInner() {
     const segs: DiskSegment[] = [];
     if (!dfFailed) {
       const { totals } = data;
-      if (totals.layersSize > 0) segs.push({ key: "images", label: "images", value: totals.layersSize, fill: "#134e4a" });
-      if (writableLayers > 0) segs.push({ key: "writable", label: "writable layers", value: writableLayers, fill: "#0f766e" });
-      if (totals.volumeDisk > 0) segs.push({ key: "volumes", label: "volumes", value: totals.volumeDisk, fill: "#0d9488" });
-      if (totals.buildCacheBytes > 0) segs.push({ key: "buildcache", label: "build cache", value: totals.buildCacheBytes, fill: "#14b8a6" });
+      if (totals.layersSize > 0) segs.push({ key: "images", label: "images", value: totals.layersSize, fill: "var(--color-ramp-teal-deep)" });
+      if (writableLayers > 0) segs.push({ key: "writable", label: "writable layers", value: writableLayers, fill: "var(--color-ramp-teal-mid)" });
+      if (totals.volumeDisk > 0) segs.push({ key: "volumes", label: "volumes", value: totals.volumeDisk, fill: "var(--color-ramp-teal)" });
+      if (totals.buildCacheBytes > 0) segs.push({ key: "buildcache", label: "build cache", value: totals.buildCacheBytes, fill: "var(--color-ramp-teal-bright)" });
     }
     const dockerTotal = segs.reduce((a, s) => a + s.value, 0);
     const otherUsed = Math.max(0, dockerDisk.used - dockerTotal);

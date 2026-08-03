@@ -174,8 +174,8 @@ export function ContainerTile({
         <div className="mt-2.5 pt-1.5 border-t border-line/60 flex items-center justify-between gap-2 relative z-10">
           <PortChips ports={c.ports} className="text-[0.68rem] min-w-0" />
           <div className="flex items-center gap-0.5 ml-auto">
-            <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} dense />
-            {c.tile.url && <OpenAppLink url={c.tile.url} name={c.name} dense />}
+            <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
+            {c.tile.url && <OpenAppLink url={c.tile.url} name={c.name} />}
             {showWidgetActions && widget && <WidgetActionsMenu container={c.name} widgetType={widget.type} />}
           </div>
         </div>

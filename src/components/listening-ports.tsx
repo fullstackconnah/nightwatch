@@ -109,6 +109,19 @@ function ScopeGroup({ scope, sockets }: { scope: SocketScope; sockets: Listening
       </div>
 
       <table className="w-full text-sm hidden md:table">
+        {/* sr-only header row: real <th scope="col"> semantics for a screen
+            reader without a visible header, since these four columns are
+            identified visually by position/width alone (DESIGN.md gives this
+            table no header band) and adding a visible one would be a layout
+            change outside this pass's scope. */}
+        <thead>
+          <tr>
+            <th scope="col" className="sr-only">Port</th>
+            <th scope="col" className="sr-only">Protocol</th>
+            <th scope="col" className="sr-only">Addresses</th>
+            <th scope="col" className="sr-only">Owner</th>
+          </tr>
+        </thead>
         <tbody>
           {sockets.map((s) => (
             <PortRow key={`${s.protocol}-${s.port}`} s={s} />

@@ -84,7 +84,17 @@ export function Meter({
       <span className="sr-only">{Math.round(p)}%</span>
       <div
         className="h-full rounded-full transition-[width] duration-500"
-        style={{ width: `${p}%`, background: color, boxShadow: `0 0 6px ${color}55` }}
+        style={{
+          width: `${p}%`,
+          background: color,
+          // color-mix, not a hex-alpha suffix: `color` is a var() reference,
+          // so `${color}55` used to concatenate into the literal string
+          // "var(--color-bad)55" — invalid CSS, silently dropped, meaning
+          // this glow has never once rendered. 33% matches the "same trick"
+          // DESIGN.md documents for meter fills (color-mix is the same
+          // mechanism .dot-live and .voice-mic-recording already use here).
+          boxShadow: `0 0 6px color-mix(in srgb, ${color} 33%, transparent)`,
+        }}
       />
     </div>
   );

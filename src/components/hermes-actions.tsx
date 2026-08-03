@@ -91,11 +91,11 @@ export function HermesActionsRow() {
       )}
 
       {run.startError && (
-        <div className="microlabel !text-warn/80">{run.startError}</div>
+        <div role="alert" className="microlabel !text-warn/80">{run.startError}</div>
       )}
 
       {job?.ok && job.job.state === "error" && (
-        <div className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
+        <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">run failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
             {job.job.error ?? "Hermes reported an error with no further detail."}
@@ -103,14 +103,19 @@ export function HermesActionsRow() {
         </div>
       )}
 
+      {/* role="status" directly on the result panel, not a separate sr-only
+          mirror: unlike log-track's scrollback this content renders once per
+          run and then sits static (polling stops once the job settles), so
+          there is no risk of re-announcing on every tick — the panel's own
+          appearance IS the one meaningful event. */}
       {job?.ok && job.job.state === "done" && job.job.result && (
-        <div className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5 space-y-1">
+        <div role="status" aria-live="polite" className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5 space-y-1">
           <div className="text-xs font-medium text-ink">{job.job.result.title || "(no title)"}</div>
           <div className="text-ink-dim whitespace-pre-wrap break-words">{job.job.result.body || "(empty)"}</div>
         </div>
       )}
 
-      {job && !job.ok && <div className="microlabel !text-bad">{job.detail}</div>}
+      {job && !job.ok && <div role="alert" className="microlabel !text-bad">{job.detail}</div>}
     </div>
   );
 }

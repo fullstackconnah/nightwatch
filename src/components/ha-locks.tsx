@@ -130,6 +130,16 @@ function HaLockRow({ lock, ha, entities }: { lock: HaLock; ha: UseHaResult; enti
         </div>
       </div>
 
+      {/* The self-arm window is otherwise silent — nothing on screen explains why
+          the button reverted if the second tap never comes. This is the one line
+          that makes the timeout visible instead of mysterious; role="status" also
+          gets it announced to a screen reader, which the label swap alone doesn't. */}
+      {armed && (
+        <p role="status" className="mt-1.5 text-[0.7rem] text-ink-faint">
+          Tap again to confirm — cancels itself in {CONFIRM_WINDOW_MS / 1000}s.
+        </p>
+      )}
+
       {error && (
         <div role="alert" className="mt-1.5 flex items-start gap-2 text-[0.7rem] text-bad">
           <span className="min-w-0 flex-1 break-words">{error}</span>
@@ -137,7 +147,12 @@ function HaLockRow({ lock, ha, entities }: { lock: HaLock; ha: UseHaResult; enti
             type="button"
             onClick={() => ha.dismissActionError(lock.entityId)}
             aria-label="Dismiss error"
-            className="shrink-0 rounded px-1 text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+            // DESIGN.md's 44px Rule: this control had no size class at all, so
+            // it rendered at content size (~18px). min-h-11 md:min-h-0 is the
+            // idiom this app already uses for inline text dismiss buttons
+            // (reclaim-shared.tsx, log-console.tsx) — height only, since the
+            // control sits beside wrapping error text rather than in its own row.
+            className="inline-flex items-center shrink-0 rounded px-1 min-h-11 md:min-h-0 text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
           >
             ×
           </button>

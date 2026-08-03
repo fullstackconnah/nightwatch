@@ -73,15 +73,15 @@ export function ImageDeleteAction({
       onDeleted({ imageId, label, freedBytes: size, deleted: (body.deleted as string[] | undefined) ?? [] });
     } catch (e) {
       setStep("idle");
-      setError(e instanceof Error ? e.message : "delete failed");
+      setError(e instanceof Error ? e.message : "Couldn't delete — try again");
     }
   }
 
   if (step === "confirm") {
     return (
       <div className="flex items-center gap-2 justify-end flex-wrap">
-        <span className="text-[0.7rem] text-ink-dim whitespace-nowrap">
-          Delete, free ~<span className="font-mono">{formatBytes(size, 1)}</span>?
+        <span className="text-[0.7rem] text-ink-dim">
+          Delete {label}, free ~<span className="font-mono">{formatBytes(size, 1)}</span>? Can&apos;t be undone.
         </span>
         <Button size="sm" variant="ghost" className="h-11 md:h-7" onClick={() => setStep("idle")}>
           Cancel

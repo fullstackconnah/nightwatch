@@ -107,7 +107,7 @@ export function useLifecycle(id: string, onDone?: () => void): Lifecycle {
         doneRef.current?.();
       } catch (e) {
         if (mounted.current) {
-          setError(e instanceof Error ? e.message : `${LIFECYCLE_META[action].label} failed`);
+          setError(e instanceof Error ? e.message : `${LIFECYCLE_META[action].label} failed — try again`);
         }
       } finally {
         if (mounted.current) setPending(null);
@@ -123,21 +123,16 @@ export function LifecycleActions({
   state,
   name,
   lifecycle,
-  dense,
   touch,
   className,
 }: {
   state: string;
   name: string;
   lifecycle: Lifecycle;
-  /** Tighter targets on pointer devices only — touch keeps the full 40px. */
-  dense?: boolean;
   /**
    * Kiosk wall surfaces opt into the 56px `touch` button size explicitly
    * (see ui/button.tsx) instead of the shared `icon` variant's desktop `md:`
-   * density. `dense` and `touch` pull in opposite directions and are never
-   * passed together — `dense` tightens for a mouse, `touch` guarantees the
-   * kiosk's wall-tap floor regardless of viewport width.
+   * density.
    */
   touch?: boolean;
   className?: string;
@@ -154,7 +149,7 @@ export function LifecycleActions({
             key={action}
             size={touch ? "touch" : "icon"}
             variant="ghost"
-            className={cn(ACTION_TONE[action], dense && "md:h-7 md:w-7")}
+            className={ACTION_TONE[action]}
             // Every button in the group locks while one is in flight: the
             // daemon rejects concurrent lifecycle calls on one container, and a
             // 409 the operator caused by double-clicking is not worth showing.
@@ -180,12 +175,10 @@ export function LifecycleActions({
 export function OpenAppLink({
   url,
   name,
-  dense,
   className,
 }: {
   url: string;
   name: string;
-  dense?: boolean;
   className?: string;
 }) {
   return (
@@ -198,7 +191,11 @@ export function OpenAppLink({
       className={cn(
         "inline-flex items-center justify-center rounded-md text-ink-dim transition",
         "hover:text-accent focus-visible:text-accent outline-none focus-visible:ring-1 focus-visible:ring-accent",
-        dense ? "h-10 w-10 md:h-7 md:w-7" : "h-10 w-10 md:h-8 md:w-8",
+        // Matches the `icon` Button variant's own scale (h-11 md:h-8) — this
+        // is a raw <a>, not a <Button>, so it has to restate the scale rather
+        // than inherit it. Restating means it can drift: if the Button scale
+        // moves, this line has to move with it.
+        "h-11 w-11 md:h-8 md:w-8",
         className,
       )}
     >
@@ -380,7 +377,10 @@ export function LifecycleError({ lifecycle, className }: { lifecycle: Lifecycle;
         type="button"
         onClick={lifecycle.dismissError}
         aria-label="Dismiss error"
-        className="shrink-0 text-ink-dim hover:text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent rounded px-1"
+        // DESIGN.md's 44px Rule: had no size class at all (~18px). Same
+        // min-h-11 md:min-h-0 idiom as the other inline dismiss buttons —
+        // height only, the control sits beside wrapping error text.
+        className="inline-flex items-center shrink-0 text-ink-dim hover:text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent rounded px-1 min-h-11 md:min-h-0"
       >
         ×
       </button>

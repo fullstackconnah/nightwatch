@@ -41,7 +41,11 @@ function useWidgetActionRunner(container: string) {
       })) as { ok: boolean; message: string };
       setResult({ id: action.id, ok: res.ok, message: res.message });
     } catch (e) {
-      setResult({ id: action.id, ok: false, message: e instanceof Error ? e.message : "action failed" });
+      setResult({
+        id: action.id,
+        ok: false,
+        message: e instanceof Error ? e.message : "Couldn't send the action — try again",
+      });
     } finally {
       setPendingId(null);
     }
@@ -158,7 +162,11 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
       <Button
         size="icon"
         variant="ghost"
-        className="h-10 w-10 md:h-7 md:w-7"
+        // No className size override any more — it used to restate a
+        // pre-fix h-10 and shrink the pointer size to 28px, making this the
+        // smallest control in the overview tile's action cluster (same root
+        // cause as container-controls.tsx's now-removed `dense` shrink).
+        // The `icon` variant's own scale (h-11 md:h-8) is enough.
         aria-label={`${container} app actions`}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -199,7 +207,9 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
                 type="button"
                 role="menuitem"
                 disabled={pendingId !== null}
-                className="w-full text-left h-10 md:h-7 px-2 rounded-md text-xs text-ink-dim hover:text-ink hover:bg-panel-2 disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                // DESIGN.md's 44px Rule — a raw <button>, so it restates the
+                // scale rather than inheriting it; used to restate h-10.
+                className="w-full text-left h-11 md:h-7 px-2 rounded-md text-xs text-ink-dim hover:text-ink hover:bg-panel-2 disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
                 onClick={() => setConfirmId(action.id)}
               >
                 {busy && <RotateCw size={11} className="animate-spin motion-reduce:animate-none" />}

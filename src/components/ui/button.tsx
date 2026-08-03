@@ -14,10 +14,17 @@ const buttonVariants = cva(
         warn: "bg-warn/10 text-warn border border-warn/30 hover:bg-warn/20",
       },
       size: {
-        default: "h-10 px-4 text-sm md:h-8 md:px-3 md:text-xs",
-        sm: "h-9 px-3 text-xs md:h-7 md:px-2",
+        // DESIGN.md's 44px Rule: every touch-width value across the scale is
+        // h-11 (44px), the idiom the rest of the app already pairs with a
+        // `md:` pointer step (`h-11 md:h-8`, `h-11 md:h-7`, …). `default` and
+        // `icon` used to ship 40px on touch, `sm` shipped 36px — a sub-44px
+        // touch target was expressible for three of the four sizes. Only the
+        // pointer-width (`md:`) values are density decisions and none of
+        // those change here.
+        default: "h-11 px-4 text-sm md:h-8 md:px-3 md:text-xs",
+        sm: "h-11 px-3 text-xs md:h-7 md:px-2",
         lg: "h-11 px-5 text-sm md:h-9 md:px-4 md:text-sm",
-        icon: "h-10 w-10 md:h-8 md:w-8",
+        icon: "h-11 w-11 md:h-8 md:w-8",
         /**
          * Touch-first square target — always 56px, no `md:` shrink.
          *

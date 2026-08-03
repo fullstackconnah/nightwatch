@@ -137,12 +137,17 @@ export function LogConsole({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const { lines, tracks, connection, arrivals, short, seedCount } = useLogStream(selected);
+  const { lines, tracks, connection, arrivals, short, seedCount, subscribe } =
+    useLogStream(selected);
 
   // Everything that arrives is written through to IndexedDB. The console never
   // waits on it: if the archive cannot open, this surface is exactly the live
-  // console it was before persistence existed.
-  const archive = useLogArchive(lines);
+  // console it was before persistence existed. `subscribe`, not `lines`: the
+  // archive ingests off useLogStream's render-independent arrival channel, so
+  // persistence doesn't depend on paint — see useLogArchive's doc comment for
+  // why that's required for a backgrounded tab's lines to survive it being
+  // closed without ever being refocused.
+  const archive = useLogArchive(subscribe);
   const [confirmPurge, setConfirmPurge] = useState(false);
 
   useEffect(() => {
@@ -317,7 +322,7 @@ export function LogConsole({
       {/* Toolbar. Sticks on desktop only: with six tracks the page scrolls past
           it, and a filter you have to scroll back up to reach stops being a live
           filter. On mobile the app already owns the top edge with its own bar. */}
-      <div className="md:sticky md:top-0 md:z-30 md:-mx-4 md:px-4 md:py-2 md:bg-bg/90 md:backdrop-blur">
+      <div className="md:sticky md:top-0 md:z-(--z-sticky) md:-mx-4 md:px-4 md:py-2 md:bg-bg/90 md:backdrop-blur">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 min-w-[12rem]">
             <Search
@@ -347,7 +352,11 @@ export function LogConsole({
                   type="button"
                   onClick={() => setQuery("")}
                   aria-label="Clear filter"
-                  className="inline-flex items-center justify-center h-11 w-11 md:h-6 md:w-6 text-ink-faint hover:text-ink cursor-pointer"
+                  // md:h-6/w-6 (24px) was the smallest control in the app —
+                  // bumped to md:h-7/w-7, the smallest pointer size already
+                  // established elsewhere (image-delete-action.tsx's
+                  // ICON_BUTTON), rather than inventing a new value.
+                  className="inline-flex items-center justify-center h-11 w-11 md:h-7 md:w-7 text-ink-faint hover:text-ink cursor-pointer"
                 >
                   <X size={13} />
                 </button>

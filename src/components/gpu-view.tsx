@@ -318,7 +318,7 @@ export function GpuView({ samples, status }: { samples: TelemetrySample[]; statu
                   <thead>
                     <tr className="border-b border-line">
                       {["Process", "PID", "VRAM"].map((h) => (
-                        <th key={h} className="microlabel text-left px-3 py-1.5 font-medium">
+                        <th key={h} scope="col" className="microlabel text-left px-3 py-1.5 font-medium">
                           {h}
                         </th>
                       ))}
@@ -423,7 +423,7 @@ export function GpuView({ samples, status }: { samples: TelemetrySample[]; statu
                 <thead>
                   <tr className="border-b border-line">
                     {["Title", "User · Client", "Codec", "Resolution", "Bitrate", "Accel"].map((h) => (
-                      <th key={h} className="microlabel text-left px-3 py-2 font-semibold">
+                      <th key={h} scope="col" className="microlabel text-left px-3 py-2 font-semibold">
                         {h}
                       </th>
                     ))}
