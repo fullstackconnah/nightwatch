@@ -54,6 +54,32 @@ const RAIN_FLOOR_MM_HR = 0.05;
  *  putting a permanent grey smudge on a blue-sky afternoon. */
 const CLOUD_FLOOR = 0.15;
 
+/** Above this much cover there are no stars to see, so none are drawn. The
+ *  field also fades continuously below it rather than switching off at the
+ *  line — a sky that goes from clear to broken should lose stars gradually,
+ *  the way it actually does. */
+const STAR_CLOUD_CEILING = 0.55;
+
+/* A fixed, hand-placed field rather than a random one. Randomness would give
+   a different sky on every render and, worse, a different sky on every 60s
+   tick — stars that wander are the one thing a real night sky never does.
+   Percentages, so the field scales with the viewport instead of clustering
+   in a corner on the larger tablet. Kept to the upper two-thirds: the lower
+   third of this screen is where the hub's own content sits, and stars behind
+   a control panel read as dust on the glass.
+   `s` is a size multiplier — a few brighter ones give the field depth; a
+   uniform grid of identical dots reads as a texture, not a sky. */
+const STARS: Array<{ x: number; y: number; s: number }> = [
+  { x: 6, y: 12, s: 1 }, { x: 13, y: 31, s: 0.7 }, { x: 19, y: 8, s: 1.4 },
+  { x: 24, y: 22, s: 0.8 }, { x: 31, y: 41, s: 1 }, { x: 37, y: 15, s: 0.7 },
+  { x: 42, y: 33, s: 1.2 }, { x: 48, y: 6, s: 0.9 }, { x: 54, y: 26, s: 0.7 },
+  { x: 59, y: 44, s: 1.1 }, { x: 63, y: 17, s: 0.8 }, { x: 68, y: 36, s: 1.5 },
+  { x: 73, y: 10, s: 0.7 }, { x: 78, y: 29, s: 1 }, { x: 83, y: 47, s: 0.8 },
+  { x: 87, y: 20, s: 1.2 }, { x: 91, y: 38, s: 0.7 }, { x: 95, y: 13, s: 0.9 },
+  { x: 9, y: 49, s: 0.8 }, { x: 27, y: 55, s: 0.7 }, { x: 45, y: 52, s: 0.9 },
+  { x: 71, y: 57, s: 0.7 }, { x: 88, y: 60, s: 0.8 }, { x: 16, y: 63, s: 0.7 },
+];
+
 interface WeatherOk {
   status: "ok";
   current?: { cloudCoverPct?: number; precipMm?: number; windKmh?: number };
@@ -118,12 +144,56 @@ export function KioskSunroomWeather() {
      is what keeps it below the threshold of "something is animating at me". */
   const driftSeconds = Math.max(28, 70 - windKmh * 1.05);
 
+  /* Stars are night-only and clear-sky-only, and they fade out as cover comes
+     in rather than vanishing at a threshold. Rain suppresses them too: it is
+     not raining out of a starry sky. Peak alpha is deliberately below the
+     rain streaks' — on a near-black ground a 0.5-alpha dot is a headlight. */
+  const starFade = clamp01((STAR_CLOUD_CEILING - cloud01) / STAR_CLOUD_CEILING);
+  const starA = isDark ? 0.42 * starFade * (1 - rain01) : 0;
+  const showStars = starA > 0.02;
+
   const showRain = rain01 > 0 && !reduced;
   const showCloud = cloudA > 0;
-  if (!showRain && !showCloud) return null;
+  if (!showRain && !showCloud && !showStars) return null;
 
   return (
     <div aria-hidden className="kiosk-sr-weather pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: -1 }}>
+      {showStars && (
+        /* One absolutely-positioned dot each rather than a canvas or an SVG:
+           24 tiny composited divs cost nothing next to the two full-viewport
+           gradient layers already here, and it keeps the twinkle to a plain
+           CSS `opacity` animation per element with no script running at all.
+           Under reduced motion the animation is dropped in CSS and the field
+           simply sits still — a static star field is still a star field. */
+        /* The field's overall strength lives HERE, on the wrapper, not on each
+           star. The twinkle is a CSS `opacity` animation, and an animation
+           beats an inline style in the cascade — putting starA inline on the
+           dots would have been silently overridden the moment the keyframes
+           ran, leaving every star at full brightness on a near-black ground.
+           Wrapper opacity multiplies with the animated one instead, so the
+           two compose the way they read. */
+        <div className="absolute inset-0" style={{ opacity: starA }}>
+          {STARS.map((s, i) => (
+            <span
+              key={i}
+              className="kiosk-sr-star"
+              style={{
+                left: `${s.x}%`,
+                top: `${s.y}%`,
+                width: `${s.s * 2}px`,
+                height: `${s.s * 2}px`,
+                // Per-star brightness rides the FILL, for the same reason.
+                background: `rgba(255, 255, 255, ${(0.55 + s.s * 0.3).toFixed(2)})`,
+                // Prime-ish spread so no two neighbours pulse together and the
+                // field never falls into a visible collective rhythm.
+                animationDuration: `${5 + ((i * 7) % 11)}s`,
+                animationDelay: `${-((i * 13) % 17)}s`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {showCloud && (
         <>
           {/* Three blobs at different sizes, speeds and heights so the pattern

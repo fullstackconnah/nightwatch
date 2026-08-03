@@ -447,7 +447,7 @@ export function KioskSurface({
         data-mode={mode}
         className={cn(
           full
-            ? "panel sticky top-0 z-(--z-sticky) flex flex-row flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 md:py-3"
+            ? "panel kiosk-hdr-grid sticky top-0 z-(--z-sticky) px-4 py-2.5 md:py-3"
             : "flex flex-col items-center gap-5",
         )}
       >
@@ -485,21 +485,19 @@ export function KioskSurface({
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
         {contentFull && (
-          <div className="order-2 ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
-            {/* INLINE, to the left of the timer and Admin — not stacked above
-                them, which is where this started.
-
-                Stacking it there was tried and measured, and at 1024x768 the
-                top-right band simply has no room: the forecast rail runs to
-                roughly x930 and KioskAlertButton is `fixed` over x923-1004,
-                so the only way to clear the badge was ~96px of reserved lane,
-                which pushed this column past the header's width and made the
-                whole thing wrap to a THIRD row aligned left under the clock.
-                Sitting in the same row costs no width, stays in the top-right
-                corner, and keeps clear of the badge because this row is the
-                one the timer and Admin already occupy safely.
-
-                Hidden while pinned — an elevated session is held in full mode
+          /* `basis-full` gives the controls their own line under the clock
+             rather than competing for the end of the clock row. That row was
+             the constraint the whole time: at 1024x768 it already carries the
+             clock, the conditions, the running count and a five-day rail, and
+             anything else added to it wrapped the column awkwardly (measured:
+             a 142px header against 90px without). On its own line the group is
+             left-aligned under the time, sits clear of the fixed alert badge
+             in the opposite corner by construction, and the bar is the same
+             height at both tablet sizes instead of 52px taller on the smaller
+             one. `order-3` keeps it last visually without moving it in the
+             DOM — the same rule the shared FLIP nodes above rely on. */
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-2">
+            {/* Hidden while pinned — an elevated session is held in full mode
                 on purpose, so the control would be inert. */}
             {!pinned && (
               <button
@@ -524,12 +522,7 @@ export function KioskSurface({
                 className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <Minimize2 size={14} aria-hidden />
-                {/* Label drops below 1100px. At 1024 the header row is already
-                    carrying the clock, the conditions and a five-day rail; the
-                    extra ~42px of the word was enough to wrap the whole right
-                    column onto its own line. The icon plus the aria-label
-                    still name the control for anyone who needs it. */}
-                <span className="hidden min-[1100px]:inline">Glance</span>
+                <span>Glance</span>
               </button>
             )}
             <KioskStatusStripExtras

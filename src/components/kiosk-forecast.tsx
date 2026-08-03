@@ -6,8 +6,11 @@
    all the separating work and a hairline is not enough separation for a wall.
    Each day is now a small stack (identifier / condition+high / low+rain), and
    the stack itself is the boundary — whitespace and a shared column rhythm,
-   never a box or a tint, because on this surface a border is reserved for a
-   touch target or an alert.
+   never a BORDER, because on this surface a border is reserved for a touch
+   target or an alert. Each cell does now carry a few-percent wash of its own
+   weather (DAY_TINT below), added later: that gives the week a readable shape
+   at 3m before any number is parsed, and a wash is not a box — it has no edge
+   to mistake for a control.
 
    ONLY WHAT'S REQUIRED: high, low and the icon always earn their place. Rain
    probability does not — a row of `87% 100% 86% 38% 7%` makes five numbers
@@ -37,6 +40,38 @@ const DAY_FMT = new Intl.DateTimeFormat("en-AU", { weekday: "short" });
  *  flag a genuinely uncertain day, high enough that a settled week shows no
  *  percentages at all. */
 const RAIN_THRESHOLD_PCT = 30;
+
+/* DAY TINTS: each cell carries a wash of its own weather, so the week reads
+   as a gradient of sky before any number is read — a run of grey with one
+   blue Friday is a shape you take in at 3m, which five identical cells are
+   not.
+
+   These are token references, never literals, for the reason DESIGN.md gives:
+   a hex that matches today desyncs the moment the token moves, and this rail
+   renders under all 16 themes plus sunroom's live solar palette, where the
+   ground beneath it is a different colour every hour. `color-mix` toward
+   `transparent` means each tint is a fraction of a colour the active theme
+   already chose, so it can never fight its own background.
+
+   Kept at a few percent on purpose. This is a backdrop for the temperature
+   sitting on top of it: the moment a tint is strong enough to notice as a
+   colour, it is too strong to read a number through. */
+/* Typed against WeatherDay["code"] rather than `string`: the first draft of
+   this table keyed a storm as `thunder` when the real code is
+   `thunderstorm`, which a string-keyed record accepts silently and renders as
+   an untinted cell. With the union as the key, a wrong or missing code is a
+   compile error. */
+const DAY_TINT: Record<WeatherDay["code"], string> = {
+  clear: "color-mix(in srgb, var(--color-blue) 10%, transparent)",
+  cloudy: "color-mix(in srgb, var(--color-ink-faint) 9%, transparent)",
+  "partly-cloudy": "color-mix(in srgb, var(--color-ink-faint) 5%, transparent)",
+  fog: "color-mix(in srgb, var(--color-ink-faint) 11%, transparent)",
+  drizzle: "color-mix(in srgb, var(--color-blue) 13%, transparent)",
+  rain: "color-mix(in srgb, var(--color-blue) 17%, transparent)",
+  showers: "color-mix(in srgb, var(--color-blue) 15%, transparent)",
+  snow: "color-mix(in srgb, var(--color-ink) 8%, transparent)",
+  thunderstorm: "color-mix(in srgb, var(--color-warn) 12%, transparent)",
+};
 
 function dayLabel(dateStr: string, index: number): string {
   if (index === 0) return "Today";
@@ -100,7 +135,17 @@ export function KioskForecastRail({
         // fit alongside what's already on screen.
         const visibility = i === 3 ? s.revealFourth : i === 4 ? s.revealFifth : "flex";
         return (
-          <div key={day.date} className={cn(visibility, "shrink-0 flex-col items-center")}>
+          <div
+            key={day.date}
+            /* The tint needs a box to sit in, and the cells had none — they
+               were bare flex columns separated by gap alone, which was the
+               right call when there was nothing to paint. `-mx-1 px-1` widens
+               the painted area back over half the gap so the wash reads as a
+               column of sky rather than a label with a highlight behind it,
+               without changing where anything actually sits. */
+            className={cn(visibility, "shrink-0 flex-col items-center rounded-md -mx-1 px-1 py-0.5")}
+            style={{ backgroundColor: DAY_TINT[day.code] }}
+          >
             <span
               className={cn(
                 s.day,

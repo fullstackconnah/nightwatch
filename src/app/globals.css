@@ -794,12 +794,94 @@ body {
   -webkit-mask-repeat: repeat;
   mask-repeat: repeat;
 }
+/* ── Kiosk full-mode header grid ──────────────────────────────────────────
+   Two columns: the clock band and its controls stack on the left, the
+   forecast rail spans both rows on the right. Flex could not express this.
+   Its only tool for putting the controls on a second line is `basis-full`,
+   which forces a full-width row BELOW the rail — measured at 146px tall at
+   both tablet sizes, against 90px when the controls sat inline. Letting the
+   rail span two rows instead puts the controls in space the rail was already
+   occupying, so they cost nothing.
+
+   PLACEMENT IS BY nth-child ON PURPOSE. The four shared FLIP nodes are
+   identified by their position in the React tree, and kiosk-surface.tsx's own
+   comment spells out why moving them in JSX to get a visual arrangement can
+   remount them and kill the animation. Wrapping the left-hand group in a div
+   would do exactly that. Positional selectors reach them without the DOM
+   changing at all — the same trick the `order` rules there already rely on,
+   one step further. The cost is that this block and that child list must stay
+   in sync; both carry the warning.
+
+   Child order in the DOM: 1 clock, 2 temp, 3 forecast, 4 server-line,
+   5 controls. Column 4 is an empty 1fr that pushes the rail to the edge. */
+.kiosk-hdr-grid {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr auto;
+  align-items: center;
+  column-gap: 1rem;
+  row-gap: 0.5rem;
+}
+.kiosk-hdr-grid > *:nth-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+.kiosk-hdr-grid > *:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+.kiosk-hdr-grid > *:nth-child(3) {
+  grid-column: 5;
+  grid-row: 1 / span 2;
+}
+.kiosk-hdr-grid > *:nth-child(4) {
+  grid-column: 3;
+  grid-row: 1;
+}
+.kiosk-hdr-grid > *:nth-child(5) {
+  grid-column: 1 / span 3;
+  grid-row: 2;
+}
+/* Below this the five-day rail and the clock band can't share a row at all,
+   so the grid collapses to a plain stack and everything gets its own line —
+   the phone/regression width, not a tablet one. */
+@media (max-width: 640px) {
+  .kiosk-hdr-grid {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+}
+
+/* Star twinkle. Never fully out — a star that blinks off is a dead pixel, not
+   a star; this only breathes between most and slightly-less-than-most of the
+   opacity the component already set inline. */
+@keyframes sr-star-twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+.kiosk-sr-star {
+  position: absolute;
+  border-radius: 9999px;
+  /* Fill colour comes from the inline per-star rgba; this is only a
+     fallback for a star rendered before that lands. */
+  background: rgba(255, 255, 255, 0.8);
+  animation-name: sr-star-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
 @media (prefers-reduced-motion: reduce) {
   /* The rain layer isn't rendered at all under reduced motion (a frozen
      streak field reads as scratches on the glass, not as rain) — this only
-     has to stop the cloud drift, which stays as a static soft variation
-     because an overcast sky is still true when nothing is moving. */
-  .kiosk-sr-cloud {
+     has to stop the cloud drift and the twinkle, both of which stay as
+     static soft variation: an overcast sky and a starry one are still true
+     when nothing is moving. */
+  .kiosk-sr-cloud,
+  .kiosk-sr-star {
     animation: none !important;
   }
 }
