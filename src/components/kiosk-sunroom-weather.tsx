@@ -182,8 +182,10 @@ export function KioskSunroomWeather() {
                 top: `${s.y}%`,
                 width: `${s.s * 2}px`,
                 height: `${s.s * 2}px`,
-                // Per-star brightness rides the FILL, for the same reason.
-                background: `rgba(255, 255, 255, ${(0.55 + s.s * 0.3).toFixed(2)})`,
+                // Per-star brightness rides the FILL, for the same reason —
+                // and off --color-ink, not white, so the field is lit by the
+                // same colour the theme is using for everything else at night.
+                background: `color-mix(in srgb, var(--color-ink) ${Math.round((0.55 + s.s * 0.3) * 100)}%, transparent)`,
                 // Prime-ish spread so no two neighbours pulse together and the
                 // field never falls into a visible collective rhythm.
                 animationDuration: `${5 + ((i * 7) % 11)}s`,

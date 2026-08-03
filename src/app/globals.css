@@ -867,9 +867,12 @@ body {
 .kiosk-sr-star {
   position: absolute;
   border-radius: 9999px;
-  /* Fill colour comes from the inline per-star rgba; this is only a
-     fallback for a star rendered before that lands. */
-  background: rgba(255, 255, 255, 0.8);
+  /* Derived from the theme's own ink rather than absolute white. This layer
+     only ever renders on sunroom at night, where ink is a near-white blue —
+     tying starlight to it means the field belongs to the same night the rest
+     of the palette is describing, and it can't desync the way a literal
+     would. Overridden per-star inline for brightness variation. */
+  background: color-mix(in srgb, var(--color-ink) 80%, transparent);
   animation-name: sr-star-twinkle;
   animation-timing-function: ease-in-out;
   animation-iteration-count: infinite;
