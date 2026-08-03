@@ -17,8 +17,6 @@ import { useHermesStatus } from "@/lib/use-hermes";
 import { useVoiceConfigured, useVoicePipeline, useVoiceSupport, type VoiceExchange } from "@/lib/use-voice";
 import { cn } from "@/lib/utils";
 
-const LEVEL_BAR_COUNT = 5;
-
 /* Bars are drawn at full fixed height and scaled with a compositor-only
    `transform: scaleY()` from each bar's own vertical centre, rather than
    animating the SVG height/y geometry — same "transform/opacity, not
@@ -197,7 +195,11 @@ export function KioskVoicePanel() {
         <button
           type="button"
           onClick={pipeline.dismissError}
-          className="microlabel !text-bad max-w-xs text-center"
+          // min-h-14, not a fixed h-*: the error text can wrap past one line,
+          // and a fixed height would clip it. No border/background — the
+          // touch floor is a hit-area, not a visual weight, on a surface
+          // that's meant to disappear once dismissed.
+          className="microlabel !text-bad max-w-xs min-h-14 flex items-center justify-center px-3 text-center"
         >
           {pipeline.error}
         </button>

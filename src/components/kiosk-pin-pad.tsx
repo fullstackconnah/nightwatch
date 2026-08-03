@@ -23,6 +23,21 @@ export function KioskPinPad({
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const submittingRef = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const firstKeyRef = useRef<HTMLButtonElement>(null);
+
+  // Initial focus lands on the first digit key, not the Cancel button — a
+  // keyboard user opening this modal is here to type a PIN, not to leave.
+  // Restoring focus to whatever triggered the modal on unmount (Cancel, a
+  // correct PIN, or Escape all unmount this component the same way) keeps a
+  // keyboard user anchored where they were instead of dumped at document top.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    firstKeyRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, []);
 
   // Only ticks while actually locked out — the countdown reads off the
   // server's own lockedUntil timestamp, not a client-started timer, so it
@@ -66,13 +81,78 @@ export function KioskPinPad({
     if (next.length === PIN_LENGTH) void submit(next);
   }
 
+  // Escape rides the same path as the Cancel button; Tab/Shift+Tab cycle
+  // within the dialog's own focusable elements so a keyboard user can't tab
+  // out into the page behind it. Handled as a React onKeyDown (bubbles up
+  // from whichever key/button is focused) rather than a document listener,
+  // so there's no manual addEventListener to leak on this long-lived kiosk.
+  function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const container = dialogRef.current;
+    if (!container) return;
+    const focusable = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) {
+      // Nothing tabbable inside (shouldn't happen with real content, but the
+      // container is tabIndex={-1} precisely so it has somewhere safe to land).
+      e.preventDefault();
+      container.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !container.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !container.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4">
-      <div className={cn("panel w-full max-w-xs p-6", shake && "kiosk-pin-shake")}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4"
+      // The trap above only ever runs from a keydown that bubbles through a
+      // focused descendant — it can't fire once focus has been knocked out
+      // to document.body. A tap on this backdrop (not itself focusable, no
+      // click handler) is exactly that: the default pointerdown behavior
+      // would blur whatever was focused with nothing to receive it. Blocking
+      // that default keeps focus exactly where it was — this does NOT close
+      // the pin pad; that stays Cancel/Escape/a resolved PIN only, unchanged.
+      // target===currentTarget guards against pointerdown bubbling up from a
+      // real control inside the dialog — this pad has no input today, but
+      // suppressing a descendant's default would silently steal its focus.
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kiosk-pin-pad-title"
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+        className={cn("panel w-full max-w-xs p-6", shake && "kiosk-pin-shake")}
+      >
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <Lock size={15} className="text-accent" />
-            <span className="text-sm font-semibold tracking-tight">Admin PIN</span>
+            <span id="kiosk-pin-pad-title" className="text-sm font-semibold tracking-tight">
+              Admin PIN
+            </span>
           </div>
           <button
             type="button"
@@ -117,6 +197,7 @@ export function KioskPinPad({
             ) : (
               <button
                 key={i}
+                ref={key === "1" ? firstKeyRef : undefined}
                 type="button"
                 disabled={busy || lockedUntil !== null}
                 onClick={() => press(key)}

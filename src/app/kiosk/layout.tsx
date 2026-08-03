@@ -35,10 +35,12 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   width: "device-width",
   initialScale: 1,
-  // A wall/tablet control surface, not a document — pinch-zoom off keeps
-  // accidental zooms from stranding the kiosk in a scrolled-in state.
-  maximumScale: 1,
-  userScalable: false,
+  // Pinch-zoom is intentionally left enabled (WCAG 1.4.4, AA — user-scalable=no
+  // is a listed failure technique). A wall panel does gain some accidental-pinch
+  // risk from this, but someone who needs to magnify text must be able to; the
+  // kiosk's own Glance layout switch is the built-in answer to "text is too
+  // small," not suppressing zoom. `maximumScale`/`userScalable` used to be set
+  // here for the former — removed, not merely unset.
 };
 
 /**

@@ -126,14 +126,19 @@ function GlanceTiles({ period }: { period: KioskPeriod }) {
               }
             }}
             className={cn(
-              "min-h-16 min-w-32 rounded-lg border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.97]",
+              "min-h-16 min-w-32 max-w-48 rounded-tile border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
               p.on
                 ? "border-accent/40 bg-accent/10 text-ink"
                 : "border-line bg-transparent text-ink-dim hover:border-line-bright hover:text-ink",
               pending && "opacity-60",
             )}
           >
-            {p.name}
+            {/* An auto-picked HA entity name has no length contract, same
+                risk as the hub's tiles (kiosk-hub.tsx ToggleTile/SceneTile).
+                This button isn't a flex/grid cell with a track width to lean
+                on, so `truncate` needs its own bound — max-w-48 above plays
+                the role min-w-0 plays there. */}
+            <span className="block truncate">{p.name}</span>
           </button>
         );
       })}
@@ -165,11 +170,28 @@ export function KioskGlance({
         <KioskClock />
 
         {current && (
-          <div className="flex items-center gap-3 text-ink">
-            {Icon && <Icon size={26} className="text-ink-dim" aria-hidden />}
-            <span className="font-mono tabular-nums text-3xl">{Math.round(current.tempC)}°</span>
-            <span className="text-xl text-ink-dim">{current.label.toLowerCase()}</span>
-            {weather.status === "ready-stale" && <span className="microlabel !text-warn">stale</span>}
+          // A genuine second tier, not a caption beside the clock — this
+          // file's own thesis names the temperature (with the clock) as one
+          // of the two things that must read from across a room, but it was
+          // shipping at 30px. Scaled at the same three breakpoints as
+          // KioskClock so the ratio to the clock stays constant (~50-54%)
+          // at every width rather than the gap closing or widening as the
+          // viewport grows. Overflow is structural, not estimated: the row
+          // wraps (flex-wrap, bounded to the page's own width via
+          // max-w-full) so icon+temp can drop to their own line, and the
+          // condition label is capped with truncate — so no string this app
+          // can render, however long, can push the row past the viewport.
+          // The temperature itself keeps shrink-0: it's the one element
+          // this must never compress.
+          <div className="flex flex-wrap items-center justify-center gap-3 max-w-full text-ink">
+            {Icon && <Icon size={28} className="shrink-0 text-ink-dim" aria-hidden />}
+            <span className="shrink-0 font-mono tabular-nums text-4xl min-[420px]:text-5xl md:text-6xl">
+              {Math.round(current.tempC)}°
+            </span>
+            <span className="max-w-full truncate text-xl min-[420px]:text-2xl md:text-3xl text-ink-dim">
+              {current.label.toLowerCase()}
+            </span>
+            {weather.status === "ready-stale" && <span className="shrink-0 microlabel !text-warn">stale</span>}
           </div>
         )}
       </div>
@@ -189,13 +211,34 @@ export function KioskGlance({
 
       <GlanceTiles period={period} />
 
-      <div className="fixed bottom-4 left-5">
-        <KioskTimersButton />
+      {/* `fixed` escapes KioskThemeScope's safe-area padding (kiosk-theme.tsx
+          applies env(safe-area-inset-*) as padding on an ancestor div, which
+          only affects in-flow descendants) — bake the inset into each
+          button's own offset instead, or an iPad's home indicator can sit
+          on top of them. */}
+      <div
+        className="fixed"
+        style={{
+          bottom: "calc(1rem + env(safe-area-inset-bottom))",
+          left: "calc(1.25rem + env(safe-area-inset-left))",
+        }}
+      >
+        <KioskTimersButton className="h-14" />
       </div>
       <button
         type="button"
         onClick={onAdminClick}
-        className="fixed bottom-4 right-5 h-11 px-4 rounded-md text-xs text-ink-faint outline-none transition hover:text-ink hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
+        style={{
+          bottom: "calc(1rem + env(safe-area-inset-bottom))",
+          right: "calc(1.25rem + env(safe-area-inset-right))",
+        }}
+        // h-14 to match the wall-layout's 56px convention (Glance is the
+        // default surface on a fresh device now, so its own chrome should
+        // hold the same touch floor as everything else). ink-faint measures
+        // below the 4.5:1 AA floor on Glance's panel-less ground in 7/16
+        // themes — this is an interactive control, not a caption, so it
+        // gets ink-dim regardless of where ink-faint itself ends up landing.
+        className="fixed h-14 px-4 rounded-md text-xs text-ink-dim outline-none transition hover:text-ink hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
       >
         Admin
       </button>

@@ -42,9 +42,15 @@ import {
 import { fetcher } from "@/lib/client";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
+import { StaleTag } from "@/components/kiosk-stale-tag";
 
+// color-mix against the live --color-ink-faint token, not a literal rgb: the
+// old rgba(77,97,122,…) was exactly the *default* theme's ink-faint baked
+// in, so every kiosk theme's unconfigured/empty texture rendered in that
+// one dark-blue tint regardless of which theme was active. This resolves
+// against whichever [data-kiosk-theme] scope the element renders inside.
 const HATCH_PATTERN =
-  "repeating-linear-gradient(135deg, transparent 0 8px, rgba(77,97,122,0.14) 8px 10px)";
+  "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in srgb, var(--color-ink-faint) 14%, transparent) 8px 10px)";
 
 /* ── period ──────────────────────────────────────────────────────────────── */
 
@@ -252,21 +258,14 @@ function SectionLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }
   return (
     <div className="flex items-center gap-2">
       <Icon size={13} className="text-ink-faint" aria-hidden />
-      <span className="microlabel">{label}</span>
+      {/* Real heading, not a styled span — same promotion kiosk-hub.tsx's
+          SectionHeader made for Lights/Switches/Scenes/Climate/Sensors, so a
+          screen-reader user navigating by heading also lands on the weather
+          band and the briefing card. `.microlabel` carries the visuals
+          unchanged; Tailwind's preflight zeroes the browser's own h2
+          margin/size. */}
+      <h2 className="microlabel">{label}</h2>
     </div>
-  );
-}
-
-/** Not a `.dot-*` variant on purpose — those states (running/unhealthy/dead…)
- *  describe container health, and a fifth "stale" meaning would have to be
- *  invented and taught. This is plain warn-tinted text, earned by a real
- *  threshold (the fetch is confirmed unreachable), not decoration. */
-function StaleTag() {
-  return (
-    <span className="flex items-center gap-1.5 font-mono text-[0.65rem] text-warn">
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warn" />
-      stale
-    </span>
   );
 }
 
@@ -286,7 +285,7 @@ function MicroDatum({ icon: Icon, label, value }: { icon?: LucideIcon; label: st
 
 function WeatherUnconfigured() {
   return (
-    <div className="panel relative flex items-center gap-3 overflow-hidden px-4 py-3">
+    <div role="status" className="panel relative flex items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <Cloud size={18} className="relative text-ink-faint" aria-hidden />
       <div className="relative">
@@ -298,7 +297,7 @@ function WeatherUnconfigured() {
 
 function WeatherUnreachable({ detail }: { detail?: string }) {
   return (
-    <div className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+    <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
       <span className="dot dot-dead" aria-hidden />
       <span className="microlabel !text-bad">Weather unreachable</span>
       {detail && <span className="text-xs text-ink-dim">{detail}</span>}

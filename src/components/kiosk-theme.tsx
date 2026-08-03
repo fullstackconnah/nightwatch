@@ -139,10 +139,37 @@ export const KIOSK_THEME_GROUPS: readonly { label: string; themes: readonly Kios
   { label: "dark & expressive", themes: ["aurora", "chrome", "neon", "pixel"] },
 ];
 
+/** The single source of truth for "which themes have a light (pale) ground" —
+ *  must stay in sync with each theme's `color-scheme: light` declaration in
+ *  globals.css (9 of 16 themes). Any consumer that needs to branch on ground
+ *  lightness (e.g. KioskSky's ambient-opacity cap) should import this set
+ *  rather than keep its own copy — a second independent restatement is how
+ *  a newly added light theme silently gets treated as dark. */
+export const KIOSK_LIGHT_THEMES: ReadonlySet<KioskTheme> = new Set([
+  "journal",
+  "folio",
+  "slate",
+  "sunroom",
+  "aerogel",
+  "bulletin",
+  "understory",
+  "duotone",
+  "cinderblock",
+]);
+
 /** Ground + accent per theme, MIRRORING the [data-kiosk-theme] blocks in
  *  globals.css — the one place theme colors are legitimately duplicated,
  *  so the picker chips can preview an identity before it's applied (CSS
- *  vars can't cross scopes to do this). Update alongside the CSS. */
+ *  vars can't cross scopes to do this). Update alongside the CSS.
+ *
+ *  This mirror WILL silently desync if you don't: a contrast or palette
+ *  edit to a theme's --color-bg/--color-accent in globals.css has nothing
+ *  else checking it against this table, and the live kiosk itself resolves
+ *  the CSS vars correctly either way — only the picker's preview chips lie,
+ *  so a drift here is invisible unless someone opens the appearance picker
+ *  and compares it against the theme actually applying. Re-run the 16-theme
+ *  comparison (diff this table's bg/accent against each
+ *  [data-kiosk-theme="…"] block) after any globals.css palette change. */
 export const KIOSK_THEME_SWATCHES: Record<KioskTheme, { bg: string; accent: string }> = {
   default: { bg: "#070b11", accent: "#5eead4" },
   terminal: { bg: "#000000", accent: "#4ade80" },
@@ -153,9 +180,9 @@ export const KIOSK_THEME_SWATCHES: Record<KioskTheme, { bg: string; accent: stri
   sunroom: { bg: "#e3e7ee", accent: "#3964bf" },
   aerogel: { bg: "#eef1f6", accent: "#4f5fd8" },
   bulletin: { bg: "#faf6ee", accent: "#2a52d4" },
-  understory: { bg: "#eef1e4", accent: "#b05a32" },
-  duotone: { bg: "#f5ede0", accent: "#c2410c" },
-  cinderblock: { bg: "#f2ede1", accent: "#c93a10" },
+  understory: { bg: "#eef1e4", accent: "#a95630" },
+  duotone: { bg: "#f5ede0", accent: "#c0400c" },
+  cinderblock: { bg: "#f2ede1", accent: "#c63910" },
   aurora: { bg: "#0b0c14", accent: "#9d7bff" },
   chrome: { bg: "#26292e", accent: "#ff9f1c" },
   neon: { bg: "#16102e", accent: "#ff5ec4" },

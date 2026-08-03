@@ -18,7 +18,7 @@
    restoring from localStorage on mount naturally shows a timer that
    expired while away as already finished, no special-case needed. */
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Pause, Play, Timer as TimerIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
@@ -281,20 +281,95 @@ function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
   const list = useTimers();
   const live = list.some((t) => t.pausedRemainingMs === null);
   const now = useNow(live);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const firstFocusRef = useRef<HTMLButtonElement>(null);
+
+  // Same contract as kiosk-pin-pad.tsx: focus the overlay's primary control
+  // on open (the first preset — always rendered, never destructive, unlike
+  // a timer card's Cancel button which may or may not exist), restore focus
+  // to the trigger on unmount.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    firstFocusRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, []);
+
+  // Escape maps to the same onClose the backdrop-click and X button already
+  // use — closing this overlay only hides it, running timers are untouched
+  // either way, so there's no separate "what does closing mean" question
+  // here to preserve. Tab/Shift+Tab cycle within the dialog, same shape as
+  // the pin pad's trap.
+  function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const container = dialogRef.current;
+    if (!container) return;
+    const focusable = Array.from(
+      container.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    );
+    if (focusable.length === 0) {
+      // Nothing tabbable inside (shouldn't happen with real content, but the
+      // container is tabIndex={-1} precisely so it has somewhere safe to land).
+      e.preventDefault();
+      container.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !container.contains(active)) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else if (active === last || !container.contains(active)) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 px-4 py-6 backdrop-blur-sm"
       onClick={onClose}
+      // Same gap as kiosk-pin-pad.tsx's backdrop, plus one: this backdrop
+      // DOES close on click (unchanged — see onClick above), but a
+      // mousedown/touchdown that doesn't resolve into a click on this same
+      // element (e.g. a drag that ends elsewhere) still blurs focus to
+      // document.body without closing anything, breaking the trap for the
+      // rest of the session. Blocking the default pointerdown behavior
+      // covers that non-closing case without touching the click-to-close path.
+      // target===currentTarget scopes this to the scrim itself — pointerdown
+      // bubbles, and without the guard a tap on the custom-timer name input
+      // (:538) would have its own default focus suppressed by this handler.
+      onPointerDown={(e) => {
+        if (e.target === e.currentTarget) e.preventDefault();
+      }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="kiosk-timers-title"
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
         className="panel flex max-h-full w-full max-w-2xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
             <TimerIcon size={15} className="text-accent" aria-hidden />
-            <span className="text-sm font-semibold tracking-tight">Timers</span>
+            <h2 id="kiosk-timers-title" className="text-sm font-semibold tracking-tight">
+              Timers
+            </h2>
           </div>
           <button
             type="button"
@@ -315,7 +390,7 @@ function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
             </div>
           )}
 
-          <PresetRow />
+          <PresetRow firstFocusRef={firstFocusRef} />
           <CustomRow />
         </div>
       </div>
@@ -345,7 +420,14 @@ function TimerRing({ progress, warn }: { progress: number; warn: boolean }) {
         strokeDasharray={circumference}
         strokeDashoffset={offset}
         vectorEffect="non-scaling-stroke"
-        style={{ transition: "stroke-dashoffset 900ms linear" }}
+        // Transition as Tailwind utilities, not inline style: an inline
+        // `style.transition` sits at higher specificity than any class and
+        // would silently defeat a `motion-reduce:` class-based override, so
+        // the sweep has to be class-driven for the gate below to work at
+        // all. Under reduced motion this collapses to no transition — the
+        // stroke still jumps straight to the new progress value each tick,
+        // it just doesn't ease there.
+        className="transition-[stroke-dashoffset] duration-[900ms] ease-linear motion-reduce:transition-none"
       />
     </svg>
   );
@@ -423,17 +505,22 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
 
 /* ── presets + custom row ───────────────────────────────────────────────── */
 
-function PresetRow() {
+function PresetRow({
+  firstFocusRef,
+}: {
+  firstFocusRef: React.RefObject<HTMLButtonElement | null>;
+}) {
   return (
     <div>
       <div className="microlabel mb-2">Presets</div>
       <div className="flex flex-wrap gap-2">
-        {PRESETS.map((p) => (
+        {PRESETS.map((p, i) => (
           <button
             key={p.name}
+            ref={i === 0 ? firstFocusRef : undefined}
             type="button"
             onClick={() => addTimer(p.name, p.minutes)}
-            className="h-11 rounded-[0.5rem] border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+            className="h-11 rounded-tile border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
           >
             {p.name} <span className="font-mono tabular-nums text-ink-faint">{p.minutes}m</span>
           </button>
@@ -487,7 +574,7 @@ function CustomRow() {
           onClick={() => setMinutes(0)}
           aria-label="Clear minutes"
           disabled={minutes === 0}
-          className="h-11 rounded-md border border-line px-3 text-xs text-ink-faint outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink-dim focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+          className="h-11 rounded-md border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
         >
           Clear
         </button>

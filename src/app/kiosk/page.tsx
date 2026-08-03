@@ -24,10 +24,13 @@ const SLIDE_MIN_INTERVAL_MS = 15_000;
 // nobody's touched it for a minute.
 const NIGHT_WAKE_MS = 60_000;
 
-// The layout choice is DEVICE-local (localStorage), not server config: a
-// wall-mounted iPad wants Glance while a bench iPad wants Standard, and both
-// point at the same server. `?layout=` overrides for testing/demos, same
-// contract as ?period=.
+// The layout choice is DEVICE-local (localStorage), not server config.
+// Glance — the distance-first, wall-mounted-tablet layout — is the default
+// for a fresh device: that's the primary use case this app is built for.
+// Standard is a deliberate opt-out for a bench/desk device viewed up close,
+// and once someone picks it explicitly it keeps winning (see the resolving
+// effect below). `?layout=` overrides for testing/demos, same contract as
+// ?period=.
 type KioskLayout = "standard" | "glance";
 const LAYOUT_STORAGE_KEY = "kiosk-layout";
 
@@ -52,9 +55,12 @@ function KioskPageInner() {
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const lastSlideRef = useRef(0);
   const period = useKioskPeriod();
-  // Seeded "standard" for the SSR pass (localStorage doesn't exist there),
-  // resolved in an effect — same hydration-safety shape as useKioskPeriod.
-  const [layout, setLayout] = useState<KioskLayout>("standard");
+  // Seeded "glance" (the default — see the type comment above) for the SSR
+  // pass, same value the resolving effect below falls back to when nothing
+  // is stored, so there's no visible layout flash on hydration. localStorage
+  // doesn't exist during SSR, hence the effect at all — same hydration-safety
+  // shape as useKioskPeriod.
+  const [layout, setLayout] = useState<KioskLayout>("glance");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const override = params.get("layout");
@@ -63,6 +69,8 @@ function KioskPageInner() {
       return;
     }
     const stored = window.localStorage.getItem(LAYOUT_STORAGE_KEY);
+    // A deliberate stored choice always wins — only fall through to the
+    // "glance" seed above when the device has never chosen.
     if (isKioskLayout(stored)) setLayout(stored);
   }, []);
   const chooseLayout = useCallback((next: KioskLayout) => {
@@ -80,13 +88,21 @@ function KioskPageInner() {
   // this a slide response that resolves after the lock response could
   // silently re-elevate the surface a lock button was just pressed to close.
   const lockingRef = useRef(false);
+  // Guards slideExpiry's own async gap: a response landing after unmount
+  // must not call setState on a dead component. Same pattern as the mount
+  // effect below, just on a ref instead of an effect-local variable since
+  // slideExpiry is a stable callback that outlives any single render.
+  const slideCancelledRef = useRef(false);
 
   // Recover an elevation that survived a reload (a wall tablet left mid-
   // session shouldn't demand the PIN again inside its own 5-minute window).
   useEffect(() => {
     let cancelled = false;
     refreshKioskElevation().then((s) => {
-      if (!cancelled && s.elevated && s.expiresAt) setExpiresAt(s.expiresAt);
+      // An unreachable server on mount just means "no elevation to recover" —
+      // there's nothing to fall back to yet, so this stays a no-op rather
+      // than adopting a half-known state.
+      if (!cancelled && s.reachable && s.elevated && s.expiresAt) setExpiresAt(s.expiresAt);
     });
     return () => {
       cancelled = true;
@@ -126,12 +142,36 @@ function KioskPageInner() {
     };
   }, []);
 
+  useEffect(() => {
+    // Re-armed on every mount, not just cleared on unmount: StrictMode's
+    // mount → cleanup → mount cycle would otherwise leave this latched true
+    // after the first cleanup and silently discard every slide response for
+    // the rest of the dev session.
+    slideCancelledRef.current = false;
+    return () => {
+      slideCancelledRef.current = true;
+    };
+  }, []);
+
   const slideExpiry = useCallback(() => {
     const t = Date.now();
     if (t - lastSlideRef.current < SLIDE_MIN_INTERVAL_MS) return;
     lastSlideRef.current = t;
     refreshKioskElevation().then((s) => {
-      if (lockingRef.current) return;
+      if (slideCancelledRef.current || lockingRef.current) return;
+      if (!s.reachable) {
+        // A wifi blip or a restarting container is not the server saying the
+        // PIN window expired — leave expiresAt exactly as it is. The wall-
+        // clock expiry effect above (`if (expiresAt !== null && now >=
+        // expiresAt) setExpiresAt(null)`) already ends the window honestly on
+        // time with no server contact required, so nothing here can leave the
+        // surface elevated forever; this branch just avoids kicking someone
+        // back to the PIN pad over a dropped request. Reset the throttle so
+        // the next tap retries immediately instead of sitting out the rest
+        // of SLIDE_MIN_INTERVAL_MS.
+        lastSlideRef.current = 0;
+        return;
+      }
       setExpiresAt(s.elevated && s.expiresAt ? s.expiresAt : null);
     });
   }, []);
@@ -150,6 +190,13 @@ function KioskPageInner() {
       // stops propagation for its own purposes.
       onPointerDownCapture={elevated ? slideExpiry : undefined}
     >
+      {/* The surface's single document-level heading — visually hidden since
+          a rendered "nightwatch kiosk" title would be visual noise on an
+          ambient wall display, but it gives screen-reader users the heading
+          outline that every other section caption on this page (promoted to
+          h2/h3 elsewhere) hangs off of. */}
+      <h1 className="sr-only">nightwatch kiosk</h1>
+
       {showNightOverlay ? (
         <KioskNightOverlay onAdminClick={() => setPinOpen(true)} onWake={wakeNight} />
       ) : layout === "glance" && !elevated ? (

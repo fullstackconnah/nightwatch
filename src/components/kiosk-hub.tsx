@@ -20,7 +20,7 @@
    and force an immediate refetch the moment it settles, success or failure,
    so the real state is on screen within one round trip either way. */
 
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import {
   Battery,
@@ -34,6 +34,7 @@ import {
   ToggleLeft,
 } from "lucide-react";
 import { ApiError, fetcher, postJson } from "@/lib/client";
+import { StaleTag } from "@/components/kiosk-stale-tag";
 import type {
   HaActionRequest,
   HaClimate,
@@ -51,8 +52,13 @@ const HA_STATES_KEY = "/kiosk/api/ha/states";
 const POLL_MS = 7000;
 const ERROR_DISMISS_MS = 4000;
 const NUDGE_STEP = 0.5;
+// color-mix against the live --color-ink-faint token, not a literal rgb —
+// see the identical fix (and its rationale) in kiosk-display.tsx's own
+// HATCH_PATTERN const. Kept as a duplicate constant rather than a shared
+// export: this file composes fresh against its own /kiosk/api/ha/* contract
+// by design (see THESIS above) rather than importing from kiosk-display.
 const HATCH_PATTERN =
-  "repeating-linear-gradient(135deg, transparent 0 8px, rgba(77,97,122,0.14) 8px 10px)";
+  "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in srgb, var(--color-ink-faint) 14%, transparent) 8px 10px)";
 
 // Touch-first tile grid: 2 columns fits a phone (390px) and an iPad portrait
 // (820px) without crowding; the next two steps are custom min-width
@@ -178,7 +184,17 @@ export function useKioskHa(): UseKioskHaResult {
 
   const isPending = useCallback((entityId: string) => pendingIds.has(entityId), [pendingIds]);
 
-  return { data, error, isLoading, runAction, actionErrors, isPending };
+  // SWR's default `compare` (dequal) already keeps `data` referentially
+  // stable across content-identical polls — the bug this guards against is
+  // this hook wrapping that stable `data` in a fresh object literal on every
+  // render regardless. Memoized so the object itself stays stable too;
+  // sections below take this whole result as a prop, and without this every
+  // render of KioskHub would hand them a brand-new object even when nothing
+  // in it changed.
+  return useMemo(
+    () => ({ data, error, isLoading, runAction, actionErrors, isPending }),
+    [data, error, isLoading, runAction, actionErrors, isPending],
+  );
 }
 
 /* ── shared tile shapes ─────────────────────────────────────────────────── */
@@ -211,7 +227,7 @@ function ToggleTile({
       disabled={!available}
       onClick={onToggle}
       className={cn(
-        "flex min-h-16 flex-col justify-between gap-2 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+        "flex min-h-16 flex-col justify-between gap-2 rounded-tile border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -262,7 +278,7 @@ function SceneTile({
       disabled={!scene.available || pending}
       onClick={onActivate}
       className={cn(
-        "flex min-h-16 flex-col items-start justify-center gap-1.5 rounded-lg border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+        "flex min-h-16 flex-col items-start justify-center gap-1.5 rounded-tile border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -285,14 +301,24 @@ function SectionHeader({ icon: Icon, label, note }: { icon: LucideIcon; label: s
     <div className="mb-3 flex items-baseline justify-between gap-2">
       <div className="flex items-center gap-2">
         <Icon size={13} className="text-ink-faint" aria-hidden />
-        <span className="microlabel">{label}</span>
+        {/* Real heading, not a styled span — the page supplies an <h1>, so
+            these five section captions (Lights/Switches/Scenes/Climate/
+            Sensors) sit at <h2>. `.microlabel` carries the visuals unchanged;
+            Tailwind's preflight zeroes the browser's own h2 margin/size. */}
+        <h2 className="microlabel">{label}</h2>
       </div>
       {note && <span className="microlabel">{note}</span>}
     </div>
   );
 }
 
-function LightsSection({
+// Wrapped in memo() because `ha`/`entities` now hold a stable identity across
+// content-identical 7s polls (see the `compare` option on useKioskHa's SWR
+// call and the useMemo on its return) — without memo() here the sections
+// would still re-render on every poll despite that stability, since a parent
+// re-render always reconciles children unless props are shallow-equal AND
+// the component opts in.
+const LightsSection = memo(function LightsSection({
   ha,
   lights,
   entities,
@@ -342,9 +368,9 @@ function LightsSection({
       </div>
     </section>
   );
-}
+});
 
-function SwitchesSection({
+const SwitchesSection = memo(function SwitchesSection({
   ha,
   switches,
   entities,
@@ -382,9 +408,9 @@ function SwitchesSection({
       </div>
     </section>
   );
-}
+});
 
-function ScenesSection({ ha, scenes }: { ha: UseKioskHaResult; scenes: HaScene[] }) {
+const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKioskHaResult; scenes: HaScene[] }) {
   const [activated, setActivated] = useState<Set<string>>(new Set());
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -421,7 +447,7 @@ function ScenesSection({ ha, scenes }: { ha: UseKioskHaResult; scenes: HaScene[]
       </div>
     </section>
   );
-}
+});
 
 function ClimateCard({
   ha,
@@ -466,12 +492,17 @@ function ClimateCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-line bg-panel-2 p-4",
+        "rounded-tile border border-line bg-panel-2 p-4",
         !climate.available && "opacity-60",
       )}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-xs text-ink">{climate.name}</span>
+        {/* min-w-0 on the flex item: flex children default to min-width:auto,
+            which lets the name grow to its full content width and never lets
+            `truncate` engage — see ToggleTile above for the same pattern. */}
+        <div className="min-w-0">
+          <div className="truncate text-xs text-ink">{climate.name}</div>
+        </div>
         {!climate.available && <span className="microlabel !text-warn">unavailable</span>}
       </div>
 
@@ -541,7 +572,7 @@ function ClimateCard({
   );
 }
 
-function ClimateSection({
+const ClimateSection = memo(function ClimateSection({
   ha,
   climates,
   entities,
@@ -560,9 +591,9 @@ function ClimateSection({
       </div>
     </section>
   );
-}
+});
 
-function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
+const SensorsSection = memo(function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
   return (
     <section className="panel p-4">
       <SectionHeader icon={Battery} label="Sensors" />
@@ -592,7 +623,7 @@ function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
       </div>
     </section>
   );
-}
+});
 
 /* ── non-happy states ───────────────────────────────────────────────────── */
 
@@ -611,7 +642,7 @@ function HubSkeleton() {
             {Array.from({ length: 4 }).map((_, j) => (
               <div
                 key={j}
-                className="min-h-16 animate-pulse rounded-lg bg-panel-2 motion-reduce:animate-none"
+                className="min-h-16 animate-pulse rounded-tile bg-panel-2 motion-reduce:animate-none"
                 style={{ animationDelay: `${(i * 4 + j) * 60}ms` }}
               />
             ))}
@@ -624,7 +655,7 @@ function HubSkeleton() {
 
 function HubLoadError({ error }: { error: unknown }) {
   return (
-    <div className="panel flex flex-wrap items-center gap-3 px-4 py-3">
+    <div role="status" className="panel flex flex-wrap items-center gap-3 px-4 py-3">
       <span className="microlabel !text-bad">load failed</span>
       <p className="text-xs text-ink-dim">
         {error instanceof Error ? error.message : "Could not reach nightwatch's own /kiosk/api/ha/states."}
@@ -642,7 +673,7 @@ function HubLoadError({ error }: { error: unknown }) {
 // emptiness to be papered over.
 function HubUnconfigured() {
   return (
-    <div className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
+    <div role="status" className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
       <span className="microlabel relative !text-warn">Home Assistant not connected</span>
@@ -654,7 +685,7 @@ function HubUnconfigured() {
 function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"; detail?: string }) {
   const isUnreachable = kind === "unreachable";
   return (
-    <div className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+    <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
       <span className={cn("dot", isUnreachable ? "dot-dead" : "dot-unhealthy")} aria-hidden />
       <span className={cn("microlabel", isUnreachable ? "!text-bad" : "!text-warn")}>
         Home Assistant {kind}
@@ -666,7 +697,7 @@ function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"
 
 function HubEmpty() {
   return (
-    <div className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
+    <div role="status" className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
       <span className="microlabel relative">Nothing to control yet</span>
@@ -687,6 +718,14 @@ export function KioskHub() {
   if (Boolean(error) && !data) return <HubLoadError error={error} />;
   if (!data) return null;
 
+  // `error` here means the *latest* poll failed while `data` still holds the
+  // last successful one (SWR keeps it — see useFreshness in kiosk-client.ts
+  // for why that's safe to rely on). Every branch below is drawn from that
+  // possibly-old `data`, tiles included — they stay tappable because the
+  // server is the source of truth for the action itself, but a stale read is
+  // still a stale read and gets marked rather than repainted as current.
+  const stale = Boolean(error);
+
   if (data.status === "unconfigured") return <HubUnconfigured />;
   if (data.status === "unreachable") return <HubStatusIssue kind="unreachable" detail={data.detail} />;
   if (data.status === "unauthorized") return <HubStatusIssue kind="unauthorized" detail={data.detail} />;
@@ -704,6 +743,12 @@ export function KioskHub() {
 
   return (
     <div className="space-y-4">
+      {stale && (
+        <div className="flex items-center gap-2 px-1">
+          <StaleTag />
+          <span className="text-2xs text-ink-dim">last confirmed state — may not reflect a recent change</span>
+        </div>
+      )}
       {entities.lights.length > 0 && <LightsSection ha={ha} lights={entities.lights} entities={entities} />}
       {entities.switches.length > 0 && <SwitchesSection ha={ha} switches={entities.switches} entities={entities} />}
       {entities.scenes.length > 0 && <ScenesSection ha={ha} scenes={entities.scenes} />}

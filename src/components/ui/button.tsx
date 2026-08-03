@@ -18,6 +18,18 @@ const buttonVariants = cva(
         sm: "h-9 px-3 text-xs md:h-7 md:px-2",
         lg: "h-11 px-5 text-sm md:h-9 md:px-4 md:text-sm",
         icon: "h-10 w-10 md:h-8 md:w-8",
+        /**
+         * Touch-first square target — always 56px, no `md:` shrink.
+         *
+         * `icon`'s `md:` step uses viewport width as a proxy for "pointer
+         * device," which is wrong on a touch-only iPad: both wall-kiosk
+         * widths (1024, 1180) are ≥768px and would otherwise inherit the
+         * desktop-mouse 32px density. Kiosk callers opt into this size
+         * explicitly instead, so a future edit to `icon` can't silently
+         * shrink a kiosk control again. Every `/dash` call site keeps using
+         * `icon` unchanged — this variant exists solely for touch surfaces.
+         */
+        touch: "h-14 w-14",
       },
     },
     defaultVariants: { variant: "default", size: "default" },

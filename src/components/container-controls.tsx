@@ -124,6 +124,7 @@ export function LifecycleActions({
   name,
   lifecycle,
   dense,
+  touch,
   className,
 }: {
   state: string;
@@ -131,6 +132,14 @@ export function LifecycleActions({
   lifecycle: Lifecycle;
   /** Tighter targets on pointer devices only — touch keeps the full 40px. */
   dense?: boolean;
+  /**
+   * Kiosk wall surfaces opt into the 56px `touch` button size explicitly
+   * (see ui/button.tsx) instead of the shared `icon` variant's desktop `md:`
+   * density. `dense` and `touch` pull in opposite directions and are never
+   * passed together — `dense` tightens for a mouse, `touch` guarantees the
+   * kiosk's wall-tap floor regardless of viewport width.
+   */
+  touch?: boolean;
   className?: string;
 }) {
   const actions = actionsFor(state);
@@ -143,7 +152,7 @@ export function LifecycleActions({
         return (
           <Button
             key={action}
-            size="icon"
+            size={touch ? "touch" : "icon"}
             variant="ghost"
             className={cn(ACTION_TONE[action], dense && "md:h-7 md:w-7")}
             // Every button in the group locks while one is in flight: the

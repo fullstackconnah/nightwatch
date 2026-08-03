@@ -26,7 +26,7 @@
 
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
-import { useKioskTheme } from "@/components/kiosk-theme";
+import { KIOSK_LIGHT_THEMES, useKioskTheme } from "@/components/kiosk-theme";
 
 const SKY_REFRESH_MS = 15 * 60_000;
 
@@ -39,25 +39,6 @@ interface SkyWeatherOk {
 }
 
 type SkyWeatherResponse = SkyWeatherOk | { status: "unconfigured" | "unreachable"; detail?: string };
-
-/* Mirrors the `color-scheme` declared on each [data-kiosk-theme] block in
-   globals.css (nine light identities out of the sixteen). Checked by theme
-   name rather than reading a computed background-color: the whole catalog's
-   palette is fixed at author time in kiosk-theme.tsx/globals.css, so a
-   lookup here is exact where a DOM/luminance read would only be an
-   approximation, and it needs no extra effect, observer, or timer — the
-   theme is already a value this component has via useKioskTheme(). */
-const LIGHT_THEMES = new Set([
-  "journal",
-  "folio",
-  "slate",
-  "sunroom",
-  "aerogel",
-  "bulletin",
-  "understory",
-  "duotone",
-  "cinderblock",
-]);
 
 /* Per-phase color (as an "r,g,b" triple, desaturated toward gray under
    cloud) and how strongly each of the two blobs reads for that phase —
@@ -84,7 +65,11 @@ function desaturate(rgb: string, t: number): string {
   return `${mix(r)},${mix(g)},${mix(b)}`;
 }
 
-const SKY_TRANSITION = "top 90s linear, opacity 90s linear";
+/* transform + opacity only, deliberately no `top`: both are compositor-only
+   properties, so this 90s crossfade never triggers layout on a tablet that
+   stays on this screen for hours. See the translateY composition note where
+   this is applied. */
+const SKY_TRANSITION = "transform 90s linear, opacity 90s linear";
 
 /** Fixed, non-interactive sky tint for /kiosk. Renders null whenever the
  *  weather feed isn't ok or hasn't landed a `sun` block yet — every named
@@ -120,31 +105,42 @@ export function KioskSky() {
   const washColor = desaturate(tuning.wash, desatT);
 
   // Intensity discipline: ambience, not decoration. Dark themes cap at
-  // ~0.10 total layer opacity, light ones at ~0.05 (LIGHT_THEMES, see
-  // above) so a pale ground never gets muddied.
-  const themeCap = LIGHT_THEMES.has(theme) ? 0.05 : 0.1;
+  // ~0.10 total layer opacity, light ones at ~0.05 (KIOSK_LIGHT_THEMES,
+  // imported from kiosk-theme.tsx) so a pale ground never gets muddied.
+  const themeCap = KIOSK_LIGHT_THEMES.has(theme) ? 0.05 : 0.1;
   const glowOpacity = themeCap * tuning.glowPeak * cloudFactor;
   const washOpacity = themeCap * tuning.washPeak * cloudFactor;
 
   return (
     <div aria-hidden className="kiosk-sky-layer pointer-events-none fixed inset-0" style={{ zIndex: -1 }}>
-      {/* Reduced-motion fallback: the two blobs below transition top/opacity
-          over 90s to ride the 15-min data cadence smoothly; `!important`
-          here outranks their non-important inline `transition`, collapsing
-          both to an instant cut for anyone who asked for less motion. */}
+      {/* Reduced-motion fallback: the two blobs below transition transform/
+          opacity over 90s to ride the 15-min data cadence smoothly;
+          `!important` here outranks their non-important inline
+          `transition`, collapsing both to an instant cut for anyone who
+          asked for less motion. */}
       <style>{`
         @media (prefers-reduced-motion: reduce) {
           .kiosk-sky-layer > div { transition: none !important; }
         }
       `}</style>
+      {/* `top` is pinned at a constant 50% (of the viewport, since this
+          layer's ancestor is `fixed inset-0`) instead of animating — the
+          sun's vertical drift now lives entirely in `transform`, as a `vh`
+          offset composed with the existing self-centering `-50%`. `vh` and
+          `%` can share one calc() even though they resolve against
+          different boxes (viewport vs. this element's own height): with a
+          fixed-position ancestor sized to the viewport, `Nvh` here is
+          numerically identical to what `top: N%` used to mean, so the
+          drift range and the centring both survive unchanged — only the
+          property that carries them changed, from layout to compositor. */}
       <div
         style={{
           position: "absolute",
           left: "50%",
-          top: `${washY}%`,
+          top: "50%",
           width: "170%",
           height: "75%",
-          transform: "translate(-50%, -50%)",
+          transform: `translate(-50%, calc(-50% + ${washY - 50}vh))`,
           borderRadius: "9999px",
           background: `radial-gradient(closest-side, rgba(${washColor},1) 0%, rgba(${washColor},0.4) 45%, transparent 75%)`,
           opacity: washOpacity,
@@ -155,10 +151,10 @@ export function KioskSky() {
         style={{
           position: "absolute",
           left: "50%",
-          top: `${glowY}%`,
+          top: "50%",
           width: "140%",
           height: "60%",
-          transform: "translate(-50%, -50%)",
+          transform: `translate(-50%, calc(-50% + ${glowY - 50}vh))`,
           borderRadius: "9999px",
           background: `radial-gradient(closest-side, rgba(${glowColor},1) 0%, rgba(${glowColor},0.45) 40%, transparent 72%)`,
           opacity: glowOpacity,

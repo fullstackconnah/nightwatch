@@ -40,8 +40,13 @@ ssh server "cd /mnt/docker/stacks/homelab-dashboard-test \
   and `restart: "no"`, and tear it down when finished.
 - Walk **every state**, not the happy path: empty, loading, error, offline, long/short
   text, and the 6-track limit. Check at **1440 and 390 px**, assert **0 horizontal
-  overflow**, and measure contrast on anything new — `--color-ink-faint` is **2.9:1** and
-  fails WCAG AA for body text, so new copy generally wants `ink-dim` (6.5:1).
+  overflow**, and measure contrast on anything new. `--color-ink-faint` used to be
+  **2.9:1** and fail WCAG AA; as of 2026-08-03 every ink and status role across all 16
+  kiosk themes clears **4.5:1 against both that theme's ground and its panel** (verified
+  by script over 128 theme×role pairs). It now has almost no headroom, so darkening a
+  token or adding a theme reintroduces the failure — re-run the sweep if you touch
+  either. `ink-dim` (6.5:1) is still the default for body copy; `ink-faint` is for
+  microlabels and timestamps, and never for an interactive control's own label.
 - To reach states the host will not produce on its own, use a **throwaway container**
   (`alpine`, `--label dashboard.enable=false`) rather than stopping a real service —
   it gives you `live`/`ended`/`error` and burst traffic on demand. Remove it after.

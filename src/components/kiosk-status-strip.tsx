@@ -14,10 +14,11 @@
    routes those components use. */
 
 import { Activity, ShieldAlert } from "lucide-react";
-import { useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
+import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 import { KioskTimersButton } from "@/components/kiosk-timers";
+import { StaleTag } from "@/components/kiosk-stale-tag";
 
 const TIME_FMT = new Intl.DateTimeFormat("en-AU", {
   hour: "2-digit",
@@ -41,13 +42,18 @@ export function KioskStatusStrip({
   const now = useNow(true);
   const date = now === 0 ? null : new Date(now);
 
-  const { data: vitals, error: vitalsError } = useKioskVitals(5000);
-  const { data: health, error: healthError } = useKioskHealth(5000);
+  // 15s, not 5s: this strip runs for weeks at a time and shows ambient
+  // container counts and host vitals, not a live console — kiosk-glance.tsx
+  // already polls health at this cadence with no observed staleness
+  // complaint. Cuts this component from 24 req/min to 8 req/min combined.
+  // useFreshness's stale marking is orthogonal to cadence — it reacts to
+  // SWR's error/data state, not to how often a request fires.
+  const vitals = useFreshness(useKioskVitals(15_000));
+  const health = useFreshness(useKioskHealth(15_000));
 
-  const dead = health?.dead ?? 0;
-  const unhealthy = health?.unhealthy ?? 0;
+  const dead = health.data?.dead ?? 0;
+  const unhealthy = health.data?.unhealthy ?? 0;
   const severity = dead > 0 ? "bad" : unhealthy > 0 ? "warn" : null;
-  const metricsDown = Boolean(vitalsError) && Boolean(healthError);
 
   return (
     <div className="panel sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 md:py-3">
@@ -66,29 +72,42 @@ export function KioskStatusStrip({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1.5">
-        {metricsDown ? (
+        {vitals.status === "unreachable-empty" ? (
+          // No `hidden` here (unlike the cpu/mem readout below): a data
+          // source going dark is a real signal, not decoration, and must
+          // survive down to 390px the same way the severity chip does —
+          // only the wording compresses at the phone breakpoint.
           <div className="flex items-center gap-1.5 font-mono text-xs text-bad">
-            <ShieldAlert size={13} aria-hidden />
-            host metrics unreachable
+            <ShieldAlert size={12} aria-hidden />
+            <span className="hidden sm:inline">vitals unreachable</span>
+            <span className="sm:hidden">vitals down</span>
           </div>
         ) : (
-          <>
-            {vitals && (
-              <div className="hidden items-center gap-3 font-mono text-xs text-ink-dim sm:flex">
-                <span>
-                  cpu <span className="text-ink">{Math.round(vitals.cpu.percent)}%</span>
-                </span>
-                <span>
-                  mem <span className="text-ink">{Math.round(vitals.memory.percent)}%</span>
-                </span>
-              </div>
-            )}
-            <div className="flex items-center gap-1.5 font-mono text-xs text-ink-dim">
-              <span className="dot dot-running" aria-hidden />
-              {health ? health.running : "…"}
-              <span className="microlabel">running</span>
+          vitals.data && (
+            <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
+              <span>
+                cpu <span className="text-ink">{Math.round(vitals.data.cpu.percent)}%</span>
+              </span>
+              <span>
+                mem <span className="text-ink">{Math.round(vitals.data.memory.percent)}%</span>
+              </span>
+              {vitals.status === "ready-stale" && <StaleTag />}
             </div>
-          </>
+          )
+        )}
+
+        {health.status === "unreachable-empty" ? (
+          <div className="flex items-center gap-1.5 font-mono text-xs text-bad">
+            <ShieldAlert size={13} aria-hidden />
+            container health unreachable
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 font-mono text-xs text-ink-dim">
+            <span className="dot dot-running" aria-hidden />
+            {health.data ? health.data.running : "…"}
+            <span className="microlabel">running</span>
+            {health.status === "ready-stale" && <StaleTag />}
+          </div>
         )}
 
         {severity && (
@@ -103,6 +122,7 @@ export function KioskStatusStrip({
             {dead > 0 && <span>{dead} dead</span>}
             {dead > 0 && unhealthy > 0 && <span aria-hidden="true">·</span>}
             {unhealthy > 0 && <span>{unhealthy} unhealthy</span>}
+            {health.status === "ready-stale" && <StaleTag />}
           </div>
         )}
       </div>

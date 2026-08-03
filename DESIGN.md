@@ -9,7 +9,7 @@ colors:
   line-bright: "#2a3a50"
   ink: "#dbe7f4"
   ink-dim: "#8296ad"
-  ink-faint: "#4d617a"
+  ink-faint: "#657f9e" # raised from #4d617a (2.93:1 on panel) to clear WCAG AA 4.5:1 — see docs/kiosk-analysis/audit-01-a11y.md
   accent: "#5eead4"
   accent-dim: "#2dd4bf"
   blue: "#7dd3fc"
@@ -97,8 +97,8 @@ rounded:
   sm: "0.125rem"
   base: "0.25rem"
   md: "0.375rem"
-  tile: "0.5rem" # kiosk touch tiles (56px+): between control and panel, matching their in-between scale
-  panel: "0.625rem"
+  tile: "0.5rem" # kiosk touch tiles (56px+): between control and panel, matching their in-between scale — wired as --radius-tile, so `rounded-tile` is a real Tailwind utility, not a coincidence of the default scale
+  panel: "0.625rem" # wired as --radius-panel, matching .panel's own border-radius
   full: "9999px"
 spacing:
   hair: "0.125rem"
@@ -432,7 +432,7 @@ The companion rail is the other half of the metaphor: selecting a container does
 - **Do** bend any external colour onto these tokens before it reaches the screen.
 
 ### Don't:
-- **Don't** add a light theme, a theme toggle, or a `prefers-color-scheme` branch. This world is dark only and `color-scheme: dark` is set on `html`.
+- **Don't** add a light theme, a theme toggle, or a `prefers-color-scheme` branch. This world is dark only and `color-scheme: dark` is set on `html`. **Kiosk carve-out:** `/kiosk` is the one surface allowed to dress up — it ships a 16-identity theme catalog (`src/components/kiosk-theme.tsx`, blocks in `globals.css:331-803`), 9 of which are light-ground (`journal, folio, slate, sunroom, aerogel, bulletin, understory, duotone, cinderblock` — see `KIOSK_LIGHT_THEMES`), each scoped under its own `[data-kiosk-theme="…"]` selector and re-declaring the full token set, never leaking into the dashboard proper. That scoping is what makes this a carve-out rather than a violation: the dashboard itself has no toggle and no `prefers-color-scheme` branch anywhere outside this one route.
 - **Don't** introduce a drop shadow for depth. Brighten a border or step the tone; the glow is for live state only.
 - **Don't** use a thick or coloured border as an alert — a hairline means "different channel", a fat rule means "alarm", and most distinctions are the former.
 - **Don't** solve a many-categories problem with many hues. Eight segments get lightness and area; the moment a ramp would reach magenta it has left this world.

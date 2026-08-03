@@ -21,10 +21,14 @@ function AdminRow({ c, onChanged }: { c: TiledContainer; onChanged: () => void }
       <div className="flex items-center gap-3">
         <span className={cn("dot", stateDotClass(c))} />
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-sm truncate">{c.name}</div>
+          <div className="font-mono text-sm truncate" title={c.name}>{c.name}</div>
           <ContainerStatus c={c} className="text-2xs" />
         </div>
-        <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
+        {/* touch: the admin panel is the kiosk's own destructive-action
+            surface (PIN-elevated start/stop/restart) — it must never
+            inherit the shared `icon` size's desktop `md:` shrink, which
+            drops to 32px at exactly the 1024/1180 wall-iPad widths. */}
+        <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} touch />
       </div>
       <LifecycleError lifecycle={lifecycle} className="mt-1.5" />
     </div>

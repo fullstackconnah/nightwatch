@@ -49,23 +49,39 @@ export function Sparkline({
   );
 }
 
-/** Horizontal meter bar with threshold colouring. */
+/** Horizontal meter bar with threshold colouring.
+ *  `label` is optional so existing call sites (kiosk-vitals, vitals-strip,
+ *  resources/page) keep compiling untouched — it only adds an accessible
+ *  name when a caller opts in. */
 export function Meter({
   percent,
   className,
   warnAt = 80,
   badAt = 92,
+  label,
 }: {
   percent: number;
   className?: string;
   warnAt?: number;
   badAt?: number;
+  label?: string;
 }) {
   const p = Math.max(0, Math.min(100, percent));
   const color =
     p >= badAt ? "var(--color-bad)" : p >= warnAt ? "var(--color-warn)" : "var(--color-accent)";
   return (
-    <div className={cn("h-1.5 w-full rounded-full bg-line/60 overflow-hidden", className)}>
+    <div
+      className={cn("h-1.5 w-full rounded-full bg-line/60 overflow-hidden", className)}
+      role="progressbar"
+      aria-valuenow={Math.round(p)}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-label={label}
+    >
+      {/* Same value as the bar width, as real text — mirrors how Gauge
+          overlays its {Math.round(p)}% instead of relying on pixel width
+          alone. Visually hidden: the bar itself is the intended visual. */}
+      <span className="sr-only">{Math.round(p)}%</span>
       <div
         className="h-full rounded-full transition-[width] duration-500"
         style={{ width: `${p}%`, background: color, boxShadow: `0 0 6px ${color}55` }}
