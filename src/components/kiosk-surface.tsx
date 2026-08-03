@@ -485,7 +485,7 @@ export function KioskSurface({
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
         {contentFull && (
-          <div className="order-2 flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
+          <div className="order-2 ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
             {/* INLINE, to the left of the timer and Admin — not stacked above
                 them, which is where this started.
 
@@ -524,7 +524,12 @@ export function KioskSurface({
                 className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <Minimize2 size={14} aria-hidden />
-                Glance
+                {/* Label drops below 1100px. At 1024 the header row is already
+                    carrying the clock, the conditions and a five-day rail; the
+                    extra ~42px of the word was enough to wrap the whole right
+                    column onto its own line. The icon plus the aria-label
+                    still name the control for anyone who needs it. */}
+                <span className="hidden min-[1100px]:inline">Glance</span>
               </button>
             )}
             <KioskStatusStripExtras
