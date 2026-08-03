@@ -44,7 +44,17 @@ const HVAC_LABEL: Record<string, string> = {
 
 function formatTemp(v: number | null, unit: string | null): string {
   if (v == null) return "—";
-  return `${v.toFixed(1)}°${unit ?? ""}`;
+  // HA's unit_of_measurement for a climate entity is typically already the
+  // full "°C"/"°F" (confirmed against a real HA response, not just a bare
+  // letter) — unconditionally prepending our own "°" on top of that rendered
+  // "21.5°°C" everywhere. Production's own climate entities happen to report
+  // no unit at all, which is why that doubling never showed up there; the
+  // fix has to hold for both a populated and an empty/null unit. Trim stray
+  // whitespace HA sometimes includes, and only add the degree ourselves when
+  // the unit doesn't already carry one.
+  const unitTrimmed = (unit ?? "").trim();
+  const degree = unitTrimmed.startsWith("°") ? "" : "°";
+  return `${v.toFixed(1)}${degree}${unitTrimmed}`;
 }
 
 function prefersReducedMotion(): boolean {
@@ -116,19 +126,33 @@ export function KioskClimateRow({
   };
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0", !climate.available && "opacity-60")}>
-      <div className="min-w-0 flex-1 basis-40">
+    <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5 first:pt-0 last:pb-0", !climate.available && "opacity-60")}>
+      {/* Bounded column, not flex-1: at 1440px the old elastic wrapper
+          stretched the name to fill the row, stranding current/target/controls
+          ~1000px away at the far right — a row scanned as three unrelated
+          things, not one. A fixed width keeps the controls right beside the
+          name regardless of viewport, and bumps the room name from the
+          smallest text in its own row (14px) to the largest after the
+          current-temp figure, since it's the identifier a 2-3m reader needs
+          first (redesign-06 follow-up, 2026-08-03). */}
+      <div className="w-28 min-w-0 shrink-0 sm:w-40">
         <div className="flex items-center gap-2">
-          <span className="truncate text-sm text-ink">{climate.name}</span>
+          <span className="truncate text-base text-ink sm:text-lg">{climate.name}</span>
           {!climate.available && <span className="microlabel !text-warn shrink-0">unavailable</span>}
         </div>
       </div>
 
       {/* Distance-readable figure — the number a person 2-3m away actually
-          needs, sized well above the old card's text-lg. */}
-      <div className="font-mono text-3xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
+          needs, sized well above the old card's text-lg. Fixed width, not
+          content-sized: a dual-setpoint room's longer target string used to
+          push THIS row's own −/+/advanced buttons right of every other
+          row's, so the controls a person reaches for shift depending on
+          which room they're in. Current/target are now fixed columns
+          regardless of string length, so the controls land at the same x on
+          every row (2026-08-03 follow-up). */}
+      <div className="w-32 shrink-0 font-mono text-3xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
 
-      <div className="text-center">
+      <div className="w-44 shrink-0 text-center">
         {/* Error replaces the "Target" microlabel in place rather than
             adding a stacked line — the row must not grow or rewrap when a
             nudge fails. Same string the modal shows; the two are never on
@@ -136,13 +160,13 @@ export function KioskClimateRow({
             fully occludes this row while open), so there's no duplicate
             announcement, just one visible location per state. */}
         {error ? (
-          <div role="alert" title={error} className="microlabel !text-bad max-w-32 truncate">
+          <div role="alert" title={error} className="microlabel !text-bad truncate">
             {error}
           </div>
         ) : (
           <div className="microlabel">Target</div>
         )}
-        <div className="mt-0.5 font-mono text-xl text-accent">
+        <div className="mt-0.5 truncate font-mono text-xl text-accent">
           {dualSetpoint
             ? `${formatTemp(climate.targetTempLow, climate.unit)}–${formatTemp(climate.targetTempHigh, climate.unit)}`
             : formatTemp(climate.targetTemp, climate.unit)}

@@ -60,12 +60,14 @@ const ERROR_DISMISS_MS = 4000;
 const HATCH_PATTERN =
   "repeating-linear-gradient(135deg, transparent 0 8px, color-mix(in srgb, var(--color-ink-faint) 14%, transparent) 8px 10px)";
 
-// Touch-first tile grid: 2 columns fits a phone (390px) and an iPad portrait
-// (820px) without crowding; the next two steps are custom min-width
-// breakpoints (not the standard sm/md scale) chosen to land specifically on
-// the iPad landscape sizes this surface targets — 1024x768 wants 3, 1366x1024
-// wants 4, and neither is a Tailwind default breakpoint.
-const TILE_GRID = "grid grid-cols-2 min-[900px]:grid-cols-3 min-[1200px]:grid-cols-4 gap-3";
+// Compact inline pills, not a tile grid (kiosk-analysis/redesign-06 follow-up,
+// 2026-08-03: a 7-switch grid of full-size tiles measured eating ~60% of a
+// wall panel's screen — this is a glance-and-act row, not a settings page).
+// Auto-width chips wrap onto as many lines as they need at h-14 (56px touch
+// floor); the row's total height scales with entity COUNT, not a fixed column
+// count, so 1 light + 7 switches costs far less vertical space than the old
+// 2-4 column grid did.
+const CHIP_ROW = "flex flex-wrap gap-2";
 
 const SENSOR_ICON: Record<HaSensorKind, LucideIcon> = {
   temperature: Thermometer,
@@ -187,13 +189,19 @@ export function useKioskHa(): UseKioskHaResult {
 
 /* ── shared tile shapes ─────────────────────────────────────────────────── */
 
-function ToggleTile({
+// Chip, not a card: icon · name · state, one line, wraps freely. Rounded-full
+// reads as a pill distinct from the square .rounded-tile touch targets
+// elsewhere (advanced/nudge buttons), signalling "small toggle" rather than
+// "primary control." Still a real 56px (h-14) touch target — density lowers
+// footprint, not the touch floor. The brightness fill bar the old tile drew
+// is dropped (no room in a pill); the percentage is still readable in
+// `subtitle`, which is the reading that mattered, not the animation.
+function ToggleChip({
   icon: Icon,
   name,
   on,
   available,
   subtitle,
-  brightnessPct,
   error,
   onToggle,
 }: {
@@ -202,7 +210,6 @@ function ToggleTile({
   on: boolean;
   available: boolean;
   subtitle: string;
-  brightnessPct?: number | null;
   error?: string;
   onToggle: () => void;
 }) {
@@ -215,37 +222,22 @@ function ToggleTile({
       disabled={!available}
       onClick={onToggle}
       className={cn(
-        "flex min-h-16 flex-col justify-between gap-2 rounded-tile border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+        "flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <Icon size={16} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
-        <span
-          aria-hidden
-          className={cn("h-2.5 w-2.5 rounded-full", on ? "dot dot-running" : "bg-line-bright")}
-        />
-      </div>
-      <div className="min-w-0">
-        <div className="truncate text-sm text-ink">{name}</div>
-        <div className={cn("mt-0.5 truncate font-mono text-xs", error ? "text-bad" : "text-ink-faint")}>
-          {error ?? subtitle}
-        </div>
-      </div>
-      {on && brightnessPct != null && (
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-panel">
-          <div
-            className="h-full rounded-full bg-accent-dim transition-[width] duration-500 motion-reduce:transition-none"
-            style={{ width: `${brightnessPct}%` }}
-          />
-        </div>
-      )}
+      <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
+      <span className="max-w-28 truncate text-sm text-ink">{name}</span>
+      <span className={cn("max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error}>
+        {error ?? subtitle}
+      </span>
+      <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />
     </button>
   );
 }
 
-function SceneTile({
+function SceneChip({
   scene,
   activated,
   pending,
@@ -266,16 +258,14 @@ function SceneTile({
       disabled={!scene.available || pending}
       onClick={onActivate}
       className={cn(
-        "flex min-h-16 flex-col items-start justify-center gap-1.5 rounded-tile border px-3 py-3 text-left outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+        "flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
     >
-      <Sparkles size={16} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="truncate text-sm text-ink">{scene.name}</span>
-      <span
-        className={cn("font-mono text-xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}
-      >
+      <Sparkles size={15} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
+      <span className="max-w-28 truncate text-sm text-ink">{scene.name}</span>
+      <span className={cn("max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}>
         {statusText}
       </span>
     </button>
@@ -321,9 +311,9 @@ const LightsSection = memo(function LightsSection({
     // §E). A hairline top rule groups it from the section above; the first
     // rendered section (whichever it is, since sections are conditional on
     // data) sits flush with nothing above it via `first:`.
-    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={Lightbulb} label="Lights" note={`${onCount} of ${lights.length} on`} />
-      <div className={TILE_GRID}>
+      <div className={CHIP_ROW}>
         {lights.map((light) => {
           const toggle = () => {
             const next: HaEntities = {
@@ -344,14 +334,13 @@ const LightsSection = memo(function LightsSection({
                 ? "on"
                 : "off";
           return (
-            <ToggleTile
+            <ToggleChip
               key={light.entityId}
               icon={Lightbulb}
               name={light.name}
               on={light.on}
               available={light.available}
               subtitle={statusText}
-              brightnessPct={light.brightnessPct}
               error={ha.actionErrors[light.entityId]}
               onToggle={toggle}
             />
@@ -373,9 +362,9 @@ const SwitchesSection = memo(function SwitchesSection({
 }) {
   const onCount = switches.filter((s) => s.on).length;
   return (
-    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={ToggleLeft} label="Switches" note={`${onCount} of ${switches.length} on`} />
-      <div className={TILE_GRID}>
+      <div className={CHIP_ROW}>
         {switches.map((sw) => {
           const toggle = () => {
             const next: HaEntities = {
@@ -385,7 +374,7 @@ const SwitchesSection = memo(function SwitchesSection({
             void ha.runAction({ entityId: sw.entityId, action: "toggle" }, next);
           };
           return (
-            <ToggleTile
+            <ToggleChip
               key={sw.entityId}
               icon={ToggleLeft}
               name={sw.name}
@@ -423,11 +412,11 @@ const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKiosk
   };
 
   return (
-    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={Sparkles} label="Scenes" />
-      <div className={TILE_GRID}>
+      <div className={CHIP_ROW}>
         {scenes.map((scene) => (
-          <SceneTile
+          <SceneChip
             key={scene.entityId}
             scene={scene}
             activated={activated.has(scene.entityId)}
@@ -451,7 +440,7 @@ const ClimateSection = memo(function ClimateSection({
   entities: HaEntities;
 }) {
   return (
-    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={Thermometer} label="Climate" />
       {/* Rows, not cards (redesign-06 §B): a hairline divider between rooms
           rather than each room boxed on its own. The section wrapper itself
@@ -468,7 +457,7 @@ const ClimateSection = memo(function ClimateSection({
 
 const SensorsSection = memo(function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
   return (
-    <section className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
       <SectionHeader icon={Battery} label="Sensors" />
       {/* Read-only readings, no touch target and no alert — the chip box and
           the stacked name/value are both chrome the density pass drops:
@@ -504,13 +493,13 @@ function HubSkeleton() {
   return (
     <div className="space-y-3">
       {labels.map(({ label, icon: Icon }, i) => (
-        <div key={label} className="border-t border-line pt-3 first:border-t-0 first:pt-0">
+        <div key={label} className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
           <SectionHeader icon={Icon} label={label} />
-          <div className={TILE_GRID}>
+          <div className={CHIP_ROW}>
             {Array.from({ length: 4 }).map((_, j) => (
               <div
                 key={j}
-                className="min-h-16 animate-pulse rounded-tile bg-panel-2 motion-reduce:animate-none"
+                className="h-14 w-28 animate-pulse rounded-full bg-panel-2 motion-reduce:animate-none"
                 style={{ animationDelay: `${(i * 4 + j) * 60}ms` }}
               />
             ))}
@@ -610,17 +599,22 @@ export function KioskHub() {
   if (total === 0) return <HubEmpty />;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {stale && (
         <div className="flex items-center gap-2 px-1">
           <StaleTag />
           <span className="text-2xs text-ink-dim">last confirmed state — may not reflect a recent change</span>
         </div>
       )}
+      {/* Climate first (redesign-06 follow-up, 2026-08-03: "climate first,
+          switches condensed" is the owner's stated priority) — it's the
+          section people walk up to the panel for, and it sits directly under
+          the weather line above with nothing else between. Lights/switches/
+          scenes condense into chip rows next; sensors, read-only, stay last. */}
+      {entities.climates.length > 0 && <ClimateSection ha={ha} climates={entities.climates} entities={entities} />}
       {entities.lights.length > 0 && <LightsSection ha={ha} lights={entities.lights} entities={entities} />}
       {entities.switches.length > 0 && <SwitchesSection ha={ha} switches={entities.switches} entities={entities} />}
       {entities.scenes.length > 0 && <ScenesSection ha={ha} scenes={entities.scenes} />}
-      {entities.climates.length > 0 && <ClimateSection ha={ha} climates={entities.climates} entities={entities} />}
       {entities.sensors.length > 0 && <SensorsSection sensors={entities.sensors} />}
     </div>
   );

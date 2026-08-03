@@ -7,15 +7,18 @@
    glance⇄full transition has to move the SAME DOM node, not remount an
    equivalent one — see that file's structural-rule comment). What's left
    here is exactly the content that only ever exists in full mode and never
-   travels: the ambient wordmark, host vitals, the timers button, and
-   admin/elevated. The dead/unhealthy severity chip that used to live here
-   is gone outright — src/lib/attention.ts already probes both conditions
-   and kiosk-alerts.tsx now owns that signal end to end (takeover + badge +
-   tray), so a second, quieter announcement of the same fact here would just
-   be a duplicate. Same hooks, same 15s cadence, same non-happy states as
-   the strip this replaces. */
+   travels: host vitals, the timers button, and admin/elevated. The
+   dead/unhealthy severity chip that used to live here is gone outright —
+   src/lib/attention.ts already probes both conditions and kiosk-alerts.tsx
+   now owns that signal end to end (takeover + badge + tray), so a second,
+   quieter announcement of the same fact here would just be a duplicate.
+   Same hooks, same 15s cadence, same non-happy states as the strip this
+   replaces.
 
-import { Activity, ShieldAlert } from "lucide-react";
+   Wordmark removed and vitals gated behind `elevated` (redesign-06
+   follow-up, 2026-08-03) — see the render below for why. */
+
+import { ShieldAlert } from "lucide-react";
 import { useFreshness, useKioskVitals } from "@/lib/kiosk-client";
 import { cn } from "@/lib/utils";
 import { KioskTimersButton } from "@/components/kiosk-timers";
@@ -54,34 +57,39 @@ export function KioskStatusStripExtras({
 
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <div className={cn("hidden items-center gap-1.5 md:flex", revealClass)} style={revealStyle(0)}>
-        <Activity size={12} className="text-accent" aria-hidden />
-        <span className="microlabel">nightwatch · ambient</span>
-      </div>
-
-      <div className={revealClass} style={revealStyle(1)}>
-        {vitals.status === "unreachable-empty" ? (
-          <div className="flex items-center gap-1.5 font-mono text-xs text-bad">
-            <ShieldAlert size={12} aria-hidden />
-            <span className="hidden sm:inline">vitals unreachable</span>
-            <span className="sm:hidden">vitals down</span>
-          </div>
-        ) : (
-          vitals.data && (
-            <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
-              <span>
-                cpu <span className="text-ink">{Math.round(vitals.data.cpu.percent)}%</span>
-              </span>
-              <span>
-                mem <span className="text-ink">{Math.round(vitals.data.memory.percent)}%</span>
-              </span>
-              {vitals.status === "ready-stale" && <StaleTag />}
+      {/* The "nightwatch · ambient" wordmark is gone (redesign-06 follow-up,
+          2026-08-03): distance-read space on a wall panel goes to the
+          owner's data, not the software's own name. Host vitals move behind
+          `elevated` for the same reason — genuinely useful to the owner, but
+          cpu/mem readings make the resting panel read as a monitoring
+          console rather than a house. The running-count and unreachable/
+          stale states live in kiosk-surface.tsx's ServerLine and are
+          unaffected — they stay ambient in both modes. */}
+      {elevated && (
+        <div className={revealClass} style={revealStyle(0)}>
+          {vitals.status === "unreachable-empty" ? (
+            <div className="flex items-center gap-1.5 font-mono text-xs text-bad">
+              <ShieldAlert size={12} aria-hidden />
+              <span className="hidden sm:inline">vitals unreachable</span>
+              <span className="sm:hidden">vitals down</span>
             </div>
-          )
-        )}
-      </div>
+          ) : (
+            vitals.data && (
+              <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
+                <span>
+                  cpu <span className="text-ink">{Math.round(vitals.data.cpu.percent)}%</span>
+                </span>
+                <span>
+                  mem <span className="text-ink">{Math.round(vitals.data.memory.percent)}%</span>
+                </span>
+                {vitals.status === "ready-stale" && <StaleTag />}
+              </div>
+            )
+          )}
+        </div>
+      )}
 
-      <div className={cn("flex shrink-0 items-center gap-2", revealClass)} style={revealStyle(2)}>
+      <div className={cn("flex shrink-0 items-center gap-2", revealClass)} style={revealStyle(1)}>
         <KioskTimersButton />
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">

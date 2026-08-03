@@ -246,7 +246,14 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       // also reaches the night overlay and the PIN pad, which render outside
       // that column — everything on this surface is read from 2-3m, not just
       // the parts inside the main layout.
-      className={cn("kiosk-dense min-h-screen bg-bg overflow-x-hidden", ...FONT_VARIABLE_CLASSES)}
+      // overflow-x-CLIP, not -hidden: `hidden` on one axis force-promotes the
+      // other from `visible` to `auto` (CSS Overflow 3's visible-forcing rule),
+      // which made this div a scroll container and silently broke
+      // `position: sticky` on the kiosk header — it scrolled away with the page
+      // instead of pinning (measured: top 16px → -195px). `clip` is exempt from
+      // that rule, so overflow-y stays `visible`, the sticky containing block
+      // resolves to the viewport, and the horizontal clipping is unchanged.
+      className={cn("kiosk-dense min-h-screen bg-bg overflow-x-clip", ...FONT_VARIABLE_CLASSES)}
       style={{
         // isolate: gives this div its own stacking context so KioskSky's
         // z-index:-1 layer paints ABOVE this ground color but below content.

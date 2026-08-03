@@ -71,9 +71,83 @@ function isUnavailable(state: string): boolean {
   return state === "unavailable" || state === "unknown";
 }
 
+/** True when both arrays have equal length and equal elements pairwise
+ *  (callers pass lower-cased word arrays, so this is effectively the
+ *  case-insensitive comparison). */
+function wordsEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((w, i) => w === b[i]);
+}
+
+/**
+ * HA auto-generates `friendly_name` as "{area} {device}", and when a device's
+ * own name already matches the area it lives in (e.g. an area named "Kitchen"
+ * holding a climate device also named "Kitchen"), that concatenation doubles
+ * the words: "Kitchen Kitchen", "Living Room Living Room", "Office AC Office
+ * AC". This collapses that specific pattern before it ever reaches a
+ * consumer, rather than leaving every card in the UI to render a doubled
+ * label.
+ *
+ * Two shapes are collapsed:
+ *  1. The whole name is two equal halves ("Kitchen Kitchen" -> "Kitchen"),
+ *     including a repeated multi-word area like "Living Room Living Room".
+ *  2. A repeated leading run followed by a distinct suffix ("Kitchen Kitchen
+ *     Light" -> "Kitchen Light") — same doubling bug, with HA (or a device
+ *     type) appending more text after the duplicated area+device pair.
+ *
+ * Comparison is case-insensitive; the returned string always keeps the
+ * original casing of whichever words survive.
+ *
+ * Deliberately NOT collapsed: an odd-length name that is nothing but one
+ * word repeated (e.g. "Bar Bar Bar") is ambiguous — HA's doubling bug always
+ * produces exactly one duplicate, so a triple repeat isn't explained by it,
+ * and guessing which copy to drop risks eating a real name. Left alone.
+ *
+ * Known limitation, accepted for a private homelab tool: a genuinely
+ * doubled *real* name ("New York New York") collapses the same way a bug
+ * artifact would. There's no way to tell them apart from the string alone.
+ */
+function collapseRepeatedName(rawName: string): string {
+  // HA names can carry stray double spaces; collapse those defensively
+  // without touching the actual words.
+  const normalized = rawName.replace(/\s+/g, " ").trim();
+  if (!normalized) return normalized;
+
+  const words = normalized.split(" ");
+  const n = words.length;
+  if (n < 2) return normalized;
+
+  const lower = words.map((w) => w.toLowerCase());
+
+  // Shape 1: even word count, first half === second half.
+  if (n % 2 === 0) {
+    const half = n / 2;
+    if (wordsEqual(lower.slice(0, half), lower.slice(half))) {
+      return words.slice(0, half).join(" ");
+    }
+  }
+
+  // A name that is only one word repeated end to end an odd number of
+  // times (e.g. "Bar Bar Bar") is ambiguous — bail out rather than guess.
+  if (n % 2 === 1 && lower.every((w) => w === lower[0])) {
+    return normalized;
+  }
+
+  // Shape 2: repeated leading run + distinct suffix. Try the longest
+  // possible run first so "Kitchen Kitchen Extra Words" still collapses to
+  // the minimal duplicate.
+  for (let k = Math.floor(n / 2); k >= 1; k--) {
+    if (wordsEqual(lower.slice(0, k), lower.slice(k, 2 * k))) {
+      return [...words.slice(0, k), ...words.slice(2 * k)].join(" ");
+    }
+  }
+
+  return normalized;
+}
+
 function friendlyName(e: HaRawEntity): string {
   const name = e.attributes.friendly_name;
-  return typeof name === "string" && name ? name : e.entity_id;
+  if (typeof name !== "string" || !name) return e.entity_id;
+  return collapseRepeatedName(name);
 }
 
 function stringAttr(attrs: Record<string, unknown>, key: string): string | null {

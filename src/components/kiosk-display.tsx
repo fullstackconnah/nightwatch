@@ -323,28 +323,20 @@ function CurrentWeatherLarge({
   stale: boolean;
   rain?: WeatherRain;
 }) {
-  const Icon = WEATHER_ICON[current.code];
+  // No icon/temp/label here (redesign-06 follow-up, 2026-08-03): the shared
+  // header (kiosk-surface.tsx's TempNode) already states the current reading
+  // once, ~150px above this band, and both were visible on screen at once.
+  // This band now carries only what the header doesn't: feels-like, wind,
+  // humidity, sunrise, place, staleness, and the rain nowcast/ribbon.
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Icon size={44} className="shrink-0 text-ink-dim" aria-hidden />
-          <div>
-            <div className="flex items-baseline gap-2">
-              <span className="font-mono text-4xl leading-none text-ink">{Math.round(current.tempC)}°</span>
-              <span className="text-sm text-ink-dim">{current.label}</span>
-            </div>
-            <div className="mt-1 font-mono text-xs text-ink-faint">
-              feels like {Math.round(current.feelsC)}°{place ? ` · ${place}` : ""}
-            </div>
-            {stale && (
-              <div className="mt-1">
-                <StaleTag />
-              </div>
-            )}
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 text-ink-faint">
+          {place && <span className="text-xs">{place}</span>}
+          {stale && <StaleTag />}
         </div>
         <div className="flex flex-wrap items-center gap-4">
+          <MicroDatum label="feels" value={`${Math.round(current.feelsC)}°`} />
           <MicroDatum icon={Droplets} label="rain" value={`${current.precipMm.toFixed(1)} mm`} />
           <MicroDatum icon={Wind} label="wind" value={`${Math.round(current.windKmh)} km/h`} />
           <MicroDatum label="humidity" value={`${Math.round(current.humidityPct)}%`} />
@@ -370,17 +362,16 @@ function CurrentWeatherCompact({
   stale: boolean;
   rain?: WeatherRain;
 }) {
-  const Icon = WEATHER_ICON[current.code];
+  // No icon/temp/label here either — same duplicate-reading fix as
+  // CurrentWeatherLarge above. Feels-like joins the day row (it wasn't shown
+  // in this compact variant before) since it's cheap supplementary context
+  // once the current reading itself moves out.
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      <div className="flex items-center gap-2">
-        <Icon size={22} className="shrink-0 text-ink-dim" aria-hidden />
-        <span className="font-mono text-2xl leading-none text-ink">{Math.round(current.tempC)}°</span>
-        <span className="text-xs text-ink-dim">{current.label}</span>
-      </div>
       {mode === "day" ? (
         <span className="font-mono text-sm text-ink-faint">
-          H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° · {today.rainPct}% rain
+          feels {Math.round(current.feelsC)}° · H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° ·{" "}
+          {today.rainPct}% rain
         </span>
       ) : (
         <span className="flex items-center gap-1 font-mono text-sm text-ink-faint">

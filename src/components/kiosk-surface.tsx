@@ -310,6 +310,46 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
   );
 }
 
+/* ── scroll-shadow affordance ────────────────────────────────────────────── */
+// redesign-06 follow-up (2026-08-03), P0 fix 1: full mode targets zero
+// vertical overflow at 1024×768/1180×820, and every other lever here (chip
+// rows instead of tile grids, tighter row/section padding, climate moved
+// above the fold) goes toward that. But a wall panel with several climate
+// rooms plus a full switch bank is enough real content that the target isn't
+// always reachable without breaking the 56px touch floor or the distance-
+// legibility bar — the contract's own escape hatch: "if some content
+// genuinely cannot fit ... a real affordance (a fade/scroll-shadow at the
+// cut, not a bare cut)". This is that affordance, not a substitute for
+// fitting — it only ever shows when the page has genuinely overflowed.
+function useBottomScrollShadow(active: boolean): boolean {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (!active) {
+      setShow(false);
+      return;
+    }
+    const check = () => {
+      const doc = document.documentElement;
+      const overflow = doc.scrollHeight - doc.clientHeight;
+      const atBottom = overflow - window.scrollY <= 2;
+      setShow(overflow > 2 && !atBottom);
+    };
+    check();
+    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("resize", check);
+    // Hub/climate content resizes from SWR polls landing, not just user
+    // scroll/resize — a light poll catches "the page just grew/shrank under
+    // the shadow" without wiring a ResizeObserver through every section.
+    const id = setInterval(check, 2000);
+    return () => {
+      window.removeEventListener("scroll", check);
+      window.removeEventListener("resize", check);
+      clearInterval(id);
+    };
+  }, [active]);
+  return show;
+}
+
 /* ── the surface ─────────────────────────────────────────────────────────── */
 
 export function KioskSurface({
@@ -356,15 +396,29 @@ export function KioskSurface({
   const contentFull = displayMode === "full";
 
   const days: WeatherDay[] = weather.ok?.days ?? [];
+  const showBottomShadow = useBottomScrollShadow(full);
 
   return (
     <div
       onPointerDown={onInteraction}
-      className={cn("flex flex-col", full ? "gap-6" : "min-h-[calc(100vh-2rem)] items-center justify-center gap-10 px-6 text-center")}
+      className={cn("flex flex-col", full ? "gap-3" : "min-h-[calc(100vh-2rem)] items-center justify-center gap-10 px-6 text-center")}
     >
       {/* Fixed overlay, outside the flow — mounted here per the contract's
           ownership map (agent D mounts it), built by agent A. */}
       <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />
+
+      {/* Scroll-shadow affordance — see useBottomScrollShadow above. Sits
+          below the sticky header's own z-layer and above ordinary content;
+          pointer-events-none so it never intercepts a tap meant for the
+          hub beneath it. */}
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none fixed inset-x-0 bottom-0 z-(--z-sticky) h-16 bg-gradient-to-t from-bg to-transparent transition-opacity motion-reduce:transition-none",
+          showBottomShadow ? "opacity-100" : "opacity-0",
+        )}
+        style={{ transitionDuration: `${KIOSK_FADE_MS}ms` }}
+      />
 
       {/* THE shared container — same clock/temp/forecast/server-line nodes
           in both modes, only the wrapping classes (and the full-only extras
@@ -482,7 +536,7 @@ function FullContent({
   onLock: () => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3">
       <KioskDisplay period={period} />
 
       {elevated && expiresAt !== null && (
