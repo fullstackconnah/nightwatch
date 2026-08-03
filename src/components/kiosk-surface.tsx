@@ -504,7 +504,17 @@ export function KioskSurface({
                   onReturnToGlance();
                 }}
                 aria-label="Back to glance view"
-                className="flex h-11 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                /* mr-24 keeps this clear of KioskAlertButton, which is
+                   `fixed` in the top-right corner at z-toast and therefore
+                   sits ON TOP of this row rather than in flow with it. They
+                   overlapped almost exactly (measured on production with a
+                   real alert standing: badge x923-1004/y16-72 against this
+                   button at x907-987/y29-73) and the badge swallowed every
+                   press — invisible in dev, because dev has no alerts to
+                   render a badge for. The reserved lane costs nothing when no
+                   alert exists: the space to the right of this button is
+                   empty header either way. */
+                className="mr-24 flex h-11 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <Minimize2 size={14} aria-hidden />
                 Glance
