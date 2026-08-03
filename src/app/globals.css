@@ -741,6 +741,69 @@ body {
   }
 }
 
+/* ── Sunroom weather (kiosk-sunroom-weather.tsx) ──────────────────────────
+   Only the two keyframe tracks and their composited-layer setup live here;
+   every colour, speed, angle and opacity is computed from the live feed and
+   arrives as an inline style. Both animations are pure `transform` on their
+   own layer: this screen is on for hours at a time, and anything touching
+   layout here would be a slow fire rather than a visible bug. */
+@keyframes sr-cloud-drift {
+  from {
+    transform: translate3d(-55%, 0, 0);
+  }
+  to {
+    transform: translate3d(150%, 0, 0);
+  }
+}
+@keyframes sr-rain-fall {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    /* Exactly ONE dash period, in px, not a percentage. A percentage would be
+       a fraction of the element's own height, which only wraps seamlessly if
+       that height happens to be a whole number of periods — it isn't, at an
+       arbitrary viewport size, and the seam shows up as a visible jolt once a
+       cycle. Travelling one period is seamless by construction at any size. */
+    transform: translate3d(0, var(--sr-rain-period), 0);
+  }
+}
+.kiosk-sr-cloud {
+  position: absolute;
+  border-radius: 9999px;
+  will-change: transform;
+  animation-name: sr-cloud-drift;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+/* The streaks themselves are a thin vertical line pattern in `background`,
+   cut into falling dashes by a `mask` running the other way. One gradient
+   can't vary along both axes, and this is the cheap way to get "rain" rather
+   than "pinstripes" out of two of them. Overhangs one full period top and
+   bottom so the travel never exposes an edge. */
+.kiosk-sr-rain {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(-1 * var(--sr-rain-period));
+  height: calc(100% + 2 * var(--sr-rain-period));
+  will-change: transform;
+  animation-name: sr-rain-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  -webkit-mask-repeat: repeat;
+  mask-repeat: repeat;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The rain layer isn't rendered at all under reduced motion (a frozen
+     streak field reads as scratches on the glass, not as rain) — this only
+     has to stop the cloud drift, which stays as a static soft variation
+     because an overcast sky is still true when nothing is moving. */
+  .kiosk-sr-cloud {
+    animation: none !important;
+  }
+}
+
 /* Aerogel — Liquid Glass. Frosted translucent panels with a bright glass
    edge, floating over a soft two-hue gradient ground. */
 [data-kiosk-theme="aerogel"] {
