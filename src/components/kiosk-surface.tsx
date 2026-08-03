@@ -485,10 +485,20 @@ export function KioskSurface({
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
         {contentFull && (
-          <div className="order-2 flex min-w-0 flex-col items-end gap-1.5">
-            {/* Sits ABOVE the timer/Admin row rather than beside it: those two
-                are destinations (a tool, a login), this one is the way back,
-                and stacking it keeps the exit distinct from them at a glance.
+          <div className="order-2 flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-2">
+            {/* INLINE, to the left of the timer and Admin — not stacked above
+                them, which is where this started.
+
+                Stacking it there was tried and measured, and at 1024x768 the
+                top-right band simply has no room: the forecast rail runs to
+                roughly x930 and KioskAlertButton is `fixed` over x923-1004,
+                so the only way to clear the badge was ~96px of reserved lane,
+                which pushed this column past the header's width and made the
+                whole thing wrap to a THIRD row aligned left under the clock.
+                Sitting in the same row costs no width, stays in the top-right
+                corner, and keeps clear of the badge because this row is the
+                one the timer and Admin already occupy safely.
+
                 Hidden while pinned — an elevated session is held in full mode
                 on purpose, so the control would be inert. */}
             {!pinned && (
@@ -504,17 +514,14 @@ export function KioskSurface({
                   onReturnToGlance();
                 }}
                 aria-label="Back to glance view"
-                /* mr-24 keeps this clear of KioskAlertButton, which is
-                   `fixed` in the top-right corner at z-toast and therefore
-                   sits ON TOP of this row rather than in flow with it. They
-                   overlapped almost exactly (measured on production with a
-                   real alert standing: badge x923-1004/y16-72 against this
-                   button at x907-987/y29-73) and the badge swallowed every
-                   press — invisible in dev, because dev has no alerts to
-                   render a badge for. The reserved lane costs nothing when no
-                   alert exists: the space to the right of this button is
-                   empty header either way. */
-                className="mr-24 flex h-11 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                /* KioskAlertButton is `fixed` in the top-right corner at
+                   z-toast, so it sits ON TOP of this area rather than in flow
+                   with it, and it swallows presses from anything underneath.
+                   Measured on production with a real alert standing: the badge
+                   occupies x923-1004/y16-72 at 1024px. Staying in this row —
+                   the one the timer and Admin already share — keeps this
+                   button below that band without reserving any width. */
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
               >
                 <Minimize2 size={14} aria-hidden />
                 Glance
