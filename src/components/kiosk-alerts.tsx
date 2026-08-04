@@ -20,7 +20,7 @@ import useSWR from "swr";
 import { AlertTriangle, X } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import type { AttentionResult, AttentionSeverity } from "@/lib/attention";
-import { formatUptime } from "@/lib/format";
+import { formatUptime, formatWallClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   KIOSK_EASE_OUT,
@@ -475,17 +475,20 @@ const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry; onDismiss:
   );
 });
 
-const clearedTimeFormatter = new Intl.DateTimeFormat("en-AU", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+function clearedWallClock(clearedAt: number): string {
+  const { time, period } = formatWallClock(new Date(clearedAt));
+  return `${time} ${period}`;
+}
 
 /** A retired alert's row — same content shape as AlertRow, deliberately
  *  de-emphasised: text-ink-dim throughout (no severity-tinted text or icon),
- *  no background tint at all, and its own timestamp reads "cleared HH:MM"
+ *  no background tint at all, and its own timestamp reads "cleared h:mm am/pm"
  *  rather than reusing AlertRow's "for <uptime>" tag — that tag means "still
- *  ongoing", which would misstate a condition that has since stopped. */
+ *  ongoing", which would misstate a condition that has since stopped. It shares
+ *  formatWallClock with the kiosk clock rather than owning a formatter: two
+ *  times-of-day on one screen in different conventions reads as a bug. Joined
+ *  with a plain space here, not the clock's scaled span — at text-2xs there is
+ *  no size gap left to express, and the marker is part of the reading. */
 function ResolvedAlertRow({ entry, onDismiss }: { entry: KioskResolvedAlertEntry; onDismiss: () => void }) {
   return (
     <div className="flex items-start gap-3 rounded-md px-2 py-2 text-ink-dim">
@@ -495,7 +498,7 @@ function ResolvedAlertRow({ entry, onDismiss }: { entry: KioskResolvedAlertEntry
         {entry.detail && <div className="text-xs opacity-80">{entry.detail}</div>}
       </div>
       <span className="shrink-0 self-center font-mono text-2xs tabular-nums">
-        cleared {clearedTimeFormatter.format(entry.clearedAt)}
+        cleared {clearedWallClock(entry.clearedAt)}
       </span>
       <DismissButton label={`Remove from history: ${entry.headline}`} onDismiss={onDismiss} />
     </div>

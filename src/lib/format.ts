@@ -61,6 +61,31 @@ export function formatNumber(v: number | undefined | null): string {
   return v.toLocaleString("en-AU");
 }
 
+const WALL_CLOCK_FMT = new Intl.DateTimeFormat("en-AU", {
+  hour: "numeric",
+  minute: "2-digit",
+  hour12: true,
+});
+
+/**
+ * The kiosk's wall-clock reading, split so a caller can size the digits and the
+ * am/pm marker independently: at 7rem a full "2:30 pm" would give a third of
+ * the clock's width to a two-letter suffix that carries none of the meaning.
+ * `hour` is `numeric`, not `2-digit` — "02:30 pm" reads as a timestamp, and a
+ * clock someone glances at from across a room should read "2:30 pm".
+ * `period` comes back upper-cased; en-AU emits lowercase "pm".
+ */
+export function formatWallClock(date: Date): { time: string; period: string } {
+  const parts = WALL_CLOCK_FMT.formatToParts(date);
+  return {
+    time: parts
+      .filter((p) => p.type === "hour" || p.type === "minute" || (p.type === "literal" && p.value === ":"))
+      .map((p) => p.value)
+      .join(""),
+    period: (parts.find((p) => p.type === "dayPeriod")?.value ?? "").toUpperCase(),
+  };
+}
+
 export function relativeTime(iso: string | number | Date): string {
   const then = new Date(iso).getTime();
   if (isNaN(then)) return "—";

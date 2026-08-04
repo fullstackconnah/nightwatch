@@ -1,15 +1,10 @@
 "use client";
 
 import { forwardRef } from "react";
+import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
-const timeFormatter = new Intl.DateTimeFormat("en-AU", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
 const dateFormatter = new Intl.DateTimeFormat("en-AU", {
   weekday: "long",
   day: "numeric",
@@ -37,6 +32,7 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
   const now = useNow(true);
   const date = now === 0 ? null : new Date(now);
   const full = size === "full";
+  const clock = date ? formatWallClock(date) : null;
 
   return (
     <div ref={ref} className={cn("select-none", full ? "flex items-baseline gap-2.5" : "text-center")}>
@@ -46,7 +42,16 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
           full ? "text-lg md:text-xl" : "text-[4.5rem] min-[420px]:text-[5.5rem] md:text-[7rem]",
         )}
       >
-        {date ? timeFormatter.format(date) : "--:--:--"}
+        {clock ? clock.time : "--:--"}
+        {/* Sized off the digits it trails rather than the ramp: the am/pm marker
+            is a qualifier on the reading, and at the glance clock's scale it has
+            to stay subordinate or it competes with the hour for the eye. `ml`
+            replaces the locale's own space so the gap does not scale with it. */}
+        {clock && (
+          <span className={cn("text-ink-dim", full ? "ml-1 text-[0.7em]" : "ml-2 text-[0.32em]")}>
+            {clock.period}
+          </span>
+        )}
       </div>
       <div
         className={cn(

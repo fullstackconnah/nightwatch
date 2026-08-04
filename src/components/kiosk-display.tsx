@@ -40,6 +40,7 @@ import {
   Wind,
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
+import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { StaleTag } from "@/components/kiosk-stale-tag";
 
@@ -627,12 +628,6 @@ export function KioskDisplay({ period }: { period: KioskPeriod }) {
 
 /* ── night overlay (page.tsx renders this in place of everything else) ──── */
 
-const NIGHT_TIME_FMT = new Intl.DateTimeFormat("en-AU", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
 export function KioskNightOverlay({
   onAdminClick,
   onWake,
@@ -645,6 +640,7 @@ export function KioskNightOverlay({
   const weather = useWeatherView();
   const current = weather.ok?.current ?? null;
   const Icon = current ? WEATHER_ICON[current.code] : null;
+  const night = date ? formatWallClock(date) : null;
 
   return (
     <div
@@ -652,7 +648,8 @@ export function KioskNightOverlay({
       onPointerDown={onWake}
     >
       <span className="font-mono tabular-nums leading-none text-ink text-6xl md:text-8xl">
-        {date ? NIGHT_TIME_FMT.format(date) : "--:--"}
+        {night ? night.time : "--:--"}
+        {night && <span className="ml-2 text-[0.32em] text-ink-dim">{night.period}</span>}
       </span>
 
       {current && Icon && (
