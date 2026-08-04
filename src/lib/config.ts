@@ -68,6 +68,17 @@ export interface AppConfig {
     doorbell?: {
       /** Camera entity_ids, most important first — the first is the default view. */
       cameras?: string[];
+      /** Always open THIS camera, whatever fired — overriding the device
+       *  pairing that would otherwise show the ringing device's own view.
+       *  Needed because "which camera rang" and "which camera to look at" are
+       *  not the same question: measured on this house's Ring doorbell, its
+       *  `camera.*` entity serves the last RECORDED EVENT (byte-identical
+       *  snapshots over 36s; MJPEG frames all arriving within 0.3s; an IR night
+       *  picture at 11am), while the Reolink beside it is genuinely live. A bell
+       *  press should still say "Doorbell rang" — the trigger decides the words,
+       *  this decides the picture. Ignored unless it names a camera the resolver
+       *  already allows, so it can never widen the allowlist or blank the view. */
+      viewCamera?: string;
       /** Entity_ids whose firing opens the modal (event.*, binary_sensor.*, or a
        *  timestamp sensor.*). Overrides auto-detection entirely when present. */
       triggers?: string[];

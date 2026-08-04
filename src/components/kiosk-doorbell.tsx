@@ -128,7 +128,6 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
   const { data } = useDoorbellSnapshot();
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<HaDoorbellTrigger | null>(null);
-  const [manualCameraId, setManualCameraId] = useState<string | null>(null);
   const seenRef = useRef<string | null>(null);
   const seededRef = useRef(false);
   const onTriggerRef = useRef(onTrigger);
@@ -136,6 +135,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
 
   const cameras = useMemo(() => data?.cameras ?? [], [data?.cameras]);
   const latest = data?.latest ?? null;
+  const viewCamera = data?.viewCamera ?? null;
 
   useEffect(() => {
     if (!latest?.firedAt) return;
@@ -157,14 +157,12 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
 
     if (data?.autoOpen === false) return;
     setTrigger(latest);
-    setManualCameraId(null);
     setOpen(true);
     onTriggerRef.current?.();
   }, [latest, data?.autoOpen]);
 
   const openManually = useCallback(() => {
     setTrigger(null);
-    setManualCameraId(null);
     setOpen(true);
   }, []);
 
@@ -173,14 +171,17 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
     setTrigger(null);
   }, []);
 
-  /* Which camera opens first. A trigger picks its own device's camera; a
-     manual open gets the resolver's first choice (ha-doorbell.ts sorts a
-     camera that says "doorbell" ahead of one that merely lives near the
-     door). Falls back to the first available camera whenever the pairing
-     finds nothing — better the wrong door camera than a blank panel. */
+  /* Which camera opens first. A configured `viewCamera` pin wins outright —
+     the picture you want is not always the device that noticed (config.ts
+     explains the Ring case). Otherwise a trigger picks its own device's
+     camera and a manual open gets the resolver's first choice (ha-doorbell.ts
+     sorts a camera that says "doorbell" ahead of one that merely lives near
+     the door). The last line is reached when the pairing finds nothing —
+     better the wrong door camera than a blank panel. The chips inside the
+     modal move its own `selected` state, not this. */
   const cameraId = useMemo(() => {
-    if (manualCameraId) return manualCameraId;
     if (cameras.length === 0) return null;
+    if (viewCamera) return viewCamera;
     if (trigger) {
       let best = cameras[0];
       let bestLen = -1;
@@ -194,7 +195,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
       return best.entityId;
     }
     return cameras[0].entityId;
-  }, [cameras, trigger, manualCameraId]);
+  }, [cameras, trigger, viewCamera]);
 
   return { hasCamera: cameras.length > 0, open, trigger, cameraId, snapshot: data, openManually, close };
 }

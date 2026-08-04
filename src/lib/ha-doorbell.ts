@@ -64,7 +64,7 @@ async function fetchStates(creds: HaCredentials): Promise<RawEntity[] | { error:
   if (statesCache && now - statesCache.at < STATES_CACHE_MS) return statesCache.raw;
 
   const fail = (status: HaDoorbellSnapshot["status"], detail: string): { error: HaDoorbellSnapshot } => ({
-    error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true },
+    error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null },
   });
 
   let res: Response;
@@ -327,9 +327,18 @@ function resolve(raw: RawEntity[], serverNow: number): { cameras: HaDoorbellCame
  *  answers both "is anyone at the door" and "which cameras may I ask for". */
 export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
   const creds = haCredentials();
-  const autoOpen = configuredDoorbell().autoOpen !== false;
+  const cfg = configuredDoorbell();
+  const autoOpen = cfg.autoOpen !== false;
   if (!creds) {
-    return { status: "unconfigured", detail: UNCONFIGURED_DETAIL, cameras: [], triggers: [], latest: null, autoOpen };
+    return {
+      status: "unconfigured",
+      detail: UNCONFIGURED_DETAIL,
+      cameras: [],
+      triggers: [],
+      latest: null,
+      autoOpen,
+      viewCamera: null,
+    };
   }
 
   const raw = await fetchStates(creds);
@@ -337,7 +346,15 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
 
   const serverNow = Date.now();
   const { cameras, triggers } = resolve(raw, serverNow);
-  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen };
+
+  // Only honoured when it names a camera this resolver already allows — see
+  // HaDoorbellSnapshot.viewCamera. An unavailable camera still counts: it is
+  // the view the house has chosen, and rendering its outage is more honest than
+  // silently showing a different doorway.
+  const pinned = cfg.viewCamera?.trim();
+  const viewCamera = pinned && cameras.some((c) => c.entityId === pinned) ? pinned : null;
+
+  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen, viewCamera };
 }
 
 /** True only for a camera THIS resolver named — the allowlist described in the

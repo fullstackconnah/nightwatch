@@ -145,6 +145,11 @@ export interface HaDoorbellSnapshot {
   latest: HaDoorbellTrigger | null;
   /** Mirrors config's homeassistant.doorbell.autoOpen (default true). */
   autoOpen: boolean;
+  /** Config's homeassistant.doorbell.viewCamera, but only when it names one of
+   *  `cameras` above — validated here rather than client-side so a typo reads
+   *  as "no pin" (fall back to device pairing) instead of an empty panel, and so
+   *  the pin can never name a camera the proxy would refuse anyway. */
+  viewCamera: string | null;
 }
 
 export type HaActionName = "toggle" | "lock" | "unlock" | "set_hvac_mode" | "nudge_temp" | "activate_scene";
