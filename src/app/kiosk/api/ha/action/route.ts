@@ -18,7 +18,16 @@ export const dynamic = "force-dynamic";
  * on the kiosk at all — see the top-level task brief. Do not add them here.
  */
 
-const PUBLIC_ACTIONS = ["toggle", "activate_scene", "set_hvac_mode", "nudge_temp"] as const;
+const PUBLIC_ACTIONS = [
+  "toggle",
+  "activate_scene",
+  "set_hvac_mode",
+  "nudge_temp",
+  "set_temp",
+  "set_fan_mode",
+  "set_preset_mode",
+  "set_swing_mode",
+] as const;
 type PublicHaAction = (typeof PUBLIC_ACTIONS)[number];
 
 /** Domains the kiosk is allowed to touch at all. Locks are never in this
@@ -34,11 +43,31 @@ const ENTITY_ID_RE = /^[a-z_]+\.[a-zA-Z0-9_]+$/;
 const MAX_NUDGE_DELTA = 2;
 const MAX_HVAC_MODE_LEN = 30;
 
+/** Absolute backstop for set_temp, independent of whatever min/max a given
+ *  entity advertises (this route never looks those up — it has no read
+ *  path to HA, only write). Same defense-in-depth reasoning as
+ *  MAX_NUDGE_DELTA: a client bug or a fat-fingered tablet must not be able
+ *  to ask HA for a temperature no sane thermostat in this house would ever
+ *  want, even if HA itself would reject something further out. */
+const MIN_SET_TEMP = 5;
+const MAX_SET_TEMP = 35;
+
+/** Fan/preset/swing mode names are per-unit ("Level 1".."Level 7", "Auto",
+ *  "eco", "sleep") — this route doesn't know a fixed list to validate
+ *  against, so it only bounds the shape (non-empty, capped length) the same
+ *  way MAX_HVAC_MODE_LEN does for hvacMode, and leaves HA to reject a value
+ *  a given unit doesn't actually support. */
+const MAX_MODE_NAME_LEN = 30;
+
 interface KioskHaActionBody {
   action: PublicHaAction;
   entityId: string;
   hvacMode?: string;
   delta?: number;
+  temperature?: number;
+  fanMode?: string;
+  presetMode?: string;
+  swingMode?: string;
 }
 
 function validationError(detail: string): NextResponse {
@@ -82,7 +111,42 @@ function parseBody(value: unknown): KioskHaActionBody | { error: string } {
     delta = v.delta;
   }
 
-  return { action, entityId, hvacMode, delta };
+  let temperature: number | undefined;
+  if (action === "set_temp") {
+    if (typeof v.temperature !== "number" || !Number.isFinite(v.temperature)) {
+      return { error: "temperature must be a finite number." };
+    }
+    if (v.temperature < MIN_SET_TEMP || v.temperature > MAX_SET_TEMP) {
+      return { error: `temperature must be between ${MIN_SET_TEMP} and ${MAX_SET_TEMP} degrees.` };
+    }
+    temperature = v.temperature;
+  }
+
+  let fanMode: string | undefined;
+  if (action === "set_fan_mode") {
+    if (typeof v.fanMode !== "string" || !v.fanMode || v.fanMode.length > MAX_MODE_NAME_LEN) {
+      return { error: `fanMode must be a non-empty string of at most ${MAX_MODE_NAME_LEN} characters.` };
+    }
+    fanMode = v.fanMode;
+  }
+
+  let presetMode: string | undefined;
+  if (action === "set_preset_mode") {
+    if (typeof v.presetMode !== "string" || !v.presetMode || v.presetMode.length > MAX_MODE_NAME_LEN) {
+      return { error: `presetMode must be a non-empty string of at most ${MAX_MODE_NAME_LEN} characters.` };
+    }
+    presetMode = v.presetMode;
+  }
+
+  let swingMode: string | undefined;
+  if (action === "set_swing_mode") {
+    if (typeof v.swingMode !== "string" || !v.swingMode || v.swingMode.length > MAX_MODE_NAME_LEN) {
+      return { error: `swingMode must be a non-empty string of at most ${MAX_MODE_NAME_LEN} characters.` };
+    }
+    swingMode = v.swingMode;
+  }
+
+  return { action, entityId, hvacMode, delta, temperature, fanMode, presetMode, swingMode };
 }
 
 function statusCodeFor(status: HaActionResult["status"]): number {
@@ -111,6 +175,10 @@ export async function POST(req: NextRequest) {
     action: parsed.action,
     hvacMode: parsed.hvacMode,
     delta: parsed.delta,
+    temperature: parsed.temperature,
+    fanMode: parsed.fanMode,
+    presetMode: parsed.presetMode,
+    swingMode: parsed.swingMode,
   };
 
   const result = await performHaAction(actionReq);

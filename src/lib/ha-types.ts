@@ -48,6 +48,32 @@ export interface HaClimate {
   targetTempHigh: number | null;
   unit: string | null;
   available: boolean;
+
+  /* ── optional extras (2026-08-04 follow-up) ───────────────────────────────
+     Not every climate entity HA exposes advertises fan/preset/swing control
+     or its own temp bounds — these stay OPTIONAL (absent, never null) so a
+     unit that doesn't report them just doesn't have the key, and so
+     ha-climate.tsx (the authenticated /smarthome twin, which this file's
+     owner cannot edit) keeps compiling untouched: every consumer that only
+     knows the pre-existing shape still satisfies this interface. */
+  /** Current fan speed, from HA's own `fan_mode` attribute. */
+  fanMode?: string;
+  /** Fan speeds this entity accepts, from its own `fan_modes` attribute. */
+  fanModes?: string[];
+  /** Current preset ("none"/"eco"/"sleep"/...), from HA's `preset_mode`. */
+  presetMode?: string;
+  /** Presets this entity accepts, from its own `preset_modes` attribute. */
+  presetModes?: string[];
+  /** Current swing setting, from HA's `swing_mode` attribute. */
+  swingMode?: string;
+  /** Swing settings this entity accepts, from its own `swing_modes` attribute. */
+  swingModes?: string[];
+  /** This entity's own advertised bounds/step for `temperature` (HA's
+   *  `min_temp`/`max_temp`/`target_temp_step`) — used to clamp/snap a target
+   *  write instead of trusting a universal guess. */
+  minTemp?: number;
+  maxTemp?: number;
+  targetTempStep?: number;
 }
 
 export type HaLockState = "locked" | "unlocked" | "locking" | "unlocking" | "jammed" | "unavailable" | "unknown";
@@ -152,7 +178,17 @@ export interface HaDoorbellSnapshot {
   viewCamera: string | null;
 }
 
-export type HaActionName = "toggle" | "lock" | "unlock" | "set_hvac_mode" | "nudge_temp" | "activate_scene";
+export type HaActionName =
+  | "toggle"
+  | "lock"
+  | "unlock"
+  | "set_hvac_mode"
+  | "nudge_temp"
+  | "set_temp"
+  | "set_fan_mode"
+  | "set_preset_mode"
+  | "set_swing_mode"
+  | "activate_scene";
 
 export interface HaActionRequest {
   entityId: string;
@@ -161,6 +197,19 @@ export interface HaActionRequest {
   hvacMode?: string;
   /** Required for action === "nudge_temp" — degrees to add (may be negative). */
   delta?: number;
+  /** Required for action === "set_temp" — the absolute target, not a delta.
+   *  Exists alongside nudge_temp rather than replacing it: nudge_temp reads
+   *  HA's current value server-side and adds to it, which is exactly the
+   *  behaviour that loses a step under rapid taps (see kiosk-climate.tsx's
+   *  useTargetControl); set_temp lets a caller that already knows the
+   *  intended absolute value skip that read-modify-write race entirely. */
+  temperature?: number;
+  /** Required for action === "set_fan_mode". */
+  fanMode?: string;
+  /** Required for action === "set_preset_mode". */
+  presetMode?: string;
+  /** Required for action === "set_swing_mode". */
+  swingMode?: string;
 }
 
 export interface HaActionResult {

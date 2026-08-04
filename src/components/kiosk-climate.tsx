@@ -79,6 +79,16 @@ function formatTempRange(low: number | null, high: number | null, unit: string |
   return `${low.toFixed(1)}–${high.toFixed(1)}${degree}${unitTrimmed}`;
 }
 
+/** HA's fan/preset/swing mode strings ("Level 2", "eco", "on") arrive in
+ *  whatever case the integration chose — HVAC_LABEL is a hand-picked map
+ *  because there are only 7 hvac modes total, but fan/preset/swing are
+ *  per-unit and open-ended, so this just capitalizes the first letter
+ *  ("eco" -> "Eco") rather than hardcoding a table for values this app has
+ *  no fixed list of. */
+function titleCase(s: string): string {
+  return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -99,14 +109,34 @@ const NUDGE_BUTTON =
 // the nudge controls). The gap between the two is a full row of content
 // (name, then current-temp), not just a few px — the strongest possible
 // separation short of moving it off the tile entirely.
+//
+// FIX (2026-08-04): that negative offset used to sit on the <button> itself,
+// so its 56px ring/hover box visibly crossed the tile's own rounded border on
+// hover/focus/active, and the glyph sat proud of the corner. The 56px target
+// still has to overhang the tile — the name row only reserves px-8 (32px)
+// either side, less than half the button's width — so the fix keeps the
+// offset on the button but strips it of any visible chrome (no ring, no
+// background, no rounding) and moves the actual affordance onto a smaller
+// centred `<span>` (`*_CHIP` below, ~36px) that lands well inside the tile
+// edge at this offset. `group`/`group-*` threads hover/focus-visible/active
+// from the real interactive element (the button — a11y and click target)
+// onto that inner chip, since CSS can't apply `:focus-visible` styling to a
+// non-ancestor element directly.
 const EXPAND_BUTTON =
-  "absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center rounded-tile text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
+  "group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
+
+const EXPAND_BUTTON_CHIP =
+  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
 
 /** Mirrors EXPAND_BUTTON on the opposite corner. Same 56px touch target, same
  *  negative offset so it overhangs the tile's own padding rather than stealing
- *  a column from the two rows of text between them. */
+ *  a column from the two rows of text between them, and the same invisible
+ *  hit-area / inner-chip split (see EXPAND_BUTTON's comment). */
 const POWER_BUTTON =
-  "absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center rounded-tile outline-none ring-1 ring-transparent transition hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
+  "group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
+
+const POWER_BUTTON_CHIP =
+  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
 
 /** Which mode "on" means for a given unit.
  *
@@ -123,6 +153,230 @@ function preferredOnMode(modes: string[]): string | null {
     if (modes.includes(wanted)) return wanted;
   }
   return modes.find((m) => m !== "off") ?? null;
+}
+
+/* ── last-used mode memory (2026-08-04) ─────────────────────────────────────
+   The power button used to always guess via preferredOnMode, which for this
+   house's units lands on "auto" (they expose heat_cool/auto/heat/cool but not
+   heat_cool as truly dual — see ha-types.ts). The owner wants power-on to
+   instead resume whatever mode the unit was actually last running in,
+   including a mode set from the AC's own remote or the HA app rather than
+   from this tile — so the write happens from an effect watching the OBSERVED
+   hvacMode, not from setMode's call site. */
+
+const LAST_MODE_STORAGE_KEY = "kiosk-climate-last-mode";
+
+type LastModeMap = Record<string, string>;
+
+/** Defensive parse, same idiom as kiosk-theme.tsx's stored-theme read: a
+ *  missing key, invalid JSON, or a corrupt/wrong-shaped blob all degrade to
+ *  "nothing remembered" rather than throwing and bricking the tile. */
+function readLastModes(): LastModeMap {
+  try {
+    const raw = window.localStorage.getItem(LAST_MODE_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: LastModeMap = {};
+    for (const [entityId, mode] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof mode === "string") out[entityId] = mode;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** Persist one entity's last-seen non-off mode. Storage failures (private
+ *  mode, quota) are swallowed exactly like setKioskTheme's write — the
+ *  memory just won't survive a reload, which is not worth surfacing an error
+ *  over. */
+function writeLastMode(entityId: string, mode: string): void {
+  try {
+    const current = readLastModes();
+    current[entityId] = mode;
+    window.localStorage.setItem(LAST_MODE_STORAGE_KEY, JSON.stringify(current));
+  } catch {
+    // non-persistent is fine
+  }
+}
+
+/* ── target-temperature hold (2026-08-04 fix) ───────────────────────────────
+   THE BUG: kiosk-hub.tsx's runAction (shared plumbing this file cannot edit)
+   revalidates unconditionally the instant the POST to HA resolves — its
+   `finally { void mutate(); }` has no knowledge of what kind of device it
+   just wrote to. HA's REST call returns success immediately, but these are
+   IR/WiFi AC units that take real seconds to actually report the new
+   `temperature` attribute back through /api/states. The revalidate therefore
+   fetches the OLD value and stomps this tile's own optimistic update — which
+   is why a tap appeared to do nothing until the NEXT tap made the previous
+   one visible. Compounding it, the old nudge_temp action reads HA's current
+   value server-side and adds a delta, so two rapid taps could both read the
+   pre-tap value and silently lose a step.
+
+   THE FIX: this hook holds the tapped target locally, independent of
+   whatever kiosk-hub's SWR cache says, until either HA visibly reports back
+   the SAME number (proof the write took) or a TTL elapses (proof it didn't,
+   or is just unusually slow — at which point we stop showing a number that
+   was never confirmed and fall back to HA's real value). It also switches to
+   the ABSOLUTE set_temp action (see ha-types.ts) and debounces the write, so
+   N rapid taps produce exactly one HA request carrying the fully-accumulated
+   value instead of N races. This hold has to live here, in the tile's own
+   hook, because kiosk-hub.tsx's fetch/mutate/optimistic-write plumbing is
+   out of bounds for this change and is shared by every other control on the
+   panel — it cannot special-case one entity's timing.
+
+   REGRESSION FOUND ON THE TEST STACK (2026-08-04) AND WHY: this hook
+   originally called `ha.runAction(request, next)`, passing an optimistic
+   HaEntities snapshot the same way setMode/nudge do — reusing the pattern
+   without noticing what it does to THIS hook's own release condition.
+   runAction applies that snapshot to the SWR cache immediately (before the
+   HA round-trip even finishes), which means climate.targetTemp became
+   `value` within the same tick the debounced write fired — long before HA
+   itself had actually moved. The release effect below then saw
+   climate.targetTemp === pendingTarget and concluded "HA confirmed it",
+   clearing the hold. Moments later runAction's own `finally { void mutate()
+   }` refetched HA's REAL (still-stale) state, overwrote climate.targetTemp
+   back to the old value, and — with the hold already gone — displayTarget
+   fell straight back to it. Measured on real hardware: correct at 154ms,
+   reverted at 619ms, HA's genuine value only landing at 7.6s. The fix is to
+   never let this hook's own write touch climate.targetTemp before HA
+   genuinely reports it — see commit() below, which intentionally passes NO
+   optimistic snapshot. `pendingTarget` is already this hook's entire
+   optimistic display; climate.targetTemp must stay 100% server-truth or the
+   release effect's comparison is meaningless. (Checked every other reader of
+   entities.climates: kiosk-hub.tsx's ClimateSection just re-maps it to
+   KioskClimateTile instances — i.e. this tile and its siblings, whose other
+   fields this write never touched anyway — and /smarthome's ha-climate.tsx
+   reads an entirely separate SWR cache from its own useHa(), never this
+   one. Nothing else depended on the snapshot this removes.) */
+
+const TARGET_WRITE_DEBOUNCE_MS = 500;
+// 7.6s measured round-trip for one of these IR units to report a new
+// setpoint with the unit already on; 10s left almost no margin, and a TTL
+// that fires before HA catches up snaps the display backwards — the exact
+// failure this hook exists to remove. Erring toward holding the user's own
+// requested number too long is the safer direction.
+const TARGET_HOLD_TTL_MS = 20_000;
+/** Float-noise tolerance when comparing the held target against what HA
+ *  reports back — both sides are half-degree-stepped numbers, but IEEE float
+ *  equality isn't safe to trust at face value. */
+const TARGET_EPSILON = 0.05;
+
+interface TargetControl {
+  /** What to render: the locally held pending write while one is in flight,
+   *  otherwise HA's own targetTemp. Null exactly when targetTemp itself is
+   *  (dual-setpoint units, or a unit reporting no target at all). */
+  displayTarget: number | null;
+  lowerDisabled: boolean;
+  raiseDisabled: boolean;
+  /** direction is ±1 "step" (the entity's own targetTempStep, or NUDGE_STEP
+   *  when it doesn't advertise one) — never a raw degree delta, so this hook
+   *  is the only place that needs to know the unit's step size. */
+  bump: (direction: 1 | -1) => void;
+}
+
+/** Owns the displayed target for a SINGLE-setpoint climate tile — the only
+ *  shape any unit in this house actually reports (targetTempLow/High are
+ *  null on every one of them; see ha-types.ts). Dual-setpoint tiles keep
+ *  using the pre-existing relative `nudge` below unchanged, per the owner's
+ *  "leave it working, do not expand it" instruction — this hook is additive,
+ *  not a replacement for that dead-but-functional path. */
+/* Takes no `entities` snapshot: this hook writes an ABSOLUTE setpoint and
+   owns the optimistic display itself, so it has no reason to build one. */
+function useTargetControl(climate: HaClimate, ha: UseKioskHaResult): TargetControl {
+  const [pendingTarget, setPendingTarget] = useState<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ttlRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const min = climate.minTemp ?? -Infinity;
+  const max = climate.maxTemp ?? Infinity;
+  const step = climate.targetTempStep ?? NUDGE_STEP;
+
+  function clearTimers() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (ttlRef.current) clearTimeout(ttlRef.current);
+    debounceRef.current = null;
+    ttlRef.current = null;
+  }
+
+  // Release the hold the instant HA's own reported value catches up to what
+  // we asked for — the earliest point at which continuing to override it
+  // would just be re-displaying the same number HA already agrees on.
+  //
+  // This test is only meaningful because `commit()` below deliberately does
+  // NOT hand an optimistic snapshot to `ha.runAction`: `climate.targetTemp`
+  // must carry SERVER-CONFIRMED data and nothing else, or the effect answers
+  // its own question. It did exactly that once — passing the optimistic
+  // entities made SWR report our own requested value back, this effect read
+  // that as "HA caught up" and dropped the hold ~500ms after the tap, and the
+  // `void mutate()` in runAction's finally then refetched HA's still-stale
+  // number and stomped the display. Measured on the test stack against the
+  // real Kitchen unit: tap at 0ms showed 23.5°, reverted to 23.0° at 619ms,
+  // and only settled back to 23.5° at 7624ms — a seven-second lie, which is
+  // the precise confusion this whole hook exists to remove. `pendingTarget`
+  // is already the optimism for this entity, and the tile and modal share one
+  // hook instance, so nothing needed that snapshot in the first place.
+  useEffect(() => {
+    if (pendingTarget == null || climate.targetTemp == null) return;
+    if (Math.abs(climate.targetTemp - pendingTarget) <= TARGET_EPSILON) {
+      setPendingTarget(null);
+      clearTimers();
+    }
+    // Only re-run when the two values that matter change; clearTimers is
+    // stable in effect (it only touches refs).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [climate.targetTemp, pendingTarget]);
+
+  // Timers must not outlive the tile (a room that goes offline / a modal
+  // that unmounts its own instance shouldn't fire a stale setState later).
+  useEffect(() => clearTimers, []);
+
+  function commit(value: number) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      // No optimistic snapshot on purpose — see the release effect above.
+      // `pendingTarget` already owns the optimistic display, and feeding our
+      // own value back through SWR is what let the hold release against
+      // itself.
+      void ha.runAction({ entityId: climate.entityId, action: "set_temp", temperature: value }).then((ok) => {
+        if (!ok) {
+          // The write itself failed (not just "HA hasn't caught up yet") —
+          // drop the held value right away rather than let it sit until the
+          // TTL, and let ha.actionErrors carry the existing failure message.
+          setPendingTarget(null);
+          clearTimers();
+        }
+      });
+    }, TARGET_WRITE_DEBOUNCE_MS);
+
+    // A fresh TTL window per tap: each additional tap is a sign the user is
+    // still actively adjusting, so it re-earns the full hold period rather
+    // than being cut off mid-adjustment by an earlier tap's clock.
+    if (ttlRef.current) clearTimeout(ttlRef.current);
+    ttlRef.current = setTimeout(() => setPendingTarget(null), TARGET_HOLD_TTL_MS);
+  }
+
+  function bump(direction: 1 | -1) {
+    const base = pendingTarget ?? climate.targetTemp;
+    if (base == null) return;
+    const raw = Math.min(max, Math.max(min, base + direction * step));
+    // Kill the float noise a division/multiplication snap can introduce
+    // (e.g. 23.499999999996) — half-degree steps should render as exactly
+    // that.
+    const snapped = Math.round(raw / step) * step;
+    const next = Math.round(snapped * 1000) / 1000;
+    setPendingTarget(next);
+    commit(next);
+  }
+
+  const displayTarget = pendingTarget ?? climate.targetTemp;
+  return {
+    displayTarget,
+    lowerDisabled: displayTarget != null && displayTarget <= min,
+    raiseDisabled: displayTarget != null && displayTarget >= max,
+    bump,
+  };
 }
 
 /* ── tile ────────────────────────────────────────────────────────────────── */
@@ -143,13 +397,42 @@ export function KioskClimateTile({
   const error = ha.actionErrors[climate.entityId];
   const dualSetpoint = climate.targetTempLow != null && climate.targetTempHigh != null;
   const isOn = climate.hvacMode !== "off";
-  const onMode = preferredOnMode(climate.hvacModes);
+
+  // Remembered last-used mode (see the last-mode-memory block above
+  // preferredOnMode): SSR-safe null seed, filled in from localStorage after
+  // mount, exactly like kiosk-theme.tsx's useKioskTheme seeds "default" and
+  // reads the real stored value only inside an effect.
+  const [rememberedMode, setRememberedMode] = useState<string | null>(null);
+  useEffect(() => {
+    setRememberedMode(readLastModes()[climate.entityId] ?? null);
+  }, [climate.entityId]);
+  // Records whatever mode HA reports whenever it's non-off — a mode changed
+  // from the unit's own remote or the HA app must be remembered too, not
+  // only one set from this tile, so this watches the OBSERVED hvacMode
+  // rather than hooking setMode's call site.
+  useEffect(() => {
+    if (climate.hvacMode === "off") return;
+    writeLastMode(climate.entityId, climate.hvacMode);
+    setRememberedMode(climate.hvacMode);
+  }, [climate.entityId, climate.hvacMode]);
+
+  // Prefer the remembered mode, but only if this unit still actually offers
+  // it (hvac_modes can change between HA restarts/integration updates) —
+  // preferredOnMode stays as the fallback for a first run with nothing
+  // remembered yet, or a remembered mode this unit no longer advertises.
+  const onMode =
+    rememberedMode && climate.hvacModes.includes(rememberedMode) ? rememberedMode : preferredOnMode(climate.hvacModes);
   // No mode to switch INTO means the power button would be a control that
   // can't do anything — better absent than dead. (A unit that only reports
   // "off" is a broken integration, but this surface shouldn't render a lie
   // about it either way.)
   const canPower = climate.available && (isOn || onMode !== null);
   const nudgeable = climate.available && (climate.targetTemp != null || dualSetpoint);
+
+  // Always called (Rules of Hooks) — harmless for a dual-setpoint tile,
+  // since climate.targetTemp is null there and this hook's own displayTarget
+  // then stays null too; the dual-setpoint UI below keeps using `nudge`.
+  const targetControl = useTargetControl(climate, ha);
 
   // Unchanged from the old ClimateCard: hvac mode set and the temp nudge both
   // build a full optimistic HaEntities snapshot (mapping over entities.climates)
@@ -182,6 +465,33 @@ export function KioskClimateTile({
     void ha.runAction({ entityId: climate.entityId, action: "nudge_temp", delta }, next);
   };
 
+  // Same optimistic-snapshot shape as setMode above, one per newly-exposed
+  // attribute (work item 2/3) — each is a one-shot absolute write, so none
+  // of them need useTargetControl's hold/debounce machinery.
+  const setFanMode = (mode: string) => {
+    const next: HaEntities = {
+      ...entities,
+      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, fanMode: mode } : c)),
+    };
+    void ha.runAction({ entityId: climate.entityId, action: "set_fan_mode", fanMode: mode }, next);
+  };
+
+  const setPresetMode = (mode: string) => {
+    const next: HaEntities = {
+      ...entities,
+      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, presetMode: mode } : c)),
+    };
+    void ha.runAction({ entityId: climate.entityId, action: "set_preset_mode", presetMode: mode }, next);
+  };
+
+  const setSwingMode = (mode: string) => {
+    const next: HaEntities = {
+      ...entities,
+      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, swingMode: mode } : c)),
+    };
+    void ha.runAction({ entityId: climate.entityId, action: "set_swing_mode", swingMode: mode }, next);
+  };
+
   // Focus returns to the button that opened the modal, not document body —
   // same rationale as KioskPinPad's own restore-on-unmount effect.
   const closeModal = () => {
@@ -211,9 +521,13 @@ export function KioskClimateTile({
           aria-pressed={isOn}
           aria-label={`${isOn ? "Turn off" : "Turn on"} ${climate.name}`}
           title={isOn ? `Turn off ${climate.name}` : `Turn on ${climate.name}`}
-          className={cn(POWER_BUTTON, isOn ? "text-accent" : "text-ink-faint hover:text-ink")}
+          // ink-faint has no AA headroom left for an interactive control's own
+          // glyph (CLAUDE.md: it's microlabel-only) — ink-dim in the off state.
+          className={cn(POWER_BUTTON, isOn ? "text-accent" : "text-ink-dim hover:text-ink")}
         >
-          <Power size={20} aria-hidden />
+          <span className={POWER_BUTTON_CHIP}>
+            <Power size={20} aria-hidden />
+          </span>
         </button>
       )}
 
@@ -233,7 +547,9 @@ export function KioskClimateTile({
         onClick={() => setModalOpen(true)}
         className={EXPAND_BUTTON}
       >
-        <SlidersHorizontal size={15} aria-hidden />
+        <span className={EXPAND_BUTTON_CHIP}>
+          <SlidersHorizontal size={15} aria-hidden />
+        </span>
       </button>
 
       {/* Distance-readable figure — the number a person 2-3m away actually
@@ -250,8 +566,11 @@ export function KioskClimateTile({
           <button
             type="button"
             aria-label={`Lower target temperature for ${climate.name}`}
-            disabled={pending}
-            onClick={() => nudge(-NUDGE_STEP)}
+            // Single-setpoint tiles disable at the entity's own minTemp (once
+            // useTargetControl knows it); dual-setpoint keeps the old
+            // unbounded relative nudge unchanged.
+            disabled={pending || (!dualSetpoint && targetControl.lowerDisabled)}
+            onClick={() => (dualSetpoint ? nudge(-NUDGE_STEP) : targetControl.bump(-1))}
             className={NUDGE_BUTTON}
           >
             −
@@ -282,7 +601,10 @@ export function KioskClimateTile({
           >
             {dualSetpoint
               ? formatTempRange(climate.targetTempLow, climate.targetTempHigh, climate.unit)
-              : formatTemp(climate.targetTemp, climate.unit)}
+              : // The held value (see useTargetControl) — NOT climate.targetTemp
+                // directly, or a tap would show the exact stomped-then-stale
+                // number this whole hook exists to fix.
+                formatTemp(targetControl.displayTarget, climate.unit)}
           </div>
         </div>
 
@@ -290,8 +612,8 @@ export function KioskClimateTile({
           <button
             type="button"
             aria-label={`Raise target temperature for ${climate.name}`}
-            disabled={pending}
-            onClick={() => nudge(NUDGE_STEP)}
+            disabled={pending || (!dualSetpoint && targetControl.raiseDisabled)}
+            onClick={() => (dualSetpoint ? nudge(NUDGE_STEP) : targetControl.bump(1))}
             className={NUDGE_BUTTON}
           >
             +
@@ -308,9 +630,62 @@ export function KioskClimateTile({
           nudgeable={nudgeable}
           onNudge={nudge}
           onSetMode={setMode}
+          onSetFanMode={setFanMode}
+          onSetPresetMode={setPresetMode}
+          onSetSwingMode={setSwingMode}
+          targetControl={targetControl}
           onClose={closeModal}
         />
       )}
+    </div>
+  );
+}
+
+/** Shared chip-row rendering for every mode picker in the modal (hvac, and
+ *  now fan/preset/swing) — one visual language rather than a fifth control
+ *  inventing its own. `flex-wrap` is load-bearing, not decorative: these
+ *  units offer 7 fan levels + Auto, which overflows a single row at the
+ *  modal's own max-w-md. Renders nothing when `options` is empty, which is
+ *  what makes "only render a control group this entity actually advertises"
+ *  true without every call site repeating the same length check. */
+function ModeChipGroup({
+  groupLabel,
+  options,
+  current,
+  pending,
+  displayLabel,
+  ariaLabel,
+  onSelect,
+}: {
+  groupLabel: string;
+  options: string[];
+  current?: string;
+  pending: boolean;
+  displayLabel: (mode: string) => string;
+  ariaLabel: (mode: string) => string;
+  onSelect: (mode: string) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <div className="mt-6 flex flex-wrap justify-center gap-2" role="group" aria-label={groupLabel}>
+      {options.map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          aria-pressed={current === mode}
+          aria-label={ariaLabel(mode)}
+          disabled={pending}
+          onClick={() => onSelect(mode)}
+          className={cn(
+            "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
+            current === mode
+              ? "border-accent/30 bg-accent/10 text-accent"
+              : "border-line text-ink-dim hover:bg-panel hover:text-ink",
+          )}
+        >
+          {displayLabel(mode)}
+        </button>
+      ))}
     </div>
   );
 }
@@ -325,6 +700,10 @@ function KioskClimateModal({
   nudgeable,
   onNudge,
   onSetMode,
+  onSetFanMode,
+  onSetPresetMode,
+  onSetSwingMode,
+  targetControl,
   onClose,
 }: {
   climate: HaClimate;
@@ -334,6 +713,13 @@ function KioskClimateModal({
   nudgeable: boolean;
   onNudge: (delta: number) => void;
   onSetMode: (mode: string) => void;
+  onSetFanMode: (mode: string) => void;
+  onSetPresetMode: (mode: string) => void;
+  onSetSwingMode: (mode: string) => void;
+  /** Same hook instance the tile already created — passed down rather than
+   *  re-invoked here, so the modal and tile share ONE hold/debounce/TTL
+   *  state instead of racing two independent ones for the same entity. */
+  targetControl: TargetControl;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -457,7 +843,12 @@ function KioskClimateModal({
             <div className="mt-1 font-mono text-3xl text-accent">
               {dualSetpoint
                 ? `${formatTemp(climate.targetTempLow, climate.unit)} – ${formatTemp(climate.targetTempHigh, climate.unit)}`
-                : formatTemp(climate.targetTemp, climate.unit)}
+                : // Same held value the tile renders (targetControl is the
+                  // tile's own hook instance, threaded through as a prop) —
+                  // the modal must never read climate.targetTemp directly, or
+                  // it would show the exact stomped-then-stale number this
+                  // hook exists to hide.
+                  formatTemp(targetControl.displayTarget, climate.unit)}
             </div>
           </div>
         </div>
@@ -467,8 +858,8 @@ function KioskClimateModal({
             <button
               type="button"
               aria-label={`Lower target temperature for ${climate.name}`}
-              disabled={pending}
-              onClick={() => onNudge(-NUDGE_STEP)}
+              disabled={pending || (!dualSetpoint && targetControl.lowerDisabled)}
+              onClick={() => (dualSetpoint ? onNudge(-NUDGE_STEP) : targetControl.bump(-1))}
               className="flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
             >
               −
@@ -476,8 +867,8 @@ function KioskClimateModal({
             <button
               type="button"
               aria-label={`Raise target temperature for ${climate.name}`}
-              disabled={pending}
-              onClick={() => onNudge(NUDGE_STEP)}
+              disabled={pending || (!dualSetpoint && targetControl.raiseDisabled)}
+              onClick={() => (dualSetpoint ? onNudge(NUDGE_STEP) : targetControl.bump(1))}
               className="flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
             >
               +
@@ -485,28 +876,49 @@ function KioskClimateModal({
           </div>
         )}
 
-        {climate.hvacModes.length > 0 && (
-          <div className="mt-6 flex flex-wrap justify-center gap-2" role="group" aria-label={`${climate.name} mode`}>
-            {climate.hvacModes.map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                aria-pressed={climate.hvacMode === mode}
-                aria-label={`Set ${climate.name} to ${HVAC_LABEL[mode] ?? mode} mode`}
-                disabled={pending}
-                onClick={() => onSetMode(mode)}
-                className={cn(
-                  "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
-                  climate.hvacMode === mode
-                    ? "border-accent/30 bg-accent/10 text-accent"
-                    : "border-line text-ink-dim hover:bg-panel hover:text-ink",
-                )}
-              >
-                {HVAC_LABEL[mode] ?? mode}
-              </button>
-            ))}
-          </div>
-        )}
+        <ModeChipGroup
+          groupLabel={`${climate.name} mode`}
+          options={climate.hvacModes}
+          current={climate.hvacMode}
+          pending={pending}
+          displayLabel={(mode) => HVAC_LABEL[mode] ?? mode}
+          ariaLabel={(mode) => `Set ${climate.name} to ${HVAC_LABEL[mode] ?? mode} mode`}
+          onSelect={onSetMode}
+        />
+
+        {/* Fan/preset/swing (work item 2/3): only rendered when THIS entity's
+            own attributes actually offer them — most climate entities in the
+            world don't, and a control for a mode that doesn't exist would
+            just fail against HA every time it's tapped. */}
+        <ModeChipGroup
+          groupLabel={`${climate.name} fan speed`}
+          options={climate.fanModes ?? []}
+          current={climate.fanMode}
+          pending={pending}
+          displayLabel={(mode) => mode}
+          ariaLabel={(mode) => `Set ${climate.name} fan speed to ${mode}`}
+          onSelect={onSetFanMode}
+        />
+
+        <ModeChipGroup
+          groupLabel={`${climate.name} preset`}
+          options={climate.presetModes ?? []}
+          current={climate.presetMode}
+          pending={pending}
+          displayLabel={(mode) => titleCase(mode)}
+          ariaLabel={(mode) => `Set ${climate.name} preset to ${mode}`}
+          onSelect={onSetPresetMode}
+        />
+
+        <ModeChipGroup
+          groupLabel={`${climate.name} swing`}
+          options={climate.swingModes ?? []}
+          current={climate.swingMode}
+          pending={pending}
+          displayLabel={(mode) => titleCase(mode)}
+          ariaLabel={(mode) => `Set ${climate.name} swing to ${mode}`}
+          onSelect={onSetSwingMode}
+        />
 
         {error && (
           <div role="alert" className="mt-4 text-center text-2xs text-bad">

@@ -182,10 +182,33 @@ function mapSwitch(e: HaRawEntity): HaSwitch {
   };
 }
 
+/** Filters an attribute HA documents as a string array down to actual
+ *  strings, same defensive shape as hvac_modes below — an integration that
+ *  reports a malformed list degrades to "no modes offered" rather than a
+ *  crash or a mixed-type array reaching the client. */
+function stringArrayAttr(attrs: Record<string, unknown>, key: string): string[] {
+  const raw = attrs[key];
+  return Array.isArray(raw) ? raw.filter((m): m is string => typeof m === "string") : [];
+}
+
 function mapClimate(e: HaRawEntity): HaClimate {
   const attrs = e.attributes;
-  const hvacModesRaw = attrs.hvac_modes;
-  const hvacModes = Array.isArray(hvacModesRaw) ? hvacModesRaw.filter((m): m is string => typeof m === "string") : [];
+  const hvacModes = stringArrayAttr(attrs, "hvac_modes");
+
+  // Optional extras: only set the key at all when HA actually reported the
+  // attribute, so a unit that doesn't support (say) swing never carries a
+  // fabricated swingMode/swingModes pair — the field is simply absent,
+  // matching HaClimate's "optional, never null" contract for this group.
+  const fanMode = stringAttr(attrs, "fan_mode");
+  const fanModes = stringArrayAttr(attrs, "fan_modes");
+  const presetMode = stringAttr(attrs, "preset_mode");
+  const presetModes = stringArrayAttr(attrs, "preset_modes");
+  const swingMode = stringAttr(attrs, "swing_mode");
+  const swingModes = stringArrayAttr(attrs, "swing_modes");
+  const minTemp = numberOrNull(attrs.min_temp);
+  const maxTemp = numberOrNull(attrs.max_temp);
+  const targetTempStep = numberOrNull(attrs.target_temp_step);
+
   return {
     entityId: e.entity_id,
     name: friendlyName(e),
@@ -199,6 +222,15 @@ function mapClimate(e: HaRawEntity): HaClimate {
     targetTempHigh: numberOrNull(attrs.target_temp_high),
     unit: stringAttr(attrs, "unit_of_measurement"),
     available: !isUnavailable(e.state),
+    ...(fanMode != null ? { fanMode } : {}),
+    ...(fanModes.length > 0 ? { fanModes } : {}),
+    ...(presetMode != null ? { presetMode } : {}),
+    ...(presetModes.length > 0 ? { presetModes } : {}),
+    ...(swingMode != null ? { swingMode } : {}),
+    ...(swingModes.length > 0 ? { swingModes } : {}),
+    ...(minTemp != null ? { minTemp } : {}),
+    ...(maxTemp != null ? { maxTemp } : {}),
+    ...(targetTempStep != null ? { targetTempStep } : {}),
   };
 }
 
@@ -522,6 +554,53 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
         return { ok: false, status: "invalid", detail: "nudge_temp requires a numeric delta." };
       }
       return nudgeClimateTemp(creds, req.entityId, req.delta);
+
+    // Absolute counterpart to nudge_temp — see HaActionRequest.temperature's
+    // comment for why both exist. No read-current step here: the caller
+    // already knows the value it wants written.
+    case "set_temp":
+      if (domain !== "climate") {
+        return { ok: false, status: "invalid", detail: `set_temp is not valid for entity domain "${domain || "?"}"` };
+      }
+      if (typeof req.temperature !== "number" || !Number.isFinite(req.temperature)) {
+        return { ok: false, status: "invalid", detail: "set_temp requires a numeric temperature." };
+      }
+      return callService(creds, "climate", "set_temperature", req.entityId, { temperature: req.temperature });
+
+    case "set_fan_mode":
+      if (domain !== "climate") {
+        return { ok: false, status: "invalid", detail: `set_fan_mode is not valid for entity domain "${domain || "?"}"` };
+      }
+      if (!req.fanMode) {
+        return { ok: false, status: "invalid", detail: "set_fan_mode requires fanMode." };
+      }
+      return callService(creds, "climate", "set_fan_mode", req.entityId, { fan_mode: req.fanMode });
+
+    case "set_preset_mode":
+      if (domain !== "climate") {
+        return {
+          ok: false,
+          status: "invalid",
+          detail: `set_preset_mode is not valid for entity domain "${domain || "?"}"`,
+        };
+      }
+      if (!req.presetMode) {
+        return { ok: false, status: "invalid", detail: "set_preset_mode requires presetMode." };
+      }
+      return callService(creds, "climate", "set_preset_mode", req.entityId, { preset_mode: req.presetMode });
+
+    case "set_swing_mode":
+      if (domain !== "climate") {
+        return {
+          ok: false,
+          status: "invalid",
+          detail: `set_swing_mode is not valid for entity domain "${domain || "?"}"`,
+        };
+      }
+      if (!req.swingMode) {
+        return { ok: false, status: "invalid", detail: "set_swing_mode requires swingMode." };
+      }
+      return callService(creds, "climate", "set_swing_mode", req.entityId, { swing_mode: req.swingMode });
 
     case "activate_scene":
       if (domain !== "scene") {
