@@ -49,7 +49,16 @@ const TILE_COUNT = 4;
 
 /** Four entities chosen by time of day: evenings reach for scenes first
  *  (movie night, wind-down), mornings/days for lights. Deterministic — same
- *  hour, same four tiles — so the wall display never reshuffles underfoot. */
+ *  hour, same four tiles — so the wall display never reshuffles underfoot.
+ *
+ *  `entities.switches` is deliberately NOT a candidate pool here (redesign
+ *  follow-up: switches are a bare on/off with no glanceable identity of their
+ *  own — the outdoor floodlight the wall display actually needs a button for
+ *  is a `light.*` entity already ("Front door Floodlight", see kiosk-hub.tsx's
+ *  LightsSection), so it's covered by the `lights` pool below without any
+ *  switch-domain filtering. Dropping generic switches keeps this surface to
+ *  controls a glance actually needs to reach; the hub (full mode) still lists
+ *  every switch for anything that isn't. */
 function GlanceTiles({ period }: { period: KioskPeriod }) {
   const ha = useKioskHa();
   const entities = ha.data?.status === "ok" ? ha.data.entities : null;
@@ -62,10 +71,7 @@ function GlanceTiles({ period }: { period: KioskPeriod }) {
     const lights = entities.lights
       .filter((l) => l.available)
       .map((l) => ({ key: l.entityId, name: l.name, kind: "light" as const, on: l.on }));
-    const switches = entities.switches
-      .filter((s) => s.available)
-      .map((s) => ({ key: s.entityId, name: s.name, kind: "switch" as const, on: s.on }));
-    const ordered = period === "evening" ? [...scenes, ...lights, ...switches] : [...lights, ...scenes, ...switches];
+    const ordered = period === "evening" ? [...scenes, ...lights] : [...lights, ...scenes];
     return ordered.slice(0, TILE_COUNT);
   }, [entities, period]);
 
@@ -82,7 +88,15 @@ function GlanceTiles({ period }: { period: KioskPeriod }) {
             key={p.key}
             type="button"
             disabled={pending}
-            onClick={() => {
+            // Opt-out from kiosk-surface.tsx's root onPointerDown promoter
+            // (same idiom as its own "back to glance" button): in glance, a
+            // control's own press is consumed by the control; only dead
+            // space promotes the view. Without this, tapping a tile would
+            // both toggle the light/scene AND kick the wall display into
+            // full mode underneath it.
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
               if (p.kind === "scene") {
                 void ha.runAction({ entityId: p.key, action: "activate_scene" });
               } else {
@@ -151,11 +165,24 @@ export function KioskGlance({
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
           left: "calc(1.25rem + env(safe-area-inset-left))",
         }}
+        // KioskTimersButton lives in kiosk-timers.tsx (not owned here), so the
+        // opt-out from the root promoter is applied on this wrapping div
+        // instead of inside that component — same rule as the tiles above:
+        // in glance, a control's own press is consumed by the control; only
+        // dead space promotes the view.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <KioskTimersButton className="h-14" />
       </div>
       <button
         type="button"
+        // Admin does NOT opt out: unlike the tiles/timers button, pressing it
+        // is meant to both promote to full (elevation pins the surface there
+        // anyway, see the file header comment) and open the PIN pad — there's
+        // no in-place action to protect from the promotion, so letting the
+        // press reach the root handler is harmless and one fewer special
+        // case to maintain.
         onClick={onAdminClick}
         style={{
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
