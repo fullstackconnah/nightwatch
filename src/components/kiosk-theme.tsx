@@ -21,6 +21,7 @@
    without converting the kiosk layout to a client boundary wholesale. */
 
 import { useEffect, useState } from "react";
+import { DEFAULT_THEME_FONTS, kioskFontValue, useKioskFonts } from "@/lib/kiosk-fonts";
 import {
   Archivo,
   Bodoni_Moda,
@@ -247,6 +248,45 @@ export function useKioskTheme(): KioskTheme {
  *  font variable (variables are free; faces download only on use). */
 export function KioskThemeScope({ children }: { children: React.ReactNode }) {
   const theme = useKioskTheme();
+  const fonts = useKioskFonts(theme);
+  const defaultFonts = DEFAULT_THEME_FONTS[theme];
+  // Only emit an override when it actually differs from the theme's own
+  // default, so a device with no stored personalization renders with the
+  // exact same style object as before this feature existed — no
+  // --font-sans/--font-mono/fontFamily entries at all.
+  const sansOverride = fonts.sans !== defaultFonts.sans ? kioskFontValue(fonts.sans) : null;
+  const monoOverride = fonts.mono !== defaultFonts.mono ? kioskFontValue(fonts.mono) : null;
+
+  const style: Record<string, string> = {
+    // isolate: gives this div its own stacking context so KioskSky's
+    // z-index:-1 layer paints ABOVE this ground color but below content.
+    // Without it, CSS painting order puts negative-z descendants behind
+    // the shared context's in-flow backgrounds — invisible by construction.
+    isolation: "isolate",
+    paddingTop: "env(safe-area-inset-top)",
+    paddingBottom: "env(safe-area-inset-bottom)",
+    paddingLeft: "env(safe-area-inset-left)",
+    paddingRight: "env(safe-area-inset-right)",
+  };
+  if (sansOverride) {
+    style["--font-sans"] = sansOverride;
+    // Also set fontFamily directly, not just the custom property: globals.css's
+    // `[data-kiosk-theme] { font-family: var(--font-sans); … }` (the rule that
+    // makes a themed --font-sans reach rendered text at all, since body's own
+    // font-family is computed once outside this scope) never matches the
+    // "default" theme — data-kiosk-theme is `undefined` for it, two lines
+    // below — so a custom-property-only override would silently do nothing
+    // there. Inline fontFamily works on all 16 themes uniformly; on the other
+    // 15 it just duplicates the value the CSS rule would already apply.
+    style.fontFamily = sansOverride;
+  }
+  if (monoOverride) {
+    // No matching global font-mono rule exists — .font-mono utility classes
+    // re-resolve var(--font-mono) themselves wherever they're used, so the
+    // custom property alone is enough to reach every numeral/mono element.
+    style["--font-mono"] = monoOverride;
+  }
+
   return (
     <div
       data-kiosk-theme={theme === "default" ? undefined : theme}
@@ -263,17 +303,7 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       // that rule, so overflow-y stays `visible`, the sticky containing block
       // resolves to the viewport, and the horizontal clipping is unchanged.
       className={cn("kiosk-dense min-h-screen bg-bg overflow-x-clip", ...FONT_VARIABLE_CLASSES)}
-      style={{
-        // isolate: gives this div its own stacking context so KioskSky's
-        // z-index:-1 layer paints ABOVE this ground color but below content.
-        // Without it, CSS painting order puts negative-z descendants behind
-        // the shared context's in-flow backgrounds — invisible by construction.
-        isolation: "isolate",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "env(safe-area-inset-bottom)",
-        paddingLeft: "env(safe-area-inset-left)",
-        paddingRight: "env(safe-area-inset-right)",
-      }}
+      style={style}
     >
       {children}
     </div>
