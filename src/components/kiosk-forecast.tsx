@@ -124,7 +124,7 @@ export function KioskForecastRail({
   return (
     <div
       data-testid="kiosk-forecast-rail"
-      className={cn("flex items-start overflow-hidden", s.gap)}
+      className={cn("flex items-start overflow-hidden px-1 -mx-1", s.gap)}
     >
       {days.map((day, i) => {
         const Icon = WEATHER_ICON[day.code];
@@ -142,7 +142,26 @@ export function KioskForecastRail({
                right call when there was nothing to paint. `-mx-1 px-1` widens
                the painted area back over half the gap so the wash reads as a
                column of sky rather than a label with a highlight behind it,
-               without changing where anything actually sits. */
+               without changing where anything actually sits.
+
+               That bleed is invisible on interior cells (it just eats into
+               the gap either side), but the FIRST and LAST cell have no
+               neighbour to bleed into on their outer side — their `-mx-1`
+               instead pushes the painted, rounded box 4px past the rail's own
+               edge, and the rail's `overflow-hidden` (needed below) clipped
+               exactly that overhang, shaving the outer rounded corners off
+               Today and the last visible day. Interior cells were never
+               touched, which is why only the two ends looked wrong. The rail
+               container now carries a matching `px-1 -mx-1`: the padding
+               moves its clip boundary out by 4px so the overhang lands inside
+               it instead of past it, and the negative margin cancels the
+               padding's own footprint so the rail measures the same to
+               everything around it (and so every reveal breakpoint above,
+               measured against the rail's old box, still holds). Remove
+               either half on its own and the clipping comes back — on the
+               container if you drop `px-1`, on these cells if you ever drop
+               their `-mx-1` while leaving the container's compensation in
+               place. */
             className={cn(visibility, "shrink-0 flex-col items-center rounded-md -mx-1 px-1 py-0.5")}
             style={{ backgroundColor: DAY_TINT[day.code] }}
           >
