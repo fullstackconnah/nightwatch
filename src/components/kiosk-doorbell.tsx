@@ -17,7 +17,9 @@
    tablet that has stopped being a dashboard, and on a battery doorbell an
    MJPEG stream nobody is watching is measurable hardware damage — the picture
    costs something to keep on screen, which is not true of anything else here.
-   AUTO_CLOSE_MS is that limit; touching the panel resets it. */
+   TAKEOVER_CLOSE_MS and MANUAL_CLOSE_MS are those limits — a screen it took on
+   its own goes back quickly, a screen someone asked for stays. Touching the
+   panel resets the clock. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
@@ -41,14 +43,30 @@ const POLL_MS = 3000;
  *  wall tablet's own clock drifts, and "is this fresh" must not depend on it. */
 const FRESH_SEC = 45;
 
-/** Standing time before the modal gives the surface back. Long enough to
- *  watch someone leave a parcel, short enough that a stream is never left
- *  running against a battery. Any touch inside the panel restarts it. */
-const AUTO_CLOSE_MS = 120_000;
+/** Standing time before the modal gives the surface back, keyed on HOW it got
+ *  there — the two cases are not the same promise.
+ *
+ *  A takeover the tablet performed on its own is an interruption: nobody asked
+ *  for it, and whoever walks past thirty seconds later just wants the dashboard
+ *  back. It gets 20s, which is a glance at who is at the door, not a viewing
+ *  session.
+ *
+ *  A modal someone opened with the Front door button WAS asked for, so it keeps
+ *  the long window — long enough to watch someone walk up the path.
+ *
+ *  Any touch inside the panel promotes an interruption to the manual window: a
+ *  screen someone just touched is not an abandoned one, and an abandoned screen
+ *  is the only thing this limit exists to reclaim. */
+const TAKEOVER_CLOSE_MS = 20_000;
+const MANUAL_CLOSE_MS = 120_000;
 
-/** Only announce the countdown once it's imminent — a timer visible for two
- *  minutes is pressure, a warning in the last few seconds is just courtesy. */
+/** Only announce the countdown once it's imminent — a timer standing for the
+ *  whole window is pressure, a warning in the last few seconds is courtesy.
+ *  Capped at half the window, or the 20s takeover would render a countdown from
+ *  the moment it appeared, which is the pressure this threshold exists to
+ *  avoid. */
 const COUNTDOWN_VISIBLE_SEC = 20;
+const countdownAt = (windowMs: number) => Math.min(COUNTDOWN_VISIBLE_SEC, Math.floor(windowMs / 2000));
 
 /** A still refreshed at roughly this rate reads as live-ish without asking a
  *  camera for a video stream it may not be able to give. Only used after the
@@ -383,16 +401,29 @@ export function KioskDoorbellModal({
   const [status, setStatus] = useState<CameraStatus>("connecting");
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [deadline, setDeadline] = useState(() => Date.now() + AUTO_CLOSE_MS);
+  // deadline and the window it came from move together: the countdown threshold
+  // is derived from the window, so a state where one has updated and the other
+  // hasn't would render "closing in 20s" against a 20s window for one frame.
+  const [clock, setClock] = useState(() => {
+    const windowMs = trigger ? TAKEOVER_CLOSE_MS : MANUAL_CLOSE_MS;
+    return { deadline: Date.now() + windowMs, windowMs };
+  });
   const dialogRef = useRef<HTMLDivElement>(null);
   const reducedRef = useRef(false);
   const titleId = "kiosk-doorbell-title";
 
   // A second ring while the modal is already standing re-points it at that
-  // trigger's camera and restarts the clock, rather than being swallowed.
+  // trigger's camera and restarts the clock, rather than being swallowed. A ring
+  // is a fresh automatic appearance, so it restarts on the SHORT window even if
+  // a touch had previously promoted this modal to the manual one — the new
+  // interruption is no more asked-for than the first.
   useEffect(() => {
     setSelected(cameraId);
-    setDeadline(Date.now() + AUTO_CLOSE_MS);
+    const windowMs = trigger ? TAKEOVER_CLOSE_MS : MANUAL_CLOSE_MS;
+    setClock({ deadline: Date.now() + windowMs, windowMs });
+    // Keyed on the ring, deliberately not on `trigger`'s identity: the 3s poll
+    // hands back a new object every time, which would restart the window
+    // forever and the modal would never close on its own.
   }, [cameraId]);
 
   // Same entrance idiom as kiosk-climate.tsx's modal: flip a frame after
@@ -419,12 +450,17 @@ export function KioskDoorbellModal({
   }, [onClose]);
 
   const now = useNow(true);
-  const secondsLeft = Math.max(0, Math.ceil((deadline - now) / 1000));
+  const secondsLeft = Math.max(0, Math.ceil((clock.deadline - now) / 1000));
   useEffect(() => {
-    if (now !== 0 && now >= deadline) requestClose();
-  }, [now, deadline, requestClose]);
+    if (now !== 0 && now >= clock.deadline) requestClose();
+  }, [now, clock.deadline, requestClose]);
 
-  const keepOpen = useCallback(() => setDeadline(Date.now() + AUTO_CLOSE_MS), []);
+  // A touch means someone is watching, so this stops being an interruption and
+  // gets the window a deliberate open would have had.
+  const keepOpen = useCallback(
+    () => setClock({ deadline: Date.now() + MANUAL_CLOSE_MS, windowMs: MANUAL_CLOSE_MS }),
+    [],
+  );
 
   function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
@@ -543,7 +579,7 @@ export function KioskDoorbellModal({
               ))}
           </div>
 
-          {secondsLeft <= COUNTDOWN_VISIBLE_SEC && (
+          {secondsLeft <= countdownAt(clock.windowMs) && (
             <p className="shrink-0 font-mono text-xs text-ink-faint" aria-live="off">
               closing in {secondsLeft}s
             </p>
