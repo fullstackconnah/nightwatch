@@ -60,7 +60,12 @@ export async function POST(req: NextRequest) {
       const token = mergedSecret(str(body.homeassistant.token), current.homeassistant?.token);
       if (!url) return NextResponse.json({ error: "Home Assistant needs a URL" }, { status: 400 });
       if (!token) return NextResponse.json({ error: "Home Assistant needs a long-lived access token" }, { status: 400 });
-      next.homeassistant = { url, token, updatedAt: now };
+      // Spread `current` first: this block is not just {url, token} any more —
+      // it carries the kiosk's hand-edited `doorbell` overrides, which this
+      // panel neither shows nor sends. Rebuilding it from the patch alone
+      // erased them on every HA save (the same clobber the PUT in
+      // ../route.ts documents at its own read-modify-write).
+      next.homeassistant = { ...current.homeassistant, url, token, updatedAt: now };
     }
   }
 

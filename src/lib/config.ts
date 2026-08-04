@@ -52,7 +52,29 @@ export interface AppConfig {
    *  `updatedAt` (ISO) is stamped by POST /api/settings/integrations on every
    *  save, purely so the settings UI can show "last saved <relative>" —
    *  nothing else reads it. */
-  homeassistant?: { url?: string; token?: string; updatedAt?: string };
+  homeassistant?: {
+    url?: string;
+    token?: string;
+    updatedAt?: string;
+    /** Optional overrides for the kiosk's front-door camera surface. Every
+     *  field is optional because src/lib/ha-doorbell.ts auto-detects all of
+     *  it from HA's own entity registry (door-ish camera entities, plus the
+     *  ding/person/motion entities that share each camera's device slug) —
+     *  this block exists for the cases where that heuristic picks wrong: a
+     *  camera named nothing like a door, or a doorbell whose trigger lives
+     *  on a separate device. `cameras` also doubles as the allowlist the
+     *  public proxy route enforces, so naming one here means NO other camera
+     *  in the house is reachable from the unauthenticated kiosk surface. */
+    doorbell?: {
+      /** Camera entity_ids, most important first — the first is the default view. */
+      cameras?: string[];
+      /** Entity_ids whose firing opens the modal (event.*, binary_sensor.*, or a
+       *  timestamp sensor.*). Overrides auto-detection entirely when present. */
+      triggers?: string[];
+      /** Set false to keep the modal from opening itself; the manual button stays. */
+      autoOpen?: boolean;
+    };
+  };
   /** Nginx Proxy Manager admin API (port 81) for the /proxy route map.
    *  NPM only exposes its API to an authenticated admin, so this is the
    *  admin login; a bearer token is requested server-side per session. */

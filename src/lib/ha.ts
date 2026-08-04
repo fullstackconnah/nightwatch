@@ -30,12 +30,16 @@ import type {
 
 const TIMEOUT_MS = 4000;
 
-interface HaCredentials {
+export interface HaCredentials {
   url: string;
   token: string;
 }
 
-function haCredentials(): HaCredentials | null {
+/** Exported for src/lib/ha-doorbell.ts, which talks to HA endpoints this
+ *  module has no business knowing about (`/api/camera_proxy*`) but must read
+ *  the same single credential source — two copies of this drift the moment
+ *  the config block gains a field. */
+export function haCredentials(): HaCredentials | null {
   const cfg = loadConfig();
   const url = cfg.homeassistant?.url?.trim();
   const token = cfg.homeassistant?.token?.trim();
@@ -43,7 +47,7 @@ function haCredentials(): HaCredentials | null {
   return { url: url.replace(/\/+$/, ""), token };
 }
 
-const UNCONFIGURED_DETAIL =
+export const UNCONFIGURED_DETAIL =
   'No Home Assistant connection configured. In HA: Profile (bottom-left) → Security → ' +
   'Long-Lived Access Tokens → Create Token. Then add a "homeassistant" block to ' +
   "data/config.json on the server: " +

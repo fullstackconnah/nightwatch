@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { KioskSurface } from "@/components/kiosk-surface";
 import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
 import { KioskPinPad } from "@/components/kiosk-pin-pad";
+import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk-doorbell";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 
@@ -131,6 +132,16 @@ function KioskPageInner() {
     nightWakeTimerRef.current = setTimeout(() => setNightWoken(false), NIGHT_WAKE_MS);
   }, []);
 
+  // The front door watcher lives HERE, not inside KioskSurface, for one
+  // structural reason: at night the surface isn't mounted at all (the overlay
+  // below replaces it), and a doorbell that only works between 5am and
+  // bedtime is the wrong half of the day. Mounted at this level it also
+  // outranks both branches visually, so the picture appears over whichever
+  // one is showing. `wakeNight` is passed as the trigger callback so
+  // dismissing the modal at 2am leaves a usable surface behind it rather than
+  // dropping straight back to the calm clock.
+  const doorbell = useDoorbellWatch(wakeNight);
+
   // Leaving night (clock rolls past 5am, or a `?period=` override changes it)
   // drops any pending wake state rather than letting a stale timer flip it
   // back on after the fact.
@@ -217,6 +228,18 @@ function KioskPageInner() {
           onAdminClick={() => setPinOpen(true)}
           onLock={lock}
           initialMode={nightWoken ? "full" : "glance"}
+          onDoorbellClick={doorbell.openManually}
+        />
+      )}
+
+      {/* Last in the tree on purpose: it must sit above the night overlay and
+          the PIN pad both, since a ring is the one event that outranks
+          whatever the tablet was doing. */}
+      {doorbell.open && doorbell.cameraId && (
+        <KioskDoorbellModal
+          cameraId={doorbell.cameraId}
+          trigger={doorbell.trigger}
+          onClose={doorbell.close}
         />
       )}
 

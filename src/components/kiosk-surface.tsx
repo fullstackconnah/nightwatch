@@ -52,6 +52,7 @@ import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { KioskAppearance, type KioskLayoutChoice } from "@/components/kiosk-appearance";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskAlerts } from "@/components/kiosk-alerts";
+import { KioskDoorbellButton } from "@/components/kiosk-doorbell";
 import { KioskStatusStripExtras } from "@/components/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk-stale-tag";
 
@@ -377,6 +378,7 @@ export function KioskSurface({
   onAdminClick,
   onLock,
   initialMode,
+  onDoorbellClick,
 }: {
   period: KioskPeriod;
   layout: KioskLayoutChoice;
@@ -385,6 +387,10 @@ export function KioskSurface({
   expiresAt: number | null;
   onAdminClick: () => void;
   onLock: () => void;
+  /** Opens the front-door camera on demand. The modal itself is owned by
+   *  page.tsx (it has to outlive this surface — see the watcher's comment
+   *  there); this component contributes only the button that asks for it. */
+  onDoorbellClick: () => void;
   /** Seeds the very first render only (a night wake tap enters full — see
    *  page.tsx's wakeNight/nightWoken — everything else always rests in
    *  glance on mount, per the contract). */
@@ -525,6 +531,10 @@ export function KioskSurface({
                 <span>Glance</span>
               </button>
             )}
+            {/* Ahead of Admin in the row: it's the control most likely to be
+                wanted in a hurry, and unlike Admin it hides itself entirely
+                when Home Assistant has no door camera to show. */}
+            <KioskDoorbellButton onClick={onDoorbellClick} />
             <KioskStatusStripExtras
               elevated={elevated}
               onAdminClick={onAdminClick}
