@@ -41,13 +41,36 @@ export interface KioskFlipGroup {
  * or enter/exit, which is a different concern (KIOSK_FADE_MS, owned by
  * whichever component un/mounts non-shared content around the shared ones).
  *
- * How the "before" rect is captured without a captureBeforeUpdate hook:
- * every effect run stores each node's rect in `rectsRef` for next time.
- * Because the effect only re-runs when `key` changes, the rect stored on
- * the PREVIOUS run is exactly the old position — nothing else could have
- * moved it between runs — while re-measuring now (after React has already
- * committed the new layout) gives the new position. Comparing those two is
- * the whole trick; no extra lifecycle hook needed.
+ * How the "before" rect stays fresh even though there's no captureBeforeUpdate
+ * hook: this effect runs after EVERY commit (no dependency array), not just
+ * when `key` changes. Each run re-measures every registered node and stores
+ * the rect in `rectsRef` for next time; a FLIP animation only actually PLAYS
+ * when `key` changed since the last run (see `keyChanged` below) — refreshing
+ * the baseline is unconditional, playing the animation is not. This matters
+ * because the shared nodes can move for reasons that have nothing to do with
+ * `key` (a weather reading arriving, the health poll landing, the forecast
+ * rail gating on `days.length`): if the baseline were only refreshed on key
+ * change, the NEXT mode flip would FLIP from a rect that's been stale since
+ * mount, and the element would visibly fly in from a position it never
+ * actually occupied.
+ *
+ * A node with an animation still in `animsRef` is excluded from that
+ * unconditional refresh — but ONLY from the refresh, never from playing a
+ * new FLIP. `getBoundingClientRect()` on a node mid-WAAPI-animation reports
+ * its CURRENT on-screen (transformed) position, not the layout position the
+ * animation is travelling toward, so storing that as a plain baseline would
+ * poison the NEXT commit's rect with a transformed, not resting, value —
+ * that's why a no-key-change commit skips it and leaves the stored rect
+ * alone (the node's `anim.finished` handler re-measures it once the
+ * animation actually completes and the node is back at its plain,
+ * untransformed layout position). But if `key` DOES change while a node is
+ * still travelling — a rapid glance→full→glance re-flip — the in-flight
+ * transform's live position is exactly the right "from" rect for the
+ * reversal, so that case measures the node BEFORE cancelling (capturing the
+ * live transformed position), cancels the old animation, then measures again
+ * AFTER cancelling (now back to the plain layout rect) to get the new "to".
+ * Skipping an in-flight node on a key change instead of reversing it would
+ * strand it easing toward a target that layout has already abandoned.
  */
 export function useFlipGroup(key: string | number): KioskFlipGroup {
   const nodesRef = useRef(new Map<string, HTMLElement>());
@@ -69,47 +92,94 @@ export function useFlipGroup(key: string | number): KioskFlipGroup {
     return cb;
   }, []);
 
+  // No dependency array — this must run after every commit, not just when
+  // `key` changes, to keep `rectsRef` fresh (see the comment above). Whether
+  // it PLAYS an animation is still gated on `keyChanged` below.
   useLayoutEffect(() => {
     const keyChanged = !firstRunRef.current && prevKeyRef.current !== key;
     const reduced = prefersReducedMotion();
 
     for (const [id, node] of nodesRef.current) {
-      const newRect = node.getBoundingClientRect();
-      const oldRect = rectsRef.current.get(id);
+      const inFlight = animsRef.current.get(id);
 
-      if (keyChanged && oldRect && !reduced) {
-        const dx = oldRect.left - newRect.left;
-        const dy = oldRect.top - newRect.top;
-        // Single uniform scale derived from width (per the contract — never
-        // animate width/height directly, and never skew glyphs with
-        // independent x/y scale).
-        const scale = newRect.width > 0 ? oldRect.width / newRect.width : 1;
+      if (keyChanged && !reduced) {
+        // Measure BEFORE cancelling: for a node still travelling, this rect
+        // includes its live WAAPI transform — i.e., where it actually is on
+        // screen right now — which is the correct "from" origin for a
+        // reversal. For an idle node, the rect stored on the previous run is
+        // the correct origin instead (nothing else could have moved it since
+        // then, per the comment above `useFlipGroup`).
+        const visualRect = node.getBoundingClientRect();
+        const oldRect = inFlight ? visualRect : rectsRef.current.get(id);
 
-        if (dx !== 0 || dy !== 0 || scale !== 1) {
-          // Cancel any in-flight animation on this node first so a rapid
-          // re-flip mid-travel reverses smoothly instead of jumping — the
-          // in-progress transform is simply overwritten by the new one.
-          animsRef.current.get(id)?.cancel();
-          const anim = node.animate(
-            [
-              { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, transformOrigin: "top left" },
-              { transform: "none", transformOrigin: "top left" },
-            ],
-            { duration: KIOSK_MOVE_MS, easing: KIOSK_EASE_OUT },
-          );
-          animsRef.current.set(id, anim);
-          anim.finished.catch(() => {}).finally(() => {
-            if (animsRef.current.get(id) === anim) animsRef.current.delete(id);
-          });
+        // Cancel any in-flight animation now so a rapid re-flip mid-travel
+        // reverses smoothly instead of jumping — the in-progress transform
+        // is simply overwritten by the new one.
+        inFlight?.cancel();
+
+        // After cancelling, the transform is gone — this is the clean,
+        // untransformed layout rect, and the true destination for whatever
+        // FLIP plays next.
+        const newRect = node.getBoundingClientRect();
+
+        if (oldRect) {
+          const dx = oldRect.left - newRect.left;
+          const dy = oldRect.top - newRect.top;
+          // Single uniform scale derived from width (per the contract —
+          // never animate width/height directly, and never skew glyphs with
+          // independent x/y scale).
+          const scale = newRect.width > 0 ? oldRect.width / newRect.width : 1;
+
+          if (dx !== 0 || dy !== 0 || scale !== 1) {
+            const anim = node.animate(
+              [
+                { transform: `translate(${dx}px, ${dy}px) scale(${scale})`, transformOrigin: "top left" },
+                { transform: "none", transformOrigin: "top left" },
+              ],
+              { duration: KIOSK_MOVE_MS, easing: KIOSK_EASE_OUT },
+            );
+            animsRef.current.set(id, anim);
+            anim.finished.catch(() => {}).finally(() => {
+              if (animsRef.current.get(id) === anim) {
+                animsRef.current.delete(id);
+                // The node is back at its resting (untransformed) layout rect
+                // now that the animation is done — safe to store as next
+                // time's baseline, which the per-commit measurement couldn't
+                // do while this animation was in flight.
+                rectsRef.current.set(id, node.getBoundingClientRect());
+              }
+            });
+          } else {
+            // No visible movement — nothing to animate, and the cancelled
+            // `inFlight` (if any) must not linger in the map: it's already
+            // dead, and leaving it there would make the NEXT commit's
+            // baseline-refresh skip (below) treat this node as still
+            // travelling when it isn't.
+            animsRef.current.delete(id);
+          }
+        } else {
+          // No baseline to FLIP from (a node that just joined the registry
+          // on the same commit `key` changed) — same cleanup as above.
+          animsRef.current.delete(id);
         }
+
+        rectsRef.current.set(id, newRect);
+        continue;
       }
 
-      rectsRef.current.set(id, newRect);
+      // No key change this commit (or reduced motion, which never starts an
+      // animation in the first place) — just keep the baseline fresh, unless
+      // this node is mid-animation: see the comment above `useFlipGroup` for
+      // why that rect can't be trusted yet. Its own `finished` handler above
+      // re-measures it once it's safe to.
+      if (inFlight) continue;
+
+      rectsRef.current.set(id, node.getBoundingClientRect());
     }
 
     prevKeyRef.current = key;
     firstRunRef.current = false;
-  }, [key]);
+  });
 
   return { register };
 }

@@ -157,85 +157,109 @@ function useKioskMode(pinned: boolean, suspended: boolean, initial: KioskViewMod
   return { mode: pinned ? "full" : viewMode, onInteraction, returnToGlance } as const;
 }
 
-/** Timing + which mode's content is actually mounted for the non-shared
- *  blocks (contract: fades out BEFORE the shared elements land, fades in
- *  AFTER; total ≤600ms). `mode` itself flips immediately — it drives the
- *  header's shape and the FLIP key, and the shared elements start
- *  travelling on that same frame. `displayMode` here lags behind it on the
- *  way out: the outgoing block stays mounted at opacity-0 for KIOSK_FADE_MS
- *  (overlapping the start of the shared elements' travel, per the mirror's
- *  note that overlap reads better than a same-frame pop) before it's
- *  actually swapped for the incoming one, the same held-mounted/timed-
- *  unmount pattern kiosk-climate.tsx's modal already uses for its own
- *  entered/closing pair.
+/** Timing for the non-shared content's fade (contract: fades out BEFORE the
+ *  shared elements land, fades in AFTER; total ≤600ms). `mode` flips
+ *  immediately and drives the header's shape, the FLIP key, AND which
+ *  content is IN FLOW here — there is no lagging "displayMode" any more.
+ *  That's the fix for the reported jitter: the outgoing FLIP diagnosis found
+ *  that holding the outgoing block in normal flow for KIOSK_FADE_MS after
+ *  `mode` changed kept the page a different height than its final shape for
+ *  that whole window, so `useFlipGroup`'s same-frame measurement targeted a
+ *  layout that was about to move again the instant the outgoing block
+ *  unmounted — a second, uncovered jump partway through the shared-element
+ *  travel. Fixed by making the INCOMING content's layout final on frame 1:
+ *  it mounts in flow immediately (invisible), and the OUTGOING content is
+ *  pulled out of flow (`position: absolute`, see the `overlay` prop on
+ *  `RevealBlock` below) so its fade-out can no longer affect anyone else's
+ *  layout.
  *
  *  Sequence from t=0 (mode changes):
- *   - [0, FADE_MS]        outgoing content (displayMode, unchanged) fades
- *                         to opacity-0 while the shared elements begin
- *                         their MOVE_MS travel underneath it.
- *   - FADE_MS             outgoing content unmounts; displayMode flips to
- *                         `mode`; incoming content mounts at opacity-0.
+ *   - [0, FADE_MS]        outgoing content (still mounted, now absolute)
+ *                         fades from opacity-100 to 0, overlaid on top of
+ *                         the incoming content, which is already in flow
+ *                         but sitting at opacity-0 underneath it. The shared
+ *                         elements begin their MOVE_MS travel toward their
+ *                         final (already-correct) rects underneath both.
+ *   - FADE_MS             outgoing content unmounts.
  *   - [FADE_MS, MOVE_MS]  incoming content stays invisible — the shared
  *                         elements are still travelling.
  *   - MOVE_MS             shared elements have landed; incoming content
  *                         starts its own FADE_MS fade-in.
  *   - MOVE_MS + FADE_MS   done. (420 + 180 = 600ms, the contract's cap.)
  *
- *  Reduced motion skips the wait and crossfades immediately at
- *  KIOSK_REDUCED_MS (register() itself already no-ops the shared-element
- *  travel under reduced motion, so there's nothing to wait for).
+ *  Reduced motion skips all of the above and swaps instantly (no outgoing
+ *  overlay is ever created; `register()` itself already no-ops the
+ *  shared-element travel under reduced motion, so there's nothing to wait
+ *  for on that side either).
  *
- *  Every effect run clears whatever timers are in flight and re-evaluates
- *  from scratch, so a rapid glance→full→glance re-flip mid-transition can't
- *  strand a ghost block: if `mode` reverts to match whatever's still
- *  actually mounted (`displayMode`), the pending exit is simply cancelled
- *  and the content snaps back to visible instead of continuing to fade
- *  toward a target that's no longer wanted. */
+ *  The transition's start (which content becomes `outgoingMode`, and that
+ *  `incomingVisible` resets to false) is derived SYNCHRONOUSLY during render
+ *  by comparing `mode` to a ref of the last mode seen — the standard React
+ *  "adjust state when a prop changes" pattern — rather than in an effect.
+ *  An effect would only run after this render commits, one extra render
+ *  behind `mode` itself, and the FIRST commit with the new `mode` would
+ *  therefore still show the OLD transition state for one frame (the
+ *  outgoing block still in flow, the incoming block not yet mounted) —
+ *  reintroducing exactly the kind of same-frame layout mismatch this fix
+ *  exists to remove. Deriving it in-render means the very first commit that
+ *  has the new `mode` already has the new transition state too.
+ *
+ *  Only the two timers (unmount the outgoing block after FADE_MS; reveal
+ *  the incoming block after MOVE_MS) are genuinely time-based, so those stay
+ *  in a `useEffect` keyed on `transitionToken` — bumped only when a real
+ *  (non-reduced) transition starts. Its cleanup (React's normal effect
+ *  cleanup, run automatically when the token changes again) is what gives
+ *  the rapid-reflip safety: a glance→full→glance re-flip mid-transition
+ *  cancels the previous transition's pending timers and starts a fresh pair
+ *  for the new one, so nothing is ever stranded fading toward a target
+ *  that's no longer wanted. */
 function useModeContent(mode: KioskViewMode) {
-  const [displayMode, setDisplayMode] = useState(mode);
-  const [phase, setPhase] = useState<"idle" | "exiting" | "entering">("idle");
-  const reducedRef = useRef(false);
-  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const enterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Computed once (first render) rather than on every render; `null` just
+  // means "not measured yet" so it's never recomputed after that first read.
+  const reducedRef = useRef<boolean | null>(null);
+  if (reducedRef.current === null) reducedRef.current = prefersReducedMotion();
+  const prevModeRef = useRef(mode);
+  const [state, setState] = useState<{ outgoingMode: KioskViewMode | null; incomingVisible: boolean }>({
+    outgoingMode: null,
+    incomingVisible: true,
+  });
+  const [transitionToken, setTransitionToken] = useState(0);
+  const firstEffectRunRef = useRef(true);
 
-  useEffect(() => {
-    reducedRef.current = prefersReducedMotion();
-  }, []);
-
-  useEffect(() => {
-    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-    if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
-
-    if (mode === displayMode) {
-      // Already showing the right content — including the "rapid flip
-      // reverted mid-fade-out" case, which lands here because `displayMode`
-      // never actually changed yet. Cancel back to visible.
-      setPhase("idle");
-      return;
-    }
-
+  if (mode !== prevModeRef.current) {
+    const prevMode = prevModeRef.current;
+    prevModeRef.current = mode;
     if (reducedRef.current) {
-      setDisplayMode(mode);
-      setPhase("idle");
+      setState({ outgoingMode: null, incomingVisible: true });
+    } else {
+      setState({ outgoingMode: prevMode, incomingVisible: false });
+      setTransitionToken((t) => t + 1);
+    }
+  }
+
+  useEffect(() => {
+    if (firstEffectRunRef.current) {
+      firstEffectRunRef.current = false;
       return;
     }
+    if (reducedRef.current) return;
 
-    setPhase("exiting");
-    exitTimerRef.current = setTimeout(() => {
-      setDisplayMode(mode);
-      setPhase("entering");
-      enterTimerRef.current = setTimeout(() => setPhase("idle"), KIOSK_MOVE_MS - KIOSK_FADE_MS);
+    const outTimer = setTimeout(() => {
+      setState((s) => (s.outgoingMode !== null ? { ...s, outgoingMode: null } : s));
     }, KIOSK_FADE_MS);
+    const inTimer = setTimeout(() => {
+      setState((s) => (s.incomingVisible ? s : { ...s, incomingVisible: true }));
+    }, KIOSK_MOVE_MS);
 
     return () => {
-      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
-      if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
+      clearTimeout(outTimer);
+      clearTimeout(inTimer);
     };
-  }, [mode, displayMode]);
+  }, [transitionToken]);
 
   return {
-    displayMode,
-    visible: phase === "idle",
+    outgoingMode: state.outgoingMode,
+    incomingVisible: state.incomingVisible,
     durationMs: reducedRef.current ? KIOSK_REDUCED_MS : KIOSK_FADE_MS,
   };
 }
@@ -412,14 +436,18 @@ export function KioskSurface({
   );
 
   const flip = useFlipGroup(mode);
-  const { displayMode, visible, durationMs } = useModeContent(mode);
+  const { outgoingMode, incomingVisible, durationMs } = useModeContent(mode);
   const weather = useWeatherView();
-  // `full` drives the header's shape + FLIP timing (flips immediately).
-  // `contentFull` drives WHICH non-shared content is mounted (lags on the
-  // way out — see useModeContent) so the outgoing block gets its fade
-  // before it's actually swapped for the incoming one.
+  // `full` drives the header's shape, the FLIP timing, AND which non-shared
+  // content is in flow — all three flip on the same frame `mode` does now
+  // (see useModeContent's comment for why the old lagged "contentFull" was
+  // the other half of the reported jitter). `outgoingMode`/`incomingVisible`
+  // below handle only the fade, not what's in flow.
   const full = mode === "full";
-  const contentFull = displayMode === "full";
+  const fullIsOutgoing = outgoingMode === "full";
+  const glanceIsOutgoing = outgoingMode === "glance";
+  const fullMounted = full || fullIsOutgoing;
+  const glanceMounted = !full || glanceIsOutgoing;
 
   const days: WeatherDay[] = weather.ok?.days ?? [];
   const showBottomShadow = useBottomScrollShadow(full);
@@ -490,7 +518,7 @@ export function KioskSurface({
         </div>
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
-        {contentFull && (
+        {full && (
           /* `basis-full` gives the controls their own line under the clock
              rather than competing for the end of the clock row. That row was
              the constraint the whole time: at 1024x768 it already carries the
@@ -501,7 +529,16 @@ export function KioskSurface({
              in the opposite corner by construction, and the bar is the same
              height at both tablet sizes instead of 52px taller on the smaller
              one. `order-3` keeps it last visually without moving it in the
-             DOM — the same rule the shared FLIP nodes above rely on. */
+             DOM — the same rule the shared FLIP nodes above rely on.
+
+             Gated on `full` (immediate), not a lagged mode — this row's own
+             height is part of what the header's shared FLIP nodes measure,
+             so it has to reach its final presence/absence on the same frame
+             `mode` changes too, same reasoning as the content swap below.
+             The tradeoff: on a full→glance exit this row now disappears
+             instantly instead of fading out with the rest of full's content —
+             a small, one-line cost for removing a second source of the
+             reported jitter. */
           <div className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-2">
             {/* Hidden while pinned — an elevated session is held in full mode
                 on purpose, so the control would be inert. */}
@@ -538,55 +575,91 @@ export function KioskSurface({
             <KioskStatusStripExtras
               elevated={elevated}
               onAdminClick={onAdminClick}
-              revealed={visible}
+              revealed={incomingVisible}
               durationMs={durationMs}
             />
           </div>
         )}
       </header>
 
-      <RevealBlock revealed={visible} durationMs={durationMs} stack={!contentFull}>
-        {contentFull ? (
-          <FullContent
-            period={period}
-            elevated={elevated}
-            expiresAt={expiresAt}
-            layout={layout}
-            onLayoutChange={onLayoutChange}
-            onLock={onLock}
-          />
-        ) : (
-          <KioskGlance period={period} onAdminClick={onAdminClick} />
+      {/* Below-header content. Each block is keyed to a fixed MODE identity
+          (glance / full), never swapped by role (incoming / outgoing) — so
+          when a transition starts, the block that was in flow a moment ago
+          simply gets new props (revealed→false, overlay→true) rather than
+          unmounting and a fresh one mounting in its place. That's what lets
+          the outgoing fade actually animate: a freshly-mounted node has no
+          prior opacity to transition FROM, so it would just appear already
+          invisible instead of visibly fading. The wrapper is `relative` so
+          the outgoing block's `absolute` positioning anchors to it, not to
+          the page (see useModeContent's comment for the full sequence). */}
+      <div className="relative">
+        {fullMounted && (
+          <RevealBlock
+            revealed={fullIsOutgoing ? false : incomingVisible}
+            durationMs={durationMs}
+            stack={false}
+            overlay={fullIsOutgoing}
+          >
+            <FullContent
+              period={period}
+              elevated={elevated}
+              expiresAt={expiresAt}
+              layout={layout}
+              onLayoutChange={onLayoutChange}
+              onLock={onLock}
+            />
+          </RevealBlock>
         )}
-      </RevealBlock>
+        {glanceMounted && (
+          <RevealBlock
+            revealed={glanceIsOutgoing ? false : incomingVisible}
+            durationMs={durationMs}
+            stack={true}
+            overlay={glanceIsOutgoing}
+          >
+            <KioskGlance period={period} onAdminClick={onAdminClick} />
+          </RevealBlock>
+        )}
+      </div>
     </div>
   );
 }
 
-/** Wraps the mode's non-shared content in the fade the contract asks for.
+/** Wraps a mode's non-shared content in the fade the contract asks for.
  *  Deliberately a real box, not `display: contents` — `contents` generates
  *  no box of its own, and `opacity` has no visual effect on an element
  *  without one, which would silently no-op this whole fade. `stack` (glance
  *  only) recreates the gap-10 rhythm the surface's own flex column would
  *  have given these children directly, since they're now one nesting level
  *  deeper inside this wrapper; full's content is already one cohesive block
- *  (FullContent's own root div), so it needs no extra layout here. */
+ *  (FullContent's own root div), so it needs no extra layout here.
+ *
+ *  `overlay` marks the OUTGOING side of a transition: taken out of flow
+ *  (`absolute inset-x-0 top-0`) so its fade-out can no longer hold layout
+ *  space open for anything else — the fix for half of the reported jitter,
+ *  see useModeContent's comment — and `pointer-events-none` + `aria-hidden`
+ *  so it's inert while it fades: a tap or a screen reader should only ever
+ *  reach the real, in-flow content underneath it. */
 function RevealBlock({
   revealed,
   durationMs,
   stack,
+  overlay,
   children,
 }: {
   revealed: boolean;
   durationMs: number;
   stack?: boolean;
+  overlay?: boolean;
   children: ReactNode;
 }) {
   return (
     <div
+      aria-hidden={overlay || undefined}
       className={cn(
         "transition-opacity ease-out motion-reduce:transition-none",
         stack && "flex flex-col items-center gap-10",
+        overlay && "pointer-events-none absolute inset-x-0 top-0",
         revealed ? "opacity-100" : "opacity-0",
       )}
       style={{ transitionDuration: `${durationMs}ms` }}
