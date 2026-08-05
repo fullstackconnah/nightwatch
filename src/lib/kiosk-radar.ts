@@ -121,7 +121,16 @@ const FRAME_INTERVAL_MIN = 5;
    the proxy — kiosk-radar.tsx's own loading/failure handling covers that,
    this isn't a hard dependency for anything else in the response. */
 const GRID_OFFSET_MIN = 4;
-const FRAME_COUNT = 10;
+/* 8, not 10. Measured end-to-end through our own proxy against the live host
+   (2026-08-05): BOM's rolling buffer held exactly 9 frames, and because
+   PUBLISH_LAG_STEPS below drops the newest grid slot, asking for 10 puts the
+   OLDEST request one step past the far end of that buffer — a guaranteed 502
+   on every single open, for a frame that can never exist. 9 would still sit
+   exactly on the boundary. 8 keeps every requested frame inside the buffer
+   with a step to spare, and still gives a 40-minute loop, which is as much
+   history as this display needs. Verified: 9/10 frames returned real PNGs and
+   the one failure was precisely the oldest. */
+const FRAME_COUNT = 8;
 
 /* A THIRD probe (2026-08-04, ~10 min after the first two) found the
    theoretically-freshest grid slot (this-minute floored to the grid above)

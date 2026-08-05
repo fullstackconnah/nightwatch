@@ -28,6 +28,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Container, Newspaper, Thermometer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { KioskAssistant } from "@/components/kiosk-assistant";
 import { useKioskBriefing, useWeatherView, type KioskPeriod } from "@/components/kiosk-display";
 import { useKioskHa } from "@/components/kiosk-hub";
 import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
@@ -39,6 +40,7 @@ import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk-doo
 /* ── registry types ──────────────────────────────────────────────────────── */
 
 export type KioskWidgetId =
+  | "assistant"
   | "news"
   | "briefing"
   | "weather-outlook"
@@ -393,6 +395,18 @@ function DoorbellWidget({ onDoorbellClick, reportEmpty }: { onDoorbellClick: () 
 /* ── the registry ────────────────────────────────────────────────────────── */
 
 export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
+  {
+    id: "assistant",
+    label: "Assistant",
+    blurb: "Ask a question or control the house in plain words.",
+    allow: ["glance", "full"],
+    // No `requires`: the assistant is useful even when Home Assistant is
+    // unreachable (open questions still route to hermes), so gating it on a
+    // data source would hide it exactly when it might explain the outage.
+    // It never reports itself empty — an input field with nothing typed in
+    // it is not an empty pane, it is a ready one.
+    render: (ctx) => <KioskAssistant onShowCamera={ctx.onDoorbellClick} />,
+  },
   {
     id: "weather-outlook",
     label: "Weather outlook",

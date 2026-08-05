@@ -60,15 +60,205 @@ import {
   type KioskFontOption,
   type KioskFontSlot,
 } from "@/lib/kiosk-fonts";
+import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
+import {
+  KIOSK_WIDGETS,
+  KIOSK_WIDGET_MAP,
+  resetKioskWidgetLayout,
+  setKioskWidgetLayout,
+  useKioskWidgetAvailability,
+  useKioskWidgetLayout,
+  type KioskScreen,
+  type KioskWidgetDef,
+  type KioskWidgetId,
+  type KioskWidgetRequirement,
+} from "@/lib/kiosk-widgets";
 
 export type KioskLayoutChoice = "standard" | "glance";
 
-type PanelTabId = "appearance" | "typeface";
+type PanelTabId = "appearance" | "typeface" | "widgets";
 
 const PANEL_TABS: readonly { id: PanelTabId; label: string }[] = [
   { id: "appearance", label: "Appearance" },
   { id: "typeface", label: "Typeface" },
+  { id: "widgets", label: "Widgets" },
 ];
+
+/* ── widgets tab ─────────────────────────────────────────────────────────── */
+
+/** Reordering is BUTTONS, never HTML5 drag-and-drop. This panel is only ever
+ *  reached from a wall tablet in an elevated session, and dragging a list item
+ *  with a fingertip on a 1024px touch screen — while the surface underneath
+ *  treats stray pointer movement as interaction — is a worse experience than
+ *  two unambiguous taps. Up/down also stays operable by keyboard for free. */
+function WidgetRow({
+  def,
+  index,
+  total,
+  onMove,
+  onRemove,
+}: {
+  def: KioskWidgetDef;
+  index: number;
+  total: number;
+  onMove: (from: number, to: number) => void;
+  onRemove: (id: KioskWidgetId) => void;
+}) {
+  return (
+    <li className="flex items-center gap-2 rounded-md border border-line bg-panel-2 px-3 py-2">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs text-ink">{def.label}</span>
+        <span className="block truncate text-2xs text-ink-faint">{def.blurb}</span>
+      </span>
+      <button
+        type="button"
+        onClick={() => onMove(index, index - 1)}
+        disabled={index === 0}
+        aria-label={`Move ${def.label} up`}
+        className={ROW_BUTTON}
+      >
+        <ChevronUp size={16} aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => onMove(index, index + 1)}
+        disabled={index === total - 1}
+        aria-label={`Move ${def.label} down`}
+        className={ROW_BUTTON}
+      >
+        <ChevronDown size={16} aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(def.id)}
+        aria-label={`Remove ${def.label}`}
+        className={ROW_BUTTON}
+      >
+        <X size={16} aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+/* 44px floor rather than the 56px the wall surface itself uses: these sit in
+   a dense list three-to-a-row inside an already-scrolling admin panel, where
+   56px targets would push the list past a screen. 44 is still above the touch
+   floor the audit set for non-primary controls. */
+const ROW_BUTTON =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-30";
+
+function WidgetScreenSection({
+  screen,
+  label,
+  hint,
+  ids,
+  availability,
+}: {
+  screen: KioskScreen;
+  label: string;
+  hint: string;
+  ids: readonly KioskWidgetId[];
+  availability: Record<KioskWidgetRequirement, boolean>;
+}) {
+  const placed = ids.map((id) => KIOSK_WIDGET_MAP.get(id)).filter((d): d is KioskWidgetDef => Boolean(d));
+  // A widget already on THIS screen is not offerable again; one sitting on the
+  // other screen still is — the two lists are independent placements, not a
+  // single pool being split.
+  const addable = KIOSK_WIDGETS.filter((w) => w.allow.includes(screen) && !ids.includes(w.id));
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= ids.length) return;
+    const next = [...ids];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setKioskWidgetLayout(screen, next);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="microlabel">{label}</span>
+      <p className="text-2xs text-ink-faint">{hint}</p>
+
+      {placed.length === 0 ? (
+        <p className="rounded-md border border-dashed border-line px-3 py-3 text-xs text-ink-dim">
+          Nothing on this screen yet.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {placed.map((def, i) => (
+            <WidgetRow
+              key={def.id}
+              def={def}
+              index={i}
+              total={placed.length}
+              onMove={move}
+              onRemove={(id) => setKioskWidgetLayout(screen, ids.filter((x) => x !== id))}
+            />
+          ))}
+        </ul>
+      )}
+
+      {addable.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {addable.map((w) => {
+            // `requires` names a data source, not a hard gate — an unavailable
+            // one is still addable on purpose (Home Assistant may just be
+            // briefly unreachable), it simply says so rather than silently
+            // rendering an empty pane the user can't explain.
+            const unavailable = w.requires ? !availability[w.requires] : false;
+            return (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setKioskWidgetLayout(screen, [...ids, w.id])}
+                title={w.blurb}
+                className="flex h-11 items-center gap-1.5 rounded-md border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+              >
+                <Plus size={14} aria-hidden />
+                {w.label}
+                {unavailable && <span className="microlabel !text-warn">no data</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WidgetsTab() {
+  const layout = useKioskWidgetLayout();
+  const availability = useKioskWidgetAvailability();
+
+  return (
+    <div className="flex flex-col gap-5">
+      <WidgetScreenSection
+        screen="glance"
+        label="glance"
+        hint="One widget per carousel pane. The clock, temperature and forecast always stay in the header."
+        ids={layout.glance}
+        availability={availability}
+      />
+      <div aria-hidden className="h-px bg-line" />
+      <WidgetScreenSection
+        screen="full"
+        label="full view"
+        hint="Extra panels above the hub. The hub and weather band are always shown."
+        ids={layout.full}
+        availability={availability}
+      />
+      <div>
+        <button
+          type="button"
+          onClick={resetKioskWidgetLayout}
+          className="h-11 rounded-md border border-line px-4 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+        >
+          Reset to default layout
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function ThemeChip({ theme, active }: { theme: KioskTheme; active: boolean }) {
   const swatch = KIOSK_THEME_SWATCHES[theme];
@@ -290,6 +480,12 @@ export function KioskAppearance({
       {activeTab === "typeface" && (
         <div id="kiosk-tabpanel-typeface" role="tabpanel" aria-labelledby="kiosk-tab-typeface">
           <TypefaceTab theme={theme} />
+        </div>
+      )}
+
+      {activeTab === "widgets" && (
+        <div id="kiosk-tabpanel-widgets" role="tabpanel" aria-labelledby="kiosk-tab-widgets">
+          <WidgetsTab />
         </div>
       )}
     </section>
