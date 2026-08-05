@@ -87,13 +87,27 @@ export function KioskGlance({
       </div>
       <button
         type="button"
-        // Admin does NOT opt out: unlike the tiles/timers button, pressing it
-        // is meant to both promote to full (elevation pins the surface there
-        // anyway, see the file header comment) and open the PIN pad — there's
-        // no in-place action to protect from the promotion, so letting the
-        // press reach the root handler is harmless and one fewer special
-        // case to maintain.
-        onClick={onAdminClick}
+        /* Admin DOES opt out, and it has to — this is not a style choice.
+           An earlier version let the press reach the root handler on the
+           reasoning that promoting to full underneath the PIN pad is
+           harmless. It is no longer merely harmless, it is fatal to the
+           button: the root's pointerdown flips the mode, and on that same
+           commit kiosk-surface.tsx makes the OUTGOING glance block
+           `absolute pointer-events-none` (the fix for the glance⇄full
+           jitter). The block therefore stops accepting pointer events
+           between this button's own pointerdown and its click, the click
+           never dispatches, and the pad never opens — measured on
+           production: mode went glance→full with no dialog.
+
+           Stopping propagation costs nothing, because entering elevation
+           pins the surface to full anyway (`pinned` in kiosk-surface.tsx),
+           so the promotion this used to rely on arrives a moment later by
+           a route that cannot swallow the click. */
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onAdminClick();
+        }}
         style={{
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
           right: "calc(1.25rem + env(safe-area-inset-right))",
