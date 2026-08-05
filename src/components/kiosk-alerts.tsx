@@ -139,22 +139,77 @@ interface AlertsState {
   seeded: boolean;
   /** Ids the user has explicitly dismissed from the tray.
    *
-   *  Dismissal here CANNOT mean "delete", because nothing in this component
-   *  owns the alert: `active` is re-derived from every poll of
-   *  /kiosk/api/attention, so a removed entry would simply reappear a few
-   *  seconds later and the button would blink back. What dismissal actually
-   *  means is "I have seen this one, stop showing it to me" — an
-   *  acknowledgement that suppresses the entry while the underlying condition
-   *  is unchanged, and lapses the moment it changes, because a NEW id is by
-   *  definition a condition the user has not acknowledged yet.
+   *  Dismissal still can't be a literal delete — nothing here OWNS an alert,
+   *  `active` is re-derived from every poll of /kiosk/api/attention — so this
+   *  is a suppression list, and it is what makes a dismissal look like a
+   *  delete from the outside.
    *
-   *  Ids are dropped from here as soon as they stop being reported (see the
-   *  poll reducer), so a condition that clears and later recurs alerts again
-   *  rather than staying silently suppressed forever. */
+   *  PERMANENT, as of 2026-08-05, and persisted (see readDismissed): the owner's
+   *  report was that a dismissed alert came back. It did, three ways. It was
+   *  component state, so any reload — a redeploy, a tablet refresh, the browser
+   *  reclaiming the tab — started the list empty and re-showed a condition that
+   *  was still standing (production's immich_server alert has been standing
+   *  since 2026-08-04, so every single load re-raised it). A quiet poll cleared
+   *  the whole list. And ids not currently reported were filtered out, so one
+   *  transient quiet response was enough to lose the acknowledgement of a
+   *  condition that came straight back.
+   *
+   *  All three are gone: the list is device-local storage, nothing prunes it on
+   *  a quiet poll, and it outlives the condition. A dismissed id is dismissed.
+   *
+   *  What still re-alerts is a DIFFERENT id, and that is the whole safety
+   *  mechanism: `alertId` is severity|headline|since, so a container that exits
+   *  again gets a new `since`, and a disk that keeps filling gets a new
+   *  percentage in its headline (see attention.ts) — both read as conditions
+   *  nobody has acknowledged yet. The cost, stated plainly because it is real:
+   *  a probe whose headline is fixed AND carries no `since` ("X is failing its
+   *  healthcheck") is suppressed on this device for good once dismissed, even
+   *  if it clears and returns. */
   dismissed: string[];
 }
 
 const EMPTY_STATE: AlertsState = { active: [], resolved: [], seeded: false, dismissed: [] };
+
+/* ── dismissal persistence ─────────────────────────────────────────────────
+   Device-local, exactly the idiom kiosk-theme.tsx and kiosk-widgets.tsx use for
+   per-tablet preferences: plain localStorage, defensively parsed, and a write
+   failure (private mode, quota) is swallowed rather than surfaced — a kiosk has
+   nobody standing there to action an error, and the worst case is a dismissal
+   that doesn't outlive the session, which is where this feature started.
+
+   No CustomEvent broadcast, unlike those two: only this hook reads or writes the
+   key, and one surface mounts it. */
+const DISMISSED_STORAGE_KEY = "kiosk-alerts-dismissed";
+
+/** Oldest-first cap. Suppressions accumulate forever by design, so the list
+ *  needs SOME ceiling, and it is deliberately generous: this surface reports at
+ *  most one condition at a time, so 200 distinct dismissed conditions is years
+ *  of a normally-behaving homelab. Dropping the oldest is the right end to lose
+ *  — the most recent dismissals are the ones whose conditions are most likely
+ *  to still be standing. */
+const DISMISSED_LIMIT = 200;
+
+function readDismissed(): string[] {
+  try {
+    const raw = window.localStorage.getItem(DISMISSED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((v): v is string => typeof v === "string").slice(-DISMISSED_LIMIT);
+  } catch {
+    // Corrupt payload or storage unavailable — treated exactly like "nothing
+    // dismissed", never as an error worth showing on a wall panel.
+    return [];
+  }
+}
+
+function writeDismissed(ids: string[]): void {
+  try {
+    window.localStorage.setItem(DISMISSED_STORAGE_KEY, JSON.stringify(ids.slice(-DISMISSED_LIMIT)));
+  } catch {
+    // non-persistent is fine
+  }
+}
 
 export function useKioskAlerts(): UseKioskAlertsResult {
   const isIdle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
@@ -177,6 +232,20 @@ export function useKioskAlerts(): UseKioskAlertsResult {
   // the `seeded` field's own doc comment for the bug this replaced.
   const [state, setState] = useState<AlertsState>(EMPTY_STATE);
 
+  /* Stored dismissals are read in an effect, not in a lazy useState
+     initialiser: this page is statically prerendered, so anything touching
+     localStorage during render runs on the server and throws. Same shape as
+     every other stored preference on this surface (useKioskTheme,
+     useKioskWidgetLayout).
+     There is no flash of an already-dismissed alert while this lands, because
+     nothing can be shown until the first poll RESOLVES — this effect runs on
+     mount, the fetch takes a network round trip, and `data` is undefined until
+     it returns. */
+  useEffect(() => {
+    const stored = readDismissed();
+    if (stored.length > 0) setState((prev) => ({ ...prev, dismissed: stored }));
+  }, []);
+
   useEffect(() => {
     if (!data) return; // still loading — no opinion yet
     const now = Date.now();
@@ -194,11 +263,13 @@ export function useKioskAlerts(): UseKioskAlertsResult {
           prev.active.length > 0
             ? [...toResolved(prev.active, now), ...prev.resolved].slice(0, RESOLVED_HISTORY_LIMIT)
             : prev.resolved;
-        // Nothing is being reported, so no acknowledgement is still standing:
-        // clearing `dismissed` here is what makes a condition that clears and
-        // later recurs alert again instead of staying suppressed for the life
-        // of the page.
-        return { active: [], resolved, seeded: true, dismissed: [] };
+        // `dismissed` is carried through untouched. It used to be cleared here,
+        // on the reasoning that nothing being reported means no acknowledgement
+        // is still standing — but that is what made a dismissal temporary: one
+        // quiet poll (including a transient) and the same standing condition
+        // came back on the next one. A dismissed id stays dismissed; a genuinely
+        // new occurrence arrives under a new id (see `dismissed`'s comment).
+        return { ...prev, active: [], resolved, seeded: true };
       }
       const id = alertId(data);
       if (prev.active.some((e) => e.id === id)) return prev; // same condition as last poll
@@ -216,9 +287,12 @@ export function useKioskAlerts(): UseKioskAlertsResult {
       const active: KioskAlertEntry[] = [
         { id, severity: data.severity, headline: data.headline, detail: data.detail, since: data.since, seen },
       ];
-      // Only ids still being reported stay acknowledged. Anything else is a
-      // condition that has gone away, and its dismissal goes with it.
-      return { active, resolved, seeded: true, dismissed: prev.dismissed.filter((d) => d === id) };
+      // `dismissed` carried through whole, for the same reason as the quiet
+      // branch above: it used to be filtered down to ids still being reported,
+      // which threw away every other acknowledgement the moment the probe moved
+      // on to a different condition — and threw away THIS one too on any poll
+      // that briefly reported something else.
+      return { ...prev, active, resolved, seeded: true };
     });
   }, [data]);
 
@@ -226,13 +300,21 @@ export function useKioskAlerts(): UseKioskAlertsResult {
     setState((prev) => ({ ...prev, active: prev.active.map((e) => (e.id === id ? { ...e, seen: true } : e)) }));
   }, []);
 
-  /** Acknowledge an active alert: it leaves the tray and the button, and stays
-   *  gone until the reported condition changes. See `dismissed`'s doc comment
-   *  for why this can't be a delete. */
+  /** Dismiss an active alert for good: it leaves the tray, the button and the
+   *  takeover, survives reloads, and only ever comes back as a genuinely
+   *  different condition (a new id). See `dismissed`'s doc comment.
+   *
+   *  The write to storage happens inside the updater rather than in an effect on
+   *  `state.dismissed`, so what gets persisted is exactly the list this
+   *  transition produced — an effect would also fire for the hydration pass,
+   *  writing back what it had just read. */
   const dismissAlert = useCallback((id: string) => {
-    setState((prev) =>
-      prev.dismissed.includes(id) ? prev : { ...prev, dismissed: [...prev.dismissed, id] },
-    );
+    setState((prev) => {
+      if (prev.dismissed.includes(id)) return prev;
+      const dismissed = [...prev.dismissed, id].slice(-DISMISSED_LIMIT);
+      writeDismissed(dismissed);
+      return { ...prev, dismissed };
+    });
   }, []);
 
   /** Drop one row from the cleared-history list. This one IS a true delete —
@@ -253,10 +335,15 @@ export function useKioskAlerts(): UseKioskAlertsResult {
     [state.active, state.dismissed],
   );
 
-  // The takeover deliberately still reads the UNFILTERED list: a takeover only
-  // ever fires for an id the user has not seen, and an unseen id cannot have
-  // been dismissed.
-  const activeTakeover = state.active.find((e) => !e.seen) ?? null;
+  /* The takeover checks `dismissed` too, which it did not have to before.
+     The old reasoning — a takeover only fires for an id the user has not seen,
+     and an unseen id cannot have been dismissed — held only while dismissals
+     died with the session and with the condition. Now they persist: a condition
+     dismissed yesterday that stops being reported and is reported again gets
+     `seen: false` on that poll (it is a fresh entry in `active`), and without
+     this check it would take over the whole screen. Nothing the user has
+     permanently dismissed may seize the display. */
+  const activeTakeover = state.active.find((e) => !e.seen && !state.dismissed.includes(e.id)) ?? null;
   const worstSeverity: AttentionSeverity | null = entries.some((e) => e.severity === "bad")
     ? "bad"
     : entries.length > 0
