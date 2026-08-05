@@ -32,10 +32,12 @@
    and panels, so this component never renders while elevated. */
 
 import { useMemo } from "react";
+import { Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { type KioskPeriod } from "@/components/kiosk-display";
 import { KioskTimersButton } from "@/components/kiosk-timers";
+import { useKioskHa } from "@/components/kiosk-hub";
 
 /* The fixed, non-rotating stack under the band. Deliberately NOT the
    reorderable layout: `layout.glance` now drives the BAND (kiosk-surface.tsx),
@@ -43,13 +45,78 @@ import { KioskTimersButton } from "@/components/kiosk-timers";
    original content before the widget work. Kept as a constant here rather
    than a third persisted screen so the Widgets tab stays a single, honest
    question — "what rotates through the band?" — instead of two lists whose
-   difference nobody would remember. */
-const BELOW_BAND_WIDGETS: readonly KioskWidgetId[] = ["weather-outlook", "briefing", "lights", "scenes"];
+   difference nobody would remember.
+
+   `lights` LEFT this stack (2026-08-05): the light tiles are now part of the
+   fixed bottom-left control cluster beside the timers button (GlanceLights
+   below), not centred content. Two reasons, one of them measured: the tile was
+   the single tallest thing under the band, and at 800×480 it landed at y=455
+   with a 64px height against a 448px box — clipped, i.e. a control you could
+   see half of and not press. Moving it into the corner is also the honest
+   composition: everything left in the centre column is now something you READ,
+   and everything you PRESS lives in one of the two bottom corners. `scenes`
+   stays because this house has none (the widget renders nothing), and a scene
+   is a one-shot activation rather than a live-state toggle worth a permanent
+   corner slot — if scenes ever appear here, they belong in the band. */
+const BELOW_BAND_WIDGETS: readonly KioskWidgetId[] = ["weather-outlook", "briefing", "scenes"];
 
 /** The subset of the stack above that is prose rather than a control, and so
  *  is what gets dropped first when the viewport is too short to hold
  *  everything (see the render below). Controls are never in this set. */
 const INFORMATIONAL_WIDGETS: ReadonlySet<KioskWidgetId> = new Set(["weather-outlook", "briefing"]);
+
+/* ── the bottom-left control cluster ────────────────────────────────────── */
+
+/** Every available Home Assistant light, as a compact pill sized to sit beside
+ *  the timers button rather than as one of the widget registry's `min-h-16
+ *  min-w-32` tiles.
+ *
+ *  Deliberately NOT a reuse of kiosk-widgets.tsx's LightsWidget: that one is
+ *  still the right thing inside the rotating band or full mode's list (wide
+ *  tiles, wrapping grid), and this is a corner control that has to hold the
+ *  same 56px touch floor and visual language as KioskTimersButton next to it.
+ *  Same `useKioskHa()` hook and the same optimistic `runAction` either way, so
+ *  there is one source of truth for the state and only the shape differs.
+ *
+ *  Truncates rather than wraps: the cluster is one row pinned to a corner, and
+ *  a second row would grow UP into the centre column's bottom edge — the exact
+ *  overlap the move out of that column was meant to end. A house with more
+ *  lights than fit gets them cut off here and keeps the full set on the
+ *  `lights` band widget, which is what that widget is for. */
+function GlanceLights() {
+  const ha = useKioskHa();
+  const entities = ha.data?.status === "ok" ? ha.data.entities : null;
+  const lights = useMemo(() => entities?.lights.filter((l) => l.available) ?? [], [entities]);
+  if (lights.length === 0) return null;
+
+  return (
+    <>
+      {lights.map((l) => {
+        const pending = ha.isPending(l.entityId);
+        return (
+          <button
+            key={l.entityId}
+            type="button"
+            disabled={pending}
+            aria-pressed={l.on}
+            aria-label={`${l.on ? "Turn off" : "Turn on"} ${l.name}`}
+            onClick={() => void ha.runAction({ entityId: l.entityId, action: "toggle" })}
+            className={cn(
+              "flex h-14 min-w-0 shrink items-center gap-1.5 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+              l.on
+                ? "border-accent/40 bg-accent/10 text-accent"
+                : "border-line text-ink-dim hover:border-line-bright hover:bg-panel-2 hover:text-ink",
+              pending && "opacity-60",
+            )}
+          >
+            <Lightbulb size={15} className="shrink-0" aria-hidden />
+            <span className="truncate">{l.name}</span>
+          </button>
+        );
+      })}
+    </>
+  );
+}
 
 /* ── the glance-only content ────────────────────────────────────────────── */
 
@@ -107,8 +174,11 @@ export function KioskGlance({
           only affects in-flow descendants) — bake the inset into each
           button's own offset instead, or an iPad's home indicator can sit
           on top of them. */}
+      {/* The bottom-left CLUSTER: timers plus every light (see GlanceLights).
+          One row, `max-w` capped at half the viewport so it can never grow
+          under the Admin button in the opposite corner. */}
       <div
-        className="fixed"
+        className="fixed flex max-w-[calc(50vw-2rem)] items-center gap-3"
         style={{
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
           left: "calc(1.25rem + env(safe-area-inset-left))",
@@ -117,11 +187,14 @@ export function KioskGlance({
         // opt-out from the root promoter is applied on this wrapping div
         // instead of inside that component — same rule as the tiles above:
         // in glance, a control's own press is consumed by the control; only
-        // dead space promotes the view.
+        // dead space promotes the view. GlanceLights is covered by the same
+        // wrapper for the same reason: tapping the floodlight must toggle the
+        // floodlight, not also expand the surface underneath it.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
         <KioskTimersButton className="h-14" />
+        <GlanceLights />
       </div>
       <button
         type="button"

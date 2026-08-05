@@ -730,6 +730,35 @@ body {
     0 0 calc(6px + 14px * var(--sr-warmth))
       color-mix(in srgb, var(--color-warn) calc(8% + 22% * var(--sr-warmth)), transparent);
 }
+/* ── hit-area opt-out (kiosk-climate.tsx's POWER_BUTTON / EXPAND_BUTTON) ────
+   Those two buttons are 56px TOUCH TARGETS with no visible body of their own:
+   the affordance is a ~36px `<span>` chip centred inside them, and the button
+   itself deliberately overhangs the tile's rounded corner by 6px so the touch
+   floor can be met without the name row reserving 56px either side.
+
+   Every rule above keys off the `button` element, which meant sunroom painted
+   its raised/pressed box-shadow and its aria-pressed warmth bloom on that
+   overhanging invisible box — a lit 56×56 rectangle crossing the tile's own
+   border on two sides, and the reported "the power button isn't contained to
+   the container". Measured on production's running Office AC tile: the button
+   spans x641-697/y187.5-243.5 against a tile that starts at x646/y192.5.
+
+   So: no shadow on the hit area, and the bloom moves to the chip, which at
+   this offset sits a comfortable 4px inside the tile's edge. The chip is a
+   `<span>`, so it is untouched by the `button` rules and needs the glow spelled
+   out — the same three-shadow composition, minus the raised pair a 36px glyph
+   holder was never meant to have. */
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea,
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea:active,
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea[aria-pressed="true"] {
+  box-shadow: none !important;
+}
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea[aria-pressed="true"] > span {
+  box-shadow:
+    0 0 calc(5px + 11px * var(--sr-warmth))
+    color-mix(in srgb, var(--color-warn) calc(8% + 22% * var(--sr-warmth)), transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* The room still tracks the sun — only the tweening stops. Values update
      exactly as before and land instantly. `!important` outranks the
@@ -739,6 +768,87 @@ body {
   [data-kiosk-theme="sunroom"] button {
     transition: none !important;
   }
+}
+
+/* ── range slider (kiosk-climate.tsx's fan-speed ladder) ───────────────────
+   A range input's track and thumb are only reachable through vendor
+   pseudo-elements, so this cannot be expressed in utility classes. Everything
+   here is a token reference, never a literal, for DESIGN.md's reason: this
+   control renders under all 16 themes plus sunroom's live solar palette.
+
+   The 28px thumb is the visible affordance; the 44px input height around it is
+   the touch target. That split is the same one the climate tile's hit-area
+   buttons make — a wall panel is pressed with a thumb, not a mouse, and a
+   16px-tall slider on a tablet is a control you miss. */
+.kiosk-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2.75rem;
+  background: transparent;
+  outline: none;
+  /* Vertical scrolling must not steal a horizontal drag on a touchscreen. */
+  touch-action: pan-y;
+  cursor: pointer;
+}
+.kiosk-range:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+/* The track is FILLED up to the thumb (`--kiosk-range-fill`, an inline
+   percentage from the component). Chromium paints no fill of its own, and
+   without one the position of a thumb on a uniform 8px line is a judgement
+   from 3m away rather than a reading — the ladder's whole advantage over the
+   chip row was that its value is legible at distance. Falls back to 0% when
+   the property is absent, i.e. an unfilled track, never a broken gradient. */
+.kiosk-range::-webkit-slider-runnable-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-line);
+  background: linear-gradient(
+    to right,
+    var(--color-accent) 0%,
+    var(--color-accent) var(--kiosk-range-fill, 0%),
+    var(--color-panel-2) var(--kiosk-range-fill, 0%),
+    var(--color-panel-2) 100%
+  );
+}
+.kiosk-range::-moz-range-track {
+  height: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel-2);
+}
+/* Firefox has a real fill element, so it needs no gradient. */
+.kiosk-range::-moz-range-progress {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+}
+.kiosk-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-bg);
+  /* Centres the 28px thumb on the 8px track: (track height - thumb) / 2. */
+  margin-top: -0.625rem;
+}
+.kiosk-range::-moz-range-thumb {
+  height: 1.75rem;
+  width: 1.75rem;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  border: 2px solid var(--color-bg);
+}
+/* Keyboard focus lands on the thumb, so the ring goes there rather than around
+   a 44px transparent box whose edges mean nothing. */
+.kiosk-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+.kiosk-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 45%, transparent);
 }
 
 /* ── Sunroom weather (kiosk-sunroom-weather.tsx) ──────────────────────────

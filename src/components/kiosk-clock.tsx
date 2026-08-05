@@ -40,6 +40,15 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
         className={cn(
           "font-mono tabular-nums leading-none text-ink",
           full ? "text-lg md:text-xl" : "text-[4.5rem] min-[420px]:text-[5.5rem] md:text-[7rem]",
+          /* The glance ramp above is keyed on WIDTH alone, which is the wrong
+             question on a landscape wall panel: at 800×480 the `md` breakpoint
+             hands it the 7rem face — 112px of clock inside a 448px-tall box —
+             and the column then overflowed its own fixed height by ~45px, so
+             the top of the hour was clipped off the screen (measured: header
+             top at y=-18). Capped by height, and `!` because this and `md:`
+             are the same specificity, so without it the winner would depend on
+             Tailwind's variant ordering rather than on intent. */
+          !full && "[@media(max-height:700px)]:!text-[4.5rem]",
         )}
       >
         {clock ? clock.time : "--:--"}

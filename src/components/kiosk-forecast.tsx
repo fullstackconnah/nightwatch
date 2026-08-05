@@ -28,6 +28,7 @@
    breakpoints below were measured per-cell in a real browser
    (getBoundingClientRect against the rail's own box), never estimated. */
 
+import { Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WEATHER_ICON, type WeatherDay } from "@/components/kiosk-display";
 import { KioskRadarModal, useKioskRadar } from "@/components/kiosk-radar";
@@ -188,11 +189,27 @@ export function KioskForecastRail({
               <span
                 className={cn(
                   s.day,
-                  "font-semibold uppercase tracking-wider",
-                  emphasized ? "text-accent" : "text-ink-dim",
+                  "flex items-center gap-1 font-semibold uppercase tracking-wider",
+                  // Today's own label goes accent because the cell is a
+                  // control — see the RADAR affordance below. `emphasized`
+                  // (the evening's tomorrow) keeps its accent independently.
+                  emphasized || isToday ? "text-accent" : "text-ink-dim",
                 )}
               >
                 {dayLabel(day.date, i)}
+                {/* The COMPACT half of the radar affordance: a glyph riding
+                    the day label, for the two cases with no room for the
+                    labelled row below — full mode's rail (28-40px tall, and
+                    inside the header whose height feeds the FLIP measurement)
+                    and any short viewport, where the glance band drops to 88px
+                    and a fourth row would be clipped rather than read. */}
+                {isToday && (
+                  <Radar
+                    size={size === "full" ? 12 : 14}
+                    className={cn("shrink-0", size === "glance" && "hidden [@media(max-height:700px)]:block")}
+                    aria-hidden
+                  />
+                )}
               </span>
 
               <span className="mt-0.5 flex items-center gap-1.5">
@@ -220,7 +237,22 @@ export function KioskForecastRail({
                 key={day.date}
                 type="button"
                 onClick={openRadar}
+                /* THE OPT-OUT, and it is what makes this button work at all.
+                   In glance the rail sits inside kiosk-carousel.tsx, which
+                   claims every pointerdown it sees (`e.stopPropagation()` plus
+                   `setPointerCapture` on its own container, unconditionally,
+                   before a press can be told from a swipe) and then replays the
+                   glance→full promotion from its pointerup. Pointer capture
+                   moves the eventual `click` to the CAPTURING element, so this
+                   button's own onClick never fired: measured on the test stack,
+                   a tap on Today promoted the surface and opened no radar at
+                   all. The carousel's own comment names the escape hatch — a
+                   control opts out "before we ever see the press" — which is
+                   this line, the same idiom kiosk-glance.tsx's Admin button and
+                   the light tiles already use. */
+                onPointerDown={(e) => e.stopPropagation()}
                 aria-label="Open the weather radar for today"
+                title="Tap for the rain radar"
                 // appearance-none/border-0/bg-transparent/text-left strip the
                 // handful of UA <button> defaults (inset border, system font
                 // sizing already handled by preflight, left-align) that a
@@ -236,11 +268,36 @@ export function KioskForecastRail({
                 // rather than a reason to grow the rail.
                 className={cn(
                   cellClassName,
-                  "appearance-none border-0 bg-transparent text-left outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                  "appearance-none border-0 bg-transparent text-center outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                  /* THE AFFORDANCE. The rail's THESIS reserves a border for a
+                     touch target — this cell is one, and it was the only one
+                     on the surface not saying so, which is exactly the report:
+                     nobody knew the radar existed. A `ring` rather than a real
+                     `border` because every reveal breakpoint in SIZE above was
+                     measured against these cells' boxes, and a border would
+                     add 2px to this one cell's width and height and shift its
+                     content 1px out of line with its four neighbours. A ring
+                     is painted, not laid out, so the geometry the comment
+                     below depends on is untouched. */
+                  "ring-1 ring-accent/40 ring-inset transition hover:ring-accent/70 active:scale-[0.98]",
                 )}
                 style={{ backgroundColor: DAY_TINT[day.code] }}
               >
                 {content}
+                {/* The LABELLED half of the affordance (see the glyph on the
+                    day label above for the compact half). A glyph alone tells
+                    you something is there; the word tells you what it opens,
+                    which is the actual complaint being fixed. Glance only, and
+                    only where the band has the room for a fourth row —
+                    `[@media(max-height:700px)]` is the same breakpoint the
+                    band's own height class uses (kiosk-surface.tsx), so this
+                    row and the 88px band never disagree about what fits. */}
+                {size === "glance" && (
+                  <span className="mt-1 flex items-center gap-1 text-accent [@media(max-height:700px)]:hidden">
+                    <Radar size={12} className="shrink-0" aria-hidden />
+                    <span className="microlabel !text-accent">Radar</span>
+                  </span>
+                )}
               </button>
             );
           }

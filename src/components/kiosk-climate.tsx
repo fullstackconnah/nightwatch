@@ -122,8 +122,18 @@ const NUDGE_BUTTON =
 // from the real interactive element (the button — a11y and click target)
 // onto that inner chip, since CSS can't apply `:focus-visible` styling to a
 // non-ancestor element directly.
+// FIX (2026-08-05), the sunroom half of the same story: stripping the ring and
+// background off this button was enough for the 15 flat themes, but sunroom
+// styles `button` itself — a raised soft-UI box-shadow on :active and a warmth
+// bloom on [aria-pressed="true"] (globals.css). Those landed on this 56px
+// overhanging hit area, so the power button on a RUNNING unit painted a 56×56
+// lit box crossing the tile's own rounded border on two sides — measured on
+// production's Office AC tile: button box x641/y187.5 against a tile starting
+// at x646/y192.5. `kiosk-hitarea` is the opt-out: globals.css suppresses those
+// two shadows on the button and re-hangs the bloom on the inner chip, which
+// sits fully inside the tile at this offset.
 const EXPAND_BUTTON =
-  "group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
+  "kiosk-hitarea group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
 
 const EXPAND_BUTTON_CHIP =
   "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
@@ -133,7 +143,7 @@ const EXPAND_BUTTON_CHIP =
  *  a column from the two rows of text between them, and the same invisible
  *  hit-area / inner-chip split (see EXPAND_BUTTON's comment). */
 const POWER_BUTTON =
-  "group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
+  "kiosk-hitarea group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
 
 const POWER_BUTTON_CHIP =
   "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
@@ -641,6 +651,28 @@ export function KioskClimateTile({
   );
 }
 
+/** The visible heading every control group in the modal now carries, plus its
+ *  current value on the same line.
+ *
+ *  Until 2026-08-05 these groups had an `aria-label` and nothing else: four
+ *  unlabelled banks of chips (6 hvac modes, 8 fan levels, 3 presets, 2 swing
+ *  values) stacked down the panel, and no way to tell from looking which bank
+ *  did what. A screen reader got the answer and a person standing at the wall
+ *  did not — the exact inversion of who this surface is for.
+ *
+ *  The value is echoed on the right rather than left to the chips' own pressed
+ *  state alone, because with four groups on screen the pressed chip is one tint
+ *  among twenty-odd controls; as a line of type next to the heading it reads at
+ *  a glance and, on the slider below, it is the ONLY readout. */
+function GroupHeading({ title, value }: { title: string; value?: string }) {
+  return (
+    <div className="mb-2 flex items-baseline justify-between gap-3">
+      <span className="microlabel">{title}</span>
+      <span className="font-mono text-xs text-accent">{value ?? "—"}</span>
+    </div>
+  );
+}
+
 /** Shared chip-row rendering for every mode picker in the modal (hvac, and
  *  now fan/preset/swing) — one visual language rather than a fifth control
  *  inventing its own. `flex-wrap` is load-bearing, not decorative: these
@@ -649,6 +681,7 @@ export function KioskClimateTile({
  *  what makes "only render a control group this entity actually advertises"
  *  true without every call site repeating the same length check. */
 function ModeChipGroup({
+  title,
   groupLabel,
   options,
   current,
@@ -657,6 +690,11 @@ function ModeChipGroup({
   ariaLabel,
   onSelect,
 }: {
+  /** The visible heading — see GroupHeading. `groupLabel` stays the
+   *  entity-qualified accessible name ("Kitchen fan speed"); this is the short
+   *  human one ("Fan speed"), since the modal's own title already says which
+   *  room you are in and repeating it four times reads as noise. */
+  title: string;
   groupLabel: string;
   options: string[];
   current?: string;
@@ -667,25 +705,195 @@ function ModeChipGroup({
 }) {
   if (options.length === 0) return null;
   return (
-    <div className="mt-6 flex flex-wrap justify-center gap-2" role="group" aria-label={groupLabel}>
-      {options.map((mode) => (
-        <button
-          key={mode}
-          type="button"
-          aria-pressed={current === mode}
-          aria-label={ariaLabel(mode)}
-          disabled={pending}
-          onClick={() => onSelect(mode)}
-          className={cn(
-            "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
-            current === mode
-              ? "border-accent/30 bg-accent/10 text-accent"
-              : "border-line text-ink-dim hover:bg-panel hover:text-ink",
-          )}
-        >
-          {displayLabel(mode)}
-        </button>
-      ))}
+    <div className="mt-6" role="group" aria-label={groupLabel}>
+      <GroupHeading title={title} value={current ? displayLabel(current) : undefined} />
+      <div className="flex flex-wrap justify-center gap-2">
+        {options.map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            aria-pressed={current === mode}
+            aria-label={ariaLabel(mode)}
+            disabled={pending}
+            onClick={() => onSelect(mode)}
+            className={cn(
+              "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
+              current === mode
+                ? "border-accent/30 bg-accent/10 text-accent"
+                : "border-line text-ink-dim hover:bg-panel hover:text-ink",
+            )}
+          >
+            {displayLabel(mode)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── the fan-speed ladder ───────────────────────────────────────────────────
+   These units advertise `["Level 1" … "Level 7", "Auto"]`, which as chips is
+   eight 56px targets wrapping onto two rows — a third of the modal's height
+   spent on one attribute, and no visual hint that the seven levels are ORDERED
+   at all. A slider says that in its shape, and Auto sits at the far end as the
+   ninth position past the ladder rather than as a chip that looks like just
+   another level.
+
+   The shape is detected, never assumed: a unit whose fan modes are not a level
+   ladder (a `["low","medium","high"]` integration, or anything with Auto in the
+   middle) falls back to the chip row untouched. Being wrong here would put a
+   continuous control over a set of unordered names, which is a worse lie than
+   eight chips. */
+
+const LEVEL_RE = /^level\s*(\d+)$/i;
+
+/** True when `modes` is N ordered levels with Auto last — the arrangement the
+ *  slider is a faithful picture of, and the only one it is used for. */
+function isLevelLadder(modes: readonly string[]): boolean {
+  if (modes.length < 4) return false;
+  const head = modes.slice(0, -1);
+  if (!/^auto$/i.test(modes[modes.length - 1])) return false;
+  const numbers = head.map((m) => LEVEL_RE.exec(m)?.[1]);
+  if (numbers.some((n) => n === undefined)) return false;
+  // Ascending, no gaps — the positions on the track have to mean the numbers
+  // printed under them.
+  return numbers.every((n, i) => Number(n) === Number(numbers[0]) + i);
+}
+
+/** "Level 3" → "3", "Auto" → "Auto". The tick row under the track has one
+ *  label per stop and no room for the word "Level" eight times over. */
+function tickLabel(mode: string): string {
+  return LEVEL_RE.exec(mode)?.[1] ?? mode;
+}
+
+/** How long after the last thumb movement the chosen level is actually written
+ *  to Home Assistant. A drag across the ladder fires an input event per stop;
+ *  each one is an IR command to a physical AC, so they are collapsed into the
+ *  one value the thumb settled on. Short enough to feel immediate on release,
+ *  long enough that no realistic drag writes twice. */
+const FAN_COMMIT_MS = 280;
+
+/** How long the thumb stays where it was put, regardless of what HA says.
+ *
+ *  Measured on the test stack with the write intercepted: without a hold, the
+ *  thumb travelled to Level 2, wrote, and snapped back to Level 1 — because an
+ *  OFF unit reports no `fan_mode` attribute at all, so kiosk-hub's unconditional
+ *  `void mutate()` refetch replaced the optimistic value with nothing and the
+ *  slider fell back to its resting position. To someone at the wall that reads
+ *  as "the slider doesn't work".
+ *
+ *  The release is a plain TTL and NOT "HA reported the value back", which is
+ *  the mistake useTargetControl documents at length: the optimistic snapshot
+ *  and HA's own state arrive through the same SWR cache, so a hold that
+ *  releases on agreement releases against its own optimism a moment before the
+ *  refetch lands. Once the real value does arrive it is the same number the
+ *  hold is already showing, so holding past it changes nothing on screen. */
+const FAN_HOLD_TTL_MS = 15_000;
+
+function FanSpeedSlider({
+  groupLabel,
+  title,
+  options,
+  current,
+  pending,
+  onSelect,
+}: {
+  groupLabel: string;
+  title: string;
+  options: string[];
+  current?: string;
+  pending: boolean;
+  onSelect: (mode: string) => void;
+}) {
+  const committedIndex = current ? options.indexOf(current) : -1;
+  /** Where the thumb has been PUT, held independently of what HA reports until
+   *  FAN_HOLD_TTL_MS elapses — see that constant for why the release is a timer
+   *  and not an agreement test. */
+  const [heldIndex, setHeldIndex] = useState<number | null>(null);
+  const commitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Neither timer may outlive the modal: a pending write must not fire an IR
+  // command at a panel nobody is looking at any more, and a release must not
+  // setState on an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (commitRef.current) clearTimeout(commitRef.current);
+      if (holdRef.current) clearTimeout(holdRef.current);
+    };
+  }, []);
+
+  /* The thumb has to sit somewhere even when the unit reports no fan mode at
+     all (an off Kitchen unit does exactly that). It rests at the bottom of the
+     ladder in that case, and the readout says "—" rather than naming a level
+     the unit never claimed — the position is where you would START from, the
+     value is what is true. */
+  const shownIndex = heldIndex ?? (committedIndex >= 0 ? committedIndex : 0);
+  const shownMode = options[shownIndex];
+
+  function move(next: number) {
+    setHeldIndex(next);
+    if (commitRef.current) clearTimeout(commitRef.current);
+    commitRef.current = setTimeout(() => {
+      commitRef.current = null;
+      const mode = options[next];
+      // Re-selecting what is already set would be a pointless IR command.
+      if (mode && mode !== current) onSelect(mode);
+    }, FAN_COMMIT_MS);
+    // A fresh hold window per movement — the same "each tap re-earns the full
+    // period" rule useTargetControl applies to the setpoint, so a slow walk up
+    // the ladder is never cut off mid-adjustment.
+    if (holdRef.current) clearTimeout(holdRef.current);
+    holdRef.current = setTimeout(() => setHeldIndex(null), FAN_HOLD_TTL_MS);
+  }
+
+  return (
+    <div className="mt-6" role="group" aria-label={groupLabel}>
+      <GroupHeading
+        title={title}
+        // The HELD value, not the committed one: the level under your thumb is
+        // the question being asked, and it lands a moment later.
+        value={heldIndex !== null ? shownMode : current}
+      />
+      <input
+        type="range"
+        // `.kiosk-range` (globals.css) carries the track/thumb chrome — a
+        // range input's thumb can only be reached through vendor
+        // pseudo-elements, which utility classes cannot express.
+        className="kiosk-range w-full"
+        // Chromium paints no filled portion of its own — the track's gradient
+        // reads this (see globals.css). Percent of the way along the ladder,
+        // not of the value, so Auto at the far end is a full bar.
+        style={
+          {
+            "--kiosk-range-fill": `${(shownIndex / Math.max(1, options.length - 1)) * 100}%`,
+          } as React.CSSProperties
+        }
+        min={0}
+        max={options.length - 1}
+        step={1}
+        value={shownIndex}
+        disabled={pending}
+        aria-label={groupLabel}
+        // Without this a screen reader reads the raw index ("4 of 8"); the
+        // levels are what the control is actually set in.
+        aria-valuetext={shownMode}
+        onChange={(e) => move(Number(e.target.value))}
+      />
+      {/* One label per stop, aligned to the track's own ends. Not a
+          `justify-between` accident: every stop is equally spaced, so the tick
+          row is the map that makes the thumb's position readable. */}
+      <div className="mt-1 flex justify-between px-0.5">
+        {options.map((mode) => (
+          <span
+            key={mode}
+            className={cn("microlabel", mode === shownMode && "!text-accent")}
+            aria-hidden
+          >
+            {tickLabel(mode)}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -727,6 +935,9 @@ function KioskClimateModal({
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const titleId = `kiosk-climate-modal-${climate.entityId}`;
+  // Read once: the slider and the chip fallback both need it, and `?? []`
+  // twice would hand each branch a fresh array identity for no reason.
+  const fanModes = climate.fanModes ?? [];
 
   // Entrance: flip `entered` a frame after mount so the transition actually
   // animates from the initial (opacity 0, scale 0.96) style rather than
@@ -816,7 +1027,14 @@ function KioskClimateModal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
-        className="panel relative z-(--z-modal) w-full max-w-md p-6 transition-[opacity,transform] motion-reduce:transition-none"
+        /* max-h/overflow-y: four labelled groups plus the setpoint pair is a
+           tall panel (measured 718px at a 800px-high viewport BEFORE the
+           headings landed), and a wall tablet in landscape has less height than
+           that, not more. The glance surface is deliberately scroll-locked, but
+           a modal is a deliberate, dismissible visit — clipping its last group
+           off the bottom would hide the swing control entirely, so this one box
+           is allowed to scroll. */
+        className="panel relative z-(--z-modal) max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6 transition-[opacity,transform] motion-reduce:transition-none"
         style={{ ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.96)" }}
       >
         <div className="mb-5 flex items-center justify-between gap-2">
@@ -877,6 +1095,7 @@ function KioskClimateModal({
         )}
 
         <ModeChipGroup
+          title="Mode"
           groupLabel={`${climate.name} mode`}
           options={climate.hvacModes}
           current={climate.hvacMode}
@@ -889,18 +1108,34 @@ function KioskClimateModal({
         {/* Fan/preset/swing (work item 2/3): only rendered when THIS entity's
             own attributes actually offer them — most climate entities in the
             world don't, and a control for a mode that doesn't exist would
-            just fail against HA every time it's tapped. */}
-        <ModeChipGroup
-          groupLabel={`${climate.name} fan speed`}
-          options={climate.fanModes ?? []}
-          current={climate.fanMode}
-          pending={pending}
-          displayLabel={(mode) => mode}
-          ariaLabel={(mode) => `Set ${climate.name} fan speed to ${mode}`}
-          onSelect={onSetFanMode}
-        />
+            just fail against HA every time it's tapped.
+            Fan speed is a SLIDER when the unit's modes are an ordered level
+            ladder with Auto last (see isLevelLadder) and the same chip row as
+            everything else when they aren't. */}
+        {isLevelLadder(fanModes) ? (
+          <FanSpeedSlider
+            title="Fan speed"
+            groupLabel={`${climate.name} fan speed`}
+            options={fanModes}
+            current={climate.fanMode}
+            pending={pending}
+            onSelect={onSetFanMode}
+          />
+        ) : (
+          <ModeChipGroup
+            title="Fan speed"
+            groupLabel={`${climate.name} fan speed`}
+            options={fanModes}
+            current={climate.fanMode}
+            pending={pending}
+            displayLabel={(mode) => mode}
+            ariaLabel={(mode) => `Set ${climate.name} fan speed to ${mode}`}
+            onSelect={onSetFanMode}
+          />
+        )}
 
         <ModeChipGroup
+          title="Preset"
           groupLabel={`${climate.name} preset`}
           options={climate.presetModes ?? []}
           current={climate.presetMode}
@@ -911,6 +1146,7 @@ function KioskClimateModal({
         />
 
         <ModeChipGroup
+          title="Swing"
           groupLabel={`${climate.name} swing`}
           options={climate.swingModes ?? []}
           current={climate.swingMode}

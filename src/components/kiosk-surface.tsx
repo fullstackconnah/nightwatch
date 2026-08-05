@@ -57,6 +57,7 @@ import { KioskAlerts } from "@/components/kiosk-alerts";
 import { KioskDoorbellButton } from "@/components/kiosk-doorbell";
 import { KioskStatusStripExtras } from "@/components/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk-stale-tag";
+import { KioskRadarModal, useKioskRadar } from "@/components/kiosk-radar";
 
 type KioskViewMode = "glance" | "full";
 
@@ -309,6 +310,11 @@ function TempNode({
         className={cn(
           "shrink-0 font-mono tabular-nums",
           full ? "text-xl" : "text-4xl min-[420px]:text-5xl md:text-6xl",
+          // Height cap, same reasoning (and same `!`) as the clock's — this
+          // ramp is keyed on width and a landscape wall panel is wide and
+          // short, so `md:` was handing it the largest face in the one case
+          // with the least room for it.
+          !full && "[@media(max-height:700px)]:!text-5xl",
         )}
       >
         {Math.round(current.tempC)}°
@@ -317,6 +323,7 @@ function TempNode({
         className={cn(
           "truncate text-ink-dim",
           full ? "text-sm" : "max-w-full text-xl min-[420px]:text-2xl md:text-3xl",
+          !full && "[@media(max-height:700px)]:!text-2xl",
         )}
       >
         {current.label.toLowerCase()}
@@ -517,7 +524,17 @@ export function KioskSurface({
   // edits, so "what rotates through the forecast slot" is a user choice.
   const widgetLayout = useKioskWidgetLayout();
   const glanceBandIds = widgetLayout.glance;
-  const bandCtx = useMemo(() => ({ period, onDoorbellClick }), [period, onDoorbellClick]);
+  /* The radar modal is owned HERE, not by the rail that opens it. In glance the
+     rail lives inside a carousel pane, so a rail-owned modal is unmounted by
+     the next auto-advance — the radar would disappear a few seconds after you
+     opened it, and again on any glance→full flip. Mounted at this level it
+     outlives both, exactly like the doorbell modal is owned a level higher
+     again (page.tsx) for the same class of reason. */
+  const radar = useKioskRadar();
+  const bandCtx = useMemo(
+    () => ({ period, onDoorbellClick, onRadarClick: radar.open }),
+    [period, onDoorbellClick, radar.open],
+  );
   const showBottomShadow = useBottomScrollShadow(full);
   useGlanceScrollLock(!full);
 
@@ -539,12 +556,33 @@ export function KioskSurface({
                the gaps alone can't rescue. The two corner buttons are `fixed`,
                so they sit outside this box and stay reachable even when the
                stack inside it is clipped. */
-            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center",
+            /* gap-3 on a short viewport, for the same reason the band and the
+               clock step down there: this gap sits between the header and
+               glance's own stack, and at 800×480 every 12px of rhythm is 12px
+               the column either fits in or clips. */
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:700px)]:gap-3",
       )}
     >
       {/* Fixed overlay, outside the flow — mounted here per the contract's
           ownership map (agent D mounts it), built by agent A. */}
       <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />
+
+      {/* The rain radar, opened from the forecast rail's Today cell in either
+          mode (see `radar` above for why it is mounted out here rather than
+          inside the rail). It self-marks aria-modal, so useDomModalOpen already
+          suspends the idle return while it's up. */}
+      {radar.isOpen && (
+        /* `contents` generates no box, so this wrapper adds neither a flex item
+           nor one of the column's gaps — it exists only to be a DOM ancestor
+           that can stop a press from reaching this root's own promoter. Events
+           bubble through the DOM tree, not the layout tree, so the stop still
+           works. Without it, every tap inside the radar (scrubbing frames,
+           pressing close) also flips the surface to full underneath it, and you
+           would come out of a glance-mode radar into the full panel. */
+        <div className="contents" onPointerDown={(e) => e.stopPropagation()}>
+          <KioskRadarModal onClose={radar.close} />
+        </div>
+      )}
 
       {/* Scroll-shadow affordance — see useBottomScrollShadow above. Sits
           below the sticky header's own z-layer and above ordinary content;
@@ -567,7 +605,13 @@ export function KioskSurface({
         className={cn(
           full
             ? "panel kiosk-hdr-grid sticky top-0 z-(--z-sticky) px-4 py-2.5 md:py-3"
-            : "flex flex-col items-center gap-5",
+            : // Four gaps between five stacked pieces (clock, temp, band,
+              // server line): 20px each is right when there is 768px of height
+              // to spend and 40px of pure overflow when there is 448px, which
+              // is what a 800×480 panel has. Same max-height:700px breakpoint
+              // as the band's own height class, so the whole column steps down
+              // together rather than one piece at a time.
+              "flex flex-col items-center gap-5 [@media(max-height:700px)]:gap-2.5",
         )}
       >
         <KioskClock ref={flip.register("clock")} size={full ? "full" : "glance"} />
@@ -612,7 +656,15 @@ export function KioskSurface({
         <div ref={flip.register("forecast")} className={cn(full && "order-1 ml-auto")}>
           {full
             ? days.length > 0 && (
-                <KioskForecastRail days={days} emphasizeIndex={period === "evening" ? 1 : null} size="full" />
+                <KioskForecastRail
+                  days={days}
+                  emphasizeIndex={period === "evening" ? 1 : null}
+                  size="full"
+                  // Same surface-owned modal the glance band opens (bandCtx
+                  // above), so the two modes share one radar rather than each
+                  // mounting its own.
+                  onTodayClick={radar.open}
+                />
               )
             : glanceBandIds.length > 0 && (
                 <KioskCarousel

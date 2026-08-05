@@ -63,6 +63,14 @@ export interface KioskWidgetCtx {
    *  (the carousel, FullContent) build one ctx object per render instead of
    *  a bespoke one per widget id. */
   onDoorbellClick: () => void;
+  /** Opens the rain radar. Threaded down to the forecast widget only, and for
+   *  the same reason onDoorbellClick exists on this ctx: the MODAL has to be
+   *  owned above the band, not inside it. A rail that manages its own radar
+   *  state works standalone (see KioskForecastRail's `onTodayClick`), but inside
+   *  the glance carousel that state lives in a pane which the auto-advance
+   *  unmounts a few seconds later — the radar would vanish mid-look. Optional:
+   *  a caller that passes nothing gets the rail's own self-managed modal back. */
+  onRadarClick?: () => void;
   /** Set by the carousel only (kiosk-carousel.tsx) — a widget calls this with
    *  its own current emptiness so the carousel can drop that pane and its dot
    *  instead of leaving a swipeable blank page standing. `undefined` in every
@@ -145,14 +153,27 @@ function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeather
    It is a widget here only so the band can rotate away from it and back; the
    rail itself is untouched, including the `px-1 -mx-1` pair that keeps the
    first and last day's rounded corners from being clipped. */
-function ForecastWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
+function ForecastWidget({
+  period,
+  reportEmpty,
+  onRadarClick,
+}: {
+  period: KioskPeriod;
+  reportEmpty?: (empty: boolean) => void;
+  onRadarClick?: () => void;
+}) {
   const weather = useWeatherView();
   const days = weather.ok?.days ?? [];
   useEmptyReport(days.length === 0, reportEmpty);
   if (days.length === 0) return null;
   return (
     <div className="flex w-full items-center justify-center">
-      <KioskForecastRail days={days} emphasizeIndex={period === "evening" ? 1 : null} size="glance" />
+      <KioskForecastRail
+        days={days}
+        emphasizeIndex={period === "evening" ? 1 : null}
+        size="glance"
+        onTodayClick={onRadarClick}
+      />
     </div>
   );
 }
@@ -435,7 +456,9 @@ export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
     // as a full-mode widget too would put two rails on the same screen.
     allow: ["glance"],
     requires: "weather",
-    render: (ctx) => <ForecastWidget period={ctx.period} reportEmpty={ctx.reportEmpty} />,
+    render: (ctx) => (
+      <ForecastWidget period={ctx.period} reportEmpty={ctx.reportEmpty} onRadarClick={ctx.onRadarClick} />
+    ),
   },
   {
     id: "assistant",
