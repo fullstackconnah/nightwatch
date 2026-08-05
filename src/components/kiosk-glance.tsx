@@ -32,6 +32,7 @@
    and panels, so this component never renders while elevated. */
 
 import { useMemo } from "react";
+import { cn } from "@/lib/utils";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { type KioskPeriod } from "@/components/kiosk-display";
 import { KioskTimersButton } from "@/components/kiosk-timers";
@@ -44,6 +45,11 @@ import { KioskTimersButton } from "@/components/kiosk-timers";
    question — "what rotates through the band?" — instead of two lists whose
    difference nobody would remember. */
 const BELOW_BAND_WIDGETS: readonly KioskWidgetId[] = ["weather-outlook", "briefing", "lights", "scenes"];
+
+/** The subset of the stack above that is prose rather than a control, and so
+ *  is what gets dropped first when the viewport is too short to hold
+ *  everything (see the render below). Controls are never in this set. */
+const INFORMATIONAL_WIDGETS: ReadonlySet<KioskWidgetId> = new Set(["weather-outlook", "briefing"]);
 
 /* ── the glance-only content ────────────────────────────────────────────── */
 
@@ -79,7 +85,21 @@ export function KioskGlance({
           stay put, and only the things you READ rotate. */}
       {BELOW_BAND_WIDGETS.map((id) => {
         const def = KIOSK_WIDGET_MAP.get(id);
-        return def ? <div key={id}>{def.render(ctx)}</div> : null;
+        if (!def) return null;
+        /* On a SHORT viewport the two sentences are the first thing to go.
+           Glance is a fixed-height box now, so anything that doesn't fit is
+           clipped rather than scrolled to — and measured at 800x480 the
+           floodlight tile landed at y=513 against a 480px viewport, i.e. a
+           control you could no longer reach at all. Dropping the prose first
+           buys back exactly the room the controls need, and costs least:
+           the band directly above is already showing the weather and the
+           news, so these two lines are the most redundant thing on screen. */
+        const dropsWhenShort = INFORMATIONAL_WIDGETS.has(id);
+        return (
+          <div key={id} className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}>
+            {def.render(ctx)}
+          </div>
+        );
       })}
 
       {/* `fixed` escapes KioskThemeScope's safe-area padding (kiosk-theme.tsx

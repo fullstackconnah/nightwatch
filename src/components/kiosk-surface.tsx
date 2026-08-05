@@ -62,12 +62,20 @@ type KioskViewMode = "glance" | "full";
 
 // 30s of no interaction returns to glance — the contract's number, not a
 // tuned guess.
-/* The glance band's reserved height. Sized to the tallest thing the band's
-   default panes need at the glance type ramp (the five-day rail with its
-   icon + high + low/rain stack), so the rail — the pane people see most —
-   sits at the size it always did rather than being squeezed to fit a
-   shorter box. Fixed, never intrinsic: see the band's comment below. */
-const GLANCE_BAND_HEIGHT_PX = 132;
+/* The glance band's reserved height. 132px suits the five-day rail at the
+   glance type ramp (icon + high + low/rain stack), so the pane people see
+   most sits at the size it always did.
+
+   It shrinks on a SHORT viewport because glance is a fixed-height screen with
+   scrolling locked: measured at 800x480, a 132px band pushed the floodlight
+   control to y=477 against a 480px viewport — below the fold, and with no
+   scrolling, unreachable. Trading band height for a reachable control is the
+   right way round.
+
+   One height per viewport, never per pane: this subtree feeds the header's
+   FLIP measurement, so a band that resized as it rotated would nudge the
+   clock on every advance. */
+const GLANCE_BAND_HEIGHT_CLASS = "h-[132px] [@media(max-height:700px)]:h-[88px]";
 
 const KIOSK_IDLE_MS = 30_000;
 const HEALTH_POLL_MS = 15_000;
@@ -371,6 +379,52 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
 // genuinely cannot fit ... a real affordance (a fade/scroll-shadow at the
 // cut, not a bare cut)". This is that affordance, not a substitute for
 // fitting — it only ever shows when the page has genuinely overflowed.
+/** Pins the document while the surface is in glance.
+ *
+ *  Sizing the glance column to the viewport stops it GENERATING overflow, but
+ *  it doesn't stop the document scrolling — the night overlay, the alert
+ *  takeover and the browser's own overscroll can all still move it, and a wall
+ *  panel nudged 40px off-centre by a stray swipe stays that way until somebody
+ *  notices. So glance also locks the scroll port outright.
+ *
+ *  Applied to documentElement/body rather than to KioskThemeScope's div for a
+ *  specific reason: that div is deliberately `overflow-x-clip` and NOT
+ *  `overflow-hidden`, because `hidden` on one axis force-promotes the other
+ *  from `visible` to `auto` (CSS Overflow 3's visible-forcing rule), which
+ *  turns it into a scroll container and breaks `position: sticky` on the
+ *  full-mode header — that exact regression is already documented in
+ *  kiosk-theme.tsx. Locking the document instead leaves that div untouched.
+ *
+ *  Full mode is left alone entirely: its content legitimately exceeds the
+ *  viewport (several climate rooms plus a switch bank) and it has a
+ *  scroll-shadow affordance for precisely that case.
+ *
+ *  The previous inline values are restored on the way out rather than blindly
+ *  cleared, so this composes with anything else that may have set them. */
+function useGlanceScrollLock(locked: boolean): void {
+  useEffect(() => {
+    if (!locked || typeof document === "undefined") return;
+    const de = document.documentElement;
+    const { body } = document;
+    const prevDe = de.style.overflow;
+    const prevBody = body.style.overflow;
+    const prevOverscroll = body.style.overscrollBehavior;
+    de.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    // Kills the rubber-band on touch, which on iOS scrolls the page even when
+    // overflow is hidden.
+    body.style.overscrollBehavior = "none";
+    // Returning from a scrolled full view would otherwise strand glance at
+    // that offset, with no way to scroll back now that scrolling is off.
+    window.scrollTo(0, 0);
+    return () => {
+      de.style.overflow = prevDe;
+      body.style.overflow = prevBody;
+      body.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [locked]);
+}
+
 function useBottomScrollShadow(active: boolean): boolean {
   const [show, setShow] = useState(false);
   useEffect(() => {
@@ -465,11 +519,28 @@ export function KioskSurface({
   const glanceBandIds = widgetLayout.glance;
   const bandCtx = useMemo(() => ({ period, onDoorbellClick }), [period, onDoorbellClick]);
   const showBottomShadow = useBottomScrollShadow(full);
+  useGlanceScrollLock(!full);
 
   return (
     <div
       onPointerDown={onInteraction}
-      className={cn("flex flex-col", full ? "gap-3" : "min-h-[calc(100vh-2rem)] items-center justify-center gap-10 px-6 text-center")}
+      className={cn(
+        "flex flex-col",
+        full
+          ? "gap-3"
+          : /* Glance is ONE SCREEN. `h-` and not `min-h-`: with a minimum the
+               column simply grew past the viewport and the page scrolled —
+               measured on production at 49px of overflow at 1024x768, 17px at
+               1280x800 and 337px at 800x480, all of them really scrollable.
+               A wall display that can be nudged off-centre by a stray swipe,
+               and then sits that way until someone notices, is a bug; there is
+               nothing below the fold worth reaching for.
+               `overflow-hidden` is the backstop for the short-viewport case
+               the gaps alone can't rescue. The two corner buttons are `fixed`,
+               so they sit outside this box and stay reachable even when the
+               stack inside it is clipped. */
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center",
+      )}
     >
       {/* Fixed overlay, outside the flow — mounted here per the contract's
           ownership map (agent D mounts it), built by agent A. */}
@@ -548,7 +619,7 @@ export function KioskSurface({
                   widgetIds={glanceBandIds}
                   ctx={bandCtx}
                   onInteraction={onInteraction}
-                  heightPx={GLANCE_BAND_HEIGHT_PX}
+                  heightClassName={GLANCE_BAND_HEIGHT_CLASS}
                   dotsClassName="justify-center pt-1"
                 />
               )}
@@ -654,11 +725,10 @@ export function KioskSurface({
             stack={true}
             overlay={glanceIsOutgoing}
           >
-            {/* onInteraction is the same promotion the root's pointerdown
-                performs; the carousel needs it explicitly so it can replay it
-                for a confirmed dead-space TAP while swallowing a swipe (see
-                kiosk-carousel.tsx). onDoorbellClick only reaches the optional
-                "doorbell" widget. */}
+            {/* No onInteraction here any more: the carousel moved up into the
+                band, so it takes that prop directly above and this block is
+                back to plain content. onDoorbellClick only reaches the
+                optional "doorbell" widget. */}
             <KioskGlance
               period={period}
               onAdminClick={onAdminClick}
@@ -704,7 +774,14 @@ function RevealBlock({
       aria-hidden={overlay || undefined}
       className={cn(
         "transition-opacity ease-out motion-reduce:transition-none",
-        stack && "flex flex-col items-center gap-10",
+        /* gap-6, down from gap-10. Glance is now a fixed-height box (see the
+           surface root), so every 16px of rhythm here is 16px the content
+           either fits in or loses — and the four gaps this stack and the root
+           contribute were most of the 49px that used to push 1024x768 into
+           scrolling. `min-h-0` lets it actually shrink inside that box rather
+           than forcing its parent taller, which is what a flex child does by
+           default. */
+        stack && "flex min-h-0 flex-col items-center gap-6 overflow-hidden",
         overlay && "pointer-events-none absolute inset-x-0 top-0",
         revealed ? "opacity-100" : "opacity-0",
       )}

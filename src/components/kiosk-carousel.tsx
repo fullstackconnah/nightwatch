@@ -65,6 +65,7 @@ export function KioskCarousel({
   onInteraction,
   heightPx = PANE_HEIGHT_PX,
   dotsClassName,
+  heightClassName,
 }: {
   widgetIds: readonly KioskWidgetId[];
   ctx: Omit<KioskWidgetCtx, "reportEmpty">;
@@ -81,6 +82,13 @@ export function KioskCarousel({
   heightPx?: number;
   /** Lets the band tuck its dots in tighter than a full-height column wants. */
   dotsClassName?: string;
+  /** Overrides `heightPx` with a class, so the reserved height can respond to
+   *  a media query. Needed because glance is a fixed-height screen: on a short
+   *  viewport a 132px band pushes the light controls below the fold, and with
+   *  scrolling locked "below the fold" means unreachable. An inline pixel
+   *  height cannot express that; a class can. Still ONE height per viewport —
+   *  the value must not vary between panes, for the FLIP reason above. */
+  heightClassName?: string;
 }) {
   const [emptyMap, setEmptyMap] = useState<Partial<Record<KioskWidgetId, boolean>>>({});
   const [index, setIndex] = useState(0);
@@ -225,14 +233,18 @@ export function KioskCarousel({
           configured widget quiet at once) collapses to nothing rather than
           holding a blank box open. */}
       <div
-        className={cn("relative w-full overflow-hidden", visible.length > 0 ? "" : "h-0")}
+        className={cn("relative w-full overflow-hidden", visible.length > 0 ? heightClassName ?? "" : "h-0")}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         // Lets the browser still own vertical scrolling/scroll-bounce; only
         // horizontal drag is this component's to claim.
-        style={{ ...(visible.length > 0 ? { height: heightPx } : {}), touchAction: "pan-y" }}
+        style={{
+          // heightClassName wins when given — see its doc comment.
+          ...(visible.length > 0 && !heightClassName ? { height: heightPx } : {}),
+          touchAction: "pan-y",
+        }}
       >
         <div
           className="flex h-full w-full"
