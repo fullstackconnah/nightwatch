@@ -26,7 +26,7 @@
    live in the same file, rather than threading a mode value down through
    props just to hand it back up on every interaction. */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Minimize2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFreshness, useKioskHealth } from "@/lib/kiosk-client";
@@ -39,6 +39,8 @@ import {
 } from "@/lib/kiosk-motion";
 import { KioskClock } from "@/components/kiosk-clock";
 import { KioskForecastRail } from "@/components/kiosk-forecast";
+import { KioskCarousel } from "@/components/kiosk-carousel";
+import { useKioskWidgetLayout } from "@/lib/kiosk-widgets";
 import {
   KioskDisplay,
   useWeatherView,
@@ -60,6 +62,13 @@ type KioskViewMode = "glance" | "full";
 
 // 30s of no interaction returns to glance — the contract's number, not a
 // tuned guess.
+/* The glance band's reserved height. Sized to the tallest thing the band's
+   default panes need at the glance type ramp (the five-day rail with its
+   icon + high + low/rain stack), so the rail — the pane people see most —
+   sits at the size it always did rather than being squeezed to fit a
+   shorter box. Fixed, never intrinsic: see the band's comment below. */
+const GLANCE_BAND_HEIGHT_PX = 132;
+
 const KIOSK_IDLE_MS = 30_000;
 const HEALTH_POLL_MS = 15_000;
 
@@ -450,6 +459,11 @@ export function KioskSurface({
   const glanceMounted = !full || glanceIsOutgoing;
 
   const days: WeatherDay[] = weather.ok?.days ?? [];
+  // The band's panes come from the same reorderable list the Widgets tab
+  // edits, so "what rotates through the forecast slot" is a user choice.
+  const widgetLayout = useKioskWidgetLayout();
+  const glanceBandIds = widgetLayout.glance;
+  const bandCtx = useMemo(() => ({ period, onDoorbellClick }), [period, onDoorbellClick]);
   const showBottomShadow = useBottomScrollShadow(full);
 
   return (
@@ -507,14 +521,37 @@ export function KioskSurface({
             `ml-auto` then pushes the forecast and everything ordered after it
             to the right end, so the band reads as one line: what it is now on
             the left, the week ahead on the right. */}
+        {/* THE GLANCE BAND. This registered node is a shared FLIP element, so
+            it must stay the same DOM node across a mode change — but its
+            CONTENT is free to differ, because FLIP only measures the node's
+            rect and animates a transform over it.
+
+            In full it is the plain five-day rail, exactly as before. In glance
+            it is a carousel whose first pane IS that rail, rotating through
+            news, climate and containers — the wide band is the largest piece
+            of real estate on the glance surface and showing only the week's
+            weather there wastes it.
+
+            GLANCE_BAND_HEIGHT_PX is fixed rather than intrinsic on purpose:
+            this subtree feeds the header's own FLIP measurement, so a band
+            that grew or shrank as it rotated would nudge the clock on every
+            advance — the exact class of layout-moves-mid-animation bug the
+            jitter fix removed. Every pane gets the same reserved height and
+            centres inside it. */}
         <div ref={flip.register("forecast")} className={cn(full && "order-1 ml-auto")}>
-          {days.length > 0 && (
-            <KioskForecastRail
-              days={days}
-              emphasizeIndex={period === "evening" ? 1 : null}
-              size={full ? "full" : "glance"}
-            />
-          )}
+          {full
+            ? days.length > 0 && (
+                <KioskForecastRail days={days} emphasizeIndex={period === "evening" ? 1 : null} size="full" />
+              )
+            : glanceBandIds.length > 0 && (
+                <KioskCarousel
+                  widgetIds={glanceBandIds}
+                  ctx={bandCtx}
+                  onInteraction={onInteraction}
+                  heightPx={GLANCE_BAND_HEIGHT_PX}
+                  dotsClassName="justify-center pt-1"
+                />
+              )}
         </div>
         <ServerLine mode={mode} registerRef={flip.register("server-line")} />
 
@@ -626,7 +663,6 @@ export function KioskSurface({
               period={period}
               onAdminClick={onAdminClick}
               onDoorbellClick={onDoorbellClick}
-              onInteraction={onInteraction}
             />
           </RevealBlock>
         )}

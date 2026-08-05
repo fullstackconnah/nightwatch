@@ -63,12 +63,24 @@ export function KioskCarousel({
   widgetIds,
   ctx,
   onInteraction,
+  heightPx = PANE_HEIGHT_PX,
+  dotsClassName,
 }: {
   widgetIds: readonly KioskWidgetId[];
   ctx: Omit<KioskWidgetCtx, "reportEmpty">;
   /** The same promotion kiosk-surface.tsx's root pointerdown handler would
    *  have fired, replayed manually for a confirmed tap — see THESIS. */
   onInteraction: () => void;
+  /** Reserved pane height. The default suits a free-standing column; the
+   *  glance BAND (which lives inside the shared forecast FLIP node in
+   *  kiosk-surface.tsx) passes a shorter one so the header keeps the height
+   *  the forecast rail alone used to give it. Whatever value is passed, it
+   *  must not change between panes — the header's shared-element FLIP
+   *  measures this subtree, and a band that grew for one pane would move the
+   *  clock every time it rotated. */
+  heightPx?: number;
+  /** Lets the band tuck its dots in tighter than a full-height column wants. */
+  dotsClassName?: string;
 }) {
   const [emptyMap, setEmptyMap] = useState<Partial<Record<KioskWidgetId, boolean>>>({});
   const [index, setIndex] = useState(0);
@@ -220,7 +232,7 @@ export function KioskCarousel({
         onPointerCancel={onPointerCancel}
         // Lets the browser still own vertical scrolling/scroll-bounce; only
         // horizontal drag is this component's to claim.
-        style={{ ...(visible.length > 0 ? { height: PANE_HEIGHT_PX } : {}), touchAction: "pan-y" }}
+        style={{ ...(visible.length > 0 ? { height: heightPx } : {}), touchAction: "pan-y" }}
       >
         <div
           className="flex h-full w-full"
@@ -262,7 +274,7 @@ export function KioskCarousel({
       </div>
 
       {visible.length > 1 && (
-        <div className="flex items-center gap-1">
+        <div className={cn("flex items-center gap-1", dotsClassName)}>
           {visible.map((id, i) => (
             <button
               key={id}

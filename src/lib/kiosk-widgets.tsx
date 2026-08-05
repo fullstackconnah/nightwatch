@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Container, Newspaper, Thermometer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KioskAssistant } from "@/components/kiosk-assistant";
+import { KioskForecastRail } from "@/components/kiosk-forecast";
 import { useKioskBriefing, useWeatherView, type KioskPeriod } from "@/components/kiosk-display";
 import { useKioskHa } from "@/components/kiosk-hub";
 import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
@@ -40,6 +41,7 @@ import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk-doo
 /* ── registry types ──────────────────────────────────────────────────────── */
 
 export type KioskWidgetId =
+  | "forecast"
   | "assistant"
   | "news"
   | "briefing"
@@ -137,6 +139,24 @@ function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeather
   return `high ${Math.round(today.maxC)}° low ${Math.round(today.minC)}° · rain ${today.rainPct}%`;
 }
 
+/* ── forecast (the band's default pane) ──────────────────────────────────── */
+
+/* Renders the SAME KioskForecastRail full mode uses, at its glance type ramp.
+   It is a widget here only so the band can rotate away from it and back; the
+   rail itself is untouched, including the `px-1 -mx-1` pair that keeps the
+   first and last day's rounded corners from being clipped. */
+function ForecastWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
+  const weather = useWeatherView();
+  const days = weather.ok?.days ?? [];
+  useEmptyReport(days.length === 0, reportEmpty);
+  if (days.length === 0) return null;
+  return (
+    <div className="flex w-full items-center justify-center">
+      <KioskForecastRail days={days} emphasizeIndex={period === "evening" ? 1 : null} size="glance" />
+    </div>
+  );
+}
+
 function WeatherOutlookWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
   const weather = useWeatherView();
   const line = weatherSentence(period, weather);
@@ -170,8 +190,19 @@ function BriefingWidget({ period, reportEmpty }: { period: KioskPeriod; reportEm
 
 /* ── news ─────────────────────────────────────────────────────────────────── */
 
-function NewsWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
-  const briefing = useKioskBriefing(period === "morning");
+function NewsWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void }) {
+  /* Active ALL DAY, unlike the morning-briefing widget beside it. The news is
+     the reason the band exists as far as the owner is concerned, and gating it
+     on `period === "morning"` meant the pane silently vanished for twenty
+     hours a day — measured: at ?period=afternoon the band came up with only
+     three panes because this one reported itself empty.
+
+     It costs one fetch, not a poll: useKioskBriefing's refreshInterval already
+     returns 0 once a digest or news payload has arrived, and the server side
+     is a daily cache. At night the band isn't rendered at all (the night
+     overlay owns the screen), so this widget is unmounted and fetches
+     nothing. */
+  const briefing = useKioskBriefing(true);
   const data = briefing.data;
   const news = data?.status === "ok" ? data.news : undefined;
 
@@ -396,6 +427,17 @@ function DoorbellWidget({ onDoorbellClick, reportEmpty }: { onDoorbellClick: () 
 
 export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
   {
+    id: "forecast",
+    label: "5-day forecast",
+    blurb: "The week ahead — the band's default face.",
+    // Band-only. In FULL mode the forecast rail is rendered directly by
+    // kiosk-surface.tsx as one of the four shared FLIP nodes, so offering it
+    // as a full-mode widget too would put two rails on the same screen.
+    allow: ["glance"],
+    requires: "weather",
+    render: (ctx) => <ForecastWidget period={ctx.period} reportEmpty={ctx.reportEmpty} />,
+  },
+  {
     id: "assistant",
     label: "Assistant",
     blurb: "Ask a question or control the house in plain words.",
@@ -426,10 +468,10 @@ export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
   {
     id: "news",
     label: "News",
-    blurb: "The morning digest's news summary or top headlines.",
+    blurb: "Today's headlines, from the generated digest. Shown all day.",
     allow: ["glance", "full"],
     requires: "briefing",
-    render: (ctx) => <NewsWidget period={ctx.period} reportEmpty={ctx.reportEmpty} />,
+    render: (ctx) => <NewsWidget reportEmpty={ctx.reportEmpty} />,
   },
   {
     id: "lights",
@@ -503,7 +545,7 @@ export const KIOSK_WIDGET_MAP: ReadonlyMap<KioskWidgetId, KioskWidgetDef> = new 
  *  mode showed before this feature existed, unmanaged by widgets (see
  *  FullContent in kiosk-surface.tsx). */
 export const DEFAULT_WIDGET_LAYOUT: KioskWidgetLayout = {
-  glance: ["weather-outlook", "briefing", "lights", "scenes"],
+  glance: ["forecast", "news", "climate", "containers"],
   full: [],
 };
 

@@ -234,8 +234,8 @@ function WidgetsTab() {
     <div className="flex flex-col gap-5">
       <WidgetScreenSection
         screen="glance"
-        label="glance"
-        hint="One widget per carousel pane. The clock, temperature and forecast always stay in the header."
+        label="glance band"
+        hint="The wide band under the clock rotates through these, one at a time. Controls stay put below it — only the things you read rotate."
         ids={layout.glance}
         availability={availability}
       />

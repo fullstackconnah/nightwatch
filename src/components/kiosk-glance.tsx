@@ -9,11 +9,16 @@
    surface is in glance mode, so it can't own a node that has to survive
    into full mode too. What used to live directly in this file (the weather
    sentence, the morning briefing line, the auto-picked light/scene tiles) is
-   now owned by the widget registry (kiosk-widgets.tsx) and rendered through
-   <KioskCarousel/> as `layout.glance`, reorderable from the Widgets tab
-   (kiosk-appearance.tsx) — this file's own remaining job is the carousel's
-   placement and the two fixed corner buttons, which stay OUTSIDE the widget
-   system on purpose (see KioskCarousel's own render call below).
+   now owned by the widget registry (kiosk-widgets.tsx).
+
+   The ROTATING carousel is not here. It lives in kiosk-surface.tsx, inside
+   the shared forecast FLIP node, because the owner wanted the wide band under
+   the clock to be what cycles — forecast, news, climate, containers — rather
+   than a second pane area stacked beneath it. `layout.glance` drives THAT.
+   What this file still renders is the fixed stack below the band plus the two
+   corner buttons, all of which stay OUTSIDE the rotation on purpose: a
+   control that moves away mid-reach is hostile, so only the things you read
+   rotate, never the things you press.
 
    OWN-WORLD, inverted: where the standard layout is hairline panels, this
    content is deliberately OPEN GROUND — no .panel boxes at all; type and
@@ -27,10 +32,18 @@
    and panels, so this component never renders while elevated. */
 
 import { useMemo } from "react";
-import { KioskCarousel } from "@/components/kiosk-carousel";
-import { useKioskWidgetLayout, type KioskWidgetCtx } from "@/lib/kiosk-widgets";
+import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { type KioskPeriod } from "@/components/kiosk-display";
 import { KioskTimersButton } from "@/components/kiosk-timers";
+
+/* The fixed, non-rotating stack under the band. Deliberately NOT the
+   reorderable layout: `layout.glance` now drives the BAND (kiosk-surface.tsx),
+   and these are the controls plus the two quiet sentences that were glance's
+   original content before the widget work. Kept as a constant here rather
+   than a third persisted screen so the Widgets tab stays a single, honest
+   question — "what rotates through the band?" — instead of two lists whose
+   difference nobody would remember. */
+const BELOW_BAND_WIDGETS: readonly KioskWidgetId[] = ["weather-outlook", "briefing", "lights", "scenes"];
 
 /* ── the glance-only content ────────────────────────────────────────────── */
 
@@ -38,7 +51,6 @@ export function KioskGlance({
   period,
   onAdminClick,
   onDoorbellClick,
-  onInteraction,
 }: {
   period: KioskPeriod;
   onAdminClick: () => void;
@@ -47,14 +59,7 @@ export function KioskGlance({
    *  always-present doorbell button in the header; glance has none by
    *  default, so this only matters if someone adds that widget deliberately. */
   onDoorbellClick: () => void;
-  /** The same promotion kiosk-surface.tsx's root pointerdown handler
-   *  performs on its own — handed to the carousel so it can replay it for a
-   *  confirmed tap on dead space without letting a swipe trigger it too
-   *  early. See kiosk-carousel.tsx's THESIS for why this can't just be
-   *  "stop the pointerdown, let it bubble later." */
-  onInteraction: () => void;
 }) {
-  const layout = useKioskWidgetLayout();
   const ctx: Omit<KioskWidgetCtx, "reportEmpty"> = useMemo(
     () => ({ period, onDoorbellClick }),
     [period, onDoorbellClick],
@@ -62,7 +67,20 @@ export function KioskGlance({
 
   return (
     <>
-      <KioskCarousel widgetIds={layout.glance} ctx={ctx} onInteraction={onInteraction} />
+      {/* The rotating carousel moved UP into the forecast band (see
+          kiosk-surface.tsx's shared FLIP node) — the owner wanted the wide
+          band to be what rotates, not a second pane area stacked under the
+          clock. What stays here is glance's own quiet content: the weather
+          sentence, the morning briefing, and the light/scene controls.
+
+          These are rendered as a fixed stack rather than a second carousel on
+          purpose. A control that rotates away mid-reach is hostile — you go to
+          press the floodlight and the pane has moved — so the things you TOUCH
+          stay put, and only the things you READ rotate. */}
+      {BELOW_BAND_WIDGETS.map((id) => {
+        const def = KIOSK_WIDGET_MAP.get(id);
+        return def ? <div key={id}>{def.render(ctx)}</div> : null;
+      })}
 
       {/* `fixed` escapes KioskThemeScope's safe-area padding (kiosk-theme.tsx
           applies env(safe-area-inset-*) as padding on an ancestor div, which
