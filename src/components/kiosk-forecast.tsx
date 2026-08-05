@@ -30,6 +30,7 @@
 
 import { cn } from "@/lib/utils";
 import { WEATHER_ICON, type WeatherDay } from "@/components/kiosk-display";
+import { KioskRadarModal, useKioskRadar } from "@/components/kiosk-radar";
 
 const DAY_FMT = new Intl.DateTimeFormat("en-AU", { weekday: "short" });
 
@@ -114,86 +115,144 @@ export function KioskForecastRail({
   days,
   emphasizeIndex,
   size,
+  onTodayClick,
 }: {
   days: WeatherDay[];
   emphasizeIndex: number | null;
   size: RailSize;
+  /** Opens the weather-radar modal when the Today cell is tapped. Optional
+   *  because kiosk-surface.tsx (the only current caller, and a file this
+   *  feature cannot edit) doesn't pass one — when absent, the Today button
+   *  manages its own modal via useKioskRadar()/KioskRadarModal below rather
+   *  than the feature silently not working. See kiosk-radar.tsx's own THESIS
+   *  for why. */
+  onTodayClick?: () => void;
 }) {
   const s = SIZE[size];
+  const radar = useKioskRadar();
+  const openRadar = onTodayClick ?? radar.open;
+  // Only render the self-managed modal on the fallback path — a caller that
+  // supplies its own onTodayClick is presumed to own showing a radar view
+  // itself, and rendering ours too would be two modals fighting over one tap.
+  const selfManaged = !onTodayClick;
 
   return (
-    <div
-      data-testid="kiosk-forecast-rail"
-      className={cn("flex items-start overflow-hidden px-1 -mx-1", s.gap)}
-    >
-      {days.map((day, i) => {
-        const Icon = WEATHER_ICON[day.code];
-        const emphasized = i === emphasizeIndex;
-        const wet = day.rainPct >= RAIN_THRESHOLD_PCT;
-        // Today and the next two are unconditional — that trio is what
-        // survives at phone width. The 4th and 5th reveal where they measurably
-        // fit alongside what's already on screen.
-        const visibility = i === 3 ? s.revealFourth : i === 4 ? s.revealFifth : "flex";
-        return (
-          <div
-            key={day.date}
-            /* The tint needs a box to sit in, and the cells had none — they
-               were bare flex columns separated by gap alone, which was the
-               right call when there was nothing to paint. `-mx-1 px-1` widens
-               the painted area back over half the gap so the wash reads as a
-               column of sky rather than a label with a highlight behind it,
-               without changing where anything actually sits.
+    <>
+      <div
+        data-testid="kiosk-forecast-rail"
+        className={cn("flex items-start overflow-hidden px-1 -mx-1", s.gap)}
+      >
+        {days.map((day, i) => {
+          const Icon = WEATHER_ICON[day.code];
+          const emphasized = i === emphasizeIndex;
+          const wet = day.rainPct >= RAIN_THRESHOLD_PCT;
+          // Today and the next two are unconditional — that trio is what
+          // survives at phone width. The 4th and 5th reveal where they measurably
+          // fit alongside what's already on screen.
+          const visibility = i === 3 ? s.revealFourth : i === 4 ? s.revealFifth : "flex";
+          const isToday = i === 0;
 
-               That bleed is invisible on interior cells (it just eats into
-               the gap either side), but the FIRST and LAST cell have no
-               neighbour to bleed into on their outer side — their `-mx-1`
-               instead pushes the painted, rounded box 4px past the rail's own
-               edge, and the rail's `overflow-hidden` (needed below) clipped
-               exactly that overhang, shaving the outer rounded corners off
-               Today and the last visible day. Interior cells were never
-               touched, which is why only the two ends looked wrong. The rail
-               container now carries a matching `px-1 -mx-1`: the padding
-               moves its clip boundary out by 4px so the overhang lands inside
-               it instead of past it, and the negative margin cancels the
-               padding's own footprint so the rail measures the same to
-               everything around it (and so every reveal breakpoint above,
-               measured against the rail's old box, still holds). Remove
-               either half on its own and the clipping comes back — on the
-               container if you drop `px-1`, on these cells if you ever drop
-               their `-mx-1` while leaving the container's compensation in
-               place. */
-            className={cn(visibility, "shrink-0 flex-col items-center rounded-md -mx-1 px-1 py-0.5")}
-            style={{ backgroundColor: DAY_TINT[day.code] }}
-          >
-            <span
-              className={cn(
-                s.day,
-                "font-semibold uppercase tracking-wider",
-                emphasized ? "text-accent" : "text-ink-dim",
-              )}
-            >
-              {dayLabel(day.date, i)}
-            </span>
+          /* The tint needs a box to sit in, and the cells had none — they
+             were bare flex columns separated by gap alone, which was the
+             right call when there was nothing to paint. `-mx-1 px-1` widens
+             the painted area back over half the gap so the wash reads as a
+             column of sky rather than a label with a highlight behind it,
+             without changing where anything actually sits.
 
-            <span className="mt-0.5 flex items-center gap-1.5">
-              <Icon className={cn(s.icon, emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
-              <span className={cn("font-mono leading-none text-ink", s.temp)}>{Math.round(day.maxC)}°</span>
-            </span>
+             That bleed is invisible on interior cells (it just eats into
+             the gap either side), but the FIRST and LAST cell have no
+             neighbour to bleed into on their outer side — their `-mx-1`
+             instead pushes the painted, rounded box 4px past the rail's own
+             edge, and the rail's `overflow-hidden` (needed below) clipped
+             exactly that overhang, shaving the outer rounded corners off
+             Today and the last visible day. Interior cells were never
+             touched, which is why only the two ends looked wrong. The rail
+             container now carries a matching `px-1 -mx-1`: the padding
+             moves its clip boundary out by 4px so the overhang lands inside
+             it instead of past it, and the negative margin cancels the
+             padding's own footprint so the rail measures the same to
+             everything around it (and so every reveal breakpoint above,
+             measured against the rail's old box, still holds). Remove
+             either half on its own and the clipping comes back — on the
+             container if you drop `px-1`, on these cells if you ever drop
+             their `-mx-1` while leaving the container's compensation in
+             place. This geometry is unchanged by the Today cell becoming a
+             <button> below — it carries the exact same classes, just with a
+             handful of UA-default resets added (border-0/bg-transparent/
+             text-left/outline-none) that touch no box-model property this
+             comment depends on. */
+          const cellClassName = cn(visibility, "shrink-0 flex-col items-center rounded-md -mx-1 px-1 py-0.5");
 
-            <span className={cn("mt-0.5 flex items-baseline gap-1.5 font-mono leading-none", s.low)}>
-              <span className="text-ink-faint">{Math.round(day.minC)}°</span>
-              {/* Below the threshold this renders nothing at all — the absence
-                  IS the reading. `text-blue` (not ink) so the one percentage on
-                  a settled week is unmistakably the wet day. */}
-              {wet && (
-                <span className="text-blue" aria-label={`${day.rainPct}% chance of rain`}>
-                  {day.rainPct}%
-                </span>
-              )}
-            </span>
-          </div>
-        );
-      })}
-    </div>
+          const content = (
+            <>
+              <span
+                className={cn(
+                  s.day,
+                  "font-semibold uppercase tracking-wider",
+                  emphasized ? "text-accent" : "text-ink-dim",
+                )}
+              >
+                {dayLabel(day.date, i)}
+              </span>
+
+              <span className="mt-0.5 flex items-center gap-1.5">
+                <Icon className={cn(s.icon, emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
+                <span className={cn("font-mono leading-none text-ink", s.temp)}>{Math.round(day.maxC)}°</span>
+              </span>
+
+              <span className={cn("mt-0.5 flex items-baseline gap-1.5 font-mono leading-none", s.low)}>
+                <span className="text-ink-faint">{Math.round(day.minC)}°</span>
+                {/* Below the threshold this renders nothing at all — the absence
+                    IS the reading. `text-blue` (not ink) so the one percentage on
+                    a settled week is unmistakably the wet day. */}
+                {wet && (
+                  <span className="text-blue" aria-label={`${day.rainPct}% chance of rain`}>
+                    {day.rainPct}%
+                  </span>
+                )}
+              </span>
+            </>
+          );
+
+          if (isToday) {
+            return (
+              <button
+                key={day.date}
+                type="button"
+                onClick={openRadar}
+                aria-label="Open the weather radar for today"
+                // appearance-none/border-0/bg-transparent/text-left strip the
+                // handful of UA <button> defaults (inset border, system font
+                // sizing already handled by preflight, left-align) that a
+                // <div> never had — none of them touch padding/margin, which
+                // px-1/py-0.5/-mx-1 already fully specify on every side, so
+                // the box this button occupies is pixel-identical to the old
+                // <div>. NOTE: the rail itself is only 28-64px tall (SIZE
+                // above), well under the 44px touch-floor convention this
+                // codebase otherwise holds controls to — inflating the rail
+                // to hit that floor would reintroduce the header FLIP-
+                // measurement fragility the box-geometry comment above
+                // documents, so this button is deliberately an exception
+                // rather than a reason to grow the rail.
+                className={cn(
+                  cellClassName,
+                  "appearance-none border-0 bg-transparent text-left outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                )}
+                style={{ backgroundColor: DAY_TINT[day.code] }}
+              >
+                {content}
+              </button>
+            );
+          }
+
+          return (
+            <div key={day.date} className={cellClassName} style={{ backgroundColor: DAY_TINT[day.code] }}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
+      {selfManaged && radar.isOpen && <KioskRadarModal onClose={radar.close} />}
+    </>
   );
 }

@@ -19,6 +19,7 @@ import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, u
 import useSWR from "swr";
 import { AlertTriangle, X } from "lucide-react";
 import { fetcher } from "@/lib/client";
+import { KIOSK_IDLE_AFTER_MS, kioskEffectiveInterval, useKioskIdle, useKioskNight } from "@/lib/kiosk-activity";
 import type { AttentionResult, AttentionSeverity } from "@/lib/attention";
 import { formatUptime, formatWallClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,16 @@ import {
   prefersReducedMotion,
 } from "@/lib/kiosk-motion";
 
-const POLL_MS = 30_000;
+// Idle/night backoff (2026-08 perf pass): an alert is the one thing on this
+// surface that's supposed to interrupt you, which argues for keeping it
+// fast — but "fast" only matters while a person might be nearby to see the
+// takeover, and 60s/120s still land a bad condition on screen well within
+// any reasonable idea of "promptly." Doesn't touch TAKEOVER_MS or
+// TRAY_AUTO_CLOSE_MS below — those govern how long an ALREADY-SHOWN alert
+// stands, not how often the condition is checked.
+const POLL_MS_ACTIVE = 30_000;
+const POLL_MS_IDLE = 60_000;
+const POLL_MS_NIGHT = 120_000;
 const TAKEOVER_MS = 8_000;
 const TRAY_AUTO_CLOSE_MS = 20_000;
 
@@ -147,8 +157,17 @@ interface AlertsState {
 const EMPTY_STATE: AlertsState = { active: [], resolved: [], seeded: false, dismissed: [] };
 
 export function useKioskAlerts(): UseKioskAlertsResult {
+  const isIdle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
+  const isNight = useKioskNight();
+  const pollMs = kioskEffectiveInterval({
+    active: POLL_MS_ACTIVE,
+    idle: POLL_MS_IDLE,
+    night: POLL_MS_NIGHT,
+    isIdle,
+    isNight,
+  });
   const { data } = useSWR<AttentionResult>("/kiosk/api/attention", fetcher, {
-    refreshInterval: POLL_MS,
+    refreshInterval: pollMs,
     keepPreviousData: true,
   });
 

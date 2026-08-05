@@ -34,6 +34,7 @@ import {
   ToggleLeft,
 } from "lucide-react";
 import { ApiError, fetcher, postJson } from "@/lib/client";
+import { KIOSK_IDLE_AFTER_MS, kioskEffectiveInterval, useKioskIdle, useKioskNight } from "@/lib/kiosk-activity";
 import { StaleTag } from "@/components/kiosk-stale-tag";
 import { KioskClimateTile } from "@/components/kiosk-climate";
 import type {
@@ -50,7 +51,16 @@ import type {
 import { cn } from "@/lib/utils";
 
 const HA_STATES_KEY = "/kiosk/api/ha/states";
-const POLL_MS = 7000;
+// Idle/night backoff (2026-08 perf pass): a light/switch/scene flip is the
+// one interaction this whole surface exists for, so 7s stays the ACTIVE
+// rate. Nobody is standing at the panel toggling anything while it's idle or
+// at 3am, so those windows back off — 20s idle is still well inside "notices
+// a change within a glance," and 60s at night matches the alerts tier below
+// rather than picking an unrelated number. See kiosk-activity.ts for the
+// shared idle/night signal and KIOSK_IDLE_AFTER_MS for the shared threshold.
+const POLL_MS_ACTIVE = 7000;
+const POLL_MS_IDLE = 20_000;
+const POLL_MS_NIGHT = 60_000;
 const ERROR_DISMISS_MS = 4000;
 // color-mix against the live --color-ink-faint token, not a literal rgb —
 // see the identical fix (and its rationale) in kiosk-display.tsx's own
@@ -112,8 +122,22 @@ export interface UseKioskHaResult {
 
 export function useKioskHa(): UseKioskHaResult {
   const [paused, setPaused] = useState(false);
+  const isIdle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
+  const isNight = useKioskNight();
+  // Recomputed every render, so a touch (isIdle -> false) or the clock
+  // crossing 05:00/22:00 (isNight flips) lands on the very next render —
+  // there's no separate "wake up" path to keep in sync with this one.
+  const pollMs = kioskEffectiveInterval({
+    active: POLL_MS_ACTIVE,
+    idle: POLL_MS_IDLE,
+    night: POLL_MS_NIGHT,
+    isIdle,
+    isNight,
+  });
   const { data, error, isLoading, mutate } = useSWR<HaStatesResponse>(HA_STATES_KEY, fetcher, {
-    refreshInterval: paused ? 0 : POLL_MS,
+    // `paused` still wins outright over the backoff — an action in flight
+    // must not resync mid-tap regardless of how slow the idle/night tier is.
+    refreshInterval: paused ? 0 : pollMs,
     keepPreviousData: true,
   });
 

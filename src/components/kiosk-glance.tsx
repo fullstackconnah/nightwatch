@@ -7,10 +7,13 @@
    FLIP shared elements (same DOM node in both modes, see that file's
    structural-rule comment), and this component only ever renders while the
    surface is in glance mode, so it can't own a node that has to survive
-   into full mode too. What's left here is genuinely glance-exclusive: the
-   weather-outlook sentence, the morning briefing line, the four auto-picked
-   control tiles, and the two fixed corner buttons — content that fades out
-   entirely (never travels) when the surface flips to full.
+   into full mode too. What used to live directly in this file (the weather
+   sentence, the morning briefing line, the auto-picked light/scene tiles) is
+   now owned by the widget registry (kiosk-widgets.tsx) and rendered through
+   <KioskCarousel/> as `layout.glance`, reorderable from the Widgets tab
+   (kiosk-appearance.tsx) — this file's own remaining job is the carousel's
+   placement and the two fixed corner buttons, which stay OUTSIDE the widget
+   system on purpose (see KioskCarousel's own render call below).
 
    OWN-WORLD, inverted: where the standard layout is hairline panels, this
    content is deliberately OPEN GROUND — no .panel boxes at all; type and
@@ -24,135 +27,42 @@
    and panels, so this component never renders while elevated. */
 
 import { useMemo } from "react";
-import { cn } from "@/lib/utils";
-import { useWeatherView, useKioskBriefing, type KioskPeriod } from "@/components/kiosk-display";
-import { useKioskHa } from "@/components/kiosk-hub";
+import { KioskCarousel } from "@/components/kiosk-carousel";
+import { useKioskWidgetLayout, type KioskWidgetCtx } from "@/lib/kiosk-widgets";
+import { type KioskPeriod } from "@/components/kiosk-display";
 import { KioskTimersButton } from "@/components/kiosk-timers";
-
-/* ── the quiet sentences ─────────────────────────────────────────────────── */
-
-function weatherSentence(period: KioskPeriod, view: ReturnType<typeof useWeatherView>): string | null {
-  const ok = view.ok;
-  if (!ok) return view.status === "unreachable-empty" ? "weather unreachable" : null;
-  const today = ok.days[0];
-  const tomorrow = ok.days[1];
-  if (period === "evening" && tomorrow) {
-    return `tomorrow ${tomorrow.label.toLowerCase()} ${Math.round(tomorrow.maxC)}° · rain ${tomorrow.rainPct}%`;
-  }
-  if (!today) return null;
-  return `high ${Math.round(today.maxC)}° low ${Math.round(today.minC)}° · rain ${today.rainPct}%`;
-}
-
-/* ── auto-picked control tiles ──────────────────────────────────────────── */
-
-const TILE_COUNT = 4;
-
-/** Four entities chosen by time of day: evenings reach for scenes first
- *  (movie night, wind-down), mornings/days for lights. Deterministic — same
- *  hour, same four tiles — so the wall display never reshuffles underfoot.
- *
- *  `entities.switches` is deliberately NOT a candidate pool here (redesign
- *  follow-up: switches are a bare on/off with no glanceable identity of their
- *  own — the outdoor floodlight the wall display actually needs a button for
- *  is a `light.*` entity already ("Front door Floodlight", see kiosk-hub.tsx's
- *  LightsSection), so it's covered by the `lights` pool below without any
- *  switch-domain filtering. Dropping generic switches keeps this surface to
- *  controls a glance actually needs to reach; the hub (full mode) still lists
- *  every switch for anything that isn't. */
-function GlanceTiles({ period }: { period: KioskPeriod }) {
-  const ha = useKioskHa();
-  const entities = ha.data?.status === "ok" ? ha.data.entities : null;
-
-  const picks = useMemo(() => {
-    if (!entities) return [];
-    const scenes = entities.scenes
-      .filter((s) => s.available)
-      .map((s) => ({ key: s.entityId, name: s.name, kind: "scene" as const, on: false }));
-    const lights = entities.lights
-      .filter((l) => l.available)
-      .map((l) => ({ key: l.entityId, name: l.name, kind: "light" as const, on: l.on }));
-    const ordered = period === "evening" ? [...scenes, ...lights] : [...lights, ...scenes];
-    return ordered.slice(0, TILE_COUNT);
-  }, [entities, period]);
-
-  // HA not connected (or nothing usable): render nothing. The standard
-  // layout owns the explanatory empty state — a wall clock doesn't nag.
-  if (picks.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap items-center justify-center gap-3">
-      {picks.map((p) => {
-        const pending = ha.isPending(p.key);
-        return (
-          <button
-            key={p.key}
-            type="button"
-            disabled={pending}
-            // Opt-out from kiosk-surface.tsx's root onPointerDown promoter
-            // (same idiom as its own "back to glance" button): in glance, a
-            // control's own press is consumed by the control; only dead
-            // space promotes the view. Without this, tapping a tile would
-            // both toggle the light/scene AND kick the wall display into
-            // full mode underneath it.
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (p.kind === "scene") {
-                void ha.runAction({ entityId: p.key, action: "activate_scene" });
-              } else {
-                void ha.runAction({ entityId: p.key, action: "toggle" });
-              }
-            }}
-            className={cn(
-              "min-h-16 min-w-32 max-w-48 rounded-tile border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
-              p.on
-                ? "border-accent/40 bg-accent/10 text-ink"
-                : "border-line bg-transparent text-ink-dim hover:border-line-bright hover:text-ink",
-              pending && "opacity-60",
-            )}
-          >
-            {/* An auto-picked HA entity name has no length contract, same
-                risk as the hub's tiles (kiosk-hub.tsx ToggleTile/SceneTile).
-                This button isn't a flex/grid cell with a track width to lean
-                on, so `truncate` needs its own bound — max-w-48 above plays
-                the role min-w-0 plays there. */}
-            <span className="block truncate">{p.name}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /* ── the glance-only content ────────────────────────────────────────────── */
 
 export function KioskGlance({
   period,
   onAdminClick,
+  onDoorbellClick,
+  onInteraction,
 }: {
   period: KioskPeriod;
   onAdminClick: () => void;
+  /** Threaded through to the optional "doorbell" widget only — see
+   *  kiosk-widgets.tsx's KioskWidgetCtx. Full mode already has its own,
+   *  always-present doorbell button in the header; glance has none by
+   *  default, so this only matters if someone adds that widget deliberately. */
+  onDoorbellClick: () => void;
+  /** The same promotion kiosk-surface.tsx's root pointerdown handler
+   *  performs on its own — handed to the carousel so it can replay it for a
+   *  confirmed tap on dead space without letting a swipe trigger it too
+   *  early. See kiosk-carousel.tsx's THESIS for why this can't just be
+   *  "stop the pointerdown, let it bubble later." */
+  onInteraction: () => void;
 }) {
-  const weather = useWeatherView();
-  const briefing = useKioskBriefing(period === "morning");
-
-  const wLine = weatherSentence(period, weather);
-  const digest = briefing.data?.status === "ok" ? briefing.data.digest : undefined;
-  const digestAttention = Boolean(digest && digest.actionNeeded && digest.actionNeeded.toLowerCase() !== "no");
+  const layout = useKioskWidgetLayout();
+  const ctx: Omit<KioskWidgetCtx, "reportEmpty"> = useMemo(
+    () => ({ period, onDoorbellClick }),
+    [period, onDoorbellClick],
+  );
 
   return (
     <>
-      <div className="flex flex-col items-center gap-2 text-base text-ink-dim">
-        {wLine && <p>{wLine}</p>}
-        {period === "morning" && digest && (
-          <p className={cn("max-w-xl", digestAttention ? "text-warn" : "text-ink-dim")}>
-            briefing: {digest.headline.replace(/\.$/, "")}
-            {digestAttention && ` — ${digest.actionNeeded.replace(/^yes\s*[—-]?\s*/i, "")}`}
-          </p>
-        )}
-      </div>
-
-      <GlanceTiles period={period} />
+      <KioskCarousel widgetIds={layout.glance} ctx={ctx} onInteraction={onInteraction} />
 
       {/* `fixed` escapes KioskThemeScope's safe-area padding (kiosk-theme.tsx
           applies env(safe-area-inset-*) as padding on an ancestor div, which

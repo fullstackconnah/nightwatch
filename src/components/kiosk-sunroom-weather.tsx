@@ -40,6 +40,10 @@ import { useKioskTheme } from "@/components/kiosk-theme";
 import { sunroomIsDark } from "@/lib/sunroom-light";
 import { prefersReducedMotion } from "@/lib/kiosk-motion";
 
+// Same key, same interval, same `fetcher` as KioskSunroomLight (kiosk-sunroom.tsx)
+// and kiosk-display.tsx's useWeatherView — SWR dedupes all of it into one
+// request per interval (2026-08 perf-pass check; see kiosk-sunroom.tsx's own
+// note on this for the full consumer list).
 const WEATHER_REFRESH_MS = 15 * 60_000;
 
 /** Same scale the palette uses: 4 mm/hr is the top of the ramp, solidly heavy

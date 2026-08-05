@@ -38,7 +38,12 @@ import { useKioskTheme } from "@/components/kiosk-theme";
 import { sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
 
 /** Matches KioskSky's cadence so SWR dedupes the two subscriptions into one
- *  request — both components read the same key and neither pays for the other. */
+ *  request — both components read the same key and neither pays for the other.
+ *  (2026-08 perf-pass check: kiosk-sunroom-weather.tsx's KioskSunroomWeather
+ *  and kiosk-display.tsx's useWeatherView also poll this exact key at this
+ *  exact interval with the same `fetcher` — four consumers, one network
+ *  request. If you add a fifth, keep the key and config identical or SWR
+ *  will fetch it separately.) */
 const WEATHER_REFRESH_MS = 15 * 60_000;
 
 /** How often the light direction is recomputed from the anchor. Small enough

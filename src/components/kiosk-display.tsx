@@ -58,7 +58,11 @@ export type KioskPeriod = "morning" | "day" | "evening" | "night";
 
 const PERIOD_RECOMPUTE_MS = 60_000;
 
-function computePeriod(date: Date): KioskPeriod {
+// Exported so kiosk-activity.ts's useKioskNight() can derive the night window
+// from this exact boundary rather than restating "22:00-05:00" as a second
+// literal that could quietly drift out of step with the night overlay this
+// function already drives via useKioskPeriod below.
+export function computePeriod(date: Date): KioskPeriod {
   const h = date.getHours();
   if (h >= 5 && h < 10) return "morning";
   if (h >= 10 && h < 17) return "day";
@@ -616,6 +620,11 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
 
 export function KioskDisplay({ period }: { period: KioskPeriod }) {
   const weather = useWeatherView();
+  // Already night-backed-off structurally, not just by rate: `active` false
+  // outside "morning" passes SWR a `null` key, which stops polling outright
+  // rather than merely slowing it down. Nobody reads a 3am briefing, and this
+  // was already the case before the 2026-08 idle/night pass — noted here so
+  // that pass doesn't get "fixed" a second time onto a poll that isn't running.
   const briefing = useKioskBriefing(period === "morning");
 
   return (

@@ -617,7 +617,17 @@ export function KioskSurface({
             stack={true}
             overlay={glanceIsOutgoing}
           >
-            <KioskGlance period={period} onAdminClick={onAdminClick} />
+            {/* onInteraction is the same promotion the root's pointerdown
+                performs; the carousel needs it explicitly so it can replay it
+                for a confirmed dead-space TAP while swallowing a swipe (see
+                kiosk-carousel.tsx). onDoorbellClick only reaches the optional
+                "doorbell" widget. */}
+            <KioskGlance
+              period={period}
+              onAdminClick={onAdminClick}
+              onDoorbellClick={onDoorbellClick}
+              onInteraction={onInteraction}
+            />
           </RevealBlock>
         )}
       </div>
