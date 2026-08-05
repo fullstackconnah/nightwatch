@@ -1,16 +1,18 @@
 "use client";
 
-/* THESIS: kiosk-surface.tsx renders KioskForecastRail but is out of bounds
-   for this feature (see the radar work item's file-ownership list), so
-   there's no way to have a parent component own "is the radar modal open"
-   and pass it down as a prop the real call site would actually wire up.
-   useKioskRadar() + KioskRadarModal exist so the rail can own that state
-   itself: kiosk-forecast.tsx calls the hook, renders this modal when it says
-   open, and the Today cell's onClick calls the hook's own open() — no caller
-   above it needs to change for the feature to work end-to-end. An
-   onTodayClick prop still exists on the rail for a future caller that wants
-   to own the modal differently; when absent (the only real case today) this
-   self-managed path is what actually fires.
+/* THESIS: useKioskRadar() + KioskRadarModal are a state hook and a dialog,
+   deliberately separable, because WHO owns "is the radar open" matters more
+   than it looks.
+
+   Originally the rail owned both: kiosk-forecast.tsx called the hook and
+   rendered this modal itself, so the feature worked with no changes above it.
+   That broke in glance, where the rail lives inside a carousel pane — the
+   auto-advance unmounted the pane, and the radar with it, a few seconds after
+   it opened. As of 2026-08-05 kiosk-surface.tsx owns the state and renders this
+   modal outside both the band and the mode-specific blocks, and the rail only
+   raises `onRadarClick` from a small full-view-only button beside Today. The
+   split stays because the hook is still the whole of the state: any future
+   caller owns the radar by calling it at the level that outlives its trigger.
 
    Dialog semantics copy kiosk-climate.tsx's KioskClimateModal directly (the
    house pattern for a kiosk modal): role="dialog", aria-modal="true" (which

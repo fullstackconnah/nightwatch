@@ -524,17 +524,14 @@ export function KioskSurface({
   // edits, so "what rotates through the forecast slot" is a user choice.
   const widgetLayout = useKioskWidgetLayout();
   const glanceBandIds = widgetLayout.glance;
-  /* The radar modal is owned HERE, not by the rail that opens it. In glance the
-     rail lives inside a carousel pane, so a rail-owned modal is unmounted by
-     the next auto-advance — the radar would disappear a few seconds after you
-     opened it, and again on any glance→full flip. Mounted at this level it
-     outlives both, exactly like the doorbell modal is owned a level higher
-     again (page.tsx) for the same class of reason. */
+  /* The radar modal is owned HERE, not by the rail whose button opens it, so it
+     survives a glance⇄full flip and the band's own rotation rather than being
+     unmounted with whichever subtree happened to host the trigger. Same
+     reasoning one level up as page.tsx owning the doorbell modal. */
   const radar = useKioskRadar();
-  const bandCtx = useMemo(
-    () => ({ period, onDoorbellClick, onRadarClick: radar.open }),
-    [period, onDoorbellClick, radar.open],
-  );
+  // No onRadarClick on the band's ctx: the radar button is full-view only, so
+  // glance's rail has nothing to open (see KioskForecastRail).
+  const bandCtx = useMemo(() => ({ period, onDoorbellClick }), [period, onDoorbellClick]);
   const showBottomShadow = useBottomScrollShadow(full);
   useGlanceScrollLock(!full);
 
@@ -660,10 +657,10 @@ export function KioskSurface({
                   days={days}
                   emphasizeIndex={period === "evening" ? 1 : null}
                   size="full"
-                  // Same surface-owned modal the glance band opens (bandCtx
-                  // above), so the two modes share one radar rather than each
-                  // mounting its own.
-                  onTodayClick={radar.open}
+                  // The rail's own small radar button, full view only — see
+                  // KioskForecastRail. The modal it opens is the one mounted at
+                  // this component's root, not inside the rail.
+                  onRadarClick={radar.open}
                 />
               )
             : glanceBandIds.length > 0 && (

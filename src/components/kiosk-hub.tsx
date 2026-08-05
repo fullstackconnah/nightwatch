@@ -118,6 +118,16 @@ export interface UseKioskHaResult {
   runAction: (req: HaActionRequest, optimisticEntities?: HaEntities) => Promise<boolean>;
   actionErrors: Record<string, string>;
   isPending: (entityId: string) => boolean;
+  /** Force a re-read of HA's state, outside the normal poll cadence.
+   *
+   *  Exists for one specific shape of problem: these IR/WiFi AC units accept a
+   *  write instantly and take SECONDS to report the new attribute back through
+   *  /api/states, while `runAction`'s own `finally { void mutate() }` refetches
+   *  the moment the POST resolves — i.e. always too early to see the change. A
+   *  caller holding its own optimistic value (kiosk-climate.tsx) uses this to
+   *  ask again a few seconds later and release the hold as soon as HA agrees,
+   *  rather than waiting out the poll interval. */
+  revalidate: () => void;
 }
 
 export function useKioskHa(): UseKioskHaResult {
@@ -198,6 +208,12 @@ export function useKioskHa(): UseKioskHaResult {
 
   const isPending = useCallback((entityId: string) => pendingIds.has(entityId), [pendingIds]);
 
+  // Plain re-read, no optimistic payload — see the interface comment. Stable so
+  // callers can safely put it in an effect's dependency list or a timer.
+  const revalidate = useCallback(() => {
+    void mutate();
+  }, [mutate]);
+
   // SWR's default `compare` (dequal) already keeps `data` referentially
   // stable across content-identical polls — the bug this guards against is
   // this hook wrapping that stable `data` in a fresh object literal on every
@@ -206,8 +222,8 @@ export function useKioskHa(): UseKioskHaResult {
   // render of KioskHub would hand them a brand-new object even when nothing
   // in it changed.
   return useMemo(
-    () => ({ data, error, isLoading, runAction, actionErrors, isPending }),
-    [data, error, isLoading, runAction, actionErrors, isPending],
+    () => ({ data, error, isLoading, runAction, actionErrors, isPending, revalidate }),
+    [data, error, isLoading, runAction, actionErrors, isPending, revalidate],
   );
 }
 

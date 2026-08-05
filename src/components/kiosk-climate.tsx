@@ -261,6 +261,127 @@ function writeLastMode(entityId: string, mode: string): void {
    reads an entirely separate SWR cache from its own useHa(), never this
    one. Nothing else depended on the snapshot this removes.) */
 
+/* ── mode holds (2026-08-05) ─────────────────────────────────────────────────
+   THE REPORT: "the climate controls don't immediately update when updating the
+   settings, they stick on the current setting before changing later."
+
+   Exactly the failure useTargetControl was built for, on the other four
+   attributes. Every mode setter handed `ha.runAction` an optimistic HaEntities
+   snapshot, which SWR applies at once — so the tap DID look instant for a few
+   hundred milliseconds. Then runAction's own `finally { void mutate() }`
+   refetched, HA (an IR bridge that answers the REST call long before the unit
+   reports back) still said the OLD mode, and the chip snapped back to it until
+   some later poll happened to catch up. Watching that, the control looks like
+   it ignored you and then changed its mind on its own.
+
+   THE SHAPE OF THE FIX, as asked for: read HA normally; on a write, show the
+   SELECTED value regardless of what HA is saying; then re-ask HA a few seconds
+   later and stop overriding as soon as it agrees.
+
+   The write deliberately passes NO optimistic snapshot. That is not an
+   omission — it is the whole reason the release test below is meaningful. With
+   a snapshot, `climate[attr]` becomes our own requested value within the same
+   tick, "HA agrees" is true immediately, the hold releases, and the refetch
+   half a second later puts the stale value back on screen with nothing left
+   holding it. That precise sequence is documented in useTargetControl's
+   comment (measured: correct at 154ms, reverted at 619ms, HA's own truth at
+   7.6s) and it is the same trap here. `held` IS the optimism; `climate[attr]`
+   must stay server-truth. */
+
+/** When to re-ask HA after a write — the owner's number. Long enough for an IR
+ *  unit to have actually reported back, short enough that the hold isn't
+ *  carrying the display for a noticeable stretch. Asked again at each multiple
+ *  until the hold expires, because one unit answered at 7.6s in an earlier
+ *  measurement and a single 5s probe would have missed it. */
+const MODE_RECHECK_MS = 5_000;
+/** Stop overriding HA after this, agreement or not. A hold that never expires
+ *  would show a value the unit rejected (an hvac mode the integration dropped,
+ *  a fan level a firmware update removed) as if it had taken. Matches
+ *  TARGET_HOLD_TTL_MS — same devices, same round trips. */
+const MODE_HOLD_TTL_MS = 20_000;
+
+/** The four mode attributes this hold covers. Not the setpoint: that has its
+ *  own hook (useTargetControl) with a debounce and an accumulating value, which
+ *  these don't need — each of these is one absolute write per tap. */
+type ClimateModeAttr = "hvacMode" | "fanMode" | "presetMode" | "swingMode";
+
+interface ModeHolds {
+  /** What to render for `attr`: the held selection while one is outstanding,
+   *  otherwise HA's own value. */
+  display: (attr: ClimateModeAttr) => string | undefined;
+  /** Show `value` immediately, run `write`, then reconcile against HA. */
+  select: (attr: ClimateModeAttr, value: string, write: () => void) => void;
+}
+
+function useModeHolds(climate: HaClimate, ha: UseKioskHaResult): ModeHolds {
+  const [held, setHeld] = useState<Partial<Record<ClimateModeAttr, string>>>({});
+  /** One timer list per attribute, so selecting a fan level doesn't cancel the
+   *  reconcile still running for a mode change made a second earlier. */
+  const timersRef = useRef<Partial<Record<ClimateModeAttr, ReturnType<typeof setTimeout>[]>>>({});
+
+  function clearTimers(attr: ClimateModeAttr) {
+    for (const t of timersRef.current[attr] ?? []) clearTimeout(t);
+    timersRef.current[attr] = [];
+  }
+
+  // Timers must not outlive the tile: the modal unmounting mid-reconcile must
+  // not fire a revalidate or a setState afterwards.
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const list of Object.values(timers)) for (const t of list ?? []) clearTimeout(t);
+    };
+  }, []);
+
+  /* Release on agreement. Sound here only because `select` writes without an
+     optimistic snapshot (see the block comment above), so the value this
+     compares against is HA's and nobody else's. */
+  useEffect(() => {
+    setHeld((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const attr of Object.keys(prev) as ClimateModeAttr[]) {
+        if (prev[attr] !== undefined && climate[attr] === prev[attr]) {
+          delete next[attr];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [climate.hvacMode, climate.fanMode, climate.presetMode, climate.swingMode]);
+
+  function select(attr: ClimateModeAttr, value: string, write: () => void) {
+    clearTimers(attr);
+    setHeld((prev) => ({ ...prev, [attr]: value }));
+    write();
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    // Re-ask at 5s, 10s, 15s. The release effect above does the comparing —
+    // these only make sure a fresh answer exists to compare against, rather
+    // than waiting out the poll cadence (which backs off to 60s when idle and
+    // would leave the hold expiring before HA was ever asked again).
+    for (let t = MODE_RECHECK_MS; t < MODE_HOLD_TTL_MS; t += MODE_RECHECK_MS) {
+      timers.push(setTimeout(() => ha.revalidate(), t));
+    }
+    timers.push(
+      setTimeout(() => {
+        setHeld((prev) => {
+          if (prev[attr] === undefined) return prev;
+          const next = { ...prev };
+          delete next[attr];
+          return next;
+        });
+      }, MODE_HOLD_TTL_MS),
+    );
+    timersRef.current[attr] = timers;
+  }
+
+  return {
+    display: (attr) => held[attr] ?? climate[attr] ?? undefined,
+    select,
+  };
+}
+
 const TARGET_WRITE_DEBOUNCE_MS = 500;
 // 7.6s measured round-trip for one of these IR units to report a new
 // setpoint with the unit already on; 10s left almost no margin, and a TTL
@@ -406,7 +527,19 @@ export function KioskClimateTile({
   const pending = ha.isPending(climate.entityId);
   const error = ha.actionErrors[climate.entityId];
   const dualSetpoint = climate.targetTempLow != null && climate.targetTempHigh != null;
-  const isOn = climate.hvacMode !== "off";
+
+  /* Every mode this tile and its modal RENDER comes from here, not from
+     `climate` directly — see useModeHolds. `climate.*` is still the truth the
+     hold reconciles against, and the two effects below deliberately keep
+     reading it rather than the display value: what to remember as "last used"
+     is what the unit actually ran in, never what somebody asked for and might
+     not have got. */
+  const modeHolds = useModeHolds(climate, ha);
+  const shownHvacMode = modeHolds.display("hvacMode") ?? climate.hvacMode;
+  // Drives the tile's whole on-state vocabulary (accent border/wash, the power
+  // glyph, aria-pressed), so a tap flips the tile the instant it lands instead
+  // of after the unit reports back.
+  const isOn = shownHvacMode !== "off";
 
   // Remembered last-used mode (see the last-mode-memory block above
   // preferredOnMode): SSR-safe null seed, filled in from localStorage after
@@ -444,17 +577,20 @@ export function KioskClimateTile({
   // then stays null too; the dual-setpoint UI below keeps using `nudge`.
   const targetControl = useTargetControl(climate, ha);
 
-  // Unchanged from the old ClimateCard: hvac mode set and the temp nudge both
-  // build a full optimistic HaEntities snapshot (mapping over entities.climates)
-  // and hand it to ha.runAction, which flips it in immediately and rolls back
-  // on failure. The modal and the tile share these two functions rather than
-  // each re-deriving the optimistic payload.
+  /* The four mode setters all go through useModeHolds now, and all four have
+     LOST the optimistic HaEntities snapshot they used to pass. That snapshot
+     was the thing making the report happen: it moved `climate.hvacMode` to the
+     requested value for a few hundred ms, then runAction's own refetch put HA's
+     still-stale value back with nothing holding the display. The hold does that
+     job properly and reconciles on a timer instead. See useModeHolds.
+
+     `entities` is consequently no longer read by these four — the relative
+     `nudge` below still builds a snapshot, because the dual-setpoint path it
+     serves is unchanged by this work. */
   const setMode = (mode: string) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, hvacMode: mode } : c)),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "set_hvac_mode", hvacMode: mode }, next);
+    modeHolds.select("hvacMode", mode, () => {
+      void ha.runAction({ entityId: climate.entityId, action: "set_hvac_mode", hvacMode: mode });
+    });
   };
 
   const nudge = (delta: number) => {
@@ -475,31 +611,22 @@ export function KioskClimateTile({
     void ha.runAction({ entityId: climate.entityId, action: "nudge_temp", delta }, next);
   };
 
-  // Same optimistic-snapshot shape as setMode above, one per newly-exposed
-  // attribute (work item 2/3) — each is a one-shot absolute write, so none
-  // of them need useTargetControl's hold/debounce machinery.
   const setFanMode = (mode: string) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, fanMode: mode } : c)),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "set_fan_mode", fanMode: mode }, next);
+    modeHolds.select("fanMode", mode, () => {
+      void ha.runAction({ entityId: climate.entityId, action: "set_fan_mode", fanMode: mode });
+    });
   };
 
   const setPresetMode = (mode: string) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, presetMode: mode } : c)),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "set_preset_mode", presetMode: mode }, next);
+    modeHolds.select("presetMode", mode, () => {
+      void ha.runAction({ entityId: climate.entityId, action: "set_preset_mode", presetMode: mode });
+    });
   };
 
   const setSwingMode = (mode: string) => {
-    const next: HaEntities = {
-      ...entities,
-      climates: entities.climates.map((c) => (c.entityId === climate.entityId ? { ...c, swingMode: mode } : c)),
-    };
-    void ha.runAction({ entityId: climate.entityId, action: "set_swing_mode", swingMode: mode }, next);
+    modeHolds.select("swingMode", mode, () => {
+      void ha.runAction({ entityId: climate.entityId, action: "set_swing_mode", swingMode: mode });
+    });
   };
 
   // Focus returns to the button that opened the modal, not document body —
@@ -634,6 +761,16 @@ export function KioskClimateTile({
       {modalOpen && (
         <KioskClimateModal
           climate={climate}
+          // The four displayed modes, held-aware (see useModeHolds). Passed in
+          // rather than read off `climate` inside the modal so the tile and its
+          // modal cannot disagree about what is selected — they share one hold,
+          // the same way they already share one targetControl.
+          shownModes={{
+            hvacMode: shownHvacMode,
+            fanMode: modeHolds.display("fanMode"),
+            presetMode: modeHolds.display("presetMode"),
+            swingMode: modeHolds.display("swingMode"),
+          }}
           pending={pending}
           error={error}
           dualSetpoint={dualSetpoint}
@@ -773,23 +910,6 @@ function tickLabel(mode: string): string {
  *  long enough that no realistic drag writes twice. */
 const FAN_COMMIT_MS = 280;
 
-/** How long the thumb stays where it was put, regardless of what HA says.
- *
- *  Measured on the test stack with the write intercepted: without a hold, the
- *  thumb travelled to Level 2, wrote, and snapped back to Level 1 — because an
- *  OFF unit reports no `fan_mode` attribute at all, so kiosk-hub's unconditional
- *  `void mutate()` refetch replaced the optimistic value with nothing and the
- *  slider fell back to its resting position. To someone at the wall that reads
- *  as "the slider doesn't work".
- *
- *  The release is a plain TTL and NOT "HA reported the value back", which is
- *  the mistake useTargetControl documents at length: the optimistic snapshot
- *  and HA's own state arrive through the same SWR cache, so a hold that
- *  releases on agreement releases against its own optimism a moment before the
- *  refetch lands. Once the real value does arrive it is the same number the
- *  hold is already showing, so holding past it changes nothing on screen. */
-const FAN_HOLD_TTL_MS = 15_000;
-
 function FanSpeedSlider({
   groupLabel,
   title,
@@ -805,21 +925,26 @@ function FanSpeedSlider({
   pending: boolean;
   onSelect: (mode: string) => void;
 }) {
+  /* `current` is already the tile's HELD value (useModeHolds), so this index is
+     the requested level from the moment a write is issued — the slider itself
+     no longer needs a hold of its own, only a local position for the span of a
+     DRAG, before the debounced write has been sent at all. */
   const committedIndex = current ? options.indexOf(current) : -1;
-  /** Where the thumb has been PUT, held independently of what HA reports until
-   *  FAN_HOLD_TTL_MS elapses — see that constant for why the release is a timer
-   *  and not an agreement test. */
-  const [heldIndex, setHeldIndex] = useState<number | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const commitRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const holdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Neither timer may outlive the modal: a pending write must not fire an IR
-  // command at a panel nobody is looking at any more, and a release must not
-  // setState on an unmounted component.
+  // Drop the local position once `current` has caught up to it, so the slider
+  // goes back to being a plain view of the tile's state.
+  useEffect(() => {
+    if (dragIndex !== null && committedIndex === dragIndex) setDragIndex(null);
+  }, [committedIndex, dragIndex]);
+
+  // A pending write must not outlive the modal — closing it mid-drag should
+  // drop the uncommitted position rather than fire an IR command at a panel
+  // nobody is looking at any more.
   useEffect(() => {
     return () => {
       if (commitRef.current) clearTimeout(commitRef.current);
-      if (holdRef.current) clearTimeout(holdRef.current);
     };
   }, []);
 
@@ -828,32 +953,28 @@ function FanSpeedSlider({
      ladder in that case, and the readout says "—" rather than naming a level
      the unit never claimed — the position is where you would START from, the
      value is what is true. */
-  const shownIndex = heldIndex ?? (committedIndex >= 0 ? committedIndex : 0);
+  const shownIndex = dragIndex ?? (committedIndex >= 0 ? committedIndex : 0);
   const shownMode = options[shownIndex];
 
   function move(next: number) {
-    setHeldIndex(next);
+    setDragIndex(next);
     if (commitRef.current) clearTimeout(commitRef.current);
     commitRef.current = setTimeout(() => {
       commitRef.current = null;
       const mode = options[next];
       // Re-selecting what is already set would be a pointless IR command.
       if (mode && mode !== current) onSelect(mode);
+      else setDragIndex(null);
     }, FAN_COMMIT_MS);
-    // A fresh hold window per movement — the same "each tap re-earns the full
-    // period" rule useTargetControl applies to the setpoint, so a slow walk up
-    // the ladder is never cut off mid-adjustment.
-    if (holdRef.current) clearTimeout(holdRef.current);
-    holdRef.current = setTimeout(() => setHeldIndex(null), FAN_HOLD_TTL_MS);
   }
 
   return (
     <div className="mt-6" role="group" aria-label={groupLabel}>
       <GroupHeading
         title={title}
-        // The HELD value, not the committed one: the level under your thumb is
-        // the question being asked, and it lands a moment later.
-        value={heldIndex !== null ? shownMode : current}
+        // Mid-drag this is the level under your thumb (not yet written);
+        // otherwise it is the tile's held/actual value.
+        value={dragIndex !== null ? shownMode : current}
       />
       <input
         type="range"
@@ -902,6 +1023,7 @@ function FanSpeedSlider({
 
 function KioskClimateModal({
   climate,
+  shownModes,
   pending,
   error,
   dualSetpoint,
@@ -915,6 +1037,16 @@ function KioskClimateModal({
   onClose,
 }: {
   climate: HaClimate;
+  /** What each mode picker should show as selected — the tile's hold-aware
+   *  values, NOT `climate.*`. Reading the entity directly here would reinstate
+   *  the reported bug inside the modal only: the chip would revert the moment
+   *  runAction's refetch landed, while the tile behind it stayed correct. */
+  shownModes: {
+    hvacMode: string;
+    fanMode?: string;
+    presetMode?: string;
+    swingMode?: string;
+  };
   pending: boolean;
   error?: string;
   dualSetpoint: boolean;
@@ -1098,7 +1230,7 @@ function KioskClimateModal({
           title="Mode"
           groupLabel={`${climate.name} mode`}
           options={climate.hvacModes}
-          current={climate.hvacMode}
+          current={shownModes.hvacMode}
           pending={pending}
           displayLabel={(mode) => HVAC_LABEL[mode] ?? mode}
           ariaLabel={(mode) => `Set ${climate.name} to ${HVAC_LABEL[mode] ?? mode} mode`}
@@ -1117,7 +1249,7 @@ function KioskClimateModal({
             title="Fan speed"
             groupLabel={`${climate.name} fan speed`}
             options={fanModes}
-            current={climate.fanMode}
+            current={shownModes.fanMode}
             pending={pending}
             onSelect={onSetFanMode}
           />
@@ -1126,7 +1258,7 @@ function KioskClimateModal({
             title="Fan speed"
             groupLabel={`${climate.name} fan speed`}
             options={fanModes}
-            current={climate.fanMode}
+            current={shownModes.fanMode}
             pending={pending}
             displayLabel={(mode) => mode}
             ariaLabel={(mode) => `Set ${climate.name} fan speed to ${mode}`}
@@ -1138,7 +1270,7 @@ function KioskClimateModal({
           title="Preset"
           groupLabel={`${climate.name} preset`}
           options={climate.presetModes ?? []}
-          current={climate.presetMode}
+          current={shownModes.presetMode}
           pending={pending}
           displayLabel={(mode) => titleCase(mode)}
           ariaLabel={(mode) => `Set ${climate.name} preset to ${mode}`}
@@ -1149,7 +1281,7 @@ function KioskClimateModal({
           title="Swing"
           groupLabel={`${climate.name} swing`}
           options={climate.swingModes ?? []}
-          current={climate.swingMode}
+          current={shownModes.swingMode}
           pending={pending}
           displayLabel={(mode) => titleCase(mode)}
           ariaLabel={(mode) => `Set ${climate.name} swing to ${mode}`}
