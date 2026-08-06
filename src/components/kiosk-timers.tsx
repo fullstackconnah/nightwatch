@@ -433,6 +433,15 @@ function TimerRing({ progress, warn }: { progress: number; warn: boolean }) {
         // all. Under reduced motion this collapses to no transition — the
         // stroke still jumps straight to the new progress value each tick,
         // it just doesn't ease there.
+        //
+        // 900ms/linear, not a KIOSK_*_MS vocabulary token: `now` (and so
+        // `progress`) only actually changes once a second (use-now.ts's
+        // shared 1Hz timer), so this transition is tracking that 1s tick,
+        // not an entrance/move/pop. 900ms — just under the tick period —
+        // means each step finishes easing before the next one lands, so the
+        // ring reads as continuous motion instead of stalling between beats;
+        // linear because an ease here would visibly slow down right as the
+        // next tick arrives to speed it back up.
         className="transition-[stroke-dashoffset] duration-[900ms] ease-linear motion-reduce:transition-none"
       />
     </svg>

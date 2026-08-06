@@ -23,6 +23,7 @@ import { useFreshness, useKioskVitals } from "@/lib/kiosk-client";
 import { cn } from "@/lib/utils";
 import { KioskTimersButton } from "@/components/kiosk-timers";
 import { StaleTag } from "@/components/kiosk-stale-tag";
+import { KIOSK_EASE_OUT } from "@/lib/kiosk-motion";
 
 export function KioskStatusStripExtras({
   elevated,
@@ -49,9 +50,10 @@ export function KioskStatusStripExtras({
   // A ≤60ms-per-item stagger across the three groups below (contract's list
   // rule, ≤5 items) — each group gets its own transitionDelay so they don't
   // all pop in on the same frame once `revealed` flips.
-  const revealClass = cn("transition-opacity ease-out motion-reduce:transition-none", revealed ? "opacity-100" : "opacity-0");
+  const revealClass = cn("transition-opacity motion-reduce:transition-none", revealed ? "opacity-100" : "opacity-0");
   const revealStyle = (i: number) => ({
     transitionDuration: `${durationMs}ms`,
+    transitionTimingFunction: KIOSK_EASE_OUT,
     transitionDelay: revealed ? `${i * 40}ms` : "0ms",
   });
 

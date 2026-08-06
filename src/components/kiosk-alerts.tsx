@@ -27,6 +27,7 @@ import {
   KIOSK_EASE_OUT,
   KIOSK_FADE_MS,
   KIOSK_POP_MS,
+  KIOSK_PULSE_MS,
   KIOSK_REDUCED_MS,
   flipOutTo,
   prefersReducedMotion,
@@ -408,13 +409,28 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   useEffect(() => {
     if (hasAlerts) {
       setMounted(true);
-      const raf = requestAnimationFrame(() => setEntered(true));
-      return () => cancelAnimationFrame(raf);
+      return;
     }
     setEntered(false);
     const t = setTimeout(() => setMounted(false), prefersReducedMotion() ? KIOSK_REDUCED_MS : KIOSK_FADE_MS);
     return () => clearTimeout(t);
   }, [hasAlerts]);
+
+  // Split from the effect above rather than firing setEntered from inside it:
+  // this button doesn't exist in the DOM until `mounted` itself commits (see
+  // the `if (!mounted) return null` below), so `innerRef` is still null on
+  // the same effect run that flips `mounted` true. Keying a second effect on
+  // `mounted` lets it run AFTER that commit, once the node is real — then a
+  // forced reflow (not a single rAF; see kiosk-spark.tsx's useGlide for the
+  // measured rAF-coalescing failure this replaces) commits the opacity-0
+  // resting style before `entered` flips, so the fade-in has a real "before"
+  // to transition from instead of sometimes skipping straight to opacity-100.
+  useEffect(() => {
+    if (!mounted) return;
+    const node = innerRef.current;
+    if (node) void node.getBoundingClientRect();
+    setEntered(true);
+  }, [mounted]);
 
   // Slow breathing-ring pulse, gated to `bad` only — a static colour swap
   // doesn't catch peripheral vision from across a room the way motion does,
@@ -433,7 +449,9 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
         { boxShadow: "0 0 0 0 color-mix(in srgb, var(--color-bad) 50%, transparent)" },
         { boxShadow: "0 0 0 14px color-mix(in srgb, var(--color-bad) 0%, transparent)" },
       ],
-      { duration: 1600, easing: "ease-in-out", iterations: Infinity },
+      // KIOSK_PULSE_MS, shared with .voice-mic-recording's CSS ring — one
+      // "recording/alerting" cadence, not two that can drift apart.
+      { duration: KIOSK_PULSE_MS, easing: "ease-in-out", iterations: Infinity },
     );
     return () => anim.cancel();
   }, [bad]);
@@ -483,6 +501,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
         top: "calc(1rem + env(safe-area-inset-top))",
         right: "calc(1.25rem + env(safe-area-inset-right))",
         transitionDuration: `${KIOSK_FADE_MS}ms`,
+        transitionTimingFunction: KIOSK_EASE_OUT,
         ...reducedBadRing,
       }}
       // min-h-14/min-w-14 is a FLOOR, not the target size — the icon/count
@@ -507,7 +526,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
         // `.kiosk-press`'s own transition property list, and this is the
         // transition that drives the button's mount/unmount fade (`entered`
         // below) — it is load-bearing, not a leftover.
-        "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none kiosk-press transition-opacity ease-out motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent",
+        "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none kiosk-press transition-opacity motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent",
         severityClasses,
         entered ? "opacity-100" : "opacity-0 motion-reduce:opacity-100",
       )}
@@ -663,7 +682,10 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
         { opacity: 0, transform: "translateY(-6px)" },
         { opacity: 1, transform: "translateY(0)" },
       ],
-      { duration: 220, easing: KIOSK_EASE_OUT },
+      // KIOSK_POP_MS, not a bespoke 220 — this is an overlay entrance (the
+      // token's own name), and the 220 it replaces carried no documented
+      // reason to differ from the rest of the vocabulary's pop-ins.
+      { duration: KIOSK_POP_MS, easing: KIOSK_EASE_OUT },
     );
     return () => anim.cancel();
   }, [open]);
@@ -757,10 +779,11 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
   useLayoutEffect(() => {
     const node = rootRef.current;
     if (!node || prefersReducedMotion()) return;
-    node.animate([{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "scale(1)" }], {
+    const anim = node.animate([{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1, transform: "scale(1)" }], {
       duration: KIOSK_POP_MS,
       easing: KIOSK_EASE_OUT,
     });
+    return () => anim.cancel();
   }, []);
 
   useEffect(() => {

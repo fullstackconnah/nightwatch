@@ -116,13 +116,19 @@ export function KioskRadarModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     reducedRef.current = prefersReducedMotion();
-    dialogRef.current?.focus();
+    const node = dialogRef.current;
+    node?.focus();
     if (reducedRef.current) {
       setEntered(true);
       return;
     }
-    const id = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(id);
+    // Forced reflow, not a single rAF — see kiosk-spark.tsx's useGlide for
+    // the measured failure (a rAF callback can coalesce into the same style
+    // flush as this mount commit and skip the transition). `node` can be
+    // null on a conditionally-rendered dialog; fall back to the instant flip
+    // rather than skip the entrance forever.
+    if (node) void node.getBoundingClientRect();
+    setEntered(true);
   }, []);
 
   function requestClose() {

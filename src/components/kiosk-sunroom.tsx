@@ -64,10 +64,17 @@ const DEG_PER_MINUTE = 360 / (24 * 60);
 const STYLE_SELECTOR = ":root [data-kiosk-theme=\"sunroom\"]";
 
 /* Two cadences, because two things move at two speeds. The light DIRECTION is
-   recomputed every 60s from the extrapolated hour angle, so a 60s tween hands
-   each step straight into the next and the travel never visibly stops. The
-   palette and the shadow's weight ride the 15-minute fetch cadence instead and
-   get the longer crossfade — the same 90s KioskSky uses against the same data.
+   recomputed every 60s (TICK_MS) from the extrapolated hour angle, but each
+   emitted step is at most a few tenths of a px — the px() emitter below
+   rounds to 0.1px — so tweening that step across the FULL 60s window kept the
+   two full-viewport gradient layers that read --sr-light-x (this theme's own
+   ground wash and .kiosk-leaks, both `background-image`, neither
+   compositable) in continuous main-thread style-recalc + repaint for the
+   entire life of the theme, to move a value nobody could see moving. A 6s
+   ease per step lands the same sub-pixel travel just as invisibly and lets
+   paint idle ~90% of every minute. The palette and the shadow's weight still
+   ride the 15-minute fetch cadence and get the longer crossfade — the same
+   90s KioskSky uses against the same data; that part is unchanged.
 
    THIS IS WITHHELD ON THE FIRST UPDATE. If it were declared in the stylesheet
    it would also apply to the first substitution of real solar values for the
@@ -75,11 +82,18 @@ const STYLE_SELECTOR = ":root [data-kiosk-theme=\"sunroom\"]";
    out of the morning defaults — a tablet booted at midnight would show a
    mid-morning room and slowly darken. Emitting it from the second update
    onward means the truth lands immediately and only the sun's own movement is
-   ever animated. */
+   ever animated.
+
+   NO prefersReducedMotion() CHECK IN THIS FILE, deliberately. globals.css's
+   own `@media (prefers-reduced-motion: reduce)` block for
+   `[data-kiosk-theme="sunroom"]` sets `transition: none !important`, which
+   outranks whatever list this constant emits — reduced motion is enforced at
+   the CSS layer, not here, and every value below still lands instantly for
+   those users regardless of what this file does. */
 const TRANSITION = `
   transition:
-    --sr-light-x 60s linear,
-    --sr-light-y 60s linear,
+    --sr-light-x 6s linear,
+    --sr-light-y 6s linear,
     --sr-bg 90s linear,
     --sr-panel 90s linear,
     --sr-panel-2 90s linear,

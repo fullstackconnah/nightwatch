@@ -31,6 +31,7 @@ import { Minimize2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useFreshness, useKioskHealth } from "@/lib/kiosk-client";
 import {
+  KIOSK_EASE_OUT,
   KIOSK_FADE_MS,
   KIOSK_MOVE_MS,
   KIOSK_REDUCED_MS,
@@ -462,17 +463,32 @@ function useBottomScrollShadow(active: boolean): boolean {
       const atBottom = overflow - window.scrollY <= 2;
       setShow(overflow > 2 && !atBottom);
     };
+    // Coalesce scroll events to one measured check per animation frame — a
+    // touch-scroll fires this listener many times per frame, and reading
+    // layout (scrollHeight/clientHeight/scrollY) on every one of them is
+    // wasted work the rAF batching below collapses to a single read+write
+    // per paint. The resize and interval paths stay a direct call each: both
+    // already fire at most a few times a second, well under one-per-frame.
+    let rafId: number | null = null;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        check();
+      });
+    };
     check();
-    window.addEventListener("scroll", check, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", check);
     // Hub/climate content resizes from SWR polls landing, not just user
     // scroll/resize — a light poll catches "the page just grew/shrank under
     // the shadow" without wiring a ResizeObserver through every section.
     const id = setInterval(check, 2000);
     return () => {
-      window.removeEventListener("scroll", check);
+      window.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", check);
       clearInterval(id);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [active]);
   return show;
@@ -608,7 +624,7 @@ export function KioskSurface({
           "pointer-events-none fixed inset-x-0 bottom-0 z-(--z-sticky) h-16 bg-gradient-to-t from-bg to-transparent transition-opacity motion-reduce:transition-none",
           showBottomShadow ? "opacity-100" : "opacity-0",
         )}
-        style={{ transitionDuration: `${KIOSK_FADE_MS}ms` }}
+        style={{ transitionDuration: `${KIOSK_FADE_MS}ms`, transitionTimingFunction: KIOSK_EASE_OUT }}
       />
 
       {/* THE shared container — same clock/temp/forecast/server-line nodes
@@ -852,7 +868,7 @@ function RevealBlock({
       // is nested inside it, and only while not yet revealed.
       data-kiosk-enter={revealed ? undefined : "pending"}
       className={cn(
-        "transition-opacity ease-out motion-reduce:transition-none",
+        "transition-opacity motion-reduce:transition-none",
         /* gap-6, down from gap-10. Glance is now a fixed-height box (see the
            surface root), so every 16px of rhythm here is 16px the content
            either fits in or loses — and the four gaps this stack and the root
@@ -864,7 +880,7 @@ function RevealBlock({
         overlay && "pointer-events-none absolute inset-x-0 top-0",
         revealed ? "opacity-100" : "opacity-0",
       )}
-      style={{ transitionDuration: `${durationMs}ms` }}
+      style={{ transitionDuration: `${durationMs}ms`, transitionTimingFunction: KIOSK_EASE_OUT }}
     >
       {children}
     </div>

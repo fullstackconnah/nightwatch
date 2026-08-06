@@ -26,6 +26,7 @@ export const KIOSK_FADE_MS = 180; // content entering/leaving a view
 export const KIOSK_POP_MS = 260; // takeover / modal entrance
 export const KIOSK_EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)"; // ease-out-expo
 export const KIOSK_REDUCED_MS = 120; // the reduced-motion crossfade
+export const KIOSK_PULSE_MS = 1600; // breathing-ring cadence — mirrored by --kiosk-pulse-ms in globals.css's KIOSK MOTION VOCABULARY block (change both or neither); shared by the alert badge's WAAPI ring and .voice-mic-recording's CSS ring so the two "recording/alerting" pulses can never drift apart.
 
 /* The sheen's own duration, needed in JS only as the fallback deadline for
    stripping `data-sheen` if `animationend` never fires — which it will not if

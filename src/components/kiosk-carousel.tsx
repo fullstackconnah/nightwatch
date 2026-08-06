@@ -36,6 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { KIOSK_MOVE_MS, KIOSK_EASE_OUT, prefersReducedMotion } from "@/lib/kiosk-motion";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
+import { useKioskIdle, useKioskNight, KIOSK_IDLE_AFTER_MS } from "@/lib/kiosk-activity";
 
 const AUTO_ADVANCE_MS = 12_000;
 // "Pause while interacting, and for ~30s after any tap" (the contract this
@@ -146,13 +147,28 @@ export function KioskCarousel({
     setIndex(((next % n) + n) % n);
   }
 
+  // Suspended while night AND idle — deliberately not idle alone. On a wall
+  // tablet, untouched-for-2-minutes is the ordinary DAYTIME state; the band
+  // exists precisely so someone walking past mid-afternoon sees it rotate
+  // without having to touch anything. Gating on idle alone would mean the
+  // one feature built for "glance in passing" turns itself off the moment
+  // nobody's been standing at the panel — most of every day. Night is the
+  // only time an untouched, silently-rotating band is worth killing outright
+  // (nothing to see in a dark room, and a mid-motion touch panel is one more
+  // thing throwing light into it). markActivity notifies synchronously on
+  // pointerdown (see kiosk-activity.ts), so the first touch resumes rotation
+  // on the same interaction, not after some poll notices.
+  const idle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
+  const night = useKioskNight();
+
   // Auto-advance. Off entirely for 0/1 visible panes (contract: a single pane
-  // gets no rotation, no dots, no gesture).
+  // gets no rotation, no dots, no gesture), and suspended while night && idle
+  // (see above).
   useEffect(() => {
-    if (visible.length <= 1 || paused) return;
+    if (visible.length <= 1 || paused || (night && idle)) return;
     const id = setInterval(() => setIndex((i) => (i + 1) % visible.length), AUTO_ADVANCE_MS);
     return () => clearInterval(id);
-  }, [visible.length, paused]);
+  }, [visible.length, paused, night, idle]);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (visible.length <= 1) return;
@@ -308,7 +324,7 @@ export function KioskCarousel({
               <span
                 aria-hidden
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full transition-colors",
+                  "h-1.5 w-1.5 rounded-full transition-colors motion-reduce:transition-none",
                   i === clampedIndex ? "bg-accent" : "bg-line-bright",
                 )}
               />

@@ -25,6 +25,26 @@
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
   --color-bad: #f87171;
+  /* The climate tile's heat tint (sunroom-only treatment, kiosk-climate.tsx).
+     NOT `warn`: theme-scoped warn/bad are ambers and reds darkened for AA
+     TEXT contrast, and as a 10% wash sunroom's amber read as brown — the
+     owner wants orange-red. This mix resolves HERE, at :root, against the
+     bright root red/amber above (a custom property substitutes its var()s
+     where it is declared, so theme scopes re-declaring --color-bad do not
+     reach into it) — and that is the point, verified on the test stack: a
+     glow needs chroma, not contrast, and the AA-darkened theme pair muddies
+     back to the brown this token exists to escape. Washes and glows only,
+     never text.
+     `chill` and `arid` are the same construction for the other two modes
+     that name their own work: cool mixes the root sky blue toward the teal
+     for an icy cast (sunroom's scoped --color-blue is AA-darkened exactly
+     like its warn and would mute the glow the same way), and dry locks the
+     root amber — the conventional dehumidify colour, kept distinct from
+     heat's orange-red. fan_only / heat_cool / auto stay on the shared accent
+     and need no token here. */
+  --color-heat: color-mix(in srgb, var(--color-bad) 60%, var(--color-warn) 40%);
+  --color-chill: color-mix(in srgb, var(--color-blue) 60%, var(--color-accent) 40%);
+  --color-arid: var(--color-warn);
 
   /* Sequential teal ramp: DESIGN.md's documented four-step series colour for
      composed-part bars (disk segments, treemap quartiles, VRAM attribution).
@@ -366,7 +386,7 @@ body {
    Reduced motion drops the animation for a static ring at the same colour —
    "recording" must still be legible, just not moving. */
 .voice-mic-recording {
-  animation: voice-mic-pulse 1.6s ease-in-out infinite;
+  animation: voice-mic-pulse var(--kiosk-pulse-ms) ease-in-out infinite;
 }
 @keyframes voice-mic-pulse {
   0%,
@@ -1379,6 +1399,11 @@ body {
   --kiosk-fade-ms: 180ms;
   --kiosk-pop-ms: 260ms;
   --kiosk-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Mirrors KIOSK_PULSE_MS in src/lib/kiosk-motion.ts — change both or
+     neither. Shared by the alert badge's WAAPI ring and this file's own
+     .voice-mic-recording ring so the two "recording/alerting" pulses can
+     never drift apart. */
+  --kiosk-pulse-ms: 1600ms;
 
   /* CSS-only. The press is deliberately TWO durations, not one: a finger
      landing wants the surface to move under it now (90ms, linear — any ease
@@ -1535,6 +1560,41 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .kiosk-breathe {
     animation: none;
+  }
+}
+
+/* ── climate: the working tint ─────────────────────────────────────────────
+   Replaces the four blurred convection streams kiosk-thermal.tsx used to
+   draw on the climate tile — the owner rejected them as neither subtle nor
+   mode-legible at the container level. This is deliberately NOT `.kiosk-breathe`
+   above: that class is reserved for liveness marks that are not readings, and
+   this one sits on a tile whose own figures are readings, so it needs its own
+   floor/ceiling rather than borrowing one tuned for a caption dot.
+   The layer's visual is an INSET edge glow (a static inset box-shadow set
+   inline by kiosk-climate.tsx, strongest at the border and fading toward the
+   tile's centre — the owner's spec) over a faint centre wash; what ANIMATES
+   is only this class's opacity, so the pulse stays compositor-friendly and
+   the box-shadow itself is never animated (see the Don'ts: an animation must
+   not own a property another rule needs). One instance per actively-moving-air
+   tile, 7s so it reads as ambient life rather than a pulse demanding
+   attention; even at peak the glow hugs the tile's own border and never
+   reaches far enough inward to threaten the figures' contrast. */
+@keyframes kiosk-climate-working {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.kiosk-climate-working {
+  animation: kiosk-climate-working 7s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-climate-working {
+    animation: none;
+    opacity: 0.6; /* the static mid-tint — the state stays legible, only the breathing stops */
   }
 }
 
@@ -1716,84 +1776,15 @@ body {
       color-mix(in srgb, var(--color-warn) calc(2% + 7% * var(--sr-warmth)), transparent) 0%,
       transparent 70%
     );
-  /* Rides the same 90s tween the palette does, and for the same reason: at
-     15-minute data cadence an untweened update is a visible step change in
-     the corner of a screen someone is sitting next to. The `transition` is
-     safe to declare here (unlike the palette's, which kiosk-sunroom.tsx has
-     to withhold for one frame) because this layer's inputs are only ever
-     custom properties that already arrive tweened — there is no first
-     substitution from an initial value for it to animate through. */
-  transition: background-image 90s linear;
-}
-@media (prefers-reduced-motion: reduce) {
-  [data-kiosk-theme="sunroom"] .kiosk-leaks {
-    transition: none;
-  }
-}
-
-/* ── climate: thermal convection streams ──────────────────────────────────
-   A running unit moves air, and this is the only thing on the tile that says
-   so. Soft vertical currents drift across the tile behind its figures —
-   upward while heating, downward while cooling — so a glance across four
-   tiles tells you which rooms are working before any mode label is read.
-   Colour is `--color-warn` for heat and `--color-blue` for cool, the two
-   tokens this system already spends on hot and on a second series; there is
-   no new hue on the surface.
-
-   Geometry, speed, horizontal position and per-stream delay all arrive as
-   inline style from kiosk-thermal.tsx, exactly as the sunroom weather layers
-   do above — a stream field whose every value is authored in CSS is four
-   copies of one stream. Both keyframes are `transform` and `opacity` only,
-   on their own layer.
-
-   The opacity ramp at the ends is what makes it seamless. A current that
-   simply translates past the clip edge pops out of existence on a loop this
-   slow; fading through the first and last fifth means each stream arrives and
-   leaves, and four of them at different offsets read as continuous flow. */
-@keyframes kiosk-thermal-rise {
-  0% {
-    transform: translate3d(0, 55%, 0);
-    opacity: 0;
-  }
-  20%,
-  80% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(0, -55%, 0);
-    opacity: 0;
-  }
-}
-@keyframes kiosk-thermal-fall {
-  0% {
-    transform: translate3d(0, -55%, 0);
-    opacity: 0;
-  }
-  20%,
-  80% {
-    opacity: 1;
-  }
-  100% {
-    transform: translate3d(0, 55%, 0);
-    opacity: 0;
-  }
-}
-.kiosk-thermal-stream {
-  position: absolute;
-  will-change: transform, opacity;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  /* Not rendered at all under reduced motion — kiosk-thermal.tsx returns
-     null rather than freezing the field, on the same reasoning the rain layer
-     uses: four stopped currents are four smudges on the tile, and a smudge
-     does not mean "this unit is running". This rule is the belt to that
-     braces, for a stream that somehow mounts anyway. */
-  .kiosk-thermal-stream {
-    animation: none;
-    opacity: 0;
-  }
+  /* No transition of its own, and none needed. `background-image` is not an
+     interpolable property — the `transition: background-image 90s linear`
+     that used to sit here was inert, matched by no browser's animatable-
+     property list, and only cost a per-recalc bookkeeping entry on a
+     full-viewport fixed layer for nothing. The layer still moves smoothly:
+     its only live inputs, `--sr-light-x` and `--sr-warmth`, are registered
+     custom properties (see kiosk-sunroom.tsx) that already arrive tweened
+     from that file's own transition list, so this rule just reads values
+     that are already easing and repaints along with them. */
 }
 
 /* ── the digit reel ───────────────────────────────────────────────────────

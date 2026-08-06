@@ -30,16 +30,9 @@ import { Power, SlidersHorizontal, X } from "lucide-react";
 import type { HaClimate, HaEntities } from "@/lib/ha-types";
 import type { UseKioskHaResult } from "@/components/kiosk-hub";
 import { cn } from "@/lib/utils";
-import { KioskThermalField } from "@/components/kiosk-thermal";
 import { KioskDigitReel } from "@/components/kiosk-digits";
-
-// TODO(kiosk-motion): swap these for KIOSK_POP_MS / KIOSK_EASE_OUT /
-// KIOSK_REDUCED_MS exported from src/lib/kiosk-motion.ts once agent A lands
-// it (see docs/kiosk-analysis/redesign-06-space-and-modes.md "Motion tokens").
-// Values match that contract's documented KIOSK_POP_MS so swapping later is a
-// pure import change, not a behaviour change.
-const MODAL_POP_MS = 260;
-const MODAL_EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)";
+import { KIOSK_POP_MS, KIOSK_EASE_OUT, prefersReducedMotion } from "@/lib/kiosk-motion";
+import { useKioskTheme } from "@/components/kiosk-theme";
 
 const NUDGE_STEP = 0.5;
 
@@ -89,10 +82,6 @@ function formatTempRange(low: number | null, high: number | null, unit: string |
  *  no fixed list of. */
 function titleCase(s: string): string {
   return s.length > 0 ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 // Shared visual for the 56px −/+ nudge buttons — borderless at rest, a
@@ -638,6 +627,43 @@ export function KioskClimateTile({
   // of after the unit reports back.
   const isOn = shownHvacMode !== "off";
 
+  // The SELECTED mode alone decides the tile's colour, and ONLY under the
+  // sunroom theme — both owner's calls. This replaces the current-vs-target
+  // inference the deleted convection streams used (kiosk-thermal.tsx). The
+  // colour answers "what did I set this to", not "which way is it pushing
+  // air this minute", and lands the instant the mode is picked (keyed on
+  // shownHvacMode for the same mode-hold reason as isOn above — a tap must
+  // recolour the tile before HA reports back). Every ON mode carries a tint
+  // and the breathing edge glow: heat -> --color-heat (orange-red), cool ->
+  // --color-chill (icy cyan), dry -> --color-arid (bright amber), and
+  // fan_only/heat_cool/auto -> "neutral", the shared accent-on vocabulary,
+  // because they name no single kind of work. The root-locked tokens (see
+  // @theme) exist because sunroom's scoped warn/blue are AA-darkened for
+  // text and muddy a wash to brown/grey. Every non-sunroom theme keeps the
+  // plain accent-on look with no glow — the mode tint is part of sunroom's
+  // dress-up (the one theme whose whole surface is a light-and-warmth
+  // model), not a new system-wide colour language; modeTint is null
+  // off-theme, which also suppresses the glow layer below.
+  const kioskTheme = useKioskTheme();
+  const modeTint: "heat" | "chill" | "arid" | "neutral" | null =
+    kioskTheme !== "sunroom" || !isOn
+      ? null
+      : shownHvacMode === "heat"
+        ? "heat"
+        : shownHvacMode === "cool"
+          ? "chill"
+          : shownHvacMode === "dry"
+            ? "arid"
+            : "neutral";
+  const modeTintVar =
+    modeTint === "heat"
+      ? "var(--color-heat)"
+      : modeTint === "chill"
+        ? "var(--color-chill)"
+        : modeTint === "arid"
+          ? "var(--color-arid)"
+          : "var(--color-accent)";
+
   // Remembered last-used mode (see the last-mode-memory block above
   // preferredOnMode): SSR-safe null seed, filled in from localStorage after
   // mount, exactly like kiosk-theme.tsx's useKioskTheme seeds "default" and
@@ -758,9 +784,9 @@ export function KioskClimateTile({
         // inline style is the one thing that outranks unlayered CSS too.
         "relative flex flex-col items-center gap-2 rounded-tile border p-3 text-center",
         // isolate: makes this tile root a stacking context, which is what
-        // lets KioskThermalField's `-z-10` layer paint above this tile's own
+        // lets the working-tint layer's `-z-10` paint above this tile's own
         // background and below its text WITHOUT escaping to some ancestor's
-        // stacking context instead — see kiosk-thermal.tsx's own comment on
+        // stacking context instead — see that layer's own comment below on
         // the point.
         "isolate",
         // kiosk-defocus: this tile is itself a sibling inside
@@ -769,13 +795,23 @@ export function KioskClimateTile({
         "kiosk-defocus",
         // kiosk-sheen requires `relative`, which this root already carries.
         "kiosk-sheen",
-        // The SAME on-state vocabulary the light and switch pills already use
-        // (kiosk-hub.tsx's ToggleChip): accent border, accent wash, accent
-        // glyph. A climate unit that's running is the same kind of fact as a
-        // lamp that's on, and it should not need its own colour language —
-        // this pairing is also already contrast-checked across all 16 themes,
-        // which a newly invented tint would not be.
-        isOn ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2",
+        // The container wears the SELECTED mode's colour (see modeTint
+        // above) the instant the mode is picked; off keeps the neutral
+        // panel, and neutral/off-theme running keeps the SAME on-state
+        // vocabulary the light and switch pills use (kiosk-hub.tsx's
+        // ToggleChip: accent border, accent wash) — that pairing is already
+        // contrast-checked across all 16 themes. The tint crossfade on a
+        // mode change rides `.kiosk-defocus`'s owned transition list for
+        // free (see that class's comment lower down).
+        !isOn
+          ? "border-line bg-panel-2"
+          : modeTint === "heat"
+            ? "border-heat/40 bg-heat/10"
+            : modeTint === "chill"
+              ? "border-chill/40 bg-chill/10"
+              : modeTint === "arid"
+                ? "border-arid/40 bg-arid/10"
+                : "border-accent/40 bg-accent/10",
         !climate.available && "opacity-60",
       )}
       // This tile is the one being adjusted (ClimateSection's `focused`
@@ -796,11 +832,35 @@ export function KioskClimateTile({
       // `.kiosk-defocus` names all four itself now, so the one place that turns
       // motion off can reach every one of them.
     >
-      {/* First child, and using shownHvacMode (not climate.hvacMode): the
-          streams must switch the instant the user picks a mode, for exactly
-          the reason useModeHolds exists — climate.hvacMode can sit on HA's
-          stale answer for seconds after a tap. */}
-      <KioskThermalField hvacMode={shownHvacMode} currentTemp={climate.currentTemp} targetTemp={climate.targetTemp} />
+      {/* The one live-state motion this tile keeps: a slow pulse of a
+          mode-coloured glow hugging the tile's border and fading inward,
+          over the container's own 10% tint, saying "actively moving air" —
+          replacing the four blurred convection streams the owner rejected
+          as neither subtle nor
+          mode-legible at the container level. Rendered for every ON tile
+          under sunroom (modeTint non-null), in that tile's own mode colour —
+          accent for the neutral fan/auto modes — and never off-theme.
+          First child, -z-10 + the root's `isolate` above: same painting-order
+          arrangement the streams used, so this layer sits above the tile's
+          background and below its text (see the isolate comment). aria-hidden:
+          purely decorative, adds nothing a screen reader needs — the tile's
+          own mode label already says "Heat"/"Cool" in text. */}
+      {modeTint !== null && (
+        <div
+          aria-hidden
+          className="kiosk-climate-working pointer-events-none absolute inset-0 -z-10 rounded-tile"
+          // The glow is an INSET box-shadow — strongest at the tile's border,
+          // fading toward the centre (owner's spec) — plus a faint centre
+          // wash so the middle isn't hollow, both in modeTintVar's root-locked
+          // mode colour (see the @theme comment on --color-heat for why the
+          // theme-scoped warn/blue can't be used here). The shadow itself is
+          // static; only the layer's opacity pulses (see .kiosk-climate-working).
+          style={{
+            boxShadow: `inset 0 0 18px 2px color-mix(in srgb, ${modeTintVar} 45%, transparent)`,
+            background: `color-mix(in srgb, ${modeTintVar} 4%, transparent)`,
+          }}
+        />
+      )}
 
       {canPower && (
         <button
@@ -1285,13 +1345,22 @@ function KioskClimateModal({
   // up, just without the pop.
   useEffect(() => {
     reducedRef.current = prefersReducedMotion();
-    dialogRef.current?.focus();
+    const node = dialogRef.current;
+    node?.focus();
     if (reducedRef.current) {
       setEntered(true);
       return;
     }
-    const id = requestAnimationFrame(() => setEntered(true));
-    return () => cancelAnimationFrame(id);
+    // Forced reflow, not a single rAF: a rAF callback can still coalesce into
+    // the same style flush as this mount commit and skip the transition
+    // outright — measured on this hardware in kiosk-spark.tsx's useGlide,
+    // which this follows. Reading the rect commits the pre-entrance style
+    // synchronously, so the entered flip below is guaranteed a real "before"
+    // to transition from. `node` can be null here on a component whose
+    // dialog is itself conditionally rendered; fall back to the instant flip
+    // rather than skip the entrance forever.
+    if (node) void node.getBoundingClientRect();
+    setEntered(true);
   }, []);
 
   // Exit plays the reverse transition before actually unmounting (the parent
@@ -1303,7 +1372,7 @@ function KioskClimateModal({
       return;
     }
     setClosing(true);
-    window.setTimeout(onClose, MODAL_POP_MS);
+    window.setTimeout(onClose, KIOSK_POP_MS);
   }
 
   // Same Escape + Tab-trap idiom as KioskPinPad's dialog: Escape routes
@@ -1344,8 +1413,8 @@ function KioskClimateModal({
 
   const shown = entered && !closing;
   const transitionStyle = {
-    transitionDuration: `${MODAL_POP_MS}ms`,
-    transitionTimingFunction: MODAL_EASE_OUT,
+    transitionDuration: `${KIOSK_POP_MS}ms`,
+    transitionTimingFunction: KIOSK_EASE_OUT,
   };
 
   return (
