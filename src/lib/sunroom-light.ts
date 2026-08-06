@@ -609,12 +609,25 @@ export function sunroomStateAt(
      is crossed faster than anyone can start reading a word in it. */
   const crossing = a.dark !== b.dark;
 
+  /* The tween being fast is not enough, because the EMITTED STATE dawdles:
+     `sunroomT`'s dark vote smoothsteps across the sun's ±6° twilight band,
+     which the sun takes the better part of an hour to cross — so a k that
+     tracks it linearly parks the ground mid-grey, in exactly the luminance
+     band the comment above proves neither ink can read against, for
+     fifteen-plus real minutes every dusk and dawn (photographed on the
+     tablet, 2026-08-06, 16 min after sunset). The ink already snaps; the
+     ground must cross continuously — but on a sharpened k that compresses
+     the transit into ~12% of the segment (a few minutes of sun travel).
+     Both endpoints are byte-identical, so the contrast gate's two ends are
+     untouched and only the exempted transit gets shorter. */
+  const kg = crossing ? clamp01((k - 0.5) / 0.12 + 0.5) : k;
+
   const palette: SunroomPalette = {
-    bg: lerpHex(a.palette.bg, b.palette.bg, k),
-    panel: lerpHex(a.palette.panel, b.palette.panel, k),
-    panel2: lerpHex(a.palette.panel2, b.palette.panel2, k),
-    line: lerpHex(a.palette.line, b.palette.line, k),
-    lineBright: lerpHex(a.palette.lineBright, b.palette.lineBright, k),
+    bg: lerpHex(a.palette.bg, b.palette.bg, kg),
+    panel: lerpHex(a.palette.panel, b.palette.panel, kg),
+    panel2: lerpHex(a.palette.panel2, b.palette.panel2, kg),
+    line: lerpHex(a.palette.line, b.palette.line, kg),
+    lineBright: lerpHex(a.palette.lineBright, b.palette.lineBright, kg),
     ink: nearer.palette.ink,
     inkDim: nearer.palette.inkDim,
     inkFaint: nearer.palette.inkFaint,
@@ -645,7 +658,7 @@ export function sunroomStateAt(
     shadowRgb: desaturateTriple(lerpTriple(a.light.shadowRgb, b.light.shadowRgb, k), cloud * 0.7),
     highlightRgb: desaturateTriple(lerpTriple(a.light.highlightRgb, b.light.highlightRgb, k), cloud * 0.7),
     warmth: lerp(a.light.warmth, b.light.warmth, k) * (1 - cloud * 0.55),
-    washRgb: lerpTriple(a.light.washRgb, b.light.washRgb, k),
+    washRgb: lerpTriple(a.light.washRgb, b.light.washRgb, kg),
     /* The wash is where daytime weather actually gets to speak, because the
        token palette can't: darkening a light ground eats every contrast
        margin at once (the gate capped it at 3.5%), while the wash sits behind
@@ -660,7 +673,14 @@ export function sunroomStateAt(
        darker and heavier than a clear one, and here that costs no contrast at
        all: the ground moving away from light ink only improves it. */
     washA:
-      lerp(a.light.washA, b.light.washA, k) *
+      lerp(a.light.washA, b.light.washA, kg) *
+      /* Polarity crossfade. The day pool is WHITE and the night vignette is
+         NEAR-BLACK; lerping their alphas straight across the seam keeps a
+         MID-GREY pool on screen at full strength the whole way over — on the
+         tablet it read as a fog sheet over night mode. Dip the alpha to zero
+         at the seam instead: the white pool fades out, the dark vignette
+         fades in, and the grey between them never gets shown. */
+      (crossing ? Math.abs(2 * kg - 1) : 1) *
       (nearer.dark ? 1 + cloud * 0.35 + rain * 0.45 : 1 - cloud * 0.55 - rain * 0.2),
   };
 
