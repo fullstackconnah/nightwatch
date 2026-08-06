@@ -1,5 +1,6 @@
-import type { WidgetInstance } from "@/lib/config";
+import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { formatBytes, formatNumber, formatPercent } from "@/lib/format";
+import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/downloads-types";
 import { resolvePath } from "./jsonpath";
 import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 
@@ -158,6 +159,75 @@ export async function qbitSetPaused(w: WidgetInstance, paused: boolean): Promise
     }
     throw e;
   }
+}
+
+// --- qBittorrent downloads (kiosk tray) --------------------------------------
+
+interface QbitDownloadingTorrent {
+  hash: string;
+  name: string;
+  progress: number;
+  dlspeed: number;
+  size: number;
+  eta: number;
+}
+
+/** qBittorrent's own sentinel for "no ETA yet" (stalled/just-started
+ *  torrents report this instead of a real estimate). Mapped to null in
+ *  KioskDownloadItem rather than passed through — 8640000 seconds (100
+ *  days) rendered as a countdown would be actively misleading on a wall
+ *  tablet. */
+const QBIT_ETA_INFINITY = 8640000;
+
+/**
+ * Kiosk download-tray data for the public, unauthenticated /kiosk surface.
+ * Reuses the SAME qbitSessions cache and qbitLogin/try-unauthenticated-
+ * first-then-retry-once shape as the `qbittorrent` fetcher above — one
+ * source of truth for qBittorrent auth in this file — but returns a
+ * different, narrower shape (KioskDownloadItem, not WidgetField[]) built
+ * specifically for that public route: no server URL, no credentials,
+ * nothing beyond what a wall tablet needs to draw a progress bar.
+ */
+export async function getKioskDownloads(): Promise<KioskDownloadsResult> {
+  const w = loadConfig().widgets.find((x) => x.type === "qbittorrent");
+  if (!w) return { status: "unconfigured" };
+
+  const run = async (cookie?: string) => {
+    const h: Record<string, string> = { Referer: w.url, Origin: w.url };
+    if (cookie) h.Cookie = cookie;
+    return fetchJson<QbitDownloadingTorrent[]>(`${w.url}/api/v2/torrents/info?filter=downloading`, { headers: h });
+  };
+
+  let torrents: QbitDownloadingTorrent[];
+  try {
+    try {
+      torrents = await run(qbitSessions.get(w.url)?.cookie);
+    } catch (e) {
+      if (!(e instanceof WidgetError) || !e.message.startsWith("HTTP 40")) throw e;
+      qbitSessions.delete(w.url); // unauthenticated/stale — log in and retry once
+      torrents = await run(await qbitLogin(w));
+    }
+  } catch {
+    return { status: "unreachable" };
+  }
+
+  // The ignore-zero-speed rule is enforced HERE, server-side, before anything
+  // reaches the unauthenticated tablet — a torrent qBittorrent still lists as
+  // "downloading" but with no current throughput (queued, stalled, paused
+  // mid-check) is not what the owner asked to be notified about.
+  const items: KioskDownloadItem[] = torrents
+    .filter((t) => t.dlspeed > 0)
+    .map((t) => ({
+      hash: t.hash,
+      name: t.name,
+      progress: t.progress,
+      dlspeed: t.dlspeed,
+      size: t.size,
+      eta: t.eta === QBIT_ETA_INFINITY ? null : t.eta,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return { status: "ok", items };
 }
 
 // --- Pi-hole v6 (sid session) -----------------------------------------------
