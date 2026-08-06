@@ -39,28 +39,40 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
   const txHistory = history.map((h) => h.tx);
 
   if (compact) {
-    // Cell widths are weighted, not equal: the network cell carries two rate
-    // figures with units side by side (the widest reading here) and the cpu
-    // cell carries the narrowest, so an even 4-way split truncated units off
-    // the rates while cpu sat in slack. Every figure is digits-0 in compact
-    // ("7 GiB", "797 KiB/s") — the full grid keeps one decimal, but at this
-    // size the decimal is the first thing to push a unit out of its cell,
-    // and a number that keeps its unit beats one that keeps its decimal.
+    // Every figure is digits-0 in compact ("7 GiB", "797 KiB/s") — the full
+    // grid keeps one decimal, but at this size the decimal is the first
+    // thing to push a unit out of its cell, and a number that keeps its
+    // unit beats one that keeps its decimal.
+    //
+    // The charts show the last MINUTE only and do not glide (owner's call,
+    // 2026-08-06): the full grid's 4-minute window and perpetual travel are
+    // an ambient display for a panel you stand at; in the rotating band the
+    // pane is on screen for ~12s, where "what just happened" is the whole
+    // question and four permanently-moving lines are noise. glideMs={0}
+    // disables the glide at the source (see kiosk-spark.tsx) — the lines
+    // still redraw when a poll lands, they just don't animate between
+    // samples.
+    const windowSamples = Math.ceil(60_000 / 5_000); // last 60s at the hook's 5s poll
+    const cpuRecent = cpuHistory.slice(-windowSamples);
+    const rxRecent = rxHistory.slice(-windowSamples);
+    const txRecent = txHistory.slice(-windowSamples);
     return (
-      <div className="panel flex w-full max-w-2xl items-center gap-3 px-3 py-2.5">
-        {/* cpu and network FLEX, memory and disk DON'T (flex-none = sized by
-            their own bounded digits-0 text): the pane is a fixed ~576px, and
-            letting all four cells fight proportionally kept shaving one
-            character off whichever reading was widest that render. The two
-            capacity cells' widths are known and stable, so they take exactly
-            what they need and the sparks absorb every remaining pixel. */}
-        <div className="flex min-w-0 flex-[0.6] flex-col gap-1">
+      // justify-between with every cell flex-none: each reading and each
+      // chart is its own fixed-width block (the charts MUST be — a flexing
+      // spark re-scales its x-axis with the pane, so the same minute of
+      // data would read as a different shape in different rotations), and
+      // the leftover pane width becomes breathing room between cells
+      // instead of stretch nobody asked for.
+      <div className="panel flex w-full max-w-2xl items-center justify-between gap-3 px-3 py-2.5">
+        <div className="flex flex-none flex-col gap-1">
           <div className="microlabel">cpu</div>
           <div className="flex items-center gap-2">
             <span className="shrink-0 font-mono text-sm text-ink">
               {host ? `${Math.round(host.cpu.percent)}%` : isLoading ? "…" : "—"}
             </span>
-            <KioskSpark values={cpuHistory} max={100} height={16} glideMs={5000} label="cpu" className="min-w-0 flex-1 text-accent" />
+            <div className="w-20">
+              <KioskSpark values={cpuRecent} max={100} height={16} glideMs={0} label="cpu" className="text-accent" />
+            </div>
           </div>
         </div>
 
@@ -90,17 +102,19 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-none flex-col gap-1">
           <div className="microlabel">network</div>
           <div className="flex items-center gap-2 font-mono text-[11px]">
-            <span className="flex min-w-0 items-center gap-1 truncate text-accent">
+            <span className="flex items-center gap-1 text-accent">
               <ArrowDown size={11} className="shrink-0" /> {host ? `${formatBytes(host.network.rxPerSec, 0)}/s` : "…"}
             </span>
-            <span className="flex min-w-0 items-center gap-1 truncate text-blue">
+            <span className="flex items-center gap-1 text-blue">
               <ArrowUp size={11} className="shrink-0" /> {host ? `${formatBytes(host.network.txPerSec, 0)}/s` : "…"}
             </span>
           </div>
-          <KioskSparkPair rx={rxHistory} tx={txHistory} height={14} glideMs={5000} />
+          <div className="w-28">
+            <KioskSparkPair rx={rxRecent} tx={txRecent} height={14} glideMs={0} />
+          </div>
         </div>
       </div>
     );

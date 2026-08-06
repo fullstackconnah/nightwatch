@@ -196,7 +196,11 @@ function useGlide(sig: string, stepPx: number, glideMs: number, reduced: boolean
     const isFirst = prevSig.current === null;
     const changed = prevSig.current !== sig;
     prevSig.current = sig;
-    if (reduced || isFirst || !changed) return; // reduced motion: render in place, per prefersReducedMotion's contract
+    // reduced motion: render in place, per prefersReducedMotion's contract.
+    // glideMs <= 0: the caller opted out of the glide entirely (the compact
+    // vitals strip) — the chart redraws in place when a sample lands instead
+    // of travelling continuously.
+    if (reduced || isFirst || !changed || glideMs <= 0) return;
     const g = ref.current;
     if (!g) return;
     g.style.transition = "none";
@@ -233,7 +237,10 @@ export function KioskSpark({
   max?: number;
   height?: number;
   /** The poll interval. The glide takes exactly this long, so the chart is
-   *  always mid-travel and never sits still waiting. */
+   *  always mid-travel and never sits still waiting. Pass 0 to disable the
+   *  glide: the chart then redraws in place only when a new sample lands —
+   *  the owner's choice for the glance strip, where a wall panel doesn't
+   *  need permanently-moving lines. */
   glideMs?: number;
   className?: string;
   /** The reading this chart draws, for the adjacent text/aria. */
