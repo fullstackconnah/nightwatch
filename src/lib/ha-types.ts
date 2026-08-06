@@ -104,6 +104,36 @@ export interface HaScene {
   available: boolean;
 }
 
+/**
+ * `media_player.*` — added for the kiosk's now-playing pill (2026-08-06).
+ * Deliberately thin: HA's media_player attributes include `entity_picture`,
+ * an authenticated HA URL that is useless (and a minor leak of HA's own
+ * address) on the unauthenticated /kiosk surface, so it is never read here,
+ * let alone forwarded.
+ */
+export interface HaMediaPlayer {
+  entityId: string;
+  name: string;
+  /** Raw HA state string — "playing"/"paused"/"idle"/"off"/"unavailable" are
+   *  the common ones, but this stays the untyped string HA actually reported
+   *  rather than a narrowed union, since a consumer (the nowplaying route)
+   *  already treats anything other than "playing"/"paused" as "not a
+   *  candidate" without needing to enumerate every value HA might send. */
+  state: string;
+  /** HA's `media_title` attribute. Absent (not null) when HA reports none —
+   *  same optional-extras contract as HaClimate's fan/preset/swing fields. */
+  mediaTitle?: string;
+  /** HA's `media_series_title` — set only for episodic content. */
+  mediaSeries?: string;
+  /** HA's `app_name` — e.g. "YouTube", "Plex" on a Google TV streamer. */
+  appName?: string;
+  /** HA's `media_duration`/`media_position`, both in seconds. Only set when
+   *  HA reports BOTH (see mapMediaPlayer) — a lone position with no duration
+   *  can't become a progress fraction, so it's not worth carrying either half. */
+  mediaDurationS?: number;
+  mediaPositionS?: number;
+}
+
 export interface HaEntities {
   lights: HaLight[];
   switches: HaSwitch[];
@@ -111,6 +141,7 @@ export interface HaEntities {
   locks: HaLock[];
   sensors: HaSensor[];
   scenes: HaScene[];
+  mediaPlayers: HaMediaPlayer[];
 }
 
 export interface HaStatesResponse {

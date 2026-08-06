@@ -7,6 +7,7 @@ import type {
   HaLight,
   HaLock,
   HaLockState,
+  HaMediaPlayer,
   HaScene,
   HaSensor,
   HaSensorKind,
@@ -291,6 +292,28 @@ function mapScene(e: HaRawEntity): HaScene {
   };
 }
 
+/** See HaMediaPlayer's own comment for why `entity_picture` is never read
+ *  here, and why mediaDurationS/mediaPositionS are an all-or-nothing pair. */
+function mapMediaPlayer(e: HaRawEntity): HaMediaPlayer {
+  const attrs = e.attributes;
+  const mediaTitle = stringAttr(attrs, "media_title");
+  const mediaSeries = stringAttr(attrs, "media_series_title");
+  const appName = stringAttr(attrs, "app_name");
+  const durationS = numberOrNull(attrs.media_duration);
+  const positionS = numberOrNull(attrs.media_position);
+  const hasProgress = durationS != null && positionS != null;
+
+  return {
+    entityId: e.entity_id,
+    name: friendlyName(e),
+    state: e.state,
+    ...(mediaTitle != null ? { mediaTitle } : {}),
+    ...(mediaSeries != null ? { mediaSeries } : {}),
+    ...(appName != null ? { appName } : {}),
+    ...(hasProgress ? { mediaDurationS: durationS, mediaPositionS: positionS } : {}),
+  };
+}
+
 function byName<T extends { name: string }>(a: T, b: T): number {
   return a.name.localeCompare(b.name);
 }
@@ -302,6 +325,7 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
   const locks: HaLock[] = [];
   const sensors: HaSensor[] = [];
   const scenes: HaScene[] = [];
+  const mediaPlayers: HaMediaPlayer[] = [];
 
   for (const e of raw) {
     if (typeof e?.entity_id !== "string") continue;
@@ -327,6 +351,9 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
       case "scene":
         scenes.push(mapScene(e));
         break;
+      case "media_player":
+        mediaPlayers.push(mapMediaPlayer(e));
+        break;
       default:
         // Every other domain (automation, person, zone, update, ...) is dropped
         // here — deliberately never proxied to the client, wholesale or otherwise.
@@ -341,6 +368,7 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
     locks: locks.sort(byName),
     sensors: sensors.sort(byName),
     scenes: scenes.sort(byName),
+    mediaPlayers: mediaPlayers.sort(byName),
   };
 }
 

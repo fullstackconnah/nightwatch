@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import type { HostVitals } from "@/lib/client";
+import type { NowPlayingSnapshot } from "@/lib/nowplaying-types";
 
 export type FreshnessStatus = "loading" | "unreachable-empty" | "ready" | "ready-stale";
 
@@ -140,6 +141,18 @@ export function useKioskVitalsHistory(refreshMs = 5000): {
 /** Ambient container health counts — hits the public /kiosk/api/health route. */
 export function useKioskHealth(refreshMs = 5000) {
   return useSWR<KioskHealthCounts>("/kiosk/api/health", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+/** "Now playing" pill data — hits the public /kiosk/api/nowplaying route.
+ *  15s, not vitals' 5s: media state (what's playing, play/pause) doesn't
+ *  drift fast enough to need a faster poll, and this is one more request a
+ *  wall tablet makes for the rest of its uptime. keepPreviousData so a
+ *  single missed poll doesn't flash the pill to hidden and back. */
+export function useKioskNowPlaying(refreshMs = 15000) {
+  return useSWR<NowPlayingSnapshot>("/kiosk/api/nowplaying", fetcher, {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });

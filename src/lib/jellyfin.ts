@@ -49,6 +49,9 @@ interface JellyfinNowPlayingItem {
   ParentIndexNumber?: number;
   IndexNumber?: number;
   MediaStreams?: JellyfinMediaStream[];
+  /** Total runtime in ticks (100ns units, same unit as PlayState.PositionTicks) —
+   *  only read by getJellyfinNowPlaying(), for the pill's progress bar. */
+  RunTimeTicks?: number;
 }
 
 interface JellyfinTranscodingInfo {
@@ -70,7 +73,7 @@ interface JellyfinSession {
   UserName?: string;
   Client?: string;
   DeviceName?: string;
-  PlayState?: { PlayMethod?: string };
+  PlayState?: { PlayMethod?: string; PositionTicks?: number; IsPaused?: boolean };
   NowPlayingItem?: JellyfinNowPlayingItem;
   TranscodingInfo?: JellyfinTranscodingInfo;
 }
@@ -247,4 +250,89 @@ export async function getTranscodeSnapshot(): Promise<TranscodeSnapshot> {
     .map(mapSession);
 
   return { ok: true, streams: sortStreams(streams) };
+}
+
+// --- kiosk now-playing pill ------------------------------------------------
+
+export interface JellyfinNowPlaying {
+  title: string;
+  /** Series name, set only for an Episode — see nowPlayingTitle() below for
+   *  why this stays separate from `title` instead of pre-joined the way
+   *  transcode's buildTitle() does: the pill renders title/series as two
+   *  differently-styled spans, so joining them here would just make the
+   *  route re-split a string it could have kept apart. */
+  series?: string;
+  appName: string;
+  paused: boolean;
+  /** 0-1, only when Jellyfin reports both PositionTicks and RunTimeTicks. */
+  progress01?: number;
+}
+
+/** Plain item name — deliberately NOT buildTitle()'s "{Series} · S01E02 —
+ *  {Name}" combined string (see JellyfinNowPlaying.series's comment). */
+function nowPlayingTitle(item: JellyfinNowPlayingItem): string {
+  return typeof item.Name === "string" && item.Name ? item.Name : "Unknown";
+}
+
+/**
+ * Kiosk now-playing source, gated to ONE Jellyfin user (`cfg.jellyfin.kioskUser`,
+ * see config.ts's own comment on that field). This is the only reader in the
+ * app that filters /Sessions by user — getTranscodeSnapshot() above
+ * deliberately shows every session's transcode health to the (authenticated)
+ * GPU resource view, but that surface is behind a login; this one is not, so
+ * the filter has to happen here rather than being left to the caller.
+ *
+ * Returns null for every "nothing to show" case alike — not configured,
+ * unreachable, no session for that user, or a session with nothing loaded —
+ * so the kiosk pill can treat "no Jellyfin source" and "Jellyfin down" the
+ * same way it treats "nobody's watching": it just doesn't render, with no
+ * separate error path for a route the wall tablet's viewer never configured.
+ */
+export async function getJellyfinNowPlaying(): Promise<JellyfinNowPlaying | null> {
+  const cfg = loadConfig();
+  const kioskUser = cfg.jellyfin?.kioskUser?.trim();
+  if (!kioskUser) return null;
+
+  const creds = jellyfinCredentials();
+  if (!creds) return null;
+
+  let res: Response;
+  try {
+    res = await fetch(`${creds.url}/Sessions`, {
+      headers: { Authorization: `MediaBrowser Token="${creds.key}"` },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(body)) return null;
+
+  const session = (body as JellyfinSession[]).find(
+    (s) => s?.UserName === kioskUser && Boolean(s.NowPlayingItem),
+  );
+  if (!session?.NowPlayingItem) return null;
+
+  const item = session.NowPlayingItem;
+  const position = numberOrNull(session.PlayState?.PositionTicks);
+  const runtime = numberOrNull(item.RunTimeTicks);
+  const progress01 = position != null && runtime != null && runtime > 0 ? position / runtime : null;
+
+  return {
+    title: nowPlayingTitle(item),
+    ...(item.Type === "Episode" && typeof item.SeriesName === "string" && item.SeriesName
+      ? { series: item.SeriesName }
+      : {}),
+    appName: "Jellyfin",
+    paused: session.PlayState?.IsPaused === true,
+    ...(progress01 != null ? { progress01 } : {}),
+  };
 }

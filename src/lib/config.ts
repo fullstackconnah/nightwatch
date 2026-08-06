@@ -45,7 +45,19 @@ export interface AppConfig {
    *  entry whose type has no builtin falls through to the generic fetcher, which
    *  would GET Jellyfin's web root, fail to parse HTML as JSON, and render an error
    *  tile on the Overview. */
-  jellyfin?: { url?: string; key?: string };
+  jellyfin?: {
+    url?: string;
+    key?: string;
+    /** Display username (Jellyfin's own `UserName`, not an email) whose
+     *  sessions the kiosk's now-playing pill may surface. The filter runs
+     *  SERVER-side, here and nowhere else: the kiosk surface is unauthenticated
+     *  on the LAN, so anyone standing at the wall tablet could read the
+     *  response, and another household member's viewing activity — what they
+     *  watched, when, how far in — must never reach that response in the
+     *  first place. Unset means "no Jellyfin source for the pill", not "show
+     *  everyone" — see getJellyfinNowPlaying()'s own comment. */
+    kioskUser?: string;
+  };
   /** Home Assistant connection for the /smarthome entity panel. Token is a
    *  long-lived access token minted in HA (Profile → Security). Same
    *  deliberate not-a-widgets[]-entry reasoning as jellyfin above.
