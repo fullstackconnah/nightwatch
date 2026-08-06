@@ -234,7 +234,7 @@ export function KioskSunroomParticles({
           if (d.y - d.lastStampY >= rr) {
             d.lastStampY = d.y;
             const grad = octx.createRadialGradient(d.x, d.y, 0, d.x, d.y, rr * 0.85);
-            grad.addColorStop(0, `rgba(${color}, 0.035)`);
+            grad.addColorStop(0, `rgba(${color}, 0.02)`);
             grad.addColorStop(1, `rgba(${color}, 0)`);
             octx.fillStyle = grad;
             octx.beginPath();
@@ -253,7 +253,7 @@ export function KioskSunroomParticles({
         ctx.drawImage(offscreen, 0, 0, width, height);
         for (const h of heads) {
           const grad = ctx.createRadialGradient(h.x, h.y, 0, h.x, h.y, h.rr);
-          grad.addColorStop(0, `rgba(${color}, 0.07)`);
+          grad.addColorStop(0, `rgba(${color}, 0.05)`);
           grad.addColorStop(1, `rgba(${color}, 0)`);
           ctx.fillStyle = grad;
           ctx.beginPath();
@@ -273,7 +273,7 @@ export function KioskSunroomParticles({
       // reads as the nearer material — fog sits between viewer and glass.
       if (p.fog) {
         const minDim = Math.min(width, height);
-        const baseAlpha = 0.045 * (0.75 + 0.25 * p.dusk01);
+        const baseAlpha = 0.025 * (0.75 + 0.25 * p.dusk01);
         for (const m of mist) {
           const travel = ((now / 1000 / m.crossSeconds + m.phase) % 1) * m.dir;
           const x = ((travel % 1) + 1) % 1 * (width + minDim * m.radius01 * 2) - minDim * m.radius01;
