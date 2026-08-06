@@ -55,6 +55,8 @@ import { KioskVoicePanel } from "@/components/kiosk-voice";
 import { KioskAppearance, type KioskLayoutChoice } from "@/components/kiosk-appearance";
 import { KioskAdminPanel } from "@/components/kiosk-admin-panel";
 import { KioskAlerts } from "@/components/kiosk-alerts";
+import { KioskDownloads } from "@/components/kiosk-downloads";
+import { KioskNowPlaying } from "@/components/kiosk-now-playing";
 import { KioskDoorbellButton } from "@/components/kiosk-doorbell";
 import { KioskStatusStripExtras } from "@/components/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk-stale-tag";
@@ -603,6 +605,11 @@ export function KioskSurface({
           ownership map (agent D mounts it), built by agent A. */}
       <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />
 
+      {/* Download-progress tray — same fixed-overlay family as the alerts
+          button beside it. Every element inside stops its own pointer
+          propagation, so no wrapper is needed here. */}
+      <KioskDownloads />
+
       {/* The rain radar, opened from the forecast rail's Today cell in either
           mode (see `radar` above for why it is mounted out here rather than
           inside the rail). It self-marks aria-modal, so useDomModalOpen already
@@ -632,6 +639,12 @@ export function KioskSurface({
         )}
         style={{ transitionDuration: `${KIOSK_FADE_MS}ms`, transitionTimingFunction: KIOSK_EASE_OUT }}
       />
+
+      {/* Now-playing pill — mounted at the surface (not inside either mode's
+          content) so it shows in BOTH glance and full, same reasoning as the
+          shared header. Self-fetching, renders null when idle, stops its own
+          pointer propagation. */}
+      <KioskNowPlaying />
 
       {/* THE shared container — same clock/temp/forecast/server-line nodes
           in both modes, only the wrapping classes (and the full-only extras
