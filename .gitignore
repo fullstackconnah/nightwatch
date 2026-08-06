@@ -22,4 +22,5 @@ npm-debug.log*
 # which has no business in a public repo
 .omc/
 .claude/
+.impeccable/
 docs/PENDING-SETUP.md
