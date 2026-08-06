@@ -32,6 +32,17 @@
  * motion the rain is removed outright — a frozen streak field reads as
  * scratches on the glass, not as rain — while the cloud layer stays as a
  * static soft variation, which is still true and still atmospheric.
+ *
+ * A THIRD MATERIAL, script-driven rather than CSS-driven: droplets condensing
+ * and sliding on the glass, mist pooling near the ground, and short wind-gust
+ * streaks — see kiosk-sunroom-particles.tsx. These are irregular per-particle
+ * systems (spawn, age, despawn, jitter) that don't reduce to a fixed CSS
+ * keyframe without either a huge hand-authored list or a visibly looping
+ * period, so they run on a Canvas 2D rAF loop instead. That's a concession
+ * from the "no script" discipline above, but a narrow one: the loop exists
+ * only while qualifying weather is active, runs throttled at ~24fps, and
+ * halts completely — no timers, no listeners — the instant the tab is
+ * hidden or the weather that justified it clears.
  */
 
 import useSWR from "swr";
@@ -39,6 +50,7 @@ import { fetcher } from "@/lib/client";
 import { useKioskTheme } from "@/components/kiosk-theme";
 import { sunroomIsDark } from "@/lib/sunroom-light";
 import { prefersReducedMotion } from "@/lib/kiosk-motion";
+import { KioskSunroomParticles } from "@/components/kiosk-sunroom-particles";
 
 // Same key, same interval, same `fetcher` as KioskSunroomLight (kiosk-sunroom.tsx)
 // and kiosk-display.tsx's useWeatherView — SWR dedupes all of it into one
@@ -86,7 +98,7 @@ const STARS: Array<{ x: number; y: number; s: number }> = [
 
 interface WeatherOk {
   status: "ok";
-  current?: { cloudCoverPct?: number; precipMm?: number; windKmh?: number };
+  current?: { cloudCoverPct?: number; precipMm?: number; windKmh?: number; code?: string };
   rain?: { nowcast?: Array<{ minutesFromNow: number; precipMmHr: number }> };
   sun?: { elevationDeg: number; progress01: number; hourAngleDeg?: number };
 }
@@ -115,6 +127,16 @@ export function KioskSunroomWeather() {
   const rain01 = mmHr >= RAIN_FLOOR_MM_HR ? clamp01(mmHr / RAIN_FULL_MM_HR) : 0;
   const cloud01 = clamp01((ok.current?.cloudCoverPct ?? 0) / 100);
   const windKmh = Math.max(0, ok.current?.windKmh ?? 0);
+  const fog = ok.current?.code === "fog";
+
+  // Civil-twilight band: peaks at -2° elevation (sun just under the horizon,
+  // the classic "mist deepens at dusk" light) and fades to 0 by +6°/-10°.
+  const dusk01 = clamp01(1 - Math.abs(sun.elevationDeg + 2) / 8);
+
+  // Rain already shows wind via the streak angle above — a gust sweep on top
+  // of that would be two signals for one fact, so gusts are rain-exclusive.
+  const gust = windKmh >= 30 && rain01 === 0;
+  const showParticles = !reduced && (rain01 > 0 || fog || gust);
 
   /* Rain leans with the wind, but only so far: past about 18° a streak field
      stops reading as weather and starts reading as a screen-door texture. 40
@@ -158,7 +180,7 @@ export function KioskSunroomWeather() {
 
   const showRain = rain01 > 0 && !reduced;
   const showCloud = cloudA > 0;
-  if (!showRain && !showCloud && !showStars) return null;
+  if (!showRain && !showCloud && !showStars && !showParticles) return null;
 
   return (
     <div aria-hidden className="kiosk-sr-weather pointer-events-none fixed inset-0 overflow-hidden" style={{ zIndex: -1 }}>
@@ -290,6 +312,10 @@ export function KioskSunroomWeather() {
             );
           })}
         </div>
+      )}
+
+      {showParticles && (
+        <KioskSunroomParticles rain01={rain01} fog={fog} windKmh={windKmh} isDark={isDark} dusk01={dusk01} />
       )}
     </div>
   );
