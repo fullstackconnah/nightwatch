@@ -61,6 +61,15 @@ export interface WeatherSun {
    *  client can extrapolate the sun's position between this module's
    *  15-minute weather fetches without another round trip. */
   hourAngleDeg: number;
+  /** True compass bearing of the sun, 0..360: 0 = north, 90 = east,
+   *  180 = south, 270 = west. Optional — mirrors `hourAngleDeg`'s own
+   *  cache-compat story on the client (a response cached from before this
+   *  field existed arrives without it), even though this server always
+   *  computes it now. Unlike `hourAngleDeg`, azimuth's rate of change isn't
+   *  constant (it depends on latitude, declination and hour angle together,
+   *  and swings fastest near solar noon), so callers should NOT extrapolate
+   *  it between fetches the way they do the hour angle. */
+  azimuthDeg?: number;
 }
 
 /** 15-minute precipitation nowcast (next ~90 min) plus a 12-hour probability
@@ -239,7 +248,11 @@ function radToDeg(r: number): number {
   return (r * 180) / Math.PI;
 }
 
-function solarPosition(date: Date, latDeg: number, lonDeg: number): { elevationDeg: number; hourAngleDeg: number } {
+function solarPosition(
+  date: Date,
+  latDeg: number,
+  lonDeg: number,
+): { elevationDeg: number; hourAngleDeg: number; azimuthDeg: number } {
   const jd = date.getTime() / 86400000 + 2440587.5;
   const T = (jd - 2451545.0) / 36525;
   const L0 = (280.46646 + T * (36000.76983 + T * 0.0003032)) % 360;
@@ -277,7 +290,23 @@ function solarPosition(date: Date, latDeg: number, lonDeg: number): { elevationD
   const zenithRad = Math.acos(
     Math.sin(latRad) * Math.sin(declRad) + Math.cos(latRad) * Math.cos(declRad) * Math.cos(degToRad(hourAngleDeg)),
   );
-  return { elevationDeg: 90 - radToDeg(zenithRad), hourAngleDeg };
+
+  // True compass azimuth, via the standard atan2 form (avoids the acos
+  // branch-by-hour-angle-sign the older NOAA spreadsheet formula needs, and
+  // is well-behaved at the zenith where that acos form divides by ~0).
+  // `azFromSouthRad` is measured from solar SOUTH, positive turning WEST —
+  // 0 at solar noon (H=0), +90° at H=+90° (mid-afternoon, sun in the west),
+  // -90° at H=-90° (mid-morning, sun in the east). Rotating by +180° turns
+  // that into a standard compass bearing: 0 = north, 90 = east, 180 = south,
+  // 270 = west.
+  const hourAngleRad = degToRad(hourAngleDeg);
+  const azFromSouthRad = Math.atan2(
+    Math.sin(hourAngleRad),
+    Math.cos(hourAngleRad) * Math.sin(latRad) - Math.tan(declRad) * Math.cos(latRad),
+  );
+  const azimuthDeg = (radToDeg(azFromSouthRad) + 180 + 360) % 360;
+
+  return { elevationDeg: 90 - radToDeg(zenithRad), hourAngleDeg, azimuthDeg };
 }
 
 /** `currentIso`/`sunriseIso`/`sunsetIso` are all Open-Meteo-issued naive
@@ -285,7 +314,7 @@ function solarPosition(date: Date, latDeg: number, lonDeg: number): { elevationD
  *  (rather than converting through the server's own local clock) is what
  *  keeps `progress01` correct without a timezone library. */
 function buildSun(cfg: DisplayConfig, currentIso: string | null, sunriseIso: string | null, sunsetIso: string | null): WeatherSun {
-  const { elevationDeg, hourAngleDeg } = solarPosition(new Date(), cfg.lat, cfg.lon);
+  const { elevationDeg, hourAngleDeg, azimuthDeg } = solarPosition(new Date(), cfg.lat, cfg.lon);
   const rising = hourAngleDeg < 0;
 
   let phase: WeatherSun["phase"];
@@ -305,7 +334,7 @@ function buildSun(cfg: DisplayConfig, currentIso: string | null, sunriseIso: str
     }
   }
 
-  return { elevationDeg, phase, progress01, hourAngleDeg };
+  return { elevationDeg, phase, progress01, hourAngleDeg, azimuthDeg };
 }
 
 // --- rain nowcast + summary microcopy ----------------------------------------

@@ -35,7 +35,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import { useKioskTheme } from "@/components/kiosk-theme";
-import { sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
+import { sunroomLightVector, sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
 
 /** Matches KioskSky's cadence so SWR dedupes the two subscriptions into one
  *  request — both components read the same key and neither pays for the other.
@@ -144,6 +144,10 @@ interface SunroomWeatherOk {
      *  response cached from before that field existed would arrive without
      *  it, and the theme must not break on a stale cache. */
     hourAngleDeg?: number;
+    /** Same cache-compat story as `hourAngleDeg`. When present, redirects the
+     *  shadow's DIRECTION to true sun geometry; when absent (stale cache),
+     *  the stop ramp's own hand-tuned direction is left untouched. */
+    azimuthDeg?: number;
   };
 }
 
@@ -218,6 +222,35 @@ export function KioskSunroomLight() {
     const rain01 = rainIntensity01(nowcastMmHr ?? currentPrecipMm);
     const { palette, light, isDark, crossing } = sunroomStateAt(t, { cloud01, rain01 });
 
+    // Direction override: when the feed carries a true azimuth, redirect the
+    // shadow to point where the sun actually is instead of the stop ramp's
+    // hand-tuned guess, while keeping every stop-driven quality (magnitude,
+    // blur, alphas, colours) exactly as `sunroomStateAt` already produced it.
+    // `light.lightX/lightY` themselves are left untouched below (they still
+    // feed the emitted CSS as a fallback shape) — only these two locals
+    // change, and only when azimuth is actually present.
+    let lightX = light.lightX;
+    let lightY = light.lightY;
+    if (typeof sun.azimuthDeg === "number" && Number.isFinite(sun.azimuthDeg)) {
+      // Azimuth is deliberately NOT extrapolated between polls the way
+      // hourAngle is (see DEG_PER_MINUTE above): hourAngle is defined to
+      // advance a uniform 15°/hour, but azimuth's rate depends on latitude,
+      // declination and hour angle all at once and swings fastest near solar
+      // noon — a linear extrapolation would visibly drift within a single
+      // 15-minute window. Riding the fetch cadence instead costs nothing
+      // visible, the same trade this file already makes for elevation.
+      const magnitude = Math.hypot(light.lightX, light.lightY);
+      const vector = sunroomLightVector(sun.azimuthDeg, sun.elevationDeg, magnitude);
+      // Below the horizon there's no sun to point a shadow at, and the stop
+      // ramp's own night value collapses lightX to 0 (see sunroom-light.ts).
+      // Fade the geometric override back to that stop-tuned direction over
+      // the same civil-twilight band the ramp itself treats as dark, so the
+      // geometry never points a below-horizon tablet at a sun nobody can see.
+      const geoWeight = Math.min(1, Math.max(0, (sun.elevationDeg + 4) / 8));
+      lightX = light.lightX + (vector.x - light.lightX) * geoWeight;
+      lightY = light.lightY + (vector.y - light.lightY) * geoWeight;
+    }
+
     // Rounded on the way out: sub-pixel and sub-percent precision here buys
     // nothing visually and would churn the emitted string on every tick,
     // invalidating the style element for no reason.
@@ -248,8 +281,8 @@ export function KioskSunroomLight() {
   --sr-ok: ${palette.ok};
   --sr-warn: ${palette.warn};
   --sr-bad: ${palette.bad};
-  --sr-light-x: ${px(light.lightX)};
-  --sr-light-y: ${px(light.lightY)};
+  --sr-light-x: ${px(lightX)};
+  --sr-light-y: ${px(lightY)};
   --sr-blur: ${px(light.blur)};
   --sr-shadow-a: ${num(light.shadowA)};
   --sr-highlight-a: ${num(light.highlightA)};

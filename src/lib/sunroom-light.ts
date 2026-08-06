@@ -365,6 +365,63 @@ function clamp01(n: number): number {
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
 }
 
+function degToRad(d: number): number {
+  return (d * Math.PI) / 180;
+}
+
+/**
+ * Maps true solar azimuth + elevation onto a shadow-offset vector, so the
+ * DIRECTION of `--sr-light-x/y` can come from real sun geometry while every
+ * other tuned quality (magnitude, blur, alphas, colours) keeps coming from
+ * the stop ramp above unchanged. The caller passes in the magnitude it wants
+ * preserved — typically `hypot(lightX, lightY)` from a stop-interpolated
+ * `SunroomLight` — and this function only ever redirects that same length.
+ *
+ * BEARING is measured from solar SOUTH, not north, because that is the axis
+ * the stop ramp's own sign convention already runs on: `lightX` is positive
+ * at dawn/morning (light from the east, sun east of south) and negative at
+ * golden/dusk (light from the west, sun west of south) — see the `lightX`
+ * doc on `SunroomLight`. `sin(180° - azimuth)` reproduces exactly that S
+ * curve: 0 at due south (azimuth 180, matches midday's lightX = 0), +1 at
+ * due east (azimuth 90), -1 at due west (azimuth 270) — so a caller that
+ * feeds this a stop-tuned magnitude gets a vector whose SIGN always agrees
+ * with the shipped mornings and afternoons, only the exact angle is now real.
+ *
+ * LENGTH is the elevation half: a horizon sun (elevation ~0°) throws the
+ * longest shadow, an overhead sun (elevation ~90°) the shortest. The
+ * 0.4..1.0 range (never 0..1) matches the stops themselves, which never zero
+ * out `lightY` even at midday (it bottoms at 8px there) — a shadow directly
+ * underfoot still has SOME length, it doesn't vanish.
+ *
+ * The combined (x, y) is then RESCALED, not reshaped, to keep its length
+ * inside [0.5, 1.6] x magnitude: a horizon sun's shadow must lengthen well
+ * past the tuned magnitude (elongation at low sun is the whole point) but
+ * never run off to an unbounded diagonal just because the x and y terms
+ * both happened to peak at the same instant.
+ */
+export function sunroomLightVector(azimuthDeg: number, elevationDeg: number, magnitude: number): { x: number; y: number } {
+  if (
+    !Number.isFinite(azimuthDeg) ||
+    !Number.isFinite(elevationDeg) ||
+    !Number.isFinite(magnitude) ||
+    magnitude <= 0
+  ) {
+    return { x: 0, y: 0 };
+  }
+
+  const bearingRad = degToRad(180 - azimuthDeg);
+  const elevRad = degToRad(elevationDeg);
+
+  const x = magnitude * Math.sin(bearingRad);
+  const y = magnitude * (0.4 + 0.6 * Math.cos(elevRad));
+
+  const len = Math.hypot(x, y);
+  if (len === 0) return { x: 0, y: 0 };
+  const clampedLen = Math.min(1.6 * magnitude, Math.max(0.5 * magnitude, len));
+  const scale = clampedLen / len;
+  return { x: x * scale, y: y * scale };
+}
+
 /** Wraps any real number into [0, STOP_COUNT). */
 function wrapT(t: number): number {
   if (!Number.isFinite(t)) return 0;
