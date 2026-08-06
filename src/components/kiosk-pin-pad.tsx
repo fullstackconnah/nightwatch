@@ -202,7 +202,13 @@ export function KioskPinPad({
                 disabled={busy || lockedUntil !== null}
                 onClick={() => press(key)}
                 aria-label={key === "back" ? "Backspace" : `digit ${key}`}
-                className="h-14 rounded-md border border-line text-ink font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none active:scale-[0.98] transition"
+                // kiosk-press replaces active:scale-[0.98] + the bare
+                // `transition` utility (see globals.css's KIOSK MOTION
+                // VOCABULARY) — `.kiosk-press` already transitions
+                // background-color/border-color, which is all the hover
+                // state here touches. These are the most-pressed controls on
+                // the whole surface, so this is where the new feel matters most.
+                className="h-14 rounded-md border border-line text-ink font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none kiosk-press"
               >
                 {key === "back" ? <Delete size={18} className="mx-auto" /> : key}
               </button>

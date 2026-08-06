@@ -253,7 +253,11 @@ export function KioskRadarModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       aria-hidden={false}
-      className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/90 px-4 backdrop-blur-sm transition-opacity motion-reduce:transition-none"
+      // Same bg-bg/60 backdrop-blur-md as kiosk-climate.tsx's modal scrim —
+      // the two modals shouldn't disagree about what a scrim is. See that
+      // file's comment for the reasoning (90%+blur-sm reads as a flat black
+      // wall; 60%+real blur reads as out-of-focus depth).
+      className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/60 px-4 backdrop-blur-md transition-opacity motion-reduce:transition-none"
       style={{ ...transitionStyle, opacity: shown ? 1 : 0 }}
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) requestClose();

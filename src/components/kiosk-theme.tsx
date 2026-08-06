@@ -21,6 +21,7 @@
    without converting the kiosk layout to a client boundary wholesale. */
 
 import { useEffect, useState } from "react";
+import { KioskSheen } from "@/components/kiosk-sheen";
 import { DEFAULT_THEME_FONTS, kioskFontValue, useKioskFonts } from "@/lib/kiosk-fonts";
 import {
   Archivo,
@@ -306,6 +307,30 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       style={style}
     >
       {children}
+      {/* KioskSheen (stamps `data-sheen` for the sunroom edge-sweep pseudo-
+          element) and the leaks div below both belong at the END of this
+          div, not the front, and for the same reason `<KioskSky />` is not
+          mounted HERE at all: kiosk/layout.tsx mounts it as the FIRST element
+          of `children`, specifically so this module never has to import
+          kiosk-sky.tsx back (kiosk-sky.tsx already imports useKioskTheme FROM
+          here — see its own STACKING NOTE and layout.tsx's comment on the
+          module-cycle this avoids). Because `<KioskSky />` is always inside
+          the opaque `children` blob, this div cannot splice a sibling BETWEEN
+          two of its elements — only before all of them or after all of them.
+          Before would invert the intended stack: per kiosk-sky.tsx's STACKING
+          NOTE, this div's negative-z-index children paint in DOM order among
+          themselves, earliest first, so a leaks div placed before `children`
+          would paint UNDER `<KioskSky />` — the sky's blobs on top of the
+          leaks wedges, the exact bug that note warns against. AFTER
+          `children` still keeps `<KioskSky />` painting first (it is
+          children's own first element) and is unaffected by every panel in
+          between, because normal-flow content paints in its own step of CSS
+          painting order regardless of a negative-z-index sibling's DOM
+          position — "after every real child, including the panels" still
+          resolves to "below every panel, above the sky," which is the actual
+          requirement. */}
+      <KioskSheen />
+      <div aria-hidden className="kiosk-leaks" />
     </div>
   );
 }

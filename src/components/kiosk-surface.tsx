@@ -360,16 +360,33 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
   // probes) already owns that signal via the takeover/badge/tray, so this
   // line stays a plain running-count reading rather than a second, quieter
   // echo of the same fact.
+  // The breath goes on the "running" CAPTION only — never the dot (a status
+  // dot pulses for unhealthy/restarting per DESIGN.md, and a healthy dot that
+  // breathes too would teach the reader that motion here means nothing) and
+  // never the count itself (a figure has to stay legible from 3m at every
+  // point in the breathe cycle, and its trough dips to 0.62). Gated on
+  // `health.status === "ready"`, not just "there's data": ready-stale and
+  // unreachable-empty both still render this branch with a stale `data.running`
+  // on screen, and a caption that keeps breathing over a feed that stopped
+  // updating is a lie told slowly — it visually claims liveness the data no
+  // longer has.
+  const breathing = health.status === "ready";
   return full ? (
     <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-ink-dim">
       <span className="dot dot-running" aria-hidden />
       {health.data.running}
-      <span className="microlabel">running</span>
+      <span className={cn("microlabel", breathing && "kiosk-breathe")}>running</span>
       {health.status === "ready-stale" && <StaleTag />}
     </div>
   ) : (
     <div ref={registerRef} className="text-base text-ink-dim">
-      <span className="font-mono tabular-nums">{health.data.running}</span> running
+      {/* `{" "}` rather than relying on the source's own whitespace: the literal
+          space between the count and "running" used to be free (one text node,
+          same line), but wrapping "running" in its own span to carry the class
+          puts a JSX expression boundary between them, and that boundary is
+          exactly where JSX's whitespace trimming can eat an implicit space. */}
+      <span className="font-mono tabular-nums">{health.data.running}</span>{" "}
+      <span className={cn(breathing && "kiosk-breathe")}>running</span>
       {health.status === "ready-stale" && <span className="microlabel !text-warn ml-2">stale</span>}
     </div>
   );
@@ -719,7 +736,14 @@ export function KioskSurface({
                    occupies x923-1004/y16-72 at 1024px. Staying in this row —
                    the one the timer and Admin already share — keeps this
                    button below that band without reserving any width. */
-                className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+                // No bare `active:scale-[0.98]` existed here before — this
+                // control just never got the press treatment the rest of the
+                // kiosk did. Adding `.kiosk-press` anyway rather than leaving
+                // it alone: at 44px (h-11) it's already at the touch floor,
+                // and every other pressable control on this surface now
+                // springs back on release, so a silent one here would be the
+                // one dead button on the panel.
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
               >
                 <Minimize2 size={14} aria-hidden />
                 <span>Glance</span>
@@ -821,6 +845,12 @@ function RevealBlock({
   return (
     <div
       aria-hidden={overlay || undefined}
+      // Lets DESCENDANTS carrying `.kiosk-rise` assemble as this block
+      // reveals — see globals.css's "the unfolding" block. This node itself
+      // still crossfades exactly as before (the classes/style below are
+      // unchanged); the attribute only arms the staggered rise on whatever
+      // is nested inside it, and only while not yet revealed.
+      data-kiosk-enter={revealed ? undefined : "pending"}
       className={cn(
         "transition-opacity ease-out motion-reduce:transition-none",
         /* gap-6, down from gap-10. Glance is now a fixed-height box (see the
@@ -836,6 +866,23 @@ function RevealBlock({
       )}
       style={{ transitionDuration: `${durationMs}ms` }}
     >
+      {children}
+    </div>
+  );
+}
+
+/** One pane of the unfolding. `index` is its place in reading order; the
+ *  30ms-per-step delay and the travel live in globals.css's `.kiosk-rise`.
+ *  Wrapping is safe HERE specifically because none of `FullContent`'s three
+ *  top-level children are FLIP-registered nodes — all four shared FLIP
+ *  elements (clock/temp/forecast/server-line) live inside the `<header>`
+ *  above, not in this subtree. Do not assume a wrapper div is free anywhere
+ *  else on this surface: around a FLIP-registered node it would remount the
+ *  measured element and kill the animation (see kiosk-surface's own THESIS
+ *  and the header's nth-child comment in globals.css). */
+function Rise({ index, className, children }: { index: number; className?: string; children: ReactNode }) {
+  return (
+    <div className={cn("kiosk-rise", className)} style={{ "--kiosk-rise-i": index } as React.CSSProperties}>
       {children}
     </div>
   );
@@ -861,17 +908,28 @@ function FullContent({
 }) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3">
-      <KioskDisplay period={period} />
+      <Rise index={0}>
+        <KioskDisplay period={period} />
+      </Rise>
 
       {elevated && expiresAt !== null && (
-        <div className="flex flex-col items-center gap-4">
+        <Rise index={1} className="flex flex-col items-center gap-4">
           <KioskVoicePanel />
           <KioskAppearance layout={layout} onLayoutChange={onLayoutChange} />
           <KioskAdminPanel expiresAt={expiresAt} onLock={onLock} />
-        </div>
+        </Rise>
       )}
 
-      <KioskHub />
+      {/* No flex-affecting classes to carry across here: KioskHub's own root
+          (`<div className="space-y-2.5">`) carries none itself, so as a
+          default flex item (flex: 0 1 auto, same as every other child of
+          this flex-col) it sizes to its content whether the wrapper is here
+          or not — unlike a child that declared `flex-1`/`min-h-0`, which
+          this wrapper would have had to inherit to avoid changing the
+          layout. */}
+      <Rise index={2}>
+        <KioskHub />
+      </Rise>
     </div>
   );
 }

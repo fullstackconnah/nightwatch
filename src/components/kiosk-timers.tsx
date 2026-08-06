@@ -248,7 +248,13 @@ export function KioskTimersButton({ className }: { className?: string }) {
         onClick={() => setOpen(true)}
         aria-label={list.length > 0 ? `Timers — ${list.length} set` : "Timers"}
         className={cn(
-          "flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+          // kiosk-press replaces active:scale-[0.98] + the bare `transition`
+          // utility (see globals.css's KIOSK MOTION VOCABULARY) — this file has
+          // eight such sites; `.kiosk-press` already transitions
+          // background-color/border-color/color for all of them. The `animate-pulse`
+          // below (finished state) is untouched: it animates opacity, which
+          // `.kiosk-press` does not own.
+          "flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
           finished
             ? "animate-pulse border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
             : active
@@ -474,7 +480,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
           <button
             type="button"
             onClick={() => removeTimer(timer.id)}
-            className="h-11 min-w-24 rounded-md border border-warn/40 bg-warn/10 px-4 text-sm text-warn outline-none transition hover:bg-warn/20 focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+            className="h-11 min-w-24 rounded-md border border-warn/40 bg-warn/10 px-4 text-sm text-warn outline-none kiosk-press hover:bg-warn/20 focus-visible:ring-1 focus-visible:ring-accent"
           >
             Done
           </button>
@@ -484,7 +490,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
               type="button"
               onClick={() => (paused ? resumeTimer(timer.id) : pauseTimer(timer.id))}
               aria-label={paused ? `Resume ${timer.name}` : `Pause ${timer.name}`}
-              className="flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink-dim outline-none transition hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+              className="flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink-dim outline-none kiosk-press hover:border-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
             >
               {paused ? <Play size={16} /> : <Pause size={16} />}
             </button>
@@ -492,7 +498,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
               type="button"
               onClick={() => removeTimer(timer.id)}
               aria-label={`Cancel ${timer.name}`}
-              className="h-11 rounded-md border border-bad/30 px-4 text-sm text-bad outline-none transition hover:bg-bad/10 focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+              className="h-11 rounded-md border border-bad/30 px-4 text-sm text-bad outline-none kiosk-press hover:bg-bad/10 focus-visible:ring-1 focus-visible:ring-accent"
             >
               Cancel
             </button>
@@ -520,7 +526,7 @@ function PresetRow({
             ref={i === 0 ? firstFocusRef : undefined}
             type="button"
             onClick={() => addTimer(p.name, p.minutes)}
-            className="h-11 rounded-tile border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+            className="h-11 rounded-tile border border-line px-3 text-xs text-ink-dim outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
           >
             {p.name} <span className="font-mono tabular-nums text-ink-faint">{p.minutes}m</span>
           </button>
@@ -563,7 +569,7 @@ function CustomRow() {
             type="button"
             onClick={() => setMinutes((m) => m + step)}
             aria-label={`Add ${step} minute${step > 1 ? "s" : ""}`}
-            className="h-11 min-w-11 rounded-md border border-line px-2.5 font-mono text-sm text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+            className="h-11 min-w-11 rounded-md border border-line px-2.5 font-mono text-sm text-ink-dim outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
           >
             +{step}
           </button>
@@ -574,7 +580,10 @@ function CustomRow() {
           onClick={() => setMinutes(0)}
           aria-label="Clear minutes"
           disabled={minutes === 0}
-          className="h-11 rounded-md border border-line px-3 text-xs text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+          // disabled:pointer-events-none disabled:opacity-40: `.kiosk-press`'s
+          // own rule is `:active:not(:disabled)`, so this button correctly
+          // stops depressing once disabled rather than fighting the opacity dim.
+          className="h-11 rounded-md border border-line px-3 text-xs text-ink-dim outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
         >
           Clear
         </button>
@@ -583,7 +592,9 @@ function CustomRow() {
           type="button"
           onClick={start}
           disabled={minutes <= 0}
-          className="h-11 rounded-md border border-accent/30 bg-accent/10 px-4 text-sm text-accent outline-none transition hover:bg-accent/20 focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+          // Same disabled:not(:disabled) reasoning as the Clear button above —
+          // `.kiosk-press` correctly withholds the depression once disabled.
+          className="h-11 rounded-md border border-accent/30 bg-accent/10 px-4 text-sm text-accent outline-none kiosk-press hover:bg-accent/20 focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
         >
           Start
         </button>

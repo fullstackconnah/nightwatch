@@ -102,7 +102,12 @@ function GlanceLights() {
             aria-label={`${l.on ? "Turn off" : "Turn on"} ${l.name}`}
             onClick={() => void ha.runAction({ entityId: l.entityId, action: "toggle" })}
             className={cn(
-              "flex h-14 min-w-0 shrink items-center gap-1.5 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+              // kiosk-press replaces active:scale-[0.98] + the bare
+              // `transition` utility (see globals.css's KIOSK MOTION
+              // VOCABULARY) — `.kiosk-press` already transitions
+              // background-color/border-color/color, which is all this
+              // pill's own hover/on-state swap touches.
+              "flex h-14 min-w-0 shrink items-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
               l.on
                 ? "border-accent/40 bg-accent/10 text-accent"
                 : "border-line text-ink-dim hover:border-line-bright hover:bg-panel-2 hover:text-ink",
@@ -229,7 +234,16 @@ export function KioskGlance({
         // below the 4.5:1 AA floor on Glance's panel-less ground in 7/16
         // themes — this is an interactive control, not a caption, so it
         // gets ink-dim regardless of where ink-faint itself ends up landing.
-        className="fixed h-14 px-4 rounded-md text-xs text-ink-dim outline-none transition hover:text-ink hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
+        //
+        // ADDITION, not a conversion: this was the only kiosk control with no
+        // press feedback at all — a 56px control on the primary resting
+        // surface with zero response to touch. `kiosk-press` (see globals.css's
+        // KIOSK MOTION VOCABULARY) is new here, and the bare `transition`
+        // utility that used to carry the hover colour swap is dropped for the
+        // same reason as every converted site: `.kiosk-press` already
+        // transitions background-color/color, so a second, layered
+        // `transition` utility would have been inert dead weight underneath it.
+        className="fixed h-14 px-4 rounded-md text-xs text-ink-dim outline-none kiosk-press hover:text-ink hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
       >
         Admin
       </button>

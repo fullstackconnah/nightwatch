@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import type { HostVitals } from "@/lib/client";
@@ -56,6 +57,84 @@ export function useKioskVitals(refreshMs = 5000) {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
+}
+
+export interface KioskVitalsSample {
+  ts: number;
+  cpu: number;
+  mem: number;
+  rx: number;
+  tx: number;
+}
+
+/** Samples kept in useKioskVitalsHistory's ring buffer. At the hook's 5s
+ *  default poll interval, 48 * 5s = 240s = 4 minutes: long enough that a
+ *  spike someone noticed walking past is still on screen by the time they
+ *  reach the wall tablet to look at it, short enough that the buffer stays
+ *  bounded on a kiosk screen that can stay open for days without a reload. */
+const HISTORY_CAPACITY = 48;
+
+/**
+ * Wraps useKioskVitals in a client-side ring buffer, for kiosk-spark.tsx's
+ * trend charts. /kiosk/api/vitals returns HostVitals — ONE instant per field,
+ * no history — and there is no time-series store anywhere else in the kiosk
+ * data path: useTelemetryStream's ring (src/lib/client.ts) is SSE-backed and
+ * authenticated-dashboard-only, and /kiosk is deliberately unauthenticated,
+ * so it cannot be wired to that instead. This buffers independently,
+ * client-side, from whatever useKioskVitals already polls.
+ *
+ * Deliberately calls useKioskVitals rather than opening a second
+ * useSWR("/kiosk/api/vitals") key — same route, same refreshMs, so sharing
+ * the one call keeps this from doubling the poll rate against the host
+ * metrics route.
+ */
+export function useKioskVitalsHistory(refreshMs = 5000): {
+  data: HostVitals | undefined;
+  error: unknown;
+  isLoading: boolean;
+  history: KioskVitalsSample[];
+} {
+  const { data, error, isLoading } = useKioskVitals(refreshMs);
+  const [history, setHistory] = useState<KioskVitalsSample[]>([]);
+  // The ts of the last sample actually appended — compared against
+  // `data.ts`, not against the previous `data` reference, so a revalidation
+  // that hands back the identical object (see below) is caught by value, not
+  // by luck of reference equality.
+  const lastTsRef = useRef<number | undefined>(undefined);
+
+  useEffect(() => {
+    // No data yet (first paint) — nothing to buffer.
+    if (!data) return;
+    // SWR's `keepPreviousData` hands back the SAME `data` object across a
+    // failed revalidation (see useFreshness's doc comment above), and this
+    // effect's dependency array can't tell that apart from a render caused
+    // by something else re-rendering the tree — either way `data` here is
+    // the exact reference from last time, same `ts` and all. Appending on
+    // every one of those renders would fill the 48-slot buffer with copies
+    // of one reading in seconds; comparing `ts` instead of trusting "the
+    // effect ran" means a failed poll silently stops growing the buffer
+    // without any extra failure-detection logic of its own.
+    if (data.ts === lastTsRef.current) return;
+    lastTsRef.current = data.ts;
+    setHistory((prev) => {
+      // Functional updater + immutable append: a ref alone would survive
+      // re-renders but never trigger one, and the chart needs a re-render
+      // every time the buffer actually grows.
+      const next = [
+        ...prev,
+        {
+          ts: data.ts,
+          cpu: data.cpu.percent,
+          mem: data.memory.percent,
+          rx: data.network.rxPerSec,
+          tx: data.network.txPerSec,
+        },
+      ];
+      return next.length > HISTORY_CAPACITY ? next.slice(next.length - HISTORY_CAPACITY) : next;
+    });
+  }, [data]);
+
+  return { data, error, isLoading, history };
 }
 
 /** Ambient container health counts — hits the public /kiosk/api/health route. */

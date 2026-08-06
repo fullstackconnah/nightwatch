@@ -163,7 +163,11 @@ export function KioskForecastRail({
              the redesign spent real effort removing. Full mode is the
              up-close view; the ring makes it a target, per the rail's own rule
              that a border here means something you press. */
-          className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-ink-dim outline-none ring-1 ring-line transition hover:text-ink hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]"
+          // kiosk-press replaces active:scale-[0.98] + the bare `transition`
+          // utility (see globals.css's KIOSK MOTION VOCABULARY) — the hover
+          // ring-colour swap is a box-shadow change, which `.kiosk-press`
+          // already transitions, so the Tailwind utility was dead weight.
+          className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-ink-dim outline-none ring-1 ring-line kiosk-press hover:text-ink hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent"
         >
           <Radar size={15} aria-hidden />
         </button>

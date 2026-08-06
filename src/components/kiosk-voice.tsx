@@ -153,7 +153,11 @@ export function KioskVoicePanel() {
             disabled={busy}
             aria-label={micLabel()}
             className={cn(
-              "h-24 w-24 rounded-full flex items-center justify-center border outline-none focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none transition-colors",
+              // kiosk-press replaces active:scale-[0.98] + `transition-colors`
+              // (see globals.css's KIOSK MOTION VOCABULARY) — `transition-colors`
+              // IS redundant now: colour is already in `.kiosk-press`'s own
+              // transition property list, so the Tailwind utility was dead weight.
+              "h-24 w-24 rounded-full flex items-center justify-center border outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:opacity-50 disabled:pointer-events-none",
               recording
                 ? "bg-accent/15 border-accent/50 text-accent voice-mic-recording"
                 : "bg-panel-2 border-line text-ink-dim hover:text-ink hover:border-line-bright",

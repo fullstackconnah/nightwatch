@@ -30,6 +30,8 @@ import { Power, SlidersHorizontal, X } from "lucide-react";
 import type { HaClimate, HaEntities } from "@/lib/ha-types";
 import type { UseKioskHaResult } from "@/components/kiosk-hub";
 import { cn } from "@/lib/utils";
+import { KioskThermalField } from "@/components/kiosk-thermal";
+import { KioskDigitReel } from "@/components/kiosk-digits";
 
 // TODO(kiosk-motion): swap these for KIOSK_POP_MS / KIOSK_EASE_OUT /
 // KIOSK_REDUCED_MS exported from src/lib/kiosk-motion.ts once agent A lands
@@ -97,8 +99,12 @@ function prefersReducedMotion(): boolean {
 // hairline ring only on hover/active/focus so the cluster reads as open
 // ground rather than a boxed control pair (redesign-06 ban on decorative
 // chrome).
+// kiosk-press replaces the bare active:scale-[0.98] this used to carry —
+// leaving both would have meant two competing `transform` rules fighting
+// over the same press (see globals.css's own comment on `.kiosk-press`'s
+// cascade-layer reasoning).
 const NUDGE_BUTTON =
-  "flex h-14 w-14 shrink-0 items-center justify-center rounded-tile font-mono text-lg text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40";
+  "flex h-14 w-14 shrink-0 items-center justify-center rounded-tile font-mono text-lg text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40";
 
 // The corner expand button is still a real 56px hit target (touch floor
 // invariant holds regardless of where a control sits), but it visually reads
@@ -135,8 +141,12 @@ const NUDGE_BUTTON =
 const EXPAND_BUTTON =
   "kiosk-hitarea group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
 
+// Same kiosk-press swap as NUDGE_BUTTON above, in place of the
+// group-active:scale-[0.98] this chip used to carry — the chip is the actual
+// visible affordance (EXPAND_BUTTON itself is deliberately chromeless), so
+// its own :active is what kiosk-press now answers to.
 const EXPAND_BUTTON_CHIP =
-  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
+  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";
 
 /** Mirrors EXPAND_BUTTON on the opposite corner. Same 56px touch target, same
  *  negative offset so it overhangs the tile's own padding rather than stealing
@@ -145,8 +155,9 @@ const EXPAND_BUTTON_CHIP =
 const POWER_BUTTON =
   "kiosk-hitarea group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
 
+// Same kiosk-press swap, mirrored from EXPAND_BUTTON_CHIP above.
 const POWER_BUTTON_CHIP =
-  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent group-active:scale-[0.98]";
+  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";
 
 /** Which mode "on" means for a given unit.
  *
@@ -394,6 +405,16 @@ const TARGET_HOLD_TTL_MS = 20_000;
  *  equality isn't safe to trust at face value. */
 const TARGET_EPSILON = 0.05;
 
+/** How long the tile/modal stay in "adjusting" isolation after a nudge tap,
+ *  reset on every tap so a run of them reads as one continuous interaction.
+ *  Deliberately NOT TARGET_HOLD_TTL_MS (20s) below: that write hold can sit
+ *  unresolved for the full 20 seconds if HA never confirms the value, and
+ *  driving focus isolation off it would leave the OTHER tiles blurred for 20
+ *  seconds after a single tap on this one — the nudge case the brief names
+ *  needs the isolation to lift the moment a finger actually stops moving,
+ *  not to wait out a round-trip that might not even be finished. */
+const FOCUS_HOLD_MS = 1200;
+
 interface TargetControl {
   /** What to render: the locally held pending write while one is in flight,
    *  otherwise HA's own targetTemp. Null exactly when targetTemp itself is
@@ -405,6 +426,18 @@ interface TargetControl {
    *  when it doesn't advertise one) — never a raw degree delta, so this hook
    *  is the only place that needs to know the unit's step size. */
   bump: (direction: 1 | -1) => void;
+  /** True for FOCUS_HOLD_MS after the most recent bump(), timer reset on
+   *  each bump. Feeds the tile's onAdjustingChange and the modal's in-panel
+   *  depth-of-field isolation — see FOCUS_HOLD_MS above for why this is a
+   *  separate, much shorter signal than the write hold. */
+  interacting: boolean;
+  /** +1/-1 the direction displayTarget most recently moved, 0 if
+   *  unknown/initial — feeds KioskDigitReel so the reel rolls the way the
+   *  value actually went rather than guessing. Prefers the direction of the
+   *  user's own bump() press (the truth about the gesture) and falls back to
+   *  comparing displayTarget against its own previous value only for a
+   *  change that arrives from HA rather than from a press. */
+  reelDirection: 1 | -1 | 0;
 }
 
 /** Owns the displayed target for a SINGLE-setpoint climate tile — the only
@@ -423,6 +456,22 @@ function useTargetControl(climate: HaClimate, ha: UseKioskHaResult): TargetContr
   const min = climate.minTemp ?? -Infinity;
   const max = climate.maxTemp ?? Infinity;
   const step = climate.targetTempStep ?? NUDGE_STEP;
+  const displayTarget = pendingTarget ?? climate.targetTemp;
+
+  // Adjusting isolation (Task B.3): a separate timer from the write hold
+  // above, on purpose — see FOCUS_HOLD_MS's own comment.
+  const [interacting, setInteracting] = useState(false);
+  const interactingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Reel direction (Task D.1): which way displayTarget last moved, for
+  // KioskDigitReel. bumpDirectionRef carries the gesture's own truth from
+  // bump() into the effect below the moment displayTarget actually changes,
+  // then clears itself — an HA-originated change with no bump in between
+  // finds the ref empty and falls through to inferring direction from the
+  // sign of the change instead.
+  const [reelDirection, setReelDirection] = useState<1 | -1 | 0>(0);
+  const bumpDirectionRef = useRef<1 | -1 | null>(null);
+  const prevDisplayRef = useRef<number | null>(displayTarget);
 
   function clearTimers() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -463,6 +512,31 @@ function useTargetControl(climate: HaClimate, ha: UseKioskHaResult): TargetContr
   // that unmounts its own instance shouldn't fire a stale setState later).
   useEffect(() => clearTimers, []);
 
+  // The new interacting timer is a separate ref from clearTimers' pair
+  // above (debounce/TTL) precisely so a normal write-hold expiry (commit's
+  // own TTL) doesn't also cut the adjusting isolation short — but it still
+  // must not outlive the tile.
+  useEffect(() => {
+    return () => {
+      if (interactingTimerRef.current) clearTimeout(interactingTimerRef.current);
+    };
+  }, []);
+
+  // Tracks which way displayTarget last moved, for KioskDigitReel — see
+  // reelDirection's own doc comment on TargetControl for why bump()'s own
+  // gesture takes priority over this inference.
+  useEffect(() => {
+    if (prevDisplayRef.current != null && displayTarget != null && displayTarget !== prevDisplayRef.current) {
+      if (bumpDirectionRef.current != null) {
+        setReelDirection(bumpDirectionRef.current);
+        bumpDirectionRef.current = null;
+      } else {
+        setReelDirection(displayTarget > prevDisplayRef.current ? 1 : -1);
+      }
+    }
+    prevDisplayRef.current = displayTarget;
+  }, [displayTarget]);
+
   function commit(value: number) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -499,14 +573,27 @@ function useTargetControl(climate: HaClimate, ha: UseKioskHaResult): TargetContr
     const next = Math.round(snapped * 1000) / 1000;
     setPendingTarget(next);
     commit(next);
+
+    // The gesture's own direction — consumed by the reelDirection effect
+    // above the moment this render's displayTarget change lands, so the reel
+    // rolls the way the tap actually went rather than waiting to infer it.
+    bumpDirectionRef.current = direction;
+
+    // Adjusting isolation: true immediately, with the timer RESET on every
+    // bump (not merely started once) so a run of taps stays one continuous
+    // interaction instead of the isolation flickering off between taps.
+    setInteracting(true);
+    if (interactingTimerRef.current) clearTimeout(interactingTimerRef.current);
+    interactingTimerRef.current = setTimeout(() => setInteracting(false), FOCUS_HOLD_MS);
   }
 
-  const displayTarget = pendingTarget ?? climate.targetTemp;
   return {
     displayTarget,
     lowerDisabled: displayTarget != null && displayTarget <= min,
     raiseDisabled: displayTarget != null && displayTarget >= max,
     bump,
+    interacting,
+    reelDirection,
   };
 }
 
@@ -516,10 +603,20 @@ export function KioskClimateTile({
   ha,
   climate,
   entities,
+  focused,
+  onAdjustingChange,
 }: {
   ha: UseKioskHaResult;
   climate: HaClimate;
   entities: HaEntities;
+  /** True when this tile is the one currently being adjusted — see
+   *  kiosk-hub.tsx's ClimateSection, which owns the grid-level
+   *  `data-kiosk-focus`/`adjustingId` state this drives (contract in
+   *  .claude/state/kiosk-motion-contract.md). */
+  focused?: boolean;
+  /** Reports the start and end of a live adjustment on this tile, so the
+   *  grid can arm/disarm the depth-of-field isolation on its siblings. */
+  onAdjustingChange?: (adjusting: boolean) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const advancedButtonRef = useRef<HTMLButtonElement>(null);
@@ -576,6 +673,16 @@ export function KioskClimateTile({
   // since climate.targetTemp is null there and this hook's own displayTarget
   // then stays null too; the dual-setpoint UI below keeps using `nudge`.
   const targetControl = useTargetControl(climate, ha);
+
+  // Reports targetControl.interacting ONLY — deliberately NOT modalOpen.
+  // The modal covers the whole viewport when open, so defocusing the tiles
+  // behind it is invisible work nobody on the kiosk can see; the grid-level
+  // isolation this callback drives exists for the nudge-tap case the brief
+  // actually names (adjusting a tile while its siblings are still visible),
+  // and modalOpen has nothing to do with that case.
+  useEffect(() => {
+    onAdjustingChange?.(targetControl.interacting);
+  }, [targetControl.interacting, onAdjustingChange]);
 
   /* The four mode setters all go through useModeHolds now, and all four have
      LOST the optimistic HaEntities snapshot they used to pass. That snapshot
@@ -639,7 +746,29 @@ export function KioskClimateTile({
   return (
     <div
       className={cn(
-        "relative flex flex-col items-center gap-2 rounded-tile border p-3 text-center transition-colors",
+        // `transition-colors` REMOVED — it is now inert, not merely
+        // redundant. `.kiosk-defocus` (globals.css) is UNLAYERED CSS
+        // declaring its own `transition:` shorthand, and Tailwind v4 puts
+        // its own utilities inside `@layer utilities`; by the cascade-layers
+        // spec, an unlayered declaration beats a layered one outright
+        // regardless of specificity, so `.kiosk-defocus`'s `transition`
+        // deletes `transition-colors` completely rather than merely
+        // outranking it for the properties they share. The tile's own
+        // colour transition moves to an inline `style` below instead —
+        // inline style is the one thing that outranks unlayered CSS too.
+        "relative flex flex-col items-center gap-2 rounded-tile border p-3 text-center",
+        // isolate: makes this tile root a stacking context, which is what
+        // lets KioskThermalField's `-z-10` layer paint above this tile's own
+        // background and below its text WITHOUT escaping to some ancestor's
+        // stacking context instead — see kiosk-thermal.tsx's own comment on
+        // the point.
+        "isolate",
+        // kiosk-defocus: this tile is itself a sibling inside
+        // ClimateSection's `data-kiosk-focus` group (kiosk-hub.tsx) — when
+        // another tile is being adjusted, this one recedes with the rest.
+        "kiosk-defocus",
+        // kiosk-sheen requires `relative`, which this root already carries.
+        "kiosk-sheen",
         // The SAME on-state vocabulary the light and switch pills already use
         // (kiosk-hub.tsx's ToggleChip): accent border, accent wash, accent
         // glyph. A climate unit that's running is the same kind of fact as a
@@ -649,7 +778,30 @@ export function KioskClimateTile({
         isOn ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2",
         !climate.available && "opacity-60",
       )}
+      // This tile is the one being adjusted (ClimateSection's `focused`
+      // prop) — exempts it from the blur/dim `[data-kiosk-focus="on"]
+      // .kiosk-defocus` rule applies to its unfocused siblings, and (per
+      // globals.css's FILTER IS A CONTAINING BLOCK note) keeps it eligible
+      // to host this tile's own modal without re-parenting a fixed dialog
+      // into a blurred, 2cm-wide containing block.
+      data-kiosk-focused={focused ? "true" : undefined}
+      // NO inline `transitionProperty` here, and that is a fix rather than an
+      // omission. This tile carried one to get background-color/border-color
+      // into the transition list that `.kiosk-defocus` owns — and an inline
+      // declaration outranks a `@media (prefers-reduced-motion: reduce)` rule
+      // just as thoroughly as it outranks a cascade layer, so it silently
+      // defeated the reduced-motion escape: measured on the test stack with
+      // reduced motion on, this tile still reported
+      // `transition-property: opacity, filter, background-color, border-color`.
+      // `.kiosk-defocus` names all four itself now, so the one place that turns
+      // motion off can reach every one of them.
     >
+      {/* First child, and using shownHvacMode (not climate.hvacMode): the
+          streams must switch the instant the user picks a mode, for exactly
+          the reason useModeHolds exists — climate.hvacMode can sit on HA's
+          stale answer for seconds after a tap. */}
+      <KioskThermalField hvacMode={shownHvacMode} currentTemp={climate.currentTemp} targetTemp={climate.targetTemp} />
+
       {canPower && (
         <button
           type="button"
@@ -736,12 +888,23 @@ export function KioskClimateTile({
               dualSetpoint ? "text-sm" : "text-base",
             )}
           >
-            {dualSetpoint
-              ? formatTempRange(climate.targetTempLow, climate.targetTempHigh, climate.unit)
-              : // The held value (see useTargetControl) — NOT climate.targetTemp
-                // directly, or a tap would show the exact stomped-then-stale
-                // number this whole hook exists to fix.
-                formatTemp(targetControl.displayTarget, climate.unit)}
+            {dualSetpoint ? (
+              // A two-value range with a dash is not a dial — the
+              // dual-setpoint path stays plain text, unchanged.
+              formatTempRange(climate.targetTempLow, climate.targetTempHigh, climate.unit)
+            ) : (
+              // The reel goes on the TARGET, never the current reading: the
+              // target is the number you turn, and the current temperature
+              // is the room answering — rolling the room's answer would
+              // claim the wall panel had changed it. The held value (see
+              // useTargetControl) — NOT climate.targetTemp directly, or a
+              // tap would show the exact stomped-then-stale number this
+              // whole hook exists to fix.
+              <KioskDigitReel
+                text={formatTemp(targetControl.displayTarget, climate.unit)}
+                direction={targetControl.reelDirection}
+              />
+            )}
           </div>
         </div>
 
@@ -826,6 +989,8 @@ function ModeChipGroup({
   displayLabel,
   ariaLabel,
   onSelect,
+  className,
+  focused,
 }: {
   /** The visible heading — see GroupHeading. `groupLabel` stays the
    *  entity-qualified accessible name ("Kitchen fan speed"); this is the short
@@ -839,10 +1004,16 @@ function ModeChipGroup({
   displayLabel: (mode: string) => string;
   ariaLabel: (mode: string) => string;
   onSelect: (mode: string) => void;
+  /** Passed by the modal so this group can carry `kiosk-defocus` — a chip tap
+   *  is a single instant write, not a sustained interaction, so no group here
+   *  ever sets `data-kiosk-focused`; it only ever recedes when SOME OTHER
+   *  group in the modal is being adjusted. */
+  className?: string;
+  focused?: boolean;
 }) {
   if (options.length === 0) return null;
   return (
-    <div className="mt-6" role="group" aria-label={groupLabel}>
+    <div className={cn("mt-6", className)} role="group" aria-label={groupLabel} data-kiosk-focused={focused ? "true" : undefined}>
       <GroupHeading title={title} value={current ? displayLabel(current) : undefined} />
       <div className="flex flex-wrap justify-center gap-2">
         {options.map((mode) => (
@@ -854,7 +1025,10 @@ function ModeChipGroup({
             disabled={pending}
             onClick={() => onSelect(mode)}
             className={cn(
-              "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40",
+              // kiosk-press replaces the bare active:scale-[0.98] this chip
+              // used to carry — see NUDGE_BUTTON's comment above for why
+              // leaving both would fight over one `transform`.
+              "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40",
               current === mode
                 ? "border-accent/30 bg-accent/10 text-accent"
                 : "border-line text-ink-dim hover:bg-panel hover:text-ink",
@@ -917,6 +1091,9 @@ function FanSpeedSlider({
   current,
   pending,
   onSelect,
+  className,
+  focused,
+  onDraggingChange,
 }: {
   groupLabel: string;
   title: string;
@@ -924,6 +1101,14 @@ function FanSpeedSlider({
   current?: string;
   pending: boolean;
   onSelect: (mode: string) => void;
+  /** Passed by the modal so this group can carry `kiosk-defocus`. */
+  className?: string;
+  focused?: boolean;
+  /** Reports `dragIndex !== null` — the modal owns the actual boolean state
+   *  (Task D.2 needs it to decide the PANEL's `data-kiosk-focus`), so this
+   *  lifts just the derived flag rather than moving `dragIndex` itself out of
+   *  this component, which still needs it privately for the thumb position. */
+  onDraggingChange?: (dragging: boolean) => void;
 }) {
   /* `current` is already the tile's HELD value (useModeHolds), so this index is
      the requested level from the moment a write is issued — the slider itself
@@ -938,6 +1123,14 @@ function FanSpeedSlider({
   useEffect(() => {
     if (dragIndex !== null && committedIndex === dragIndex) setDragIndex(null);
   }, [committedIndex, dragIndex]);
+
+  // Reports the drag boundary only — this is the ENTIRE reason a `dragIndex
+  // !== null` check exists on the modal side too, rather than the modal
+  // trying to infer dragging from `current` changing (which also happens on
+  // the non-drag, held-value-catches-up path above).
+  useEffect(() => {
+    onDraggingChange?.(dragIndex !== null);
+  }, [dragIndex, onDraggingChange]);
 
   // A pending write must not outlive the modal — closing it mid-drag should
   // drop the uncommitted position rather than fire an IR command at a panel
@@ -969,7 +1162,12 @@ function FanSpeedSlider({
   }
 
   return (
-    <div className="mt-6" role="group" aria-label={groupLabel}>
+    <div
+      className={cn("mt-6", className)}
+      role="group"
+      aria-label={groupLabel}
+      data-kiosk-focused={focused ? "true" : undefined}
+    >
       <GroupHeading
         title={title}
         // Mid-drag this is the level under your thumb (not yet written);
@@ -1071,6 +1269,15 @@ function KioskClimateModal({
   // twice would hand each branch a fresh array identity for no reason.
   const fanModes = climate.fanModes ?? [];
 
+  // In-modal focus isolation (Task D.2): while a control inside the modal is
+  // being adjusted, the other control groups recede. Two independent sources
+  // count as "adjusting" — the fan slider's own drag (lifted out via
+  // onDraggingChange, since FanSpeedSlider keeps dragIndex private) and the
+  // shared targetControl's interacting flag (the same signal the tile itself
+  // uses for the grid-level isolation, Task B.4).
+  const [fanDragging, setFanDragging] = useState(false);
+  const adjusting = targetControl.interacting || fanDragging;
+
   // Entrance: flip `entered` a frame after mount so the transition actually
   // animates from the initial (opacity 0, scale 0.96) style rather than
   // snapping straight to the end state. Skipped under reduced-motion, per the
@@ -1144,7 +1351,16 @@ function KioskClimateModal({
   return (
     <div
       aria-hidden={false}
-      className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/90 px-4 backdrop-blur-sm transition-opacity motion-reduce:transition-none"
+      // bg-bg/60 backdrop-blur-md, not the old /90 + blur-sm: at 90% opacity
+      // the room behind reads as a flat black wall and the blur underneath
+      // does nothing visible; at 60% with a real blur it reads as
+      // out-of-focus depth — the room is still there, just behind glass —
+      // which is what makes the modal feel like it's in FRONT of the room
+      // rather than swapped in for it. Safe on text contrast: the panel
+      // itself is `.panel`, an OPAQUE surface (globals.css: `background:
+      // var(--color-panel)`, no alpha channel), so nothing about the modal's
+      // own copy sits over this backdrop at all.
+      className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/60 px-4 backdrop-blur-md transition-opacity motion-reduce:transition-none"
       style={{ ...transitionStyle, opacity: shown ? 1 : 0 }}
       // Backdrop click closes; target===currentTarget guards against a tap on
       // a real control inside the panel bubbling up and closing unintentionally.
@@ -1159,6 +1375,10 @@ function KioskClimateModal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
+        // Arms the same depth-of-field isolation the climate grid uses
+        // (Task B.2), scoped to this panel's own control groups instead of
+        // sibling tiles — see `adjusting` above.
+        data-kiosk-focus={adjusting ? "on" : undefined}
         /* max-h/overflow-y: four labelled groups plus the setpoint pair is a
            tall panel (measured 718px at a 800px-high viewport BEFORE the
            headings landed), and a wall tablet in landscape has less height than
@@ -1183,7 +1403,15 @@ function KioskClimateModal({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4">
+        {/* Current/target readout — its own kiosk-defocus group (Task D.2):
+            recedes when the fan slider is being dragged, and is itself the
+            focused group while the target is being nudged (same signal as
+            the nudge row below — a target nudge changes what this block
+            shows, so the two stay in focus together). */}
+        <div
+          className="kiosk-defocus flex flex-wrap items-center justify-center gap-x-8 gap-y-4"
+          data-kiosk-focused={targetControl.interacting ? "true" : undefined}
+        >
           <div className="text-center">
             <div className="microlabel">Current</div>
             <div className="mt-1 font-mono text-4xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
@@ -1191,26 +1419,37 @@ function KioskClimateModal({
           <div className="text-center">
             <div className="microlabel">Target</div>
             <div className="mt-1 font-mono text-3xl text-accent">
-              {dualSetpoint
-                ? `${formatTemp(climate.targetTempLow, climate.unit)} – ${formatTemp(climate.targetTempHigh, climate.unit)}`
-                : // Same held value the tile renders (targetControl is the
-                  // tile's own hook instance, threaded through as a prop) —
-                  // the modal must never read climate.targetTemp directly, or
-                  // it would show the exact stomped-then-stale number this
-                  // hook exists to hide.
-                  formatTemp(targetControl.displayTarget, climate.unit)}
+              {dualSetpoint ? (
+                // A two-value range with a dash is not a dial — stays plain
+                // text, same as the tile's own dual-setpoint branch.
+                `${formatTemp(climate.targetTempLow, climate.unit)} – ${formatTemp(climate.targetTempHigh, climate.unit)}`
+              ) : (
+                // Same held value the tile renders (targetControl is the
+                // tile's own hook instance, threaded through as a prop) —
+                // the modal must never read climate.targetTemp directly, or
+                // it would show the exact stomped-then-stale number this
+                // hook exists to hide. Reel, not plain text, for the same
+                // reason the tile uses one: this is the number you turn.
+                <KioskDigitReel
+                  text={formatTemp(targetControl.displayTarget, climate.unit)}
+                  direction={targetControl.reelDirection}
+                />
+              )}
             </div>
           </div>
         </div>
 
         {nudgeable && (
-          <div className="mt-6 flex items-center justify-center gap-4">
+          <div
+            className="kiosk-defocus mt-6 flex items-center justify-center gap-4"
+            data-kiosk-focused={targetControl.interacting ? "true" : undefined}
+          >
             <button
               type="button"
               aria-label={`Lower target temperature for ${climate.name}`}
               disabled={pending || (!dualSetpoint && targetControl.lowerDisabled)}
               onClick={() => (dualSetpoint ? onNudge(-NUDGE_STEP) : targetControl.bump(-1))}
-              className="flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              className="kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
             >
               −
             </button>
@@ -1219,7 +1458,7 @@ function KioskClimateModal({
               aria-label={`Raise target temperature for ${climate.name}`}
               disabled={pending || (!dualSetpoint && targetControl.raiseDisabled)}
               onClick={() => (dualSetpoint ? onNudge(NUDGE_STEP) : targetControl.bump(1))}
-              className="flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              className="kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
             >
               +
             </button>
@@ -1235,6 +1474,7 @@ function KioskClimateModal({
           displayLabel={(mode) => HVAC_LABEL[mode] ?? mode}
           ariaLabel={(mode) => `Set ${climate.name} to ${HVAC_LABEL[mode] ?? mode} mode`}
           onSelect={onSetMode}
+          className="kiosk-defocus"
         />
 
         {/* Fan/preset/swing (work item 2/3): only rendered when THIS entity's
@@ -1252,6 +1492,9 @@ function KioskClimateModal({
             current={shownModes.fanMode}
             pending={pending}
             onSelect={onSetFanMode}
+            className="kiosk-defocus"
+            focused={fanDragging}
+            onDraggingChange={setFanDragging}
           />
         ) : (
           <ModeChipGroup
@@ -1263,6 +1506,7 @@ function KioskClimateModal({
             displayLabel={(mode) => mode}
             ariaLabel={(mode) => `Set ${climate.name} fan speed to ${mode}`}
             onSelect={onSetFanMode}
+            className="kiosk-defocus"
           />
         )}
 
@@ -1275,6 +1519,7 @@ function KioskClimateModal({
           displayLabel={(mode) => titleCase(mode)}
           ariaLabel={(mode) => `Set ${climate.name} preset to ${mode}`}
           onSelect={onSetPresetMode}
+          className="kiosk-defocus"
         />
 
         <ModeChipGroup
@@ -1286,6 +1531,7 @@ function KioskClimateModal({
           displayLabel={(mode) => titleCase(mode)}
           ariaLabel={(mode) => `Set ${climate.name} swing to ${mode}`}
           onSelect={onSetSwingMode}
+          className="kiosk-defocus"
         />
 
         {error && (

@@ -108,8 +108,12 @@ function useEmptyReport(empty: boolean, reportEmpty?: (empty: boolean) => void) 
 // Same button shape kiosk-glance.tsx's GlanceTiles used for its auto-picked
 // tiles, lifted here as the shared visual for the lights/scenes widgets now
 // that each is its own pane rather than a merged, capped pick.
+// kiosk-press replaces active:scale-[0.98] + the bare `transition` utility
+// (see globals.css's KIOSK MOTION VOCABULARY) — `.kiosk-press` already
+// transitions background-color/border-color/color, which is all TILE_ON/
+// TILE_OFF's own swap below touches.
 const TILE_BASE =
-  "min-h-16 min-w-32 max-w-48 rounded-tile border px-4 py-3 text-sm outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]";
+  "min-h-16 min-w-32 max-w-48 rounded-tile border px-4 py-3 text-sm outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent";
 const TILE_ON = "border-accent/40 bg-accent/10 text-ink";
 const TILE_OFF = "border-line bg-transparent text-ink-dim hover:border-line-bright hover:text-ink";
 

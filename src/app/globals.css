@@ -690,11 +690,19 @@ body {
 /* The one affordance soft-UI genuinely owes a touchscreen: pressing a raised
    thing should push it in. The shadow pair inverts to `inset` and shrinks, so
    the button reads as depressed into the same lit surface rather than merely
-   tinted. Fast — this is feedback, not an animation. */
+   tinted. Fast — this is feedback, not an animation.
+
+   RETIMED onto the shared press variables (see KIOSK MOTION VOCABULARY at the
+   end of this file). This selector is (0,1,1) and `.kiosk-press` is (0,1,0),
+   so a sunroom button would otherwise have kept a symmetric 120ms in both
+   directions and been the one theme where a released control does not spring
+   back. The `:active` rule below is untouched and still outranks the shared
+   one, which is correct — under sunroom the shadow inversion IS the bevel
+   bloom, and it is a better one than a generic inset highlight. */
 [data-kiosk-theme="sunroom"] button {
   transition:
-    box-shadow 120ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
+    transform var(--kiosk-press-out-ms) var(--kiosk-ease-spring);
 }
 [data-kiosk-theme="sunroom"] button:active {
   box-shadow:
@@ -1326,4 +1334,491 @@ body {
    browser default. */
 .kiosk-dense {
   font-size: 0.875rem;
+}
+
+/* ══ KIOSK MOTION VOCABULARY ═══════════════════════════════════════════════
+   One block for every authored motion primitive on /kiosk, so the surface has
+   a single motion language instead of a per-component habit. Before this,
+   timing lived in three places at once: kiosk-motion.ts (the JS constants the
+   FLIP and the modals use), a hand-typed `transition` on the sunroom button
+   rule, and ~20 call sites carrying a bare Tailwind `transition` whose real
+   duration was whatever the framework default happened to be. The classes
+   below are what a component reaches for; the custom properties are what they
+   are all made of.
+
+   SOURCE OF TRUTH. src/lib/kiosk-motion.ts owns the numbers that JavaScript
+   also needs to know (KIOSK_MOVE_MS / KIOSK_FADE_MS / KIOSK_POP_MS /
+   KIOSK_REDUCED_MS / KIOSK_EASE_OUT), because a WAAPI call cannot read a CSS
+   custom property without a getComputedStyle round-trip per animation. The
+   four durations and one easing below that mirror it are marked; change both
+   or neither. The values that exist only here — the press pair, the focus
+   pull, the breath, the sheen, the stagger step — have no JS counterpart on
+   purpose, and nothing should give them one.
+
+   WHY EVERY REST STATE IS THE VISIBLE ONE. `.kiosk-rise` sharp and opaque,
+   `.kiosk-defocus` undimmed, no `filter` declared at rest. The hidden and
+   blurred states are only ever reached through an attribute an ancestor sets
+   (`data-kiosk-enter`, `data-kiosk-focus`), so a script that never runs, or
+   that throws halfway, leaves a readable wall panel rather than a blank one.
+   On a screen with no keyboard and nobody watching it boot, that asymmetry is
+   the difference between a bug and an outage.
+
+   FILTER IS A CONTAINING BLOCK. `filter` on an element re-parents every
+   `position: fixed` descendant to it. Two rules here declare one — the rise's
+   focus-pull and the defocus blur — and both are written so no filtered
+   element can be an ancestor of an open modal: the rise's filter exists only
+   during a 420ms mode entrance (no modal survives a mode change), and the
+   defocus blur explicitly exempts the element carrying
+   `data-kiosk-focused="true"`, which is the one a modal is ever mounted
+   inside. Add a third `filter` here without checking that and the climate
+   modal will silently mount inside a 2cm-wide tile. */
+
+:root {
+  /* Mirrors of src/lib/kiosk-motion.ts — see SOURCE OF TRUTH above. */
+  --kiosk-move-ms: 420ms;
+  --kiosk-fade-ms: 180ms;
+  --kiosk-pop-ms: 260ms;
+  --kiosk-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* CSS-only. The press is deliberately TWO durations, not one: a finger
+     landing wants the surface to move under it now (90ms, linear — any ease
+     on something this short only reads as lag), and the release wants weight
+     (240ms on a curve that overshoots 1 and settles back). One symmetric
+     duration is what makes a flat touchscreen feel like a picture of a
+     button rather than a button. */
+  --kiosk-press-in-ms: 90ms;
+  --kiosk-press-out-ms: 240ms;
+  /* The spring. Overshoots to ~1.06 of the travel before settling, so a
+     released control arrives with a small snap. Reserved for RELEASE and for
+     a value landing on a dial — never for an entrance, where an overshoot on
+     a wall panel reads as the layout being unsure of itself. */
+  --kiosk-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --kiosk-focus-ms: 200ms;
+  --kiosk-breathe-ms: 3500ms;
+  --kiosk-sheen-ms: 620ms;
+  /* Per-item entrance offset. 30ms is small enough that six panes still
+     finish within one move (6 x 30 + 420 = 600ms) and large enough to read
+     as an order rather than a wobble. The cap is the point: a stagger whose
+     total exceeds its own travel stops being one gesture. */
+  --kiosk-stagger-ms: 30ms;
+  --kiosk-reel-ms: 320ms;
+}
+
+/* ── the unfolding: staggered rise + focus pull ────────────────────────────
+   Applied to each pane that should assemble when the surface unfolds from
+   glance into full. `--kiosk-rise-i` is the pane's position in reading order,
+   set at the call site; a pane that forgets it just arrives first, which is
+   the correct failure.
+
+   The `filter` is the "glass settling" half. It is a real blur on the pane
+   itself rather than `backdrop-filter`, and that is not a shortcut: every
+   surface on this kiosk is an OPAQUE `.panel`, so a backdrop filter has
+   nothing behind it to sample and resolves to a no-op on all 16 themes. A
+   pane resolving from blurred to sharp is the effect that was actually
+   wanted — a plate of glass coming into focus as it seats — and it is the
+   one that survives an opaque ground. */
+.kiosk-rise {
+  transition:
+    opacity var(--kiosk-fade-ms) ease-out calc(var(--kiosk-rise-i, 0) * var(--kiosk-stagger-ms)),
+    transform var(--kiosk-move-ms) var(--kiosk-ease-out) calc(var(--kiosk-rise-i, 0) * var(--kiosk-stagger-ms)),
+    filter var(--kiosk-move-ms) var(--kiosk-ease-out) calc(var(--kiosk-rise-i, 0) * var(--kiosk-stagger-ms));
+}
+[data-kiosk-enter="pending"] .kiosk-rise {
+  opacity: 0;
+  transform: translate3d(0, 0.875rem, 0);
+  filter: blur(5px);
+  /* Exit carries NO stagger and no travel time. animate.md's rule is that a
+     surface leaves faster than it arrives, and a staggered exit is worse than
+     merely slow: it spends 600ms telling you about a view you have already
+     left. */
+  transition-delay: 0ms;
+  transition-duration: var(--kiosk-fade-ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The order is still true, so the panes still arrive — they just arrive at
+     once, sharp, with no travel. Removing the transition rather than the
+     pending state is what keeps this a swap instead of a flash of hidden
+     content. */
+  .kiosk-rise {
+    transition: none;
+  }
+  [data-kiosk-enter="pending"] .kiosk-rise {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+/* ── the press: depression, bevel bloom, spring release ────────────────────
+   Replaces a bare `active:scale-[0.98]` on the kiosk's controls. 0.98 on a
+   56px touch target is a 1.1px move — below the threshold at which a press
+   registers as physical at all, which is why the wall panel felt like glass
+   with pictures on it. 0.96 is 2.2px, and paired with the two-curve timing
+   above it reads as a thing that went in and came back.
+
+   The bloom is the second half. `.panel`'s entire elevation vocabulary is a
+   1px inset top highlight at 3% ink (DESIGN.md, The No-Shadow Rule) — this
+   brightens that exact device to 20% for the duration of the press, so a
+   pressed control is lit along its own top bevel rather than growing a
+   shadow the system does not have. Derived from `--color-ink` via
+   color-mix, never a literal rgba, so it follows all 16 palettes.
+
+   SUNROOM OWNS ITS OWN BLOOM. `[data-kiosk-theme="sunroom"] button:active`
+   (0,2,1) already inverts the raised shadow pair to inset and outranks the
+   `:active` rule below (0,2,0) — under that theme the press-in IS the bloom
+   and is better than this one, so nothing here needs an opt-out. The
+   transition on that same rule was retimed to these variables so the release
+   springs there too. */
+/* THE PROPERTY LIST IS FIVE LONG FOR A CASCADE REASON, not because a press
+   moves five things. Everything in this file is UNLAYERED, and Tailwind v4
+   puts its own utilities inside `@layer utilities` — so by the cascade-layers
+   spec an unlayered declaration beats a layered one outright, regardless of
+   specificity. Measured with getComputedStyle on a control carrying both:
+   with `transition-colors duration-… ease-…` present alongside this class,
+   `transitionProperty` came back as `transform, box-shadow` and those three
+   utilities were entirely inert.
+   That means a two-property list here does not merely coexist with a
+   control's colour transition — it DELETES it, and every kiosk toggle would
+   have started snapping its on/off wash instantly the moment it gained a
+   press treatment. Naming the colour properties here is the fix, and it lands
+   the brief's "elastic toggle" for free: a control's wash now arrives on the
+   same spring its scale does, from one declaration, instead of each call site
+   re-stating a duration this block already owns. */
+.kiosk-press {
+  transition:
+    transform var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
+    box-shadow var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
+    background-color var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
+    border-color var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
+    color var(--kiosk-press-out-ms) var(--kiosk-ease-spring);
+}
+.kiosk-press:active:not(:disabled) {
+  transform: scale(0.96);
+  box-shadow: inset 0 1px 1px color-mix(in srgb, var(--color-ink) 20%, transparent);
+  transition-duration: var(--kiosk-press-in-ms);
+  transition-timing-function: linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The press still reports — it just doesn't travel. Keeping the bloom and
+     dropping the scale is the right half to keep: the highlight says "this
+     took the press", and it says it without moving anything. */
+  .kiosk-press {
+    transition: none;
+  }
+  .kiosk-press:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ── liveness: the breath ──────────────────────────────────────────────────
+   A slow opacity cycle meaning "this link is alive", for marks that are not
+   readings: an accent liveness dot, a caption beside a live figure. Never on
+   a status dot (DESIGN.md reserves pulsing for `unhealthy` and `restarting`,
+   and a healthy dot that breathes is how a wall panel teaches its reader that
+   motion means nothing), and never on the figure itself — the trough bottoms
+   at 0.62 rather than the 0.4 a decorative breath would use, because
+   anything carrying a number has to stay legible from 3m at every point in
+   the cycle. A caller must also gate this on freshness: a stale or
+   unreachable feed that keeps breathing is a lie told slowly. */
+@keyframes kiosk-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+.kiosk-breathe {
+  animation: kiosk-breathe var(--kiosk-breathe-ms) ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-breathe {
+    animation: none;
+  }
+}
+
+/* ── depth of field: focus isolation ──────────────────────────────────────
+   While something is being adjusted, everything that is not it recedes. The
+   mechanism is two attributes and one class: an ancestor takes
+   `data-kiosk-focus="on"`, the element being adjusted takes
+   `data-kiosk-focused="true"`, and every sibling marked `.kiosk-defocus`
+   drops back. Dim AND blur, not dim alone: opacity by itself reads as
+   "disabled", while a blur reads as "further away", and the difference
+   matters on a surface where a dimmed control usually means you cannot press
+   it. These siblings stay pressable throughout — nothing here touches
+   pointer-events.
+
+   The `:not([data-kiosk-focused="true"])` is load-bearing beyond taste: the
+   focused element is the one a modal mounts inside, and blurring it would
+   re-parent that fixed modal into a tile-sized containing block. See FILTER
+   IS A CONTAINING BLOCK at the top of this section. */
+/* The colour properties are named here for the same cascade reason spelled out
+   on `.kiosk-press` above — an unlayered `transition:` shorthand replaces any
+   layered Tailwind `transition-colors` outright — and for a second reason that
+   only applies to this class: a call site cannot fix it with an inline style.
+   The climate tile tried exactly that (an inline `transitionProperty` listing
+   opacity/filter/background-color/border-color) and it defeated the
+   reduced-motion escape below, because an inline declaration outranks a
+   `@media` rule in unlayered CSS just as thoroughly as it outranks a layer.
+   Measured on the test stack: with reduced motion on, that tile still reported
+   `transition-property: opacity, filter, background-color, border-color`.
+   Naming them here means the one place that turns motion off can still reach
+   every property. */
+.kiosk-defocus {
+  transition:
+    opacity var(--kiosk-focus-ms) ease-out,
+    filter var(--kiosk-focus-ms) ease-out,
+    background-color var(--kiosk-focus-ms) ease-out,
+    border-color var(--kiosk-focus-ms) ease-out;
+}
+[data-kiosk-focus="on"] .kiosk-defocus:not([data-kiosk-focused="true"]) {
+  opacity: 0.25;
+  filter: blur(4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The isolation is information, so it stays; only the 200ms ramp goes. */
+  .kiosk-defocus {
+    transition: none;
+  }
+}
+
+/* ── sunroom: the refractive edge sweep ───────────────────────────────────
+   Sunlight catching the edge of an etched pane when you touch it. A specular
+   band travels along the pane's 1px border — the border only, which is the
+   whole idea: a sweep across the face would be a shine effect on a card,
+   while a sweep along the edge is light finding the one part of a glass sheet
+   that refracts. The border-only shape comes from the two-layer mask below
+   (full box minus content box, composited out), which is the one way to paint
+   a 1px ring with a gradient in it.
+
+   SUNROOM ONLY, on the owner's call. Every other theme's panes are opaque
+   material — hairline steel on the dark ones, paper and slate on the light —
+   and a refraction highlight on paper is a costume. Here it is the same sun
+   that is already lighting the room: the band's colour is the theme's own
+   live `--sr-highlight-rgb` and its strength rides `--sr-warmth`, so it is a
+   bright glint at golden hour and almost nothing at midnight.
+
+   `data-sheen` is stamped by kiosk-sheen.tsx for exactly one animation and
+   removed on `animationend`. The rule renders NOTHING without it, so the
+   pseudo-element does not exist at rest — no extra layer sitting on 40 panes
+   for the hours this screen spends untouched.
+
+   A `.kiosk-sheen` ELEMENT MUST POSITION ITSELF. This block deliberately does
+   not declare `position: relative` on the class, and that is a correctness
+   constraint rather than tidiness: the kiosk's full-mode header is
+   `panel kiosk-hdr-grid sticky top-0`, and a later `position: relative` from
+   here would silently override `sticky` and unpin the header — a whole class
+   of bug for a highlight. Mark a pane with `.kiosk-sheen` only when it already
+   carries `relative` (or add it at that call site), and never blanket-apply
+   this to `.panel`.
+
+   115deg, not the 45deg of the brief: at 45 the band is as long as the
+   pane's diagonal and crosses the whole ring at once, which reads as a wipe
+   over the tile. Leaning ~25 off vertical keeps it a short travelling glint
+   that arrives at one edge, runs the border, and leaves — the diagonal shaft
+   the brief is describing, at the angle where it still reads as one. */
+@keyframes kiosk-sheen-sweep {
+  from {
+    background-position: -75% 0;
+  }
+  to {
+    background-position: 175% 0;
+  }
+}
+[data-kiosk-theme="sunroom"] .kiosk-sheen[data-sheen]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  pointer-events: none;
+  background-image: linear-gradient(
+    115deg,
+    transparent 38%,
+    rgba(var(--sr-highlight-rgb, 255, 255, 255), calc(0.45 + 0.45 * var(--sr-warmth))) 50%,
+    transparent 62%
+  );
+  background-size: 250% 100%;
+  background-repeat: no-repeat;
+  /* The `#000` in these four gradients is NOT a colour and is not palette
+     drift: a mask samples only the ALPHA channel, so every one of them means
+     "fully opaque" and any hue would render identically. Reaching for a
+     palette token here would be worse than a literal — it would claim the mask
+     had a colour worth keeping in sync with the theme. Two layers, composited
+     `exclude`: the full box minus the content box leaves exactly the 1px
+     `padding` ring, which is the only way to paint a hairline border with a
+     travelling gradient inside it. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: kiosk-sheen-sweep var(--kiosk-sheen-ms) var(--kiosk-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Nothing static to keep. A stopped glint is a bright smear on one edge of
+     the pane, which is worse than no glint — so the whole pseudo-element
+     goes rather than just its animation. */
+  [data-kiosk-theme="sunroom"] .kiosk-sheen[data-sheen]::after {
+    display: none;
+  }
+}
+
+/* ── sunroom: corner light leaks ──────────────────────────────────────────
+   Light entering the room at the frame, as distinct from the sky beyond it.
+   KioskSky (kiosk-sky.tsx) already paints the sun's own colour as two soft
+   blobs drifting up the middle of the screen on EVERY theme, and that layer
+   is not duplicated here — it is the sky. This is what that sky does when it
+   reaches a glazed corner: two wedges at the top edges, the near one bright
+   and the far one barely there, swapping sides as the sun crosses.
+
+   `--sr-light-x` is the same shadow-offset vector the panels are lit by, so
+   the leaks and every panel highlight on screen agree about where the sun
+   is, by construction rather than by matching values. The 6% multiplier
+   turns that ~10px offset into a readable slide of each wedge along the top
+   edge; `--sr-warmth` gates the whole thing, so the leaks bloom at dawn and
+   golden hour and are effectively absent at midday and at night.
+
+   ON THE ACHROMATIC RULE. The ground wash above this file's sunroom block is
+   achromatic by rule, and deliberately so — a second coloured wash under
+   KioskSky's would leave two suns disagreeing across the same pixels. These
+   leaks carry hue and do not break that rule: they are spatially disjoint
+   from the wash (top corners vs. a centre pool), they are mixed from the
+   theme's own `--color-warn` rather than a picked amber, and their intensity
+   is a function of the same `--sr-warmth` that KioskSky's warm phases peak
+   with. Same sun, agreeing at the frame. */
+/* z-index -1, and mounted immediately AFTER <KioskSky /> rather than before
+   it. Both layers are negative-z-index descendants of the same stacking root
+   (the KioskThemeScope div — see kiosk-sky.tsx's STACKING NOTE for why that
+   root has to exist at all), so they paint in DOM order as one group beneath
+   every in-flow child: sky, then leaks, then panels. A z-index of 0 here
+   would look equivalent and is not — a positioned z-index:0 element paints in
+   step 8 of CSS painting order, which is AFTER the inline text of its
+   non-positioned later siblings in step 7, and the leaks would wash over
+   every panel's own figures. */
+[data-kiosk-theme="sunroom"] .kiosk-leaks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image:
+    radial-gradient(
+      42% 30% at calc(6% + var(--sr-light-x) * 6) -4%,
+      color-mix(in srgb, var(--color-warn) calc(3% + 16% * var(--sr-warmth)), transparent) 0%,
+      transparent 72%
+    ),
+    radial-gradient(
+      34% 24% at calc(94% + var(--sr-light-x) * 6) -3%,
+      color-mix(in srgb, var(--color-warn) calc(2% + 7% * var(--sr-warmth)), transparent) 0%,
+      transparent 70%
+    );
+  /* Rides the same 90s tween the palette does, and for the same reason: at
+     15-minute data cadence an untweened update is a visible step change in
+     the corner of a screen someone is sitting next to. The `transition` is
+     safe to declare here (unlike the palette's, which kiosk-sunroom.tsx has
+     to withhold for one frame) because this layer's inputs are only ever
+     custom properties that already arrive tweened — there is no first
+     substitution from an initial value for it to animate through. */
+  transition: background-image 90s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-kiosk-theme="sunroom"] .kiosk-leaks {
+    transition: none;
+  }
+}
+
+/* ── climate: thermal convection streams ──────────────────────────────────
+   A running unit moves air, and this is the only thing on the tile that says
+   so. Soft vertical currents drift across the tile behind its figures —
+   upward while heating, downward while cooling — so a glance across four
+   tiles tells you which rooms are working before any mode label is read.
+   Colour is `--color-warn` for heat and `--color-blue` for cool, the two
+   tokens this system already spends on hot and on a second series; there is
+   no new hue on the surface.
+
+   Geometry, speed, horizontal position and per-stream delay all arrive as
+   inline style from kiosk-thermal.tsx, exactly as the sunroom weather layers
+   do above — a stream field whose every value is authored in CSS is four
+   copies of one stream. Both keyframes are `transform` and `opacity` only,
+   on their own layer.
+
+   The opacity ramp at the ends is what makes it seamless. A current that
+   simply translates past the clip edge pops out of existence on a loop this
+   slow; fading through the first and last fifth means each stream arrives and
+   leaves, and four of them at different offsets read as continuous flow. */
+@keyframes kiosk-thermal-rise {
+  0% {
+    transform: translate3d(0, 55%, 0);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, -55%, 0);
+    opacity: 0;
+  }
+}
+@keyframes kiosk-thermal-fall {
+  0% {
+    transform: translate3d(0, -55%, 0);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(0, 55%, 0);
+    opacity: 0;
+  }
+}
+.kiosk-thermal-stream {
+  position: absolute;
+  will-change: transform, opacity;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Not rendered at all under reduced motion — kiosk-thermal.tsx returns
+     null rather than freezing the field, on the same reasoning the rain layer
+     uses: four stopped currents are four smudges on the tile, and a smudge
+     does not mean "this unit is running". This rule is the belt to that
+     braces, for a stream that somehow mounts anyway. */
+  .kiosk-thermal-stream {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ── the digit reel ───────────────────────────────────────────────────────
+   A target temperature that changes should turn like a dial behind glass,
+   not cut. Each digit column holds 0-9 stacked vertically and slides to the
+   one it needs; the spring is the point, because a setpoint arriving with a
+   small overshoot reads as a physical dial settling, which is exactly what
+   this control is standing in for. Only the digits move — the decimal point,
+   the degree sign and the unit are static glyphs beside them, since a
+   punctuation mark that rolls is a glitch, not a mechanism.
+
+   Applied to the TARGET, never to the current reading: the target is the
+   number you turn, and the current temperature is the room answering. Rolling
+   the room's answer would claim the wall panel had changed it. */
+.kiosk-reel-window {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.kiosk-reel-strip {
+  display: block;
+  transition: transform var(--kiosk-reel-ms) var(--kiosk-ease-spring);
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-reel-strip {
+    transition: none;
+  }
 }

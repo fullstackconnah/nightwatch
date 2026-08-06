@@ -93,14 +93,20 @@ export function KioskStatusStripExtras({
         <KioskTimersButton />
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">
+            {/* `dot-live` is excluded from the breathe on purpose: it's an
+                accent LIVENESS mark, not one of the container-state dots
+                DESIGN.md reserves pulsing for (unhealthy/restarting), but a
+                dot that pulses AND a caption that pulses beside it would be
+                two clocks ticking out of phase. One motion per fact — the
+                word carries it. */}
             <span className="dot dot-live" aria-hidden />
-            elevated
+            <span className="kiosk-breathe">elevated</span>
           </span>
         ) : (
           <button
             type="button"
             onClick={onAdminClick}
-            className="h-11 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            className="h-11 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
           >
             Admin
           </button>

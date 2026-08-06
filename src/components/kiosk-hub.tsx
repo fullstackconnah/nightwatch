@@ -271,10 +271,27 @@ function ToggleChip({
       disabled={!available}
       onClick={onToggle}
       className={cn(
-        "flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+        // `relative kiosk-sheen`: this pill is one of the sunroom refractive
+        // sweep's panes (globals.css's sheen block). It has to carry `relative`
+        // itself — that block deliberately refuses to stamp positioning, since
+        // doing so would override `position: sticky` on the full-mode header.
+        // The section roots above are NOT sheen panes on purpose: their own
+        // comment is that they are boxless by design, and a sweeping 1px ring
+        // would draw the box that decision removed.
+        "kiosk-press kiosk-sheen relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
+      // The "elastic toggle" half of the brief lands HERE rather than on a
+      // sliding knob: this control has no thumb to bounce, so the spring shows
+      // up as the on/off wash arriving on the same release curve as the press.
+      // No `transition-*` utility and no inline style is needed for that —
+      // `.kiosk-press` names background-color/border-color/color in its own
+      // property list precisely so a call site cannot have to. It has to: that
+      // class is unlayered CSS and Tailwind's utilities are inside
+      // `@layer utilities`, so an unlayered `transition:` shorthand deletes any
+      // layered `transition-colors` outright rather than merging with it. The
+      // reasoning and the measurement are recorded on the class itself.
     >
       <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
       <span className="max-w-72 truncate text-sm text-ink">{name}</span>
@@ -307,7 +324,12 @@ function SceneChip({
       disabled={!scene.available || pending}
       onClick={onActivate}
       className={cn(
-        "flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none transition focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] disabled:pointer-events-none",
+        // Same sheen pane as ToggleChip above. The bare `transition` utility
+        // this used to carry is gone rather than left in place: `.kiosk-press`
+        // is unlayered and fully owns the `transition` longhands, so a layered
+        // Tailwind `transition` here would have been a dead class reading as
+        // if it did something.
+        "kiosk-press kiosk-sheen relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -440,10 +462,15 @@ const LightsSection = memo(function LightsSection({
   ha,
   lights,
   entities,
+  riseIndex,
 }: {
   ha: UseKioskHaResult;
   lights: HaLight[];
   entities: HaEntities;
+  /** This section's step in the surface's unfolding sequence — see
+   *  ClimateSection's comment on the same prop for why it's a plain number
+   *  passed in rather than derived here. */
+  riseIndex: number;
 }) {
   const onCount = lights.filter((l) => l.on).length;
   // Same prefix-stripping treatment as Switches, applied for consistency
@@ -461,7 +488,10 @@ const LightsSection = memo(function LightsSection({
     // §E). A hairline top rule groups it from the section above; the first
     // rendered section (whichever it is, since sections are conditional on
     // data) sits flush with nothing above it via `first:`.
-    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
+    <section
+      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
       <SectionHeader icon={Lightbulb} label="Lights" qualifier={qualifier} note={`${onCount} of ${lights.length} on`} />
       <div className={CHIP_ROW}>
         {lights.map((light, i) => {
@@ -506,10 +536,13 @@ const SwitchesSection = memo(function SwitchesSection({
   ha,
   switches,
   entities,
+  riseIndex,
 }: {
   ha: UseKioskHaResult;
   switches: HaSwitch[];
   entities: HaEntities;
+  /** See ClimateSection's comment on the same prop. */
+  riseIndex: number;
 }) {
   const onCount = switches.filter((s) => s.on).length;
   // See sharedLeadingWords/shortenSharedPrefix above: strips a shared
@@ -519,7 +552,12 @@ const SwitchesSection = memo(function SwitchesSection({
   // instead of repeating it on every pill.
   const { labels: switchLabels, qualifier } = useMemo(() => shortenSharedPrefix(switches.map((s) => s.name)), [switches]);
   return (
-    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
+    <section
+      // relative: sunroom sheen anchor — see LightsSection's comment on the
+      // same class.
+      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
       <SectionHeader icon={ToggleLeft} label="Switches" qualifier={qualifier} note={`${onCount} of ${switches.length} on`} />
       <div className={CHIP_ROW}>
         {switches.map((sw, i) => {
@@ -549,7 +587,16 @@ const SwitchesSection = memo(function SwitchesSection({
   );
 });
 
-const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKioskHaResult; scenes: HaScene[] }) {
+const ScenesSection = memo(function ScenesSection({
+  ha,
+  scenes,
+  riseIndex,
+}: {
+  ha: UseKioskHaResult;
+  scenes: HaScene[];
+  /** See ClimateSection's comment on the same prop. */
+  riseIndex: number;
+}) {
   const [activated, setActivated] = useState<Set<string>>(new Set());
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -570,7 +617,12 @@ const ScenesSection = memo(function ScenesSection({ ha, scenes }: { ha: UseKiosk
   };
 
   return (
-    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
+    <section
+      // relative: sunroom sheen anchor — see LightsSection's comment on the
+      // same class.
+      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
       <SectionHeader icon={Sparkles} label="Scenes" />
       <div className={CHIP_ROW}>
         {scenes.map((scene) => (
@@ -592,13 +644,36 @@ const ClimateSection = memo(function ClimateSection({
   ha,
   climates,
   entities,
+  riseIndex,
 }: {
   ha: UseKioskHaResult;
   climates: HaClimate[];
   entities: HaEntities;
+  /** This section's step in the surface's own unfolding sequence
+   *  (kiosk-surface.tsx's `FullContent` uses 0-2 for KioskDisplay/admin
+   *  group/KioskHub; the hub's five sections continue from there at 3-7,
+   *  because visually these are the panes that arrive after the hub's own
+   *  container). Passed in as a plain number rather than derived from a
+   *  position in an array: KioskHub renders five independently-conditional
+   *  NAMED sections, not a mapped list, so there is no array index to read
+   *  it off — hardcoding each call site's number is the only option, and
+   *  correct precisely because the set of sections and their order is fixed
+   *  in source, not data-driven. */
+  riseIndex: number;
 }) {
+  // Which tile (by entityId) is currently under adjustment, for the depth-
+  // of-field exemption (globals.css's "focus isolation" block). Owned here,
+  // not in the tile: two tiles adjusting at once would mean two different
+  // members claiming the one "in focus" slot, and the grid — not either
+  // tile — is what has to arbitrate that.
+  const [adjustingId, setAdjustingId] = useState<string | null>(null);
   return (
-    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
+    <section
+      // relative: sunroom sheen anchor — see LightsSection's comment on the
+      // same class.
+      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
       <SectionHeader icon={Thermometer} label="Climate" />
       {/* Compact tiles in a grid, not stacked rows (2026-08-03 follow-up —
           supersedes the divide-y row list this used to be): fixed breakpoint
@@ -613,18 +688,54 @@ const ClimateSection = memo(function ClimateSection({
           legitimate here — it's a touch target, same as the toggle/scene
           pills below (kiosk-climate.tsx's own THESIS has the full tile
           layout rationale). */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+        // Arms the depth-of-field isolation the moment ANY tile is adjusting
+        // — see globals.css's `[data-kiosk-focus="on"] .kiosk-defocus` rule.
+        // The one member matching `adjustingId` marks itself
+        // `data-kiosk-focused="true"` (inside KioskClimateTile) and is
+        // exempted from the blur/dim that rule applies to its `.kiosk-defocus`
+        // siblings.
+        data-kiosk-focus={adjustingId ? "on" : undefined}
+      >
         {climates.map((c) => (
-          <KioskClimateTile key={c.entityId} ha={ha} climate={c} entities={entities} />
+          <KioskClimateTile
+            key={c.entityId}
+            ha={ha}
+            climate={c}
+            entities={entities}
+            focused={adjustingId === c.entityId}
+            onAdjustingChange={(adjusting: boolean) =>
+              // `prev === c.entityId ? null : prev` is load-bearing, not
+              // defensive filler: a stale "I stopped" from tile A must never
+              // clear a focus that tile B has since claimed (contract's own
+              // wording) — e.g. A's `interacting` flips false one tick after
+              // B's already flipped true, and without this guard A's own
+              // callback would still fire and null out B's focus mid-adjust.
+              setAdjustingId((prev) => (adjusting ? c.entityId : prev === c.entityId ? null : prev))
+            }
+          />
         ))}
       </div>
     </section>
   );
 });
 
-const SensorsSection = memo(function SensorsSection({ sensors }: { sensors: HaSensor[] }) {
+const SensorsSection = memo(function SensorsSection({
+  sensors,
+  riseIndex,
+}: {
+  sensors: HaSensor[];
+  /** See ClimateSection's comment on the same prop. */
+  riseIndex: number;
+}) {
   return (
-    <section className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
+    <section
+      // relative: sunroom sheen anchor — see LightsSection's comment on the
+      // same class.
+      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
       <SectionHeader icon={Battery} label="Sensors" />
       {/* Read-only readings, no touch target and no alert — the chip box and
           the stacked name/value are both chrome the density pass drops:
@@ -778,11 +889,17 @@ export function KioskHub() {
           section people walk up to the panel for, and it sits directly under
           the weather line above with nothing else between. Lights/switches/
           scenes condense into chip rows next; sensors, read-only, stay last. */}
-      {entities.climates.length > 0 && <ClimateSection ha={ha} climates={entities.climates} entities={entities} />}
-      {entities.lights.length > 0 && <LightsSection ha={ha} lights={entities.lights} entities={entities} />}
-      {entities.switches.length > 0 && <SwitchesSection ha={ha} switches={entities.switches} entities={entities} />}
-      {entities.scenes.length > 0 && <ScenesSection ha={ha} scenes={entities.scenes} />}
-      {entities.sensors.length > 0 && <SensorsSection sensors={entities.sensors} />}
+      {entities.climates.length > 0 && (
+        <ClimateSection ha={ha} climates={entities.climates} entities={entities} riseIndex={3} />
+      )}
+      {entities.lights.length > 0 && (
+        <LightsSection ha={ha} lights={entities.lights} entities={entities} riseIndex={4} />
+      )}
+      {entities.switches.length > 0 && (
+        <SwitchesSection ha={ha} switches={entities.switches} entities={entities} riseIndex={5} />
+      )}
+      {entities.scenes.length > 0 && <ScenesSection ha={ha} scenes={entities.scenes} riseIndex={6} />}
+      {entities.sensors.length > 0 && <SensorsSection sensors={entities.sensors} riseIndex={7} />}
     </div>
   );
 }

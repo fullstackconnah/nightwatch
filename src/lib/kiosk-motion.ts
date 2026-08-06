@@ -12,11 +12,27 @@
 
 import { useCallback, useLayoutEffect, useRef } from "react";
 
+/* These five are MIRRORED as custom properties by the KIOSK MOTION VOCABULARY
+   block at the end of src/app/globals.css (--kiosk-move-ms, --kiosk-fade-ms,
+   --kiosk-pop-ms, --kiosk-ease-out). They live in both places because a WAAPI
+   `Element.animate` call cannot read a custom property without a
+   getComputedStyle round-trip per animation, and the FLIP here runs one per
+   registered node per mode change. Change both or neither.
+   `KIOSK_REDUCED_MS` has no CSS twin — the CSS side expresses reduced motion by
+   dropping transitions entirely, which is the same decision spelled the way
+   each language spells it. */
 export const KIOSK_MOVE_MS = 420; // shared-element travel between views
 export const KIOSK_FADE_MS = 180; // content entering/leaving a view
 export const KIOSK_POP_MS = 260; // takeover / modal entrance
 export const KIOSK_EASE_OUT = "cubic-bezier(0.16, 1, 0.3, 1)"; // ease-out-expo
 export const KIOSK_REDUCED_MS = 120; // the reduced-motion crossfade
+
+/* The sheen's own duration, needed in JS only as the fallback deadline for
+   stripping `data-sheen` if `animationend` never fires — which it will not if
+   the pane unmounts mid-sweep, or if the theme leaves sunroom while the
+   attribute is set and the animated pseudo-element stops existing. Mirrors
+   --kiosk-sheen-ms. */
+export const KIOSK_SHEEN_MS = 620;
 
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;

@@ -501,7 +501,13 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
       // the button and its own tray always share one stacking tier above
       // ordinary page chrome.
       className={cn(
-        "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none transition-opacity ease-out motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98]",
+        // kiosk-press replaces active:scale-[0.98] (see globals.css's KIOSK
+        // MOTION VOCABULARY). `transition-opacity ease-out
+        // motion-reduce:transition-none` stays: opacity is NOT in
+        // `.kiosk-press`'s own transition property list, and this is the
+        // transition that drives the button's mount/unmount fade (`entered`
+        // below) — it is load-bearing, not a leftover.
+        "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none kiosk-press transition-opacity ease-out motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent",
         severityClasses,
         entered ? "opacity-100" : "opacity-0 motion-reduce:opacity-100",
       )}
