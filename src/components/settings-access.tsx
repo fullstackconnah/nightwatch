@@ -251,7 +251,7 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
           describedBy="kiosk-pin-hint"
         />
         <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
-          {pinConfigured ? "Clear it and save to fall back to the environment (or the default 0000)." : "Currently the default — 0000."}
+          {pinConfigured ? "Clear it and save to fall back to KIOSK_PIN in the environment." : "No PIN set — kiosk elevation stays locked until you save one."}
         </p>
 
         <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
@@ -430,12 +430,12 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium text-ink">Kiosk mode</span>
-              {customPin ? <Badge variant="ok">custom PIN</Badge> : <Badge variant="warn">default PIN</Badge>}
+              {customPin ? <Badge variant="ok">custom PIN</Badge> : <Badge variant="warn">no PIN</Badge>}
             </div>
             <p className="mt-1 text-[0.7rem] text-ink-dim">
               {customPin
                 ? "Custom PIN set on the System card above."
-                : "Using the fallback PIN (0000) — set one on the System card above to change it."}
+                : "No PIN configured — elevation is refused. Set one on the System card above."}
             </p>
           </div>
           <Link

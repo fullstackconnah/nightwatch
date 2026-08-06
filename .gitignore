@@ -18,5 +18,8 @@ data/
 npm-debug.log*
 .env.test
 
-# agent tool state
+# agent tool state — working notes; they inventory the host and its accounts,
+# which has no business in a public repo
 .omc/
+.claude/
+docs/PENDING-SETUP.md

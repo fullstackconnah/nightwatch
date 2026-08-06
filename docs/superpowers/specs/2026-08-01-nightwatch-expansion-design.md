@@ -52,7 +52,8 @@ from `grid-cols-8` to a scrollable snap rail.
   unhealthy-attention strip. (Weather/doorbell/HA tiles join later once
   those integrations mature.)
 - "Admin" tap → 4-digit PIN pad (nightwatch-styled, mono figures, accent
-  focus; default PIN `0000`, overridable via `KIOSK_PIN` env). Correct PIN
+  focus; PIN comes from settings or the `KIOSK_PIN` env, with no built-in
+  default — an unconfigured install refuses elevation). Correct PIN
   mints a short-lived elevated cookie (jose JWT, 5-minute expiry, sliding
   on activity); idle or expiry drops back to ambient. Elevation reveals
   lifecycle controls / links into the full dashboard.

@@ -53,9 +53,18 @@ export async function POST(req: NextRequest) {
   }
 
   const { pin } = (await req.json().catch(() => ({}))) as { pin?: string };
-  // Config-over-env: a PIN saved on the settings page's System card wins
-  // over KIOSK_PIN; "0000" is the last-resort default when neither is set.
-  const expected = systemSetting("kioskPin", "KIOSK_PIN") || "0000";
+  // Config-over-env: a PIN saved on the settings page's System card wins over
+  // KIOSK_PIN. There is deliberately no built-in fallback — a default shipped
+  // in source is a published credential, so an unconfigured install refuses
+  // elevation outright instead of accepting one anyone can read.
+  const expected = systemSetting("kioskPin", "KIOSK_PIN");
+  if (!expected) {
+    return NextResponse.json(
+      { error: "Kiosk PIN not configured — set one on Settings → System" },
+      { status: 503 },
+    );
+  }
+
   const ok = typeof pin === "string" && pin.length > 0 && safeEqual(pin, expected);
 
   if (!ok) {
