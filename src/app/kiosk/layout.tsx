@@ -3,6 +3,7 @@ import { KioskThemeScope } from "@/components/kiosk-theme";
 import { KioskSky } from "@/components/kiosk-sky";
 import { KioskSunroomLight } from "@/components/kiosk-sunroom";
 import { KioskSunroomWeather } from "@/components/kiosk-sunroom-weather";
+import { KioskGlassWeather } from "@/components/kiosk-glass-weather";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",
@@ -71,6 +72,10 @@ export default function KioskLayout({ children }: { children: React.ReactNode })
           decides which paints on top. Weather belongs ABOVE the sky tint (rain
           falls through the light, not behind it) and below every panel. */}
       <KioskSunroomWeather />
+      {/* Renders no visible box of its own (only a <style> element, same as
+          KioskSunroomLight) — mounted beside it for the same module-cycle
+          reason, not for any stacking order. */}
+      <KioskGlassWeather />
       {children}
     </KioskThemeScope>
   );

@@ -1027,8 +1027,34 @@ body {
   }
 }
 
+/* Weather-reactive glass, shared by every theme with a translucent panel —
+   today that is only Aerogel and Aurora; every other theme's .panel is
+   opaque, so backdrop-filter there has nothing to sample and these vars
+   would be a no-op if applied. src/components/kiosk-glass-weather.tsx writes
+   them from real rain/fog/cloud/sun readings. Registered as PLAIN NUMBERS,
+   not lengths or alphas, and initial-value 1 (neutral) for exactly the
+   reason --sr-* above is registered as color/length: an unregistered custom
+   property is a string and cannot be interpolated, so without this the glass
+   would snap between weather readings instead of tweening. Because
+   @property is a single global registration, both themes share it — each
+   theme's own block below composes the SAME multiplier against its OWN
+   baseline literal (`blur(calc(14px * var(--glass-blur-x, 1)))`), so a
+   multiplier of 1 always means "this theme's shipped baseline," whichever
+   theme is active. With the component absent, the feed down, or before
+   hydration, every multiplier resolves to its initial value of 1 and both
+   themes render byte-identically to the glass that shipped before this
+   feature. */
+@property --glass-blur-x { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --glass-edge-x { syntax: "<number>"; inherits: true; initial-value: 1; }
+@property --glass-spec-x { syntax: "<number>"; inherits: true; initial-value: 1; }
+
 /* Aerogel — Liquid Glass. Frosted translucent panels with a bright glass
-   edge, floating over a soft two-hue gradient ground. */
+   edge, floating over a soft two-hue gradient ground. Blur and edge/specular
+   alpha below are the theme's own baseline literals, each composed with a
+   `--glass-*-x` multiplier (see the @property block above and
+   kiosk-glass-weather.tsx) so rain, fog and cloud can damp the glass read
+   and a clear high sun can sharpen it, without this theme losing ownership
+   of its own numbers. */
 [data-kiosk-theme="aerogel"] {
   color-scheme: light;
   --color-bg: #eef1f6;
@@ -1053,17 +1079,31 @@ body {
 }
 [data-kiosk-theme="aerogel"] .panel {
   border-radius: 1.5rem;
-  border-color: rgba(255, 255, 255, 0.9);
+  /* 0.9 baseline * --glass-edge-x (0.6 wet .. 1 neutral .. 1.1 clear-noon,
+     see kiosk-glass-weather.tsx) — the multiplier is what damps this border
+     toward ~0.55 in rain/fog and sharpens it toward ~0.99 under a clear high
+     sun, without this theme's own 0.9 stopping being the authority. */
+  border-color: rgba(255, 255, 255, calc(0.9 * var(--glass-edge-x, 1)));
   background-color: var(--color-panel);
-  backdrop-filter: blur(14px) saturate(160%);
-  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  /* 14px baseline * --glass-blur-x (1 .. 1.7, see kiosk-glass-weather.tsx):
+     rain, fog and heavy cloud deepen the blur toward ~24px; clear skies
+     leave it at this theme's own 14px. saturate(160%) is untouched — it's a
+     color property, not a glass-thickness one, and has nothing to do with
+     how wet the window is. */
+  backdrop-filter: blur(calc(14px * var(--glass-blur-x, 1))) saturate(160%);
+  -webkit-backdrop-filter: blur(calc(14px * var(--glass-blur-x, 1))) saturate(160%);
   /* The glass READ lives here, not in the blur: light catching the top
      inner edge + a soft tinted contact shadow lifting it off the ground.
      Without these the near-white border vanishes on the near-white bg and
-     the panel reads as a flat card (agent-verified with a 2x edge crop). */
+     the panel reads as a flat card (agent-verified with a 2x edge crop).
+     The two inset highlight alphas ride --glass-spec-x, same range and same
+     source as the border above, so the specular read dampens and sharpens
+     in lockstep with the edge rather than as a second, uncoordinated signal.
+     The two outer shadow layers are unchanged — they read as the panel's
+     own weight against the ground, not as anything the sky is doing. */
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, calc(0.85 * var(--glass-spec-x, 1))),
+    inset 0 0 0 1px rgba(255, 255, 255, calc(0.45 * var(--glass-spec-x, 1))),
     0 12px 28px -14px rgba(46, 58, 122, 0.28),
     0 1px 2px rgba(28, 36, 48, 0.07);
 }
@@ -1192,7 +1232,11 @@ body {
 /* ── 2026 catalog: dark & expressive ────────────────────────────────────── */
 
 /* Aurora — aura / mesh-gradient. Static borealis blobs glowing behind
-   slightly translucent panels; ambient depth with zero motion. */
+   slightly translucent panels; ambient depth with zero motion. Its .panel
+   blur below composes against the same --glass-blur-x multiplier Aerogel
+   uses (see the shared @property block above the Aerogel section and
+   kiosk-glass-weather.tsx) — this theme keeps its own 10px baseline as the
+   authority, weather only nudges it. */
 [data-kiosk-theme="aurora"] {
   --color-bg: #0b0c14;
   --color-panel: #151329d9;
@@ -1225,8 +1269,11 @@ body {
 }
 [data-kiosk-theme="aurora"] .panel {
   border-radius: 1.5rem;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* 10px baseline * --glass-blur-x (1 .. 1.7): the same wet-weather ceiling
+     as Aerogel's, proportionally against this theme's own thinner baseline —
+     rain/fog/heavy cloud deepen it toward ~17px, clear skies leave it here. */
+  backdrop-filter: blur(calc(10px * var(--glass-blur-x, 1)));
+  -webkit-backdrop-filter: blur(calc(10px * var(--glass-blur-x, 1)));
 }
 
 /* Chrome Panel — skeuomorphic hardware revival. Brushed metal, bevels,
