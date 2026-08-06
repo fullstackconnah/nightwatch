@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { LayoutGrid, LockKeyhole } from "lucide-react";
+import { LayoutGrid, LockKeyhole, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { useContainers } from "@/lib/client";
 import type { TiledContainer } from "@/lib/client";
 import {
@@ -13,6 +14,44 @@ import {
 import { stateDotClass } from "@/components/container-tile";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
+import { BUILD_ID } from "@/lib/build-id";
+
+type CheckState = { kind: "idle" } | { kind: "checking" } | { kind: "result"; label: string };
+
+/**
+ * src/app/kiosk/error.tsx already does a `window.location.reload()` to
+ * recover from a stale-chunk crash after a deploy, as a side effect of its
+ * auto-recovery ladder. This button is the deliberate, on-demand version of
+ * that same recovery: compare this page's own inlined BUILD_ID (baked in at
+ * build time) against the server's current one, and reload only when they
+ * actually differ.
+ */
+function useUpdateCheck() {
+  const [state, setState] = useState<CheckState>({ kind: "idle" });
+
+  const check = async () => {
+    if (state.kind === "checking") return; // guard double-taps
+    setState({ kind: "checking" });
+    try {
+      const res = await fetch("/kiosk/api/version");
+      const data = (await res.json()) as { buildId: string };
+      if (data.buildId !== BUILD_ID) {
+        window.location.reload();
+        return; // page is navigating away — no idle state to revert to
+      }
+      // On the test stack and in dev both sides read "dev" (export-subst
+      // only substitutes on a real `git archive`), so this always reports
+      // up-to-date there — expected, not a bug.
+      setState({ kind: "result", label: `Up to date · ${data.buildId}` });
+      setTimeout(() => setState({ kind: "idle" }), 4000);
+    } catch {
+      setState({ kind: "result", label: "Check failed" });
+      setTimeout(() => setState({ kind: "idle" }), 4000);
+    }
+  };
+
+  return { state, check };
+}
 
 function AdminRow({ c, onChanged }: { c: TiledContainer; onChanged: () => void }) {
   const lifecycle = useLifecycle(c.id, onChanged);
@@ -48,6 +87,8 @@ export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLo
   const remainingMs = Math.max(0, expiresAt - now);
   const mm = Math.floor(remainingMs / 60000);
   const ss = Math.floor((remainingMs % 60000) / 1000);
+  const update = useUpdateCheck();
+  const checking = update.state.kind === "checking";
 
   return (
     <div className="w-full max-w-xl flex flex-col gap-3">
@@ -67,6 +108,15 @@ export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLo
           >
             <LayoutGrid size={13} /> Dashboard
           </Link>
+          <button
+            type="button"
+            onClick={update.check}
+            disabled={checking}
+            className="h-11 px-3.5 rounded-md border border-line text-ink-dim hover:text-ink hover:border-line-bright text-xs flex items-center gap-1.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-60"
+          >
+            <RefreshCw size={13} className={cn(checking && "animate-spin")} />
+            {update.state.kind === "result" ? update.state.label : "Check for updates"}
+          </button>
           <button
             type="button"
             onClick={onLock}
