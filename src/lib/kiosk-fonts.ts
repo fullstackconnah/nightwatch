@@ -41,6 +41,10 @@ export type KioskFontId =
   | "chrome-sans"
   | "neon-mono"
   | "pixel-mono"
+  | "lexend"
+  | "figtree"
+  | "manrope"
+  | "chivo-mono"
   | "system-sans"
   | "system-mono";
 
@@ -62,8 +66,10 @@ export interface KioskFontOption {
 
 /** 23 theme-linked families (one entry per --font-t-* variable in
  *  kiosk-theme.tsx:55-80) plus the 2 base stacks (globals.css:44-45), so a
- *  user can always dial a theme back to the neutral face. `kind` is the
- *  family's own typographic design (a serif face is "serif" even on the
+ *  user can always dial a theme back to the neutral face, plus 4 picker-only
+ *  families (lexend, figtree, manrope, chivo-mono) that aren't any theme's
+ *  default — curated purely for distance-legible text and display numerals.
+ *  `kind` is the family's own typographic design (a serif face is "serif" even on the
  *  five themes — journal, lounge, bulletin, understory, duotone — that
  *  deliberately plug a serif face into the --font-mono slot for an
  *  editorial numeral look rather than an actual monospace face; see each
@@ -95,6 +101,13 @@ export const KIOSK_FONTS: readonly KioskFontOption[] = [
   { id: "chrome-sans", label: "Chakra Petch", kind: "sans", cssVar: 'var(--font-t-chrome-sans), "Segoe UI", sans-serif' },
   { id: "neon-mono", label: "Orbitron", kind: "mono", cssVar: "var(--font-t-neon-mono), ui-monospace, monospace" },
   { id: "pixel-mono", label: "Silkscreen", kind: "mono", cssVar: "var(--font-t-pixel-mono), ui-monospace, monospace" },
+  // Picker-only additions — curated for the kiosk's own use case rather than
+  // introduced with a theme (see kiosk-theme.tsx's matching comment): text
+  // faces chosen for distance legibility, mono chosen for display numerals.
+  { id: "lexend", label: "Lexend", kind: "sans", cssVar: 'var(--font-t-lexend), "Segoe UI", sans-serif' },
+  { id: "figtree", label: "Figtree", kind: "sans", cssVar: 'var(--font-t-figtree), "Segoe UI", sans-serif' },
+  { id: "manrope", label: "Manrope", kind: "sans", cssVar: 'var(--font-t-manrope), "Segoe UI", sans-serif' },
+  { id: "chivo-mono", label: "Chivo Mono", kind: "mono", cssVar: "var(--font-t-chivo-mono), ui-monospace, monospace" },
   { id: "system-sans", label: "System (Inter)", kind: "sans", cssVar: '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif' },
   { id: "system-mono", label: "System (Cascadia)", kind: "mono", cssVar: '"Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace' },
 ];

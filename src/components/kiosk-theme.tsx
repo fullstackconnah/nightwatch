@@ -28,14 +28,18 @@ import {
   Bodoni_Moda,
   Bricolage_Grotesque,
   Chakra_Petch,
+  Chivo_Mono,
   Courier_Prime,
+  Figtree,
   Fragment_Mono,
   Fraunces,
   IBM_Plex_Mono,
   Instrument_Serif,
   JetBrains_Mono,
   Karla,
+  Lexend,
   Lora,
+  Manrope,
   Newsreader,
   Orbitron,
   Plus_Jakarta_Sans,
@@ -80,12 +84,22 @@ const fAuroraMono = JetBrains_Mono({ subsets: ["latin"], display: "swap", preloa
 const fChromeSans = Chakra_Petch({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500"], variable: "--font-t-chrome-sans" });
 const fNeonMono = Orbitron({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-neon-mono" });
 const fPixelMono = Silkscreen({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "700"], variable: "--font-t-pixel-mono" });
+// Picker-only additions — not the default face for any theme, just extra
+// catalog entries curated for the kiosk's own use case (text faces for
+// distance legibility, mono faces for the big clock/figures); see
+// kiosk-fonts.ts. Sora, JetBrains Mono, and Spline Sans Mono are already
+// loaded above (fAuroraSans, fAuroraMono, fFolioMono) so they're not repeated.
+const fLexend = Lexend({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-lexend" });
+const fFigtree = Figtree({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-figtree" });
+const fManrope = Manrope({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-manrope" });
+const fChivoMono = Chivo_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-chivo-mono" });
 
 const FONT_VARIABLE_CLASSES = [
   fTerminal, fJournal, fLounge,
   fFolioSans, fFolioMono, fSlateSerif, fSlateMono, fSunroomSans, fSunroomMono, fAerogelSans, fAerogelMono,
   fBulletinSerif, fBulletinSans, fUnderstorySerif, fUnderstorySans, fDuotoneSerif, fCinderSans, fCinderMono,
   fAuroraSans, fAuroraMono, fChromeSans, fNeonMono, fPixelMono,
+  fLexend, fFigtree, fManrope, fChivoMono,
 ].map((f) => f.variable);
 
 export type KioskTheme =
