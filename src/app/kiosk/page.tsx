@@ -55,6 +55,17 @@ export default function KioskPage() {
 
 function KioskPageInner() {
   const [pinOpen, setPinOpen] = useState(false);
+  // Captured at the moment whichever Admin button (night overlay, status
+  // strip, or glance's floating one) was tapped — the PIN pad grows out of
+  // it (container transform, kiosk-motion.ts's containerExpand). A rect
+  // held from any earlier moment would go stale on the next relayout, so
+  // this rides the same open callback as pinOpen itself rather than being
+  // set separately.
+  const [pinOrigin, setPinOrigin] = useState<DOMRect | null>(null);
+  const openPinPad = useCallback((rect?: DOMRect) => {
+    setPinOrigin(rect ?? null);
+    setPinOpen(true);
+  }, []);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const lastSlideRef = useRef(0);
   const period = useKioskPeriod();
@@ -211,7 +222,7 @@ function KioskPageInner() {
       <h1 className="sr-only">nightwatch kiosk</h1>
 
       {showNightOverlay ? (
-        <KioskNightOverlay onAdminClick={() => setPinOpen(true)} onWake={wakeNight} />
+        <KioskNightOverlay onAdminClick={openPinPad} onWake={wakeNight} />
       ) : (
         // KioskSurface owns the glance⇄full merge (redesign-06 §5) — it
         // replaces both the old KioskGlance branch and the old "standard"
@@ -225,7 +236,7 @@ function KioskPageInner() {
           onLayoutChange={chooseLayout}
           elevated={elevated}
           expiresAt={expiresAt}
-          onAdminClick={() => setPinOpen(true)}
+          onAdminClick={openPinPad}
           onLock={lock}
           initialMode={nightWoken ? "full" : "glance"}
           onDoorbellClick={doorbell.openManually}
@@ -240,11 +251,13 @@ function KioskPageInner() {
           cameraId={doorbell.cameraId}
           trigger={doorbell.trigger}
           onClose={doorbell.close}
+          originRect={doorbell.originRect}
         />
       )}
 
       {pinOpen && (
         <KioskPinPad
+          originRect={pinOrigin}
           onClose={() => setPinOpen(false)}
           onElevated={(exp) => {
             lastSlideRef.current = Date.now();

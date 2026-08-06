@@ -32,7 +32,10 @@ export function KioskStatusStripExtras({
   durationMs,
 }: {
   elevated: boolean;
-  onAdminClick: () => void;
+  /** Rect param lets the tapped Admin button feed the PIN pad's container-
+   *  transform origin (kiosk-motion.ts's containerExpand) — see page.tsx's
+   *  openPinPad. */
+  onAdminClick: (rect?: DOMRect) => void;
   /** Drives the redesign's "fades in after the shared elements land" beat
    *  for this non-shared content (kiosk-surface.tsx computes the timing) —
    *  starts at opacity-0 and is flipped true once the header's FLIP travel
@@ -107,7 +110,7 @@ export function KioskStatusStripExtras({
         ) : (
           <button
             type="button"
-            onClick={onAdminClick}
+            onClick={(e) => onAdminClick(e.currentTarget.getBoundingClientRect())}
             className="h-11 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
           >
             Admin

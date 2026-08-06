@@ -512,12 +512,18 @@ export function KioskSurface({
   onLayoutChange: (next: KioskLayoutChoice) => void;
   elevated: boolean;
   expiresAt: number | null;
-  onAdminClick: () => void;
+  /** Rect param carries the tapped Admin button's rect through to the PIN
+   *  pad's container-transform origin (page.tsx's openPinPad) — this surface
+   *  only passes the callback down, the capture happens at the buttons
+   *  themselves (status strip, glance, night overlay). */
+  onAdminClick: (rect?: DOMRect) => void;
   onLock: () => void;
   /** Opens the front-door camera on demand. The modal itself is owned by
    *  page.tsx (it has to outlive this surface — see the watcher's comment
-   *  there); this component contributes only the button that asks for it. */
-  onDoorbellClick: () => void;
+   *  there); this component contributes only the button that asks for it.
+   *  Same rect pass-through as onAdminClick, for the doorbell modal's own
+   *  container transform. */
+  onDoorbellClick: (rect?: DOMRect) => void;
   /** Seeds the very first render only (a night wake tap enters full — see
    *  page.tsx's wakeNight/nightWoken — everything else always rests in
    *  glance on mount, per the contract). */
@@ -610,7 +616,7 @@ export function KioskSurface({
            pressing close) also flips the surface to full underneath it, and you
            would come out of a glance-mode radar into the full panel. */
         <div className="contents" onPointerDown={(e) => e.stopPropagation()}>
-          <KioskRadarModal onClose={radar.close} />
+          <KioskRadarModal onClose={radar.close} originRect={radar.originRect} />
         </div>
       )}
 

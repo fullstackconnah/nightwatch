@@ -641,7 +641,10 @@ export function KioskNightOverlay({
   onAdminClick,
   onWake,
 }: {
-  onAdminClick: () => void;
+  /** Rect param lets the tapped Admin button feed the PIN pad's container-
+   *  transform origin (kiosk-motion.ts's containerExpand) — see page.tsx's
+   *  openPinPad. */
+  onAdminClick: (rect?: DOMRect) => void;
   onWake: () => void;
 }) {
   const now = useNow(true);
@@ -673,7 +676,7 @@ export function KioskNightOverlay({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          onAdminClick();
+          onAdminClick(e.currentTarget.getBoundingClientRect());
         }}
         className="absolute right-3 top-3 h-11 rounded-md px-4 text-xs text-ink-faint outline-none hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
       >

@@ -18,10 +18,11 @@
    restoring from localStorage on mount naturally shows a timer that
    expired while away as already finished, no special-case needed. */
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Pause, Play, Timer as TimerIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
+import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 
 /* ── shared store ────────────────────────────────────────────────────────── */
 
@@ -223,6 +224,10 @@ function formatRemaining(ms: number): string {
 export function KioskTimersButton({ className }: { className?: string }) {
   const list = useTimers();
   const [open, setOpen] = useState(false);
+  // The overlay grows out of THIS button (container transform) — captured at
+  // tap time, same reasoning as kiosk-climate.tsx's modalOrigin: a rect held
+  // from render time would go stale the moment this button's own row reflows.
+  const [origin, setOrigin] = useState<DOMRect | null>(null);
   const live = list.some((t) => t.pausedRemainingMs === null);
   const now = useNow(live);
 
@@ -245,7 +250,10 @@ export function KioskTimersButton({ className }: { className?: string }) {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={(e) => {
+          setOrigin(e.currentTarget.getBoundingClientRect());
+          setOpen(true);
+        }}
         aria-label={list.length > 0 ? `Timers — ${list.length} set` : "Timers"}
         className={cn(
           // kiosk-press replaces active:scale-[0.98] + the bare `transition`
@@ -268,7 +276,7 @@ export function KioskTimersButton({ className }: { className?: string }) {
           <span className="font-mono tabular-nums">{formatRemaining(soonestMs)}</span>
         )}
       </button>
-      {open && <KioskTimersOverlay onClose={() => setOpen(false)} />}
+      {open && <KioskTimersOverlay onClose={() => setOpen(false)} originRect={origin} />}
     </>
   );
 }
@@ -283,12 +291,27 @@ const PRESETS: { name: string; minutes: number }[] = [
   { name: "Pizza", minutes: 12 },
 ];
 
-function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
+function KioskTimersOverlay({
+  onClose,
+  originRect,
+}: {
+  onClose: () => void;
+  /** The Timers button's rect at tap time — this overlay grows out of it
+   *  and collapses back into it (containerExpand/containerCollapse). Null
+   *  keeps today's plain instant show/hide unchanged — this overlay never
+   *  had a fade/scale entrance of its own to fall back to. */
+  originRect?: DOMRect | null;
+}) {
   const list = useTimers();
   const live = list.some((t) => t.pausedRemainingMs === null);
   const now = useNow(live);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstFocusRef = useRef<HTMLButtonElement>(null);
+  // Guards requestClose against firing twice (a rapid Escape + backdrop tap
+  // in the same beat) and guards onClose itself against firing twice off the
+  // collapse animation's own finished-handler + safety-net pair below.
+  const closingRef = useRef(false);
+  const closeFiredRef = useRef(false);
 
   // Same contract as kiosk-pin-pad.tsx: focus the overlay's primary control
   // on open (the first preset — always rendered, never destructive, unlike
@@ -302,15 +325,65 @@ function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
-  // Escape maps to the same onClose the backdrop-click and X button already
-  // use — closing this overlay only hides it, running timers are untouched
-  // either way, so there's no separate "what does closing mean" question
-  // here to preserve. Tab/Shift+Tab cycle within the dialog, same shape as
-  // the pin pad's trap.
+  // Container-transform entrance — see kiosk-motion.ts's containerExpand and
+  // kiosk-climate.tsx's KioskClimateModal for the house pattern. Layout
+  // effect, not effect: must commit before this mount's first paint, or the
+  // full-size panel flashes at rest for a frame before snapping down to the
+  // button to begin its travel. No-op (containerExpand's own guard) under
+  // reduced motion, and a no-op here too when there's no originRect — this
+  // overlay has always just appeared instantly, and that stays true whenever
+  // there's no trigger rect to grow from.
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    const anim = originRect && node ? containerExpand(node, originRect) : null;
+    // Cancel on cleanup — for dev StrictMode's mount→cleanup→remount probe,
+    // not the real unmount: see KioskClimateModal's identical effect for the
+    // measured failure (the re-run otherwise measures through the first
+    // animation's frame-0 transform and flattens the FLIP into a fade).
+    return () => anim?.cancel();
+    // Mount-only: originRect is fixed for the life of one open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Routes every close path (Escape, backdrop click, X button) through one
+  // place so each gets the same collapse-then-unmount behaviour. With no
+  // originRect this is exactly today's `onClose()` — byte-identical, since
+  // this overlay has no animation to skip in that case.
+  function requestClose() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+
+    const node = dialogRef.current;
+    if (originRect && node) {
+      const fireClose = () => {
+        if (closeFiredRef.current) return;
+        closeFiredRef.current = true;
+        onClose();
+      };
+      const anim = containerCollapse(node, originRect);
+      if (anim) {
+        anim.finished.catch(() => {}).finally(fireClose);
+        // Safety net: `finished` never resolves if the animation is
+        // cancelled by an unmount race — the overlay must not become
+        // undismissable. containerCollapse itself already returns null
+        // (skipped below) under reduced motion, so this only ever arms
+        // when an animation is actually playing.
+        window.setTimeout(fireClose, KIOSK_POP_MS + 80);
+        return;
+      }
+    }
+    onClose();
+  }
+
+  // Escape maps to the same requestClose the backdrop-click and X button
+  // already use — closing this overlay only hides it, running timers are
+  // untouched either way, so there's no separate "what does closing mean"
+  // question here to preserve. Tab/Shift+Tab cycle within the dialog, same
+  // shape as the pin pad's trap.
   function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      requestClose();
       return;
     }
     if (e.key !== "Tab") return;
@@ -345,7 +418,7 @@ function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 px-4 py-6 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={requestClose}
       // Same gap as kiosk-pin-pad.tsx's backdrop, plus one: this backdrop
       // DOES close on click (unchanged — see onClick above), but a
       // mousedown/touchdown that doesn't resolve into a click on this same
@@ -379,7 +452,7 @@ function KioskTimersOverlay({ onClose }: { onClose: () => void }) {
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close"
             className="-mr-2.5 flex h-11 w-11 items-center justify-center rounded-md text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
           >

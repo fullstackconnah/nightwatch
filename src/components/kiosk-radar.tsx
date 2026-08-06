@@ -21,10 +21,16 @@
    (target === currentTarget), and focus restored to whatever had it before
    the modal opened. */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KIOSK_EASE_OUT, KIOSK_POP_MS, prefersReducedMotion } from "@/lib/kiosk-motion";
+import {
+  KIOSK_EASE_OUT,
+  KIOSK_POP_MS,
+  containerCollapse,
+  containerExpand,
+  prefersReducedMotion,
+} from "@/lib/kiosk-motion";
 
 interface RadarFrame {
   at: string;
@@ -45,7 +51,11 @@ type RadarApiResponse =
 
 export interface UseKioskRadar {
   isOpen: boolean;
-  open: () => void;
+  /** The trigger's rect at tap time, when `open` was given one — the modal
+   *  grows out of it (containerExpand). Null (no rect passed, or opened
+   *  programmatically) keeps the plain centered pop. */
+  originRect: DOMRect | null;
+  open: (originRect?: DOMRect) => void;
   close: () => void;
 }
 
@@ -55,9 +65,17 @@ export interface UseKioskRadar {
  *  other useKiosk*-style hook in this codebase. */
 export function useKioskRadar(): UseKioskRadar {
   const [isOpen, setIsOpen] = useState(false);
+  const [originRect, setOriginRect] = useState<DOMRect | null>(null);
   return {
     isOpen,
-    open: useCallback(() => setIsOpen(true), []),
+    originRect,
+    // The rect rides the open() call, never a separate setter: it's only
+    // meaningful captured at the same instant as the tap that opens (a rect
+    // held from any earlier moment goes stale on relayout).
+    open: useCallback((rect?: DOMRect) => {
+      setOriginRect(rect ?? null);
+      setIsOpen(true);
+    }, []),
     close: useCallback(() => setIsOpen(false), []),
   };
 }
@@ -95,12 +113,23 @@ interface PreloadState {
   frameOk: boolean[];
 }
 
-export function KioskRadarModal({ onClose }: { onClose: () => void }) {
+export function KioskRadarModal({
+  onClose,
+  originRect = null,
+}: {
+  onClose: () => void;
+  /** The radar button's rect at tap time (from useKioskRadar) — the panel
+   *  grows out of it and collapses back into it. Null keeps the centered pop. */
+  originRect?: DOMRect | null;
+}) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const reducedRef = useRef(false);
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
+  // onClose+focus-restore must fire exactly once: the collapse path arms both
+  // the animation's finished handler and a wall-clock safety net.
+  const closeFiredRef = useRef(false);
   const titleId = "kiosk-radar-modal-title";
 
   const [data, setData] = useState<RadarApiResponse | null>(null);
@@ -131,13 +160,52 @@ export function KioskRadarModal({ onClose }: { onClose: () => void }) {
     setEntered(true);
   }, []);
 
+  // Container-transform entrance — the panel grows out of the radar button's
+  // rect. Layout effect so the start keyframe commits before first paint (a
+  // plain effect would flash the resting panel for a frame); see
+  // containerExpand's own doc. Reduced motion: containerExpand returns null
+  // and the panel appears at rest, same as the pop path. The backdrop fade
+  // rides `entered` above either way.
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    const anim = originRect && node ? containerExpand(node, originRect) : null;
+    // Cancel on cleanup — for dev StrictMode's mount→cleanup→remount probe,
+    // not the real unmount: see KioskClimateModal's identical effect for the
+    // measured failure (the re-run otherwise measures through the first
+    // animation's frame-0 transform and flattens the FLIP into a fade).
+    return () => anim?.cancel();
+    // Mount-only by design: originRect is fixed for the life of one open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function requestClose() {
+    if (closing) return;
     if (reducedRef.current) {
       onClose();
       openerRef.current?.focus();
       return;
     }
     setClosing(true);
+
+    // With an originRect the panel collapses back into the button it grew
+    // from; without one it keeps the plain fade+shrink below.
+    const node = dialogRef.current;
+    if (originRect && node) {
+      const fireClose = () => {
+        if (closeFiredRef.current) return;
+        closeFiredRef.current = true;
+        onClose();
+        openerRef.current?.focus();
+      };
+      const anim = containerCollapse(node, originRect);
+      if (anim) {
+        anim.finished.catch(() => {}).finally(fireClose);
+        // Safety net: `finished` never resolves if the animation is cancelled
+        // by an unmount race — the modal must not become undismissable.
+        window.setTimeout(fireClose, KIOSK_POP_MS + 80);
+        return;
+      }
+    }
     window.setTimeout(() => {
       onClose();
       openerRef.current?.focus();
@@ -277,7 +345,15 @@ export function KioskRadarModal({ onClose }: { onClose: () => void }) {
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
         className="panel relative z-(--z-modal) w-full max-w-lg p-6 transition-[opacity,transform] motion-reduce:transition-none"
-        style={{ ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.96)" }}
+        // With an originRect, WAAPI owns the panel's entrance and exit
+        // (containerExpand/-Collapse) — inline style holds constant resting
+        // values so the CSS transition never fires; the ternaries are the
+        // no-origin pop fallback only. Same arrangement as KioskClimateModal.
+        style={
+          originRect
+            ? { ...transitionStyle, opacity: 1, transform: "none" }
+            : { ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.96)" }
+        }
       >
         <div className="mb-4 flex items-center justify-between gap-2">
           <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">

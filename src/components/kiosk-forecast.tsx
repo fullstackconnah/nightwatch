@@ -129,7 +129,7 @@ export function KioskForecastRail({
    *  the radar as its own small control, and only in the full view. Glance has
    *  no radar entry point at all now, which is why this is still optional: the
    *  glance band passes nothing. */
-  onRadarClick?: () => void;
+  onRadarClick?: (originRect?: DOMRect) => void;
 }) {
   const s = SIZE[size];
   // Full view only, per the owner: glance is a reading surface, and a control
@@ -146,7 +146,10 @@ export function KioskForecastRail({
       {showRadarButton && (
         <button
           type="button"
-          onClick={onRadarClick}
+          // The button's own rect rides the call so the radar modal can grow
+          // out of it (containerExpand) — captured at tap time, the only
+          // moment a rect is guaranteed fresh.
+          onClick={(e) => onRadarClick?.(e.currentTarget.getBoundingClientRect())}
           // The rail lives inside the carousel in glance, which claims every
           // pointerdown it sees (and retargets the click via pointer capture).
           // This button only renders in full mode, where that isn't in play —

@@ -21,12 +21,18 @@
    its own goes back quickly, a screen someone asked for stays. Touching the
    panel resets the clock. */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { DoorOpen, RefreshCw, Video, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetcher } from "@/lib/client";
-import { KIOSK_EASE_OUT, KIOSK_POP_MS, prefersReducedMotion } from "@/lib/kiosk-motion";
+import {
+  KIOSK_EASE_OUT,
+  KIOSK_POP_MS,
+  containerCollapse,
+  containerExpand,
+  prefersReducedMotion,
+} from "@/lib/kiosk-motion";
 import { useNow } from "@/lib/use-now";
 import type { HaDoorbellSnapshot, HaDoorbellTrigger, HaDoorbellTriggerKind } from "@/lib/ha-types";
 
@@ -125,7 +131,12 @@ export interface DoorbellView {
   /** Which camera to show first. */
   cameraId: string | null;
   snapshot: HaDoorbellSnapshot | undefined;
-  openManually: () => void;
+  /** The Front door button's rect, ONLY for a manual open (see openManually)
+   *  — the modal grows out of it (containerExpand). An automatic ring
+   *  takeover has no on-screen trigger to grow from, so it always leaves
+   *  this null and keeps its plain pop entrance/exit exactly as before. */
+  originRect: DOMRect | null;
+  openManually: (rect?: DOMRect) => void;
   close: () => void;
 }
 
@@ -146,6 +157,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
   const { data } = useDoorbellSnapshot();
   const [open, setOpen] = useState(false);
   const [trigger, setTrigger] = useState<HaDoorbellTrigger | null>(null);
+  const [originRect, setOriginRect] = useState<DOMRect | null>(null);
   const seenRef = useRef<string | null>(null);
   const seededRef = useRef(false);
   const onTriggerRef = useRef(onTrigger);
@@ -175,18 +187,23 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
 
     if (data?.autoOpen === false) return;
     setTrigger(latest);
+    // Automatic takeover: no on-screen trigger was tapped, so this always
+    // keeps the plain pop entrance/exit — see DoorbellView.originRect.
+    setOriginRect(null);
     setOpen(true);
     onTriggerRef.current?.();
   }, [latest, data?.autoOpen]);
 
-  const openManually = useCallback(() => {
+  const openManually = useCallback((rect?: DOMRect) => {
     setTrigger(null);
+    setOriginRect(rect ?? null);
     setOpen(true);
   }, []);
 
   const close = useCallback(() => {
     setOpen(false);
     setTrigger(null);
+    setOriginRect(null);
   }, []);
 
   /* Which camera opens first. A configured `viewCamera` pin wins outright —
@@ -215,7 +232,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
     return cameras[0].entityId;
   }, [cameras, trigger, viewCamera]);
 
-  return { hasCamera: cameras.length > 0, open, trigger, cameraId, snapshot: data, openManually, close };
+  return { hasCamera: cameras.length > 0, open, trigger, cameraId, snapshot: data, originRect, openManually, close };
 }
 
 /* ── the manual control ───────────────────────────────────────────────────── */
@@ -223,7 +240,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
 /** Sits in the header's control row beside Glance and Admin. Renders nothing
  *  at all when HA has no door camera to offer, rather than a control that
  *  can only fail — the same rule kiosk-alerts.tsx's tray follows. */
-export function KioskDoorbellButton({ onClick }: { onClick: () => void }) {
+export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => void }) {
   const { data } = useDoorbellSnapshot();
   if (!data?.cameras.length) return null;
 
@@ -233,7 +250,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: () => void }) {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        onClick(e.currentTarget.getBoundingClientRect());
       }}
       aria-label="View the front door camera"
       className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
@@ -390,10 +407,16 @@ export function KioskDoorbellModal({
   cameraId,
   trigger,
   onClose,
+  originRect,
 }: {
   cameraId: string;
   trigger: HaDoorbellTrigger | null;
   onClose: () => void;
+  /** The Front door button's rect for a manual open (see
+   *  useDoorbellWatch.originRect) — the panel grows out of it and collapses
+   *  back into it. Null for the automatic ring takeover, which keeps its
+   *  plain pop entrance/exit exactly as before. */
+  originRect?: DOMRect | null;
 }) {
   const { data } = useDoorbellSnapshot();
   const cameras = data?.cameras ?? [];
@@ -401,6 +424,10 @@ export function KioskDoorbellModal({
   const [status, setStatus] = useState<CameraStatus>("connecting");
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
+  // onClose must fire exactly once even though the collapse path arms both
+  // an animation-finished handler and a wall-clock safety net (see
+  // requestClose) — same guard as KioskClimateModal's closeFiredRef.
+  const closeFiredRef = useRef(false);
   // deadline and the window it came from move together: the countdown threshold
   // is derived from the window, so a state where one has updated and the other
   // hasn't would render "closing in 20s" against a 20s window for one frame.
@@ -446,14 +473,55 @@ export function KioskDoorbellModal({
     setEntered(true);
   }, []);
 
+  // Container-transform entrance — see kiosk-motion.ts's containerExpand and
+  // kiosk-climate.tsx's KioskClimateModal for the house pattern. Layout
+  // effect, not effect: must commit before this mount's first paint, or the
+  // full-size panel flashes at rest for a frame before snapping down to the
+  // Front door button to begin its travel. No-op (containerExpand's own
+  // guard) under reduced motion, and a no-op here too for the automatic
+  // takeover (originRect null) — that path keeps its plain pop untouched.
+  // Mount-only: a second ring re-pointing this same modal instance at a new
+  // camera (the effect above, keyed on cameraId) must NOT replay this — the
+  // panel is already standing, and the trigger rect is only ever meaningful
+  // for the ORIGINAL open.
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    const anim = originRect && node ? containerExpand(node, originRect) : null;
+    // Cancel on cleanup — for dev StrictMode's mount→cleanup→remount probe,
+    // not the real unmount: see KioskClimateModal's identical effect for the
+    // measured failure (the re-run otherwise measures through the first
+    // animation's frame-0 transform and flattens the FLIP into a fade).
+    return () => anim?.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const requestClose = useCallback(() => {
+    if (closing) return;
     if (reducedRef.current) {
       onClose();
       return;
     }
     setClosing(true);
+
+    const node = dialogRef.current;
+    if (originRect && node) {
+      const fireClose = () => {
+        if (closeFiredRef.current) return;
+        closeFiredRef.current = true;
+        onClose();
+      };
+      const anim = containerCollapse(node, originRect);
+      if (anim) {
+        anim.finished.catch(() => {}).finally(fireClose);
+        // Safety net: `finished` never resolves if the animation is
+        // cancelled by an unmount race — the modal must not become
+        // undismissable.
+        window.setTimeout(fireClose, KIOSK_POP_MS + 80);
+        return;
+      }
+    }
     window.setTimeout(onClose, KIOSK_POP_MS);
-  }, [onClose]);
+  }, [onClose, originRect, closing]);
 
   const now = useNow(true);
   const secondsLeft = Math.max(0, Math.ceil((clock.deadline - now) / 1000));
@@ -529,7 +597,16 @@ export function KioskDoorbellModal({
         // exists to reclaim an ABANDONED screen, not to hurry anyone along.
         onPointerDown={keepOpen}
         className="panel relative z-(--z-modal) w-full max-w-3xl p-4 transition-[opacity,transform] motion-reduce:transition-none md:p-5"
-        style={{ ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.97)" }}
+        // With an originRect, WAAPI owns the panel's entrance and exit
+        // (containerExpand/-Collapse composite over inline style), so the
+        // inline style holds constant resting values and the CSS transition
+        // never fires — the pop-path ternaries below are the automatic-
+        // takeover (no origin) fallback only, unchanged.
+        style={
+          originRect
+            ? { ...transitionStyle, opacity: 1, transform: "none" }
+            : { ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.97)" }
+        }
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">

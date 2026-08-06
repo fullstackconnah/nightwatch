@@ -131,7 +131,10 @@ export function KioskGlance({
   onDoorbellClick,
 }: {
   period: KioskPeriod;
-  onAdminClick: () => void;
+  /** Rect param lets the tapped Admin button feed the PIN pad's container-
+   *  transform origin (kiosk-motion.ts's containerExpand) — see page.tsx's
+   *  openPinPad. */
+  onAdminClick: (rect?: DOMRect) => void;
   /** Threaded through to the optional "doorbell" widget only — see
    *  kiosk-widgets.tsx's KioskWidgetCtx. Full mode already has its own,
    *  always-present doorbell button in the header; glance has none by
@@ -222,7 +225,7 @@ export function KioskGlance({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
-          onAdminClick();
+          onAdminClick(e.currentTarget.getBoundingClientRect());
         }}
         style={{
           bottom: "calc(1rem + env(safe-area-inset-bottom))",

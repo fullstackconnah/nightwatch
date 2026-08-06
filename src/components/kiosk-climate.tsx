@@ -25,13 +25,19 @@
    risk the optimistic-update contract silently drifting between the hook and
    its consumer. */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Power, SlidersHorizontal, X } from "lucide-react";
 import type { HaClimate, HaEntities } from "@/lib/ha-types";
 import type { UseKioskHaResult } from "@/components/kiosk-hub";
 import { cn } from "@/lib/utils";
 import { KioskDigitReel } from "@/components/kiosk-digits";
-import { KIOSK_POP_MS, KIOSK_EASE_OUT, prefersReducedMotion } from "@/lib/kiosk-motion";
+import {
+  KIOSK_POP_MS,
+  KIOSK_EASE_OUT,
+  containerCollapse,
+  containerExpand,
+  prefersReducedMotion,
+} from "@/lib/kiosk-motion";
 import { useKioskTheme } from "@/components/kiosk-theme";
 
 const NUDGE_STEP = 0.5;
@@ -608,6 +614,15 @@ export function KioskClimateTile({
   onAdjustingChange?: (adjusting: boolean) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  // The modal grows out of THIS TILE's rect (container transform, see
+  // containerExpand in kiosk-motion.ts) — the tile is the container the user
+  // perceives as becoming the modal, not the small expand button they
+  // physically hit. Captured at TAP time, never at render: a rect captured
+  // earlier goes stale the moment the grid relayouts (glance⇄full, a sibling
+  // tile unmounting) and the modal would expand out of a position the tile
+  // no longer occupies.
+  const [modalOrigin, setModalOrigin] = useState<DOMRect | null>(null);
+  const tileRef = useRef<HTMLDivElement>(null);
   const advancedButtonRef = useRef<HTMLButtonElement>(null);
 
   const pending = ha.isPending(climate.entityId);
@@ -771,6 +786,7 @@ export function KioskClimateTile({
 
   return (
     <div
+      ref={tileRef}
       className={cn(
         // `transition-colors` REMOVED — it is now inert, not merely
         // redundant. `.kiosk-defocus` (globals.css) is UNLAYERED CSS
@@ -893,7 +909,10 @@ export function KioskClimateTile({
         type="button"
         disabled={!climate.available}
         aria-label={`Advanced controls for ${climate.name}`}
-        onClick={() => setModalOpen(true)}
+        onClick={() => {
+          setModalOrigin(tileRef.current?.getBoundingClientRect() ?? null);
+          setModalOpen(true);
+        }}
         className={EXPAND_BUTTON}
       >
         <span className={EXPAND_BUTTON_CHIP}>
@@ -1004,6 +1023,7 @@ export function KioskClimateTile({
           onSetPresetMode={setPresetMode}
           onSetSwingMode={setSwingMode}
           targetControl={targetControl}
+          originRect={modalOrigin}
           onClose={closeModal}
         />
       )}
@@ -1292,6 +1312,7 @@ function KioskClimateModal({
   onSetPresetMode,
   onSetSwingMode,
   targetControl,
+  originRect,
   onClose,
 }: {
   climate: HaClimate;
@@ -1318,12 +1339,22 @@ function KioskClimateModal({
    *  re-invoked here, so the modal and tile share ONE hold/debounce/TTL
    *  state instead of racing two independent ones for the same entity. */
   targetControl: TargetControl;
+  /** The tile's rect at the moment the expand button was tapped — the modal
+   *  grows out of it and collapses back into it (containerExpand /
+   *  containerCollapse). Null falls back to the plain centered pop, which
+   *  stays the entrance for any caller with no tap to grow from. */
+  originRect: DOMRect | null;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const reducedRef = useRef(false);
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
+  // onClose must fire exactly once even though the collapse path arms both
+  // an animation-finished handler and a wall-clock safety net (see
+  // requestClose) — and never twice on a double-dismiss (Escape then
+  // backdrop tap in the same beat).
+  const closeFiredRef = useRef(false);
   const titleId = `kiosk-climate-modal-${climate.entityId}`;
   // Read once: the slider and the chip fallback both need it, and `?? []`
   // twice would hand each branch a fresh array identity for no reason.
@@ -1363,15 +1394,58 @@ function KioskClimateModal({
     setEntered(true);
   }, []);
 
+  // Container-transform entrance: the panel grows out of the tile's rect
+  // instead of popping in place. Layout effect, not effect — the WAAPI call
+  // must start before this mount's first paint, or the full-size panel
+  // flashes for a frame at rest before snapping down to the tile to begin
+  // its travel. Under reduced motion containerExpand returns null and the
+  // panel simply appears at rest — same instant-show contract as the pop
+  // path. The backdrop is untouched by this: its fade rides the `entered`
+  // flip above either way.
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    const anim = originRect && node ? containerExpand(node, originRect) : null;
+    // Cancelling on cleanup is not for the real unmount (the entrance is
+    // long finished by then) — it's for dev StrictMode's mount→cleanup→
+    // remount probe. Without it the second run measures the panel THROUGH
+    // the first animation's frame-0 transform (the panel sitting shrunk on
+    // the trigger rect), derives an identity FLIP, and replaces the whole
+    // travel with a plain fade — measured on the test stack, not
+    // hypothetical. Cancel puts the panel back at rest so the re-run
+    // measures the true resting rect.
+    return () => anim?.cancel();
+    // Mount-only by design: originRect is fixed for the life of one open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Exit plays the reverse transition before actually unmounting (the parent
   // keeps `modalOpen` true until this fires `onClose`), so a tap-to-close
-  // doesn't just vanish the panel.
+  // doesn't just vanish the panel. With an originRect it collapses back into
+  // the tile it grew from; without one it keeps the plain fade+shrink.
   function requestClose() {
+    if (closing) return;
     if (reducedRef.current) {
       onClose();
       return;
     }
     setClosing(true);
+
+    const node = dialogRef.current;
+    if (originRect && node) {
+      const fireClose = () => {
+        if (closeFiredRef.current) return;
+        closeFiredRef.current = true;
+        onClose();
+      };
+      const anim = containerCollapse(node, originRect);
+      if (anim) {
+        anim.finished.catch(() => {}).finally(fireClose);
+        // Safety net: `finished` never resolves if the animation is cancelled
+        // by an unmount race — the modal must not become undismissable.
+        window.setTimeout(fireClose, KIOSK_POP_MS + 80);
+        return;
+      }
+    }
     window.setTimeout(onClose, KIOSK_POP_MS);
   }
 
@@ -1456,7 +1530,16 @@ function KioskClimateModal({
            off the bottom would hide the swing control entirely, so this one box
            is allowed to scroll. */
         className="panel relative z-(--z-modal) max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6 transition-[opacity,transform] motion-reduce:transition-none"
-        style={{ ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.96)" }}
+        // With an originRect, WAAPI owns the panel's entrance and exit
+        // (containerExpand/-Collapse composite over inline style), so the
+        // inline style holds constant resting values and the CSS transition
+        // never fires — the pop-path ternaries below are the no-origin
+        // fallback only.
+        style={
+          originRect
+            ? { ...transitionStyle, opacity: 1, transform: "none" }
+            : { ...transitionStyle, opacity: shown ? 1 : 0, transform: shown ? "scale(1)" : "scale(0.96)" }
+        }
       >
         <div className="mb-5 flex items-center justify-between gap-2">
           <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">

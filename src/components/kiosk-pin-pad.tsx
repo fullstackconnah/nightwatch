@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Delete, Lock, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 import { submitKioskPin } from "@/lib/kiosk-client";
+import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 
 const PIN_LENGTH = 4;
 // "" marks the empty bottom-left cell so 0 lands centred, phone-keypad style.
@@ -13,9 +14,16 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"] as c
 export function KioskPinPad({
   onElevated,
   onClose,
+  originRect,
 }: {
   onElevated: (expiresAt: number) => void;
   onClose: () => void;
+  /** The Admin button's rect at tap time (there are three: the night
+   *  overlay's, the status strip's, and glance's floating one) — this panel
+   *  grows out of it and collapses back into it (containerExpand/
+   *  containerCollapse). Null keeps today's plain instant show/hide — this
+   *  overlay never had a fade/scale entrance of its own to fall back to. */
+  originRect?: DOMRect | null;
 }) {
   const [digits, setDigits] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +33,11 @@ export function KioskPinPad({
   const submittingRef = useRef(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstKeyRef = useRef<HTMLButtonElement>(null);
+  // Guards requestClose against firing twice (a rapid Escape + Cancel tap in
+  // the same beat) and guards onClose itself against firing twice off the
+  // collapse animation's own finished-handler + safety-net pair below.
+  const closingRef = useRef(false);
+  const closeFiredRef = useRef(false);
 
   // Initial focus lands on the first digit key, not the Cancel button — a
   // keyboard user opening this modal is here to type a PIN, not to leave.
@@ -38,6 +51,56 @@ export function KioskPinPad({
       previouslyFocused?.focus();
     };
   }, []);
+
+  // Container-transform entrance — see kiosk-motion.ts's containerExpand and
+  // kiosk-climate.tsx's KioskClimateModal for the house pattern. Layout
+  // effect, not effect: must commit before this mount's first paint, or the
+  // full-size panel flashes at rest for a frame before snapping down to the
+  // Admin button to begin its travel. No-op (containerExpand's own guard)
+  // under reduced motion, and a no-op here too when there's no originRect —
+  // this panel has always just appeared instantly, and that stays true
+  // whenever there's no trigger rect to grow from.
+  useLayoutEffect(() => {
+    const node = dialogRef.current;
+    const anim = originRect && node ? containerExpand(node, originRect) : null;
+    // Cancel on cleanup — for dev StrictMode's mount→cleanup→remount probe,
+    // not the real unmount: see KioskClimateModal's identical effect for the
+    // measured failure (the re-run otherwise measures through the first
+    // animation's frame-0 transform and flattens the FLIP into a fade).
+    return () => anim?.cancel();
+    // Mount-only: originRect is fixed for the life of one open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Routes every close path (Escape, Cancel button) through one place so
+  // each gets the same collapse-then-unmount behaviour. With no originRect
+  // this is exactly today's `onClose()` — byte-identical, since this panel
+  // has no animation to skip in that case.
+  function requestClose() {
+    if (closingRef.current) return;
+    closingRef.current = true;
+
+    const node = dialogRef.current;
+    if (originRect && node) {
+      const fireClose = () => {
+        if (closeFiredRef.current) return;
+        closeFiredRef.current = true;
+        onClose();
+      };
+      const anim = containerCollapse(node, originRect);
+      if (anim) {
+        anim.finished.catch(() => {}).finally(fireClose);
+        // Safety net: `finished` never resolves if the animation is
+        // cancelled by an unmount race — the pad must not become
+        // undismissable. containerCollapse itself already returns null
+        // (skipped below) under reduced motion, so this only ever arms
+        // when an animation is actually playing.
+        window.setTimeout(fireClose, KIOSK_POP_MS + 80);
+        return;
+      }
+    }
+    onClose();
+  }
 
   // Only ticks while actually locked out — the countdown reads off the
   // server's own lockedUntil timestamp, not a client-started timer, so it
@@ -89,7 +152,7 @@ export function KioskPinPad({
   function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      requestClose();
       return;
     }
     if (e.key !== "Tab") return;
@@ -156,7 +219,7 @@ export function KioskPinPad({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Cancel"
             className="h-11 w-11 -mr-2.5 flex items-center justify-center text-ink-dim hover:text-ink outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-md"
           >

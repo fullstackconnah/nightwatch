@@ -240,3 +240,96 @@ export function flipOutTo(source: HTMLElement, targetRect: DOMRect, durationMs =
     { duration: durationMs, easing: KIOSK_EASE_OUT, fill: "forwards" },
   );
 }
+
+/**
+ * Container-transform ENTRANCE for a kiosk modal panel: the panel visually
+ * grows out of `fromRect` — the trigger tile/button's own rect, captured by
+ * the caller at TAP time (a rect captured at render time goes stale on any
+ * relayout) — instead of popping from a fixed scale like the plain modal
+ * entrance does. Call this from a `useLayoutEffect` (not `useEffect`) right
+ * after the panel mounts, so the animation's start keyframe is committed
+ * before the browser's first paint — a post-paint effect would let that
+ * first paint show the panel at its resting size for one frame before WAAPI
+ * took over.
+ *
+ * `panel.getBoundingClientRect()` here is trusted as the resting layout
+ * rect because this only ever runs once, on a freshly mounted, untransformed
+ * panel — unlike `containerCollapse` below, there is no earlier animation on
+ * this node that could still be live.
+ *
+ * The scale is NON-UNIFORM (`sx`/`sy` independent), unlike `useFlipGroup`'s
+ * single shared-element scale. That hook's uniform scale exists to protect
+ * TEXT nodes shared across a layout change from skewing; this panel is not
+ * shared text, it has to actually occupy the trigger's rect on both axes or
+ * the "this tile became the modal" read falls apart the moment their aspect
+ * ratios differ. The early keyframes do distort whatever content sits inside
+ * the panel — accepted because the opacity ramp (0 → 1 by `offset: 0.35`)
+ * finishes well before KIOSK_EASE_OUT (ease-out-expo) has covered enough
+ * ground for the distortion to read as anything but a blur.
+ *
+ * Returns null under prefers-reduced-motion — callers keep today's instant
+ * show.
+ */
+export function containerExpand(panel: HTMLElement, fromRect: DOMRect): Animation | null {
+  if (prefersReducedMotion()) return null;
+
+  const panelRect = panel.getBoundingClientRect();
+  const dx = fromRect.left - panelRect.left;
+  const dy = fromRect.top - panelRect.top;
+  const sx = panelRect.width > 0 ? fromRect.width / panelRect.width : 1;
+  const sy = panelRect.height > 0 ? fromRect.height / panelRect.height : 1;
+
+  return panel.animate(
+    [
+      { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0, transformOrigin: "top left" },
+      { opacity: 1, offset: 0.35, transformOrigin: "top left" },
+      { transform: "none", opacity: 1, transformOrigin: "top left" },
+    ],
+    { duration: KIOSK_MOVE_MS, easing: KIOSK_EASE_OUT },
+  );
+}
+
+/**
+ * Container-transform EXIT — the reverse trip, the panel collapsing back
+ * into `toRect` (almost always the same rect `containerExpand` grew out of).
+ * Opacity holds through 55% so the collapse reads as travel, not a fade that
+ * happens to move.
+ *
+ * Cancels the panel's own in-flight animations before measuring, and that
+ * ordering matters: on a fast open-then-close tap, `containerExpand` can
+ * still be running when this is called, and `getBoundingClientRect()` on a
+ * node mid-WAAPI-animation reports its CURRENT transformed on-screen
+ * position, not the resting layout rect it's travelling toward — exactly
+ * the trap `useFlipGroup` documents on its own in-flight nodes. Measuring
+ * through that live transform would poison this collapse's FLIP origin.
+ * Cancelling first, then measuring, gives the clean resting rect — which is
+ * the correct "from" here because the collapse's own keyframes re-express
+ * position with their own transform starting at `none`, regardless of
+ * whatever mid-flight transform the entrance had reached.
+ *
+ * `fill: "forwards"` holds the final (shrunk, transparent) frame once the
+ * animation ends, so the panel doesn't snap back to full size for a frame
+ * between the animation finishing and the caller actually unmounting it.
+ *
+ * Returns null under prefers-reduced-motion — callers keep today's instant
+ * close.
+ */
+export function containerCollapse(panel: HTMLElement, toRect: DOMRect): Animation | null {
+  if (prefersReducedMotion()) return null;
+
+  panel.getAnimations().forEach((a) => a.cancel());
+  const panelRect = panel.getBoundingClientRect();
+  const dx = toRect.left - panelRect.left;
+  const dy = toRect.top - panelRect.top;
+  const sx = panelRect.width > 0 ? toRect.width / panelRect.width : 1;
+  const sy = panelRect.height > 0 ? toRect.height / panelRect.height : 1;
+
+  return panel.animate(
+    [
+      { transform: "none", opacity: 1, transformOrigin: "top left" },
+      { opacity: 1, offset: 0.55, transformOrigin: "top left" },
+      { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, opacity: 0, transformOrigin: "top left" },
+    ],
+    { duration: KIOSK_POP_MS, easing: KIOSK_EASE_OUT, fill: "forwards" },
+  );
+}
