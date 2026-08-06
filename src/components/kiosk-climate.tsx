@@ -785,6 +785,7 @@ export function KioskClimateTile({
   };
 
   return (
+    <>
     <div
       ref={tileRef}
       className={cn(
@@ -832,10 +833,10 @@ export function KioskClimateTile({
       )}
       // This tile is the one being adjusted (ClimateSection's `focused`
       // prop) — exempts it from the blur/dim `[data-kiosk-focus="on"]
-      // .kiosk-defocus` rule applies to its unfocused siblings, and (per
-      // globals.css's FILTER IS A CONTAINING BLOCK note) keeps it eligible
-      // to host this tile's own modal without re-parenting a fixed dialog
-      // into a blurred, 2cm-wide containing block.
+      // .kiosk-defocus` rule applies to its unfocused siblings. (The modal
+      // used to rely on this exemption too, back when it rendered inside
+      // this tile — it lives outside the tile root now, see the comment at
+      // its render site below.)
       data-kiosk-focused={focused ? "true" : undefined}
       // NO inline `transitionProperty` here, and that is a fix rather than an
       // omission. This tile carried one to get background-color/border-color
@@ -1000,34 +1001,45 @@ export function KioskClimateTile({
         )}
       </div>
 
-      {modalOpen && (
-        <KioskClimateModal
-          climate={climate}
-          // The four displayed modes, held-aware (see useModeHolds). Passed in
-          // rather than read off `climate` inside the modal so the tile and its
-          // modal cannot disagree about what is selected — they share one hold,
-          // the same way they already share one targetControl.
-          shownModes={{
-            hvacMode: shownHvacMode,
-            fanMode: modeHolds.display("fanMode"),
-            presetMode: modeHolds.display("presetMode"),
-            swingMode: modeHolds.display("swingMode"),
-          }}
-          pending={pending}
-          error={error}
-          dualSetpoint={dualSetpoint}
-          nudgeable={nudgeable}
-          onNudge={nudge}
-          onSetMode={setMode}
-          onSetFanMode={setFanMode}
-          onSetPresetMode={setPresetMode}
-          onSetSwingMode={setSwingMode}
-          targetControl={targetControl}
-          originRect={modalOrigin}
-          onClose={closeModal}
-        />
-      )}
     </div>
+
+    {/* OUTSIDE the tile root, deliberately: the tile is `isolate` (a real
+        stacking context, required by the working-glow layer's -z-10), and a
+        fixed dialog rendered inside a stacking context cannot escape it —
+        its z-(--z-modal) becomes local, and every section later in the DOM
+        (lights, switches) paints straight over the open modal. Measured on
+        production 2026-08-06. A fragment sibling keeps the modal in this
+        component (sharing the tile's holds/targetControl state, which is the
+        whole reason it lives in this file) while letting position:fixed
+        resolve against the viewport like every other kiosk modal. */}
+    {modalOpen && (
+      <KioskClimateModal
+        climate={climate}
+        // The four displayed modes, held-aware (see useModeHolds). Passed in
+        // rather than read off `climate` inside the modal so the tile and its
+        // modal cannot disagree about what is selected — they share one hold,
+        // the same way they already share one targetControl.
+        shownModes={{
+          hvacMode: shownHvacMode,
+          fanMode: modeHolds.display("fanMode"),
+          presetMode: modeHolds.display("presetMode"),
+          swingMode: modeHolds.display("swingMode"),
+        }}
+        pending={pending}
+        error={error}
+        dualSetpoint={dualSetpoint}
+        nudgeable={nudgeable}
+        onNudge={nudge}
+        onSetMode={setMode}
+        onSetFanMode={setFanMode}
+        onSetPresetMode={setPresetMode}
+        onSetSwingMode={setSwingMode}
+        targetControl={targetControl}
+        originRect={modalOrigin}
+        onClose={closeModal}
+      />
+    )}
+    </>
   );
 }
 
