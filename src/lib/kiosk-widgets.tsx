@@ -387,7 +387,13 @@ function VitalsWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void 
   useEmptyReport(!data && !error, reportEmpty);
   return (
     <div className="flex justify-center">
-      <KioskVitals />
+      {/* compact, unconditionally: every place this widget renders today is
+          the fixed-height glance band (132px / 88px short-viewport), which
+          CLIPS — the four-panel KioskVitals grid is 177px tall and lost its
+          bottom row there. The `full` widget list renders nowhere yet; if a
+          full-mode widget column ever lands, that call site should pass the
+          screen down and drop compact for full. */}
+      <KioskVitals compact />
     </div>
   );
 }
