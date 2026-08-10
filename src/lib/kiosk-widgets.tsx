@@ -28,15 +28,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Container, Newspaper, Thermometer } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KioskAssistant } from "@/components/kiosk-assistant";
-import { KioskForecastRail } from "@/components/kiosk-forecast";
-import { useKioskBriefing, useWeatherView, type KioskPeriod } from "@/components/kiosk-display";
-import { useKioskHa } from "@/components/kiosk-hub";
+import { KioskAssistant } from "@/components/kiosk/kiosk-assistant";
+import { KioskForecastRail } from "@/components/kiosk/kiosk-forecast";
+import { useKioskBriefing, useWeatherView, type KioskPeriod } from "@/components/kiosk/kiosk-display";
+import { useKioskHa } from "@/components/kiosk/kiosk-hub";
 import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
-import { StaleTag } from "@/components/kiosk-stale-tag";
-import { KioskVitals } from "@/components/kiosk-vitals";
-import { KioskTimersButton } from "@/components/kiosk-timers";
-import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk-doorbell";
+import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { KioskVitals } from "@/components/kiosk/kiosk-vitals";
+import { KioskTimersButton } from "@/components/kiosk/kiosk-timers";
+import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk/kiosk-doorbell";
 
 /* ── registry types ──────────────────────────────────────────────────────── */
 

@@ -1,12 +1,7 @@
-import { NextResponse } from "next/server";
 import { getSmartSnapshot } from "@/lib/smart";
+import { snapshotRoute } from "@/lib/snapshot-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  // Always 200: a collection failure is a valid snapshot state (error: set,
-  // empty drives) that the UI renders, not a transport failure — mirrors
-  // /api/processes. Auth (401 for unauthenticated requests) is handled
-  // globally by middleware.ts, same as every other route in this app.
-  return NextResponse.json(await getSmartSnapshot());
-}
+// Always 200 — see snapshot-route.ts for the contract and why it matters.
+export const GET = snapshotRoute({ collect: getSmartSnapshot });

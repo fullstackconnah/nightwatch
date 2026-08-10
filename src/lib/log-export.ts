@@ -1,7 +1,7 @@
 "use client";
 
 import { stripAnsi } from "@/lib/ansi-escapes";
-import { LEVEL_CODE, type LogLevel, type LogLine } from "@/lib/log-types";
+import { LEVEL_CODE, type LogLevel, type LogLine } from "@/lib/types/log";
 
 /**
  * Export one track's lines to a file.
@@ -13,7 +13,7 @@ import { LEVEL_CODE, type LogLevel, type LogLine } from "@/lib/log-types";
  *          escape bytes is unusable in every viewer that is not a terminal, and
  *          the reader exporting a filtered error is going to grep it.
  *   JSON — lossless. `text` keeps its ANSI escapes verbatim, exactly as
- *          log-types.ts promises, so a JSON export can reconstruct the console's
+ *          types/log.ts promises, so a JSON export can reconstruct the console's
  *          own rendering and a TXT export cannot.
  *
  * Both carry a header stating what was exported and under which filters. An

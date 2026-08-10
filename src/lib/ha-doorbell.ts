@@ -1,11 +1,12 @@
 import { loadConfig } from "@/lib/config";
-import { UNCONFIGURED_DETAIL, haCredentials, type HaCredentials } from "@/lib/ha";
+import { UNCONFIGURED_DETAIL, ha, haCredentials, type HaCredentials } from "@/lib/ha";
+import { Memo } from "@/lib/cache";
 import type {
   HaDoorbellCamera,
   HaDoorbellSnapshot,
   HaDoorbellTrigger,
   HaDoorbellTriggerKind,
-} from "@/lib/ha-types";
+} from "@/lib/types/ha";
 
 /**
  * Server-only front-door camera resolver for the kiosk.
@@ -57,42 +58,36 @@ interface RawEntity {
   attributes: Record<string, unknown>;
 }
 
-let statesCache: { at: number; raw: RawEntity[] } | null = null;
-
-async function fetchStates(creds: HaCredentials): Promise<RawEntity[] | { error: HaDoorbellSnapshot }> {
-  const now = Date.now();
-  if (statesCache && now - statesCache.at < STATES_CACHE_MS) return statesCache.raw;
-
-  const fail = (status: HaDoorbellSnapshot["status"], detail: string): { error: HaDoorbellSnapshot } => ({
-    error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null },
-  });
-
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/api/states`, {
-      headers: { Authorization: `Bearer ${creds.token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
+/**
+ * 1.5s cache over HA's full entity list. Short by design: this backs a
+ * doorbell, where a stale "is somebody at the door" is worse than an extra
+ * request — the TTL exists only to collapse the burst when the snapshot route
+ * and the camera route are hit back to back by the same page.
+ *
+ * The load goes through `ha` (src/lib/ha.ts's shared HaClient) rather than a
+ * second hand-written fetch: this module used to carry its own copy of the
+ * credential lookup, the timeout, and all four classification branches with
+ * byte-identical detail strings.
+ */
+const statesMemo = new Memo<RawEntity[] | { error: HaDoorbellSnapshot }>({
+  key: "haDoorbell.states",
+  ttlMs: STATES_CACHE_MS,
+  load: async () => {
+    const fail = (status: HaDoorbellSnapshot["status"], detail: string): { error: HaDoorbellSnapshot } => ({
+      error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null },
     });
-  } catch {
-    return fail("unreachable", `Home Assistant at ${creds.url} did not respond within ${TIMEOUT_MS / 1000}s.`);
-  }
-  if (res.status === 401 || res.status === 403) {
-    return fail("unauthorized", `Home Assistant rejected the access token (HTTP ${res.status}).`);
-  }
-  if (!res.ok) return fail("unreachable", `Home Assistant returned HTTP ${res.status}.`);
 
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return fail("unreachable", "Home Assistant returned a non-JSON response.");
-  }
-  if (!Array.isArray(body)) return fail("unreachable", "Home Assistant /api/states did not return an array.");
+    const probe = await ha.getJson<unknown>("/api/states");
+    if (probe.status !== "ok") return fail(probe.status, probe.detail);
+    if (!Array.isArray(probe.data)) {
+      return fail("unreachable", "Home Assistant /api/states did not return an array.");
+    }
+    return (probe.data as RawEntity[]).filter((e) => typeof e?.entity_id === "string");
+  },
+});
 
-  const raw = (body as RawEntity[]).filter((e) => typeof e?.entity_id === "string");
-  statesCache = { at: now, raw };
-  return raw;
+function fetchStates(): Promise<RawEntity[] | { error: HaDoorbellSnapshot }> {
+  return statesMemo.get();
 }
 
 // --- naming heuristics ------------------------------------------------------
@@ -341,7 +336,7 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
     };
   }
 
-  const raw = await fetchStates(creds);
+  const raw = await fetchStates();
   if (!Array.isArray(raw)) return { ...raw.error, autoOpen };
 
   const serverNow = Date.now();
@@ -363,7 +358,7 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
 export async function isProxyableCamera(entityId: string): Promise<boolean> {
   const creds = haCredentials();
   if (!creds) return false;
-  const raw = await fetchStates(creds);
+  const raw = await fetchStates();
   if (!Array.isArray(raw)) return false;
   return resolve(raw, Date.now()).cameras.some((c) => c.entityId === entityId);
 }

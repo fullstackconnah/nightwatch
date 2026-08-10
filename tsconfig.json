@@ -11,6 +11,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Node's built-in test runner resolves TypeScript through
+    // --experimental-strip-types, which requires the explicit `.ts` extension
+    // on relative imports. Legal here only because `noEmit` is true above.
+    // Applies to *.test.ts imports; app code keeps using extensionless "@/…"
+    // paths, which is what the bundler resolves.
+    "allowImportingTsExtensions": true,
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],

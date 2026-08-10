@@ -1,11 +1,12 @@
 import { loadConfig } from "@/lib/config";
+import { KeyedMemo } from "@/lib/cache";
 import type {
   ProxyCertificate,
   ProxyManagerSnapshot,
   ProxyRoute,
   RouteCertRef,
   RouteHealth,
-} from "@/lib/npm-types";
+} from "@/lib/types/npm";
 
 /**
  * Server-only Nginx Proxy Manager admin API client for the /proxy route map.
@@ -219,13 +220,6 @@ function mapRedirectionHost(raw: NpmRedirectionHostRaw, certById: Map<number, Pr
 
 // --- health probing: concurrent, capped, short-TTL cached ----------------------
 
-interface HealthCacheEntry {
-  status: RouteHealth;
-  ts: number;
-}
-
-const healthCache = new Map<string, HealthCacheEntry>();
-
 /** Any HTTP response — including 401/403/500 — means the upstream is alive.
  *  Only a transport-level failure (refused, timed out, DNS) means "down". HEAD
  *  first (cheap), falling back to GET for upstreams that refuse HEAD outright. */
@@ -246,12 +240,17 @@ async function probeTargetUncached(target: string): Promise<RouteHealth> {
   }
 }
 
-async function probeTarget(target: string): Promise<RouteHealth> {
-  const cached = healthCache.get(target);
-  if (cached && Date.now() - cached.ts < HEALTH_CACHE_MS) return cached.status;
-  const status = await probeTargetUncached(target);
-  healthCache.set(target, { status, ts: Date.now() });
-  return status;
+/** Per-target health probe cache. probeTargetUncached never rejects (it maps
+ *  every failure to "down"), so nothing here can cache a thrown error; the
+ *  dedup collapses the burst when several routes point at the same upstream. */
+const healthMemo = new KeyedMemo<RouteHealth>({
+  key: "npm.routeHealth",
+  ttlMs: HEALTH_CACHE_MS,
+  load: (target) => probeTargetUncached(target),
+});
+
+function probeTarget(target: string): Promise<RouteHealth> {
+  return healthMemo.get(target);
 }
 
 /** Bounded-concurrency map: at most `limit` calls to `fn` in flight at once. */

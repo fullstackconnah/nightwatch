@@ -1,4 +1,5 @@
 import { loadConfig } from "@/lib/config";
+import { Memo } from "@/lib/cache";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -7,7 +8,7 @@ import type {
   GitPullRequest,
   GitRepoSummary,
   GitSnapshot,
-} from "@/lib/forgejo-types";
+} from "@/lib/types/forgejo";
 
 /**
  * Server-only Forgejo client for the /git commit stream + mirror-sync
@@ -345,11 +346,16 @@ async function fetchRepoBundle(
 
 // --- snapshot assembly + cache ------------------------------------------------
 
-const globalForGit = globalThis as unknown as {
-  // Mirrors docker.ts/gpu.ts's globalForX pattern so the cache survives Next
-  // dev HMR reloads of this module instead of resetting on every edit.
-  __gitSnapshotCache?: { at: number; url: string; data: GitSnapshot };
-};
+/**
+ * The URL the currently-cached snapshot was built against. Retargeting Forgejo
+ * in Settings must not serve the old instance's repos out of a 30s cache, so
+ * the URL is part of the validity test, not just the age — see the `isValid`
+ * on gitSnapshotMemo below.
+ */
+let cachedForUrl: string | null = null;
+/** The credentials the next load will use — see docker.ts's requestedRuntimeIds
+ *  for the same handover pattern and why module scope is safe here. */
+let pendingCreds: ForgejoCredentials | null = null;
 
 function unconfiguredSnapshot(): GitSnapshot {
   return {
@@ -435,18 +441,27 @@ async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSnapshot>
  *  "server-side cache ~30s") so the ~60s client poll and any manual refresh
  *  don't both re-fan-out N*4 Forgejo calls plus GitHub enrichment back to
  *  back. */
+const gitSnapshotMemo = new Memo<GitSnapshot>({
+  key: "forgejo.snapshot",
+  ttlMs: SNAPSHOT_TTL_MS,
+  load: async () => {
+    const creds = pendingCreds!;
+    const data = await buildGitSnapshot(creds);
+    cachedForUrl = creds.url;
+    return data;
+  },
+  // A still-fresh snapshot built against a different Forgejo URL is not this
+  // Forgejo's snapshot. Preserves the `cached.url === creds.url` guard the
+  // hand-rolled cache carried.
+  isValid: () => cachedForUrl === pendingCreds?.url,
+});
+
 export async function getGitSnapshot(): Promise<GitSnapshot> {
   const creds = forgejoCredentials();
   if (!creds) return unconfiguredSnapshot();
 
-  const cached = globalForGit.__gitSnapshotCache;
-  if (cached && cached.url === creds.url && Date.now() - cached.at < SNAPSHOT_TTL_MS) {
-    return cached.data;
-  }
-
-  const data = await buildGitSnapshot(creds);
-  globalForGit.__gitSnapshotCache = { at: Date.now(), url: creds.url, data };
-  return data;
+  pendingCreds = creds;
+  return gitSnapshotMemo.get();
 }
 
 /** POST /api/git/sync's action: triggers Forgejo's own push-mirror job,
@@ -472,7 +487,7 @@ export async function triggerPushMirrorSync(
   }
 
   if (res.ok) {
-    globalForGit.__gitSnapshotCache = undefined;
+    gitSnapshotMemo.invalidate();
     return { ok: true };
   }
   if (res.status === 401 || res.status === 403) {

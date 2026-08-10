@@ -16,11 +16,11 @@ import {
   HermesUnauthorized,
   HermesUnconfigured,
   HermesUnreachable,
-} from "@/components/hermes-status";
-import { HermesStatusBand } from "@/components/hermes-status-band";
-import { HermesActionsRow } from "@/components/hermes-actions";
-import { HermesAsk } from "@/components/hermes-ask";
-import { HermesActivityFeed } from "@/components/hermes-activity";
+} from "@/components/integrations/hermes-status";
+import { HermesStatusBand } from "@/components/integrations/hermes-status-band";
+import { HermesActionsRow } from "@/components/integrations/hermes-actions";
+import { HermesAsk } from "@/components/integrations/hermes-ask";
+import { HermesActivityFeed } from "@/components/integrations/hermes-activity";
 
 export default function HermesPage() {
   const { data, error, isLoading } = useHermesStatus();

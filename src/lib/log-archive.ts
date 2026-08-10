@@ -1,4 +1,4 @@
-import type { LogLevel, LogLine, LogStream } from "@/lib/log-types";
+import type { LogLevel, LogLine, LogStream } from "@/lib/types/log";
 
 /**
  * Client-side log archive: one IndexedDB ring shared by every track on /logs.
@@ -10,7 +10,7 @@ import type { LogLevel, LogLine, LogStream } from "@/lib/log-types";
  * being taken off the rail, and the dashboard's own redeploy. Reading history
  * for a container you are not currently watching is only possible here.
  *
- * Scale, from this host's own measurement (see log-types.ts): ~17 lines/minute
+ * Scale, from this host's own measurement (see types/log.ts): ~17 lines/minute
  * across all 26 containers. ARCHIVE_LINE_CAP therefore holds roughly ten hours
  * of whole-fleet output, and the byte ceiling is the one that actually bites
  * first on a chatty day — immich_postgres alone reaches 549 characters a line.

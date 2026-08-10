@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
-import type { PlayMethod, TranscodeSnapshot, TranscodeStream } from "@/lib/transcode-types";
+import { IntegrationClient, type Probe } from "@/lib/integration-client";
+import type { PlayMethod, TranscodeSnapshot, TranscodeStream } from "@/lib/types/transcode";
 
 /**
  * Server-only Jellyfin session fetcher. Credentials come from the top-level
@@ -30,6 +31,39 @@ function jellyfinCredentials(): JellyfinCredentials | null {
   if (!url) return null;
   return { url, key };
 }
+
+const JELLYFIN_UNCONFIGURED_DETAIL =
+  'No Jellyfin API key configured. Add a "jellyfin" block to data/config.json: ' +
+  '{ "jellyfin": { "url": "http://<host>:8096", "key": "<API key>" } } ' +
+  "— generate a key in Jellyfin under Dashboard -> API Keys.";
+
+class JellyfinClient extends IntegrationClient<JellyfinCredentials> {
+  protected readonly displayName = "Jellyfin";
+  protected readonly timeoutMs = TIMEOUT_MS;
+  protected readonly unconfiguredDetail = JELLYFIN_UNCONFIGURED_DETAIL;
+
+  protected credentials(): JellyfinCredentials | null {
+    return jellyfinCredentials();
+  }
+  protected baseUrl(creds: JellyfinCredentials): string {
+    return creds.url;
+  }
+  protected authHeaders(creds: JellyfinCredentials): Record<string, string> {
+    return { Authorization: `MediaBrowser Token="${creds.key}"` };
+  }
+
+  protected unauthorizedDetail(httpStatus: number): string {
+    return `Jellyfin rejected the API key (HTTP ${httpStatus}).`;
+  }
+
+  /** Both consumers below read the same endpoint — the transcode panel wants
+   *  every session, the kiosk's now-playing pill wants one user's. */
+  sessions(): Promise<Probe<unknown>> {
+    return this.request<unknown>("/Sessions");
+  }
+}
+
+const jellyfin = new JellyfinClient();
 
 // --- Jellyfin /Sessions response shapes (minimal, only what we read) -------
 
@@ -217,35 +251,19 @@ export async function getTranscodeSnapshot(): Promise<TranscodeSnapshot> {
     };
   }
 
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/Sessions`, {
-      headers: { Authorization: `MediaBrowser Token="${creds.key}"` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    });
-  } catch {
-    return { ok: false, reason: "unreachable", detail: "Jellyfin did not respond within 3s." };
+  const probe = await jellyfin.sessions();
+  if (probe.status !== "ok") {
+    // Jellyfin's own vocabulary calls a bad response "error" rather than
+    // "unreachable" — the base class classifies transport vs auth, and this
+    // maps the remainder onto the reason names TranscodeSnapshot already uses.
+    const reason = probe.status === "unauthorized" ? "unauthorized" : probe.httpStatus === undefined ? "unreachable" : "error";
+    return { ok: false, reason, detail: probe.detail };
   }
-
-  if (res.status === 401 || res.status === 403) {
-    return { ok: false, reason: "unauthorized", detail: `Jellyfin rejected the API key (HTTP ${res.status}).` };
-  }
-  if (!res.ok) {
-    return { ok: false, reason: "error", detail: `Jellyfin returned HTTP ${res.status}.` };
-  }
-
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { ok: false, reason: "error", detail: "Jellyfin returned a non-JSON response." };
-  }
-  if (!Array.isArray(body)) {
+  if (!Array.isArray(probe.data)) {
     return { ok: false, reason: "error", detail: "Jellyfin /Sessions did not return an array." };
   }
 
-  const streams = (body as JellyfinSession[])
+  const streams = (probe.data as JellyfinSession[])
     .filter((session) => Boolean(session?.NowPlayingItem))
     .map(mapSession);
 
@@ -293,30 +311,13 @@ export async function getJellyfinNowPlaying(): Promise<JellyfinNowPlaying | null
   const kioskUser = cfg.jellyfin?.kioskUser?.trim();
   if (!kioskUser) return null;
 
-  const creds = jellyfinCredentials();
-  if (!creds) return null;
+  // Every failure is the same non-answer here: the kiosk pill treats
+  // "unconfigured", "unreachable" and "nobody's watching" identically, so the
+  // Probe's detail is deliberately discarded rather than surfaced.
+  const probe = await jellyfin.sessions();
+  if (probe.status !== "ok" || !Array.isArray(probe.data)) return null;
 
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/Sessions`, {
-      headers: { Authorization: `MediaBrowser Token="${creds.key}"` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return null;
-  }
-  if (!Array.isArray(body)) return null;
-
-  const session = (body as JellyfinSession[]).find(
+  const session = (probe.data as JellyfinSession[]).find(
     (s) => s?.UserName === kioskUser && Boolean(s.NowPlayingItem),
   );
   if (!session?.NowPlayingItem) return null;

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { getHostVitals, parseAllMountpoints, HOST_PROC, HOST_ROOTFS, type HostVitals } from "@/lib/host-metrics";
+import { KeyedMemo } from "@/lib/cache";
 
 /**
  * Per-disk "what's using the space" breakdown for the Resources page's HOST
@@ -63,19 +64,19 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 const SCAN_TIMEOUT_MS = 300_000;
 const TOP_N = 10;
 
-interface CacheEntry {
-  data: DiskUsageScan;
-  ts: number;
-}
+/**
+ * The disk group each pending label scan applies to. scanDiskUsage resolves
+ * the group from getHostVitals() before delegating (it needs to answer "unknown
+ * label" with null, which is a 404 and not a scan), so the resolved group is
+ * handed to the memo's loader here rather than being looked up twice.
+ */
+const pendingGroups = new Map<string, DiskGroup>();
 
-const globalForDiskUsage = globalThis as unknown as {
-  __diskUsageCache?: Map<string, CacheEntry>;
-  __diskUsageInFlight?: Map<string, Promise<DiskUsageScan>>;
-};
-const cache = globalForDiskUsage.__diskUsageCache ?? new Map<string, CacheEntry>();
-globalForDiskUsage.__diskUsageCache = cache;
-const inFlight = globalForDiskUsage.__diskUsageInFlight ?? new Map<string, Promise<DiskUsageScan>>();
-globalForDiskUsage.__diskUsageInFlight = inFlight;
+const diskScanMemo = new KeyedMemo<DiskUsageScan>({
+  key: "diskUsage.byLabel",
+  ttlMs: CACHE_TTL_MS,
+  load: (label) => performScan(label, pendingGroups.get(label)!),
+});
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -305,24 +306,8 @@ export async function scanDiskUsage(label: string, opts?: { refresh?: boolean })
   const group = vitals.disk.find((d) => d.mount === label);
   if (!group) return null;
 
-  if (!opts?.refresh) {
-    const cached = cache.get(label);
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
-  }
-
-  const existing = inFlight.get(label);
-  if (existing) return existing;
-
-  const promise = performScan(label, group)
-    .then((data) => {
-      cache.set(label, { data, ts: Date.now() });
-      return data;
-    })
-    .finally(() => {
-      inFlight.delete(label);
-    });
-  inFlight.set(label, promise);
-  return promise;
+  pendingGroups.set(label, group);
+  return diskScanMemo.get(label, { force: opts?.refresh });
 }
 
 /* -----------------------------------------------------------------------
@@ -491,14 +476,13 @@ async function performPathScan(absolutePath: string): Promise<DiskUsageScan> {
   }
 }
 
-const globalForDiskPathScan = globalThis as unknown as {
-  __diskPathCache?: Map<string, CacheEntry>;
-  __diskPathInFlight?: Map<string, Promise<DiskUsageScan>>;
-};
-const pathCache = globalForDiskPathScan.__diskPathCache ?? new Map<string, CacheEntry>();
-globalForDiskPathScan.__diskPathCache = pathCache;
-const pathInFlight = globalForDiskPathScan.__diskPathInFlight ?? new Map<string, Promise<DiskUsageScan>>();
-globalForDiskPathScan.__diskPathInFlight = pathInFlight;
+/** Same TTL and dedupe contract as diskScanMemo, in a separate memo keyed by
+ *  normalised absolute path rather than by disk-group label. */
+const pathScanMemo = new KeyedMemo<DiskUsageScan>({
+  key: "diskUsage.byPath",
+  ttlMs: CACHE_TTL_MS,
+  load: (normalized) => performPathScan(normalized),
+});
 
 export type DirectoryScanResult =
   | { ok: true; scan: DiskUsageScan }
@@ -520,22 +504,5 @@ export async function scanDirectoryContents(
   const normalized = resolveAbsolutePath(absolutePath);
   if (!normalized) return { ok: false, status: 400, error: "invalid or unsafe path" };
 
-  if (!opts?.refresh) {
-    const cached = pathCache.get(normalized);
-    if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return { ok: true, scan: cached.data };
-  }
-
-  const existing = pathInFlight.get(normalized);
-  if (existing) return { ok: true, scan: await existing };
-
-  const promise = performPathScan(normalized)
-    .then((data) => {
-      pathCache.set(normalized, { data, ts: Date.now() });
-      return data;
-    })
-    .finally(() => {
-      pathInFlight.delete(normalized);
-    });
-  pathInFlight.set(normalized, promise);
-  return { ok: true, scan: await promise };
+  return { ok: true, scan: await pathScanMemo.get(normalized, { force: opts?.refresh }) };
 }

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/log-types";
-import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/log-types";
+import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/types/log";
+import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/types/log";
 
 export type LogConnection = "idle" | "connecting" | "live" | "lost" | "unauthorized";
 

@@ -19,7 +19,7 @@
 import { useCallback, useState } from "react";
 import useSWR from "swr";
 import { ApiError, fetcher, postJson } from "@/lib/client";
-import type { HaActionRequest, HaEntities, HaStatesResponse } from "@/lib/ha-types";
+import type { HaActionRequest, HaEntities, HaStatesResponse } from "@/lib/types/ha";
 
 const HA_STATES_KEY = "/api/ha/states";
 

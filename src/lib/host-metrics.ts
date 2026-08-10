@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import si from "systeminformation";
+import { Memo } from "@/lib/cache";
 
 /**
  * Host vitals. Inside the container /proc/stat, /proc/meminfo and /proc/uptime
@@ -516,7 +517,7 @@ async function getStaticInfo() {
 
 // --- main -------------------------------------------------------------------
 
-export async function getHostVitals(): Promise<HostVitals> {
+async function collectHostVitals(): Promise<HostVitals> {
   const inContainer = hostProcAvailable();
   const [load, mem, time, statics] = await Promise.all([
     si.currentLoad(),
@@ -628,4 +629,34 @@ export async function getHostVitals(): Promise<HostVitals> {
     tempC,
     ts: Date.now(),
   };
+}
+
+/**
+ * Host vitals, collected at most once every HOST_VITALS_TTL_MS.
+ *
+ * collectHostVitals() is not cheap — si.currentLoad() samples /proc/stat with
+ * an internal delay and si.fsSize() shells out per filesystem — and it has
+ * three independent callers: /api/host (dashboard, 5s poll), /kiosk/api/vitals
+ * (wall tablet, 5s poll, a deliberately separate route and therefore a
+ * separate SWR key that client-side dedup cannot merge) and scanDiskUsage()
+ * in disk-usage.ts. A desk browser plus a tablet used to mean four full
+ * collections every five seconds, three of them returning numbers
+ * indistinguishable from the first.
+ *
+ * 2s rather than something closer to the 5s poll: it must stay comfortably
+ * BELOW the poll interval so a client never receives a reading older than the
+ * cadence it asked for — the cache is here to collapse simultaneous callers,
+ * not to slow the data down. The in-flight dedup in Memo is what does most of
+ * the work; the TTL only mops up polls that land a few hundred ms apart.
+ */
+const HOST_VITALS_TTL_MS = 2_000;
+
+const hostVitalsMemo = new Memo<HostVitals>({
+  key: "host.vitals",
+  ttlMs: HOST_VITALS_TTL_MS,
+  load: collectHostVitals,
+});
+
+export function getHostVitals(): Promise<HostVitals> {
+  return hostVitalsMemo.get();
 }

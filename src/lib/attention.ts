@@ -3,7 +3,8 @@ import { getSmartSnapshot } from "@/lib/smart";
 import { getHostVitals } from "@/lib/host-metrics";
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime } from "@/lib/format";
-import type { HealthVerdict } from "@/lib/smart-types";
+import { Memo } from "@/lib/cache";
+import type { HealthVerdict } from "@/lib/types/smart";
 
 /**
  * "One Thing Needs You" — the kiosk's alert-by-exception evaluator.
@@ -46,7 +47,6 @@ const DISK_WARN_PCT = 85;
 const GROWTH_HORIZON_DAYS = 30;
 
 const globalForAttention = globalThis as unknown as {
-  __attentionCache?: { data: AttentionResult; ts: number };
   __attentionRestartCounts?: Map<string, number>;
   __attentionDriveVerdicts?: Map<string, HealthVerdict>;
 };
@@ -303,11 +303,12 @@ async function computeAttention(): Promise<AttentionResult> {
 /** Module-level 30s cache — the kiosk polls this every 30s anyway, so there's
  *  no reason to re-run five probes (one of which does file IO across two
  *  history reads) more often than the UI could show a change. */
-export async function getAttention(): Promise<AttentionResult> {
-  const cached = globalForAttention.__attentionCache;
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.data;
+const attentionMemo = new Memo<AttentionResult>({
+  key: "attention.result",
+  ttlMs: CACHE_TTL_MS,
+  load: computeAttention,
+});
 
-  const result = await computeAttention();
-  globalForAttention.__attentionCache = { data: result, ts: Date.now() };
-  return result;
+export function getAttention(): Promise<AttentionResult> {
+  return attentionMemo.get();
 }

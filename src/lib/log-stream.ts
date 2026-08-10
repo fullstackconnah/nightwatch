@@ -1,6 +1,6 @@
 import { docker, listContainers } from "@/lib/docker";
 import { classifyLevel } from "@/lib/log-levels";
-import type { LogLine, LogStream, LogTrackState } from "@/lib/log-types";
+import type { LogLine, LogStream, LogTrackState } from "@/lib/types/log";
 
 /**
  * Server-only streaming log pipeline: frame demuxing, one-shot scrollback reads,

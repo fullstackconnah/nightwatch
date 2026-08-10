@@ -2,7 +2,7 @@
 
 import useSWR from "swr";
 import { Badge } from "@/components/ui/badge";
-import { ReclaimVolumesPanel } from "@/components/reclaim-volumes";
+import { ReclaimVolumesPanel } from "@/components/resources/reclaim-volumes";
 import { fetcher } from "@/lib/client";
 
 interface VolumeRow {

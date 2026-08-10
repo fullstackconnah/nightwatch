@@ -14,7 +14,7 @@ import {
   LifecycleError,
   actionsFor,
   useLifecycle,
-} from "@/components/container-controls";
+} from "@/components/resources/container-controls";
 import { WidgetActionRow } from "@/components/widget-actions";
 import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";

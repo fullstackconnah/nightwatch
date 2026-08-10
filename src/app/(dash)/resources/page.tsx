@@ -8,6 +8,7 @@
 
 import { Suspense, memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import { ChevronDown, ExternalLink, Play, RotateCw, Square } from "lucide-react";
@@ -15,19 +16,15 @@ import { Button } from "@/components/ui/button";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
-import { Treemap, type TreemapItem } from "@/components/treemap";
+import { Treemap, type TreemapItem } from "@/components/resources/treemap";
 import {
   ResourceOverview,
   MetricHistoryPanel,
   type OverviewModel,
   type HistoryRangeOption,
-} from "@/components/resource-overview";
-import { GpuView } from "@/components/gpu-view";
-import { ProcessTable } from "@/components/process-table";
-import { DriveHealthPanel } from "@/components/drive-health";
-import { DiskContentsPanel } from "@/components/disk-contents";
-import { PinnedFoldersPanel } from "@/components/disk-pinned";
-import { DiskGrowthPanel } from "@/components/disk-growth";
+} from "@/components/resources/resource-overview";
+import { DiskContentsPanel } from "@/components/resources/disk-contents";
+
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
@@ -42,9 +39,41 @@ import {
   type TelemetrySample,
 } from "@/lib/client";
 
+/* Tab-scoped panels, loaded when their tab is first opened rather than on
+   first paint.
+ *
+ * The DATA for these was already gated — useProcesses takes an `enabled` flag
+ * and passes a null SWR key when its tab is closed — but the CODE was not:
+ * every one of these modules sat in the /resources entry graph regardless of
+ * which of the six tabs was showing. The default tab is "cpu" (see `metric`'s
+ * initial state), so none of the components below render on first paint.
+ *
+ * Treemap is deliberately NOT in this list: it renders whenever the tab is
+ * neither "gpu" nor "all", which includes the default, so lazying it would add
+ * a request waterfall to the first thing the page draws.
+ *
+ * `loading: () => null` throughout — every one of these already appears
+ * beneath content that is on screen, so a spinner would draw attention to a
+ * region the user has just navigated away from looking at. */
+const GpuView = dynamic(() => import("@/components/resources/gpu-view").then((m) => m.GpuView), {
+  loading: () => null,
+});
+const ProcessTable = dynamic(() => import("@/components/resources/process-table").then((m) => m.ProcessTable), {
+  loading: () => null,
+});
+const DriveHealthPanel = dynamic(() => import("@/components/resources/drive-health").then((m) => m.DriveHealthPanel), {
+  loading: () => null,
+});
+const PinnedFoldersPanel = dynamic(() => import("@/components/resources/disk-pinned").then((m) => m.PinnedFoldersPanel), {
+  loading: () => null,
+});
+const DiskGrowthPanel = dynamic(() => import("@/components/resources/disk-growth").then((m) => m.DiskGrowthPanel), {
+  loading: () => null,
+});
+
 // Local mirror of metrics-history.ts's wire shape rather than an import — that
 // module reads node:fs and must never enter this "use client" page's bundle,
-// the same reasoning telemetry-types.ts documents for its own zero-import rule.
+// the same reasoning types/telemetry.ts documents for its own zero-import rule.
 interface HistoryBucketDto {
   t: number;
   cpuPct: number | null;

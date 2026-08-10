@@ -21,7 +21,7 @@
    knows nothing about HTTP, so the route can re-resolve entities server-side
    and run the same function over trustworthy data. */
 
-import type { HaClimate, HaEntities, HaLight, HaScene } from "@/lib/ha-types";
+import type { HaClimate, HaEntities, HaLight, HaScene } from "@/lib/types/ha";
 
 /* ── the intent shape ────────────────────────────────────────────────────── */
 

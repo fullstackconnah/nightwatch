@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { computePeriod } from "@/components/kiosk-display";
+import { computePeriod } from "@/components/kiosk/kiosk-display";
 
 /**
  * A shared idle/night signal for every poll on /kiosk that backs off.
@@ -144,4 +144,28 @@ export function kioskEffectiveInterval(tiers: {
   if (tiers.isNight) return tiers.night;
   if (tiers.isIdle) return tiers.idle;
   return tiers.active;
+}
+
+/**
+ * The three-tier interval for one poll, in a single call — subscribes to both
+ * idle and night state and folds them through kioskEffectiveInterval.
+ *
+ * The tiering machinery above predates this and was already correct; it was
+ * simply only wired into kiosk-hub and kiosk-alerts. Every other kiosk poll
+ * ran at full rate for the entire uptime of a wall tablet, including all
+ * night, against a screen nobody was looking at.
+ *
+ * NOT every poll should use this. A poll whose whole job is to notice
+ * something the moment it happens must keep its full rate regardless of
+ * whether anyone is currently touching the screen — see kiosk-doorbell.tsx,
+ * which deliberately opts out: "nobody has interacted for two minutes" is the
+ * normal state of a doorbell, and backing its poll off at 3am would delay
+ * exactly the alert that matters most. Use this for AMBIENT polls, where a
+ * later refresh costs nothing but a slightly older number on a screen nobody
+ * is reading.
+ */
+export function useKioskPollInterval(tiers: { active: number; idle: number; night: number }): number {
+  const isIdle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
+  const isNight = useKioskNight();
+  return kioskEffectiveInterval({ ...tiers, isIdle, isNight });
 }

@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
 import { Check, ChevronDown, Plus } from "lucide-react";
-import { ListeningPorts } from "@/components/listening-ports";
-import { NetConnections } from "@/components/net-connections";
-import { NetCompare, type CompareContainer } from "@/components/net-compare";
+import { ListeningPorts } from "@/components/resources/listening-ports";
+import { NetConnections } from "@/components/resources/net-connections";
+import { NetCompare, type CompareContainer } from "@/components/resources/net-compare";
 import {
   RateReadout,
   RX_GLYPH,
@@ -15,11 +15,11 @@ import {
   interfaceSeries,
   seriesIsIdle,
   seriesPeak,
-} from "@/components/net-throughput";
+} from "@/components/resources/net-throughput";
 import { fetcher, useContainers, useNetwork, useTelemetryStream } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
-import type { NetInterface } from "@/lib/network-types";
-import type { TelemetrySample } from "@/lib/telemetry-types";
+import type { NetInterface } from "@/lib/types/network";
+import type { TelemetrySample } from "@/lib/types/telemetry";
 import { cn } from "@/lib/utils";
 
 /**

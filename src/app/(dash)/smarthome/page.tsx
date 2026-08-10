@@ -9,13 +9,13 @@
 
 import { useMemo } from "react";
 import { useHa } from "@/lib/use-ha";
-import { HaLoadError, HaSkeleton, HaUnauthorized, HaUnconfigured, HaUnreachable } from "@/components/ha-status";
-import { HaLightsPanel } from "@/components/ha-lights";
-import { HaSwitchesPanel } from "@/components/ha-switches";
-import { HaClimatePanel } from "@/components/ha-climate";
-import { HaLocksPanel } from "@/components/ha-locks";
-import { HaSensorsPanel } from "@/components/ha-sensors";
-import type { HaEntities } from "@/lib/ha-types";
+import { HaLoadError, HaSkeleton, HaUnauthorized, HaUnconfigured, HaUnreachable } from "@/components/integrations/ha-status";
+import { HaLightsPanel } from "@/components/integrations/ha-lights";
+import { HaSwitchesPanel } from "@/components/integrations/ha-switches";
+import { HaClimatePanel } from "@/components/integrations/ha-climate";
+import { HaLocksPanel } from "@/components/integrations/ha-locks";
+import { HaSensorsPanel } from "@/components/integrations/ha-sensors";
+import type { HaEntities } from "@/lib/types/ha";
 
 function countEntities(e: HaEntities): number {
   return e.lights.length + e.switches.length + e.climates.length + e.locks.length + e.sensors.length;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getHaStates } from "@/lib/ha";
-import type { HaStatesResponse } from "@/lib/ha-types";
+import type { HaStatesResponse } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
 

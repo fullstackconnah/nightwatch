@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getHaStates } from "@/lib/ha";
 import { getJellyfinNowPlaying } from "@/lib/jellyfin";
-import type { HaMediaPlayer } from "@/lib/ha-types";
-import type { NowPlayingActive, NowPlayingSnapshot } from "@/lib/nowplaying-types";
+import type { HaMediaPlayer } from "@/lib/types/ha";
+import type { NowPlayingActive, NowPlayingSnapshot } from "@/lib/types/nowplaying";
 
 export const dynamic = "force-dynamic";
 

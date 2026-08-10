@@ -1,4 +1,5 @@
 import { loadConfig } from "@/lib/config";
+import { IntegrationClient, type Probe } from "@/lib/integration-client";
 import type {
   HaActionRequest,
   HaActionResult,
@@ -13,7 +14,7 @@ import type {
   HaSensorKind,
   HaStatesResponse,
   HaSwitch,
-} from "@/lib/ha-types";
+} from "@/lib/types/ha";
 
 /**
  * Server-only Home Assistant client. Credentials come from the top-level
@@ -53,6 +54,70 @@ export const UNCONFIGURED_DETAIL =
   'Long-Lived Access Tokens → Create Token. Then add a "homeassistant" block to ' +
   "data/config.json on the server: " +
   '{ "homeassistant": { "url": "http://<ha-host>:8123", "token": "<the token>" } }';
+
+/**
+ * The HTTP half of this module. Everything below it (entity shaping, action
+ * validation, temperature nudging) is HA domain logic; everything the base
+ * class owns — timeout, credential lookup, status classification, detail
+ * prose — used to be written out three separate times in this file with
+ * byte-identical strings.
+ *
+ * Exported for ha-doorbell.ts, which hits HA endpoints this module has no
+ * business knowing about (`/api/camera_proxy*`) but must share one credential
+ * source and one classification of what "unauthorized" means.
+ */
+export class HaClient extends IntegrationClient<HaCredentials> {
+  protected readonly displayName = "Home Assistant";
+  protected readonly timeoutMs = TIMEOUT_MS;
+  protected readonly unconfiguredDetail = UNCONFIGURED_DETAIL;
+
+  protected credentials(): HaCredentials | null {
+    return haCredentials();
+  }
+  protected baseUrl(creds: HaCredentials): string {
+    return creds.url;
+  }
+  protected authHeaders(creds: HaCredentials): Record<string, string> {
+    return { Authorization: `Bearer ${creds.token}` };
+  }
+
+  /** HA's is worth overriding: naming the exact settings path is the most
+   *  useful thing to say when a long-lived token has aged out. */
+  protected unauthorizedDetail(httpStatus: number): string {
+    return (
+      `Home Assistant rejected the access token (HTTP ${httpStatus}). ` +
+      "Mint a fresh long-lived token in HA → Profile → Security and update data/config.json."
+    );
+  }
+
+  getJson<T>(path: string): Promise<Probe<T>> {
+    return this.request<T>(path);
+  }
+
+  postJson<T>(path: string, body: unknown): Promise<Probe<T>> {
+    return this.request<T>(path, { body, includeErrorBody: true });
+  }
+}
+
+export const ha = new HaClient();
+
+/**
+ * Translates a base-class failure into HA's richer action vocabulary, which
+ * adds "invalid" (the entity does not exist / the verb does not apply) and
+ * "error" (HA understood and refused). The base deliberately does not know
+ * about those: it classifies transport and auth, and hands back `httpStatus`
+ * so this function can do the domain part.
+ */
+function toActionFailure(fail: Exclude<Probe<unknown>, { status: "ok" }>, entityId: string): HaActionResult {
+  if (fail.httpStatus === 404) {
+    return { ok: false, status: "invalid", detail: `Entity ${entityId} does not exist in Home Assistant.` };
+  }
+  if (fail.status === "unreachable" && fail.httpStatus !== undefined) {
+    // HA answered, it just refused — that is "error", not "unreachable".
+    return { ok: false, status: "error", detail: fail.detail };
+  }
+  return { ok: false, status: fail.status, detail: fail.detail };
+}
 
 // --- raw HA /api/states shape (only the fields this module reads) -----------
 
@@ -375,91 +440,34 @@ function buildEntities(raw: HaRawEntity[]): HaEntities {
 // --- GET /api/states ------------------------------------------------------
 
 export async function getHaStates(): Promise<HaStatesResponse> {
-  const creds = haCredentials();
-  if (!creds) return { status: "unconfigured", detail: UNCONFIGURED_DETAIL };
+  const probe = await ha.getJson<unknown>("/api/states");
+  if (probe.status !== "ok") return { status: probe.status, detail: probe.detail };
 
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/api/states`, {
-      headers: { Authorization: `Bearer ${creds.token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    });
-  } catch {
-    return {
-      status: "unreachable",
-      detail: `Home Assistant at ${creds.url} did not respond within ${TIMEOUT_MS / 1000}s.`,
-    };
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    return {
-      status: "unauthorized",
-      detail: `Home Assistant rejected the access token (HTTP ${res.status}). Mint a fresh long-lived token in HA → Profile → Security and update data/config.json.`,
-    };
-  }
-  if (!res.ok) {
-    return { status: "unreachable", detail: `Home Assistant returned HTTP ${res.status}.` };
-  }
-
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { status: "unreachable", detail: "Home Assistant returned a non-JSON response." };
-  }
-  if (!Array.isArray(body)) {
+  // The one check the base class can't make for us: HA's /api/states contract
+  // is "an array", and a 200 carrying anything else is a broken upstream, not
+  // a transport failure — but it reads the same to a caller, so it keeps the
+  // same status it always had.
+  if (!Array.isArray(probe.data)) {
     return { status: "unreachable", detail: "Home Assistant /api/states did not return an array." };
   }
 
-  return { status: "ok", entities: buildEntities(body as HaRawEntity[]) };
+  return { status: "ok", entities: buildEntities(probe.data as HaRawEntity[]) };
 }
 
 // --- POST /api/services/{domain}/{service} --------------------------------
 
 async function callService(
-  creds: HaCredentials,
   domain: string,
   service: string,
   entityId: string,
   data?: Record<string, unknown>,
 ): Promise<HaActionResult> {
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/api/services/${domain}/${service}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ entity_id: entityId, ...data }),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    });
-  } catch {
-    return {
-      ok: false,
-      status: "unreachable",
-      detail: `Home Assistant at ${creds.url} did not respond within ${TIMEOUT_MS / 1000}s.`,
-    };
-  }
-
-  if (res.status === 401 || res.status === 403) {
-    return {
-      ok: false,
-      status: "unauthorized",
-      detail: `Home Assistant rejected the access token (HTTP ${res.status}).`,
-    };
-  }
-  if (res.status === 404) {
-    return { ok: false, status: "invalid", detail: `Entity ${entityId} does not exist in Home Assistant.` };
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return {
-      ok: false,
-      status: "error",
-      detail: `Home Assistant refused ${domain}.${service} (HTTP ${res.status})${text ? `: ${text.slice(0, 200)}` : "."}`,
-    };
-  }
-  return { ok: true };
+  const probe = await ha.postJson<unknown>(`/api/services/${domain}/${service}`, {
+    entity_id: entityId,
+    ...data,
+  });
+  if (probe.status === "ok") return { ok: true };
+  return toActionFailure(probe, entityId);
 }
 
 /** Nearest half-degree — HA climate entities routinely reject arbitrary
@@ -474,51 +482,22 @@ function roundHalf(n: number): number {
  * before writing so two nudges in quick succession compound off HA's own
  * number, not off a client-cached one that might already be stale.
  */
-async function nudgeClimateTemp(creds: HaCredentials, entityId: string, delta: number): Promise<HaActionResult> {
-  let res: Response;
-  try {
-    res = await fetch(`${creds.url}/api/states/${encodeURIComponent(entityId)}`, {
-      headers: { Authorization: `Bearer ${creds.token}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      cache: "no-store",
-    });
-  } catch {
-    return {
-      ok: false,
-      status: "unreachable",
-      detail: `Home Assistant at ${creds.url} did not respond within ${TIMEOUT_MS / 1000}s.`,
-    };
-  }
-  if (res.status === 401 || res.status === 403) {
-    return {
-      ok: false,
-      status: "unauthorized",
-      detail: `Home Assistant rejected the access token (HTTP ${res.status}).`,
-    };
-  }
-  if (res.status === 404) {
-    return { ok: false, status: "invalid", detail: `Entity ${entityId} does not exist in Home Assistant.` };
-  }
-  if (!res.ok) {
-    return { ok: false, status: "unreachable", detail: `Home Assistant returned HTTP ${res.status}.` };
-  }
+async function nudgeClimateTemp(entityId: string, delta: number): Promise<HaActionResult> {
+  const probe = await ha.getJson<{ attributes?: Record<string, unknown> } | null>(
+    `/api/states/${encodeURIComponent(entityId)}`,
+  );
+  if (probe.status !== "ok") return toActionFailure(probe, entityId);
 
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { ok: false, status: "unreachable", detail: "Home Assistant returned a non-JSON response." };
-  }
-  const attrs = (body as { attributes?: Record<string, unknown> } | null)?.attributes ?? {};
+  const attrs = probe.data?.attributes ?? {};
   const single = numberOrNull(attrs.temperature);
   const low = numberOrNull(attrs.target_temp_low);
   const high = numberOrNull(attrs.target_temp_high);
 
   if (single != null) {
-    return callService(creds, "climate", "set_temperature", entityId, { temperature: roundHalf(single + delta) });
+    return callService("climate", "set_temperature", entityId, { temperature: roundHalf(single + delta) });
   }
   if (low != null && high != null) {
-    return callService(creds, "climate", "set_temperature", entityId, {
+    return callService("climate", "set_temperature", entityId, {
       target_temp_low: roundHalf(low + delta),
       target_temp_high: roundHalf(high + delta),
     });
@@ -548,7 +527,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (domain !== "light" && domain !== "switch") {
         return { ok: false, status: "invalid", detail: `toggle is not valid for entity domain "${domain || "?"}"` };
       }
-      return callService(creds, domain, "toggle", req.entityId);
+      return callService(domain, "toggle", req.entityId);
 
     case "lock":
     case "unlock":
@@ -559,7 +538,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
           detail: `${req.action} is not valid for entity domain "${domain || "?"}"`,
         };
       }
-      return callService(creds, "lock", req.action, req.entityId);
+      return callService("lock", req.action, req.entityId);
 
     case "set_hvac_mode":
       if (domain !== "climate") {
@@ -572,7 +551,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (!req.hvacMode) {
         return { ok: false, status: "invalid", detail: "set_hvac_mode requires hvacMode." };
       }
-      return callService(creds, "climate", "set_hvac_mode", req.entityId, { hvac_mode: req.hvacMode });
+      return callService("climate", "set_hvac_mode", req.entityId, { hvac_mode: req.hvacMode });
 
     case "nudge_temp":
       if (domain !== "climate") {
@@ -581,7 +560,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (typeof req.delta !== "number" || !Number.isFinite(req.delta)) {
         return { ok: false, status: "invalid", detail: "nudge_temp requires a numeric delta." };
       }
-      return nudgeClimateTemp(creds, req.entityId, req.delta);
+      return nudgeClimateTemp(req.entityId, req.delta);
 
     // Absolute counterpart to nudge_temp — see HaActionRequest.temperature's
     // comment for why both exist. No read-current step here: the caller
@@ -593,7 +572,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (typeof req.temperature !== "number" || !Number.isFinite(req.temperature)) {
         return { ok: false, status: "invalid", detail: "set_temp requires a numeric temperature." };
       }
-      return callService(creds, "climate", "set_temperature", req.entityId, { temperature: req.temperature });
+      return callService("climate", "set_temperature", req.entityId, { temperature: req.temperature });
 
     case "set_fan_mode":
       if (domain !== "climate") {
@@ -602,7 +581,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (!req.fanMode) {
         return { ok: false, status: "invalid", detail: "set_fan_mode requires fanMode." };
       }
-      return callService(creds, "climate", "set_fan_mode", req.entityId, { fan_mode: req.fanMode });
+      return callService("climate", "set_fan_mode", req.entityId, { fan_mode: req.fanMode });
 
     case "set_preset_mode":
       if (domain !== "climate") {
@@ -615,7 +594,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (!req.presetMode) {
         return { ok: false, status: "invalid", detail: "set_preset_mode requires presetMode." };
       }
-      return callService(creds, "climate", "set_preset_mode", req.entityId, { preset_mode: req.presetMode });
+      return callService("climate", "set_preset_mode", req.entityId, { preset_mode: req.presetMode });
 
     case "set_swing_mode":
       if (domain !== "climate") {
@@ -628,7 +607,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       if (!req.swingMode) {
         return { ok: false, status: "invalid", detail: "set_swing_mode requires swingMode." };
       }
-      return callService(creds, "climate", "set_swing_mode", req.entityId, { swing_mode: req.swingMode });
+      return callService("climate", "set_swing_mode", req.entityId, { swing_mode: req.swingMode });
 
     case "activate_scene":
       if (domain !== "scene") {
@@ -638,7 +617,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
           detail: `activate_scene is not valid for entity domain "${domain || "?"}"`,
         };
       }
-      return callService(creds, "scene", "turn_on", req.entityId);
+      return callService("scene", "turn_on", req.entityId);
 
     default:
       return { ok: false, status: "invalid", detail: "Unknown action." };

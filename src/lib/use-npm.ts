@@ -2,7 +2,7 @@
 
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
-import type { ProxyManagerSnapshot } from "@/lib/npm-types";
+import type { ProxyManagerSnapshot } from "@/lib/types/npm";
 
 /**
  * Feature-local hook for the /proxy route map, kept out of src/lib/client.ts the
@@ -21,4 +21,4 @@ export function useProxyManager(refreshMs = 30000) {
 }
 
 export type { ProxyManagerSnapshot };
-export type { ProxyRoute, ProxyCertificate, RouteHealth, ProxyManagerStatus } from "@/lib/npm-types";
+export type { ProxyRoute, ProxyCertificate, RouteHealth, ProxyManagerStatus } from "@/lib/types/npm";

@@ -3,6 +3,7 @@ import { parseDashboardLabels } from "@/lib/labels";
 import type { ContainerSummary } from "@/lib/docker";
 import { BUILTIN_WIDGETS } from "./builtins";
 import { WidgetError, type WidgetData } from "./types";
+import { KeyedMemo } from "@/lib/cache";
 
 export { BUILTIN_WIDGETS, WIDGET_TYPE_NAMES } from "./builtins";
 
@@ -44,28 +45,46 @@ export function resolveWidgetInstances(containers: ContainerSummary[]): WidgetIn
   return [...cfg.widgets, ...fromLabels];
 }
 
-const cache = new Map<string, WidgetData>();
 const TTL_MS = 15_000;
 
-export async function fetchWidgetData(instance: WidgetInstance): Promise<WidgetData> {
-  const cached = cache.get(instance.id);
-  if (cached && Date.now() - cached.fetchedAt < TTL_MS) return cached;
+/** The instance each pending widget load applies to — keyed by instance.id,
+ *  which is what the memo keys on too. */
+const pendingInstances = new Map<string, WidgetInstance>();
 
-  const fetcher = BUILTIN_WIDGETS[instance.type] || BUILTIN_WIDGETS.generic;
-  let data: WidgetData;
-  try {
-    const fields = await fetcher(instance);
-    data = { type: instance.type, fields, fetchedAt: Date.now() };
-  } catch (e) {
-    data = {
-      type: instance.type,
-      fields: [],
-      error: e instanceof WidgetError ? e.message : "error",
-      fetchedAt: Date.now(),
-    };
-  }
-  cache.set(instance.id, data);
-  return data;
+/**
+ * Per-widget-instance cache. The in-flight dedup matters more here than the
+ * TTL: /api/widgets fans out to every configured instance at once, so two
+ * overlapping polls used to mean two round-trips per *arr/Pi-hole/qBittorrent
+ * endpoint rather than one.
+ *
+ * A failed fetch is cached deliberately (see the catch below): a widget whose
+ * app is down should render "error" steadily for the TTL rather than
+ * hammering a dead endpoint on every poll. That is why the loader never
+ * rejects — it resolves with an error-carrying WidgetData instead.
+ */
+const widgetMemo = new KeyedMemo<WidgetData>({
+  key: "widgets.instance",
+  ttlMs: TTL_MS,
+  load: async (id) => {
+    const instance = pendingInstances.get(id)!;
+    const fetcher = BUILTIN_WIDGETS[instance.type] || BUILTIN_WIDGETS.generic;
+    try {
+      const fields = await fetcher(instance);
+      return { type: instance.type, fields, fetchedAt: Date.now() };
+    } catch (e) {
+      return {
+        type: instance.type,
+        fields: [],
+        error: e instanceof WidgetError ? e.message : "error",
+        fetchedAt: Date.now(),
+      };
+    }
+  },
+});
+
+export function fetchWidgetData(instance: WidgetInstance): Promise<WidgetData> {
+  pendingInstances.set(instance.id, instance);
+  return widgetMemo.get(instance.id);
 }
 
 /** container name -> widget data, fetched concurrently with per-instance caching */

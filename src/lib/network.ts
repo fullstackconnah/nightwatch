@@ -13,13 +13,13 @@ import type {
   SocketOwner,
   SocketProtocol,
   SocketScope,
-} from "@/lib/network-types";
+} from "@/lib/types/network";
 
 /**
  * Network collector: interface inventory (role, speed, addresses) + host
  * listening sockets. Server-only: node:fs and dockerode must never reach
  * src/lib/client.ts (see the import-free-leaf comment at the top of
- * network-types.ts).
+ * types/network.ts).
  *
  * getNetworkSnapshot() must never throw: every read is individually guarded
  * and degrades to an honest null/empty value plus a `warnings` entry rather

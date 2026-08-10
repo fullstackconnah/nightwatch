@@ -5,7 +5,7 @@ import {
   type LogLine,
   type LogSeedEvent,
   type LogTrackState,
-} from "@/lib/log-types";
+} from "@/lib/types/log";
 
 export const dynamic = "force-dynamic";
 

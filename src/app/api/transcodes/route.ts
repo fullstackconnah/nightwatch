@@ -1,11 +1,7 @@
-import { NextResponse } from "next/server";
 import { getTranscodeSnapshot } from "@/lib/jellyfin";
+import { snapshotRoute } from "@/lib/snapshot-route";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  // Always 200: an unconfigured/unreachable Jellyfin is a valid snapshot state
-  // (ok: false) that the UI renders, not a transport failure — don't turn this
-  // into a 502/503, the client hook expects JSON body on every response.
-  return NextResponse.json(await getTranscodeSnapshot());
-}
+// Always 200 — see snapshot-route.ts for the contract and why it matters.
+export const GET = snapshotRoute({ collect: getTranscodeSnapshot });

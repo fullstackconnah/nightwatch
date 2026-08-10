@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { SignJWT, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { secretKey } from "@/lib/auth";
 import { systemSetting } from "@/lib/config";
+import { KeyedMemo } from "@/lib/cache";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -70,13 +71,14 @@ interface DiscoveryDocument {
   jwks_uri: string;
 }
 
-interface DiscoveryCacheEntry {
-  issuer: string;
-  doc: DiscoveryDocument;
-  fetchedAt: number;
-}
-
-let discoveryCache: DiscoveryCacheEntry | null = null;
+/** One entry per issuer, so retargeting the IdP can't serve the old one's
+ *  endpoints out of the 1h cache. The in-flight dedup also collapses the
+ *  discovery burst when several logins land at once on a cold cache. */
+const discoveryMemo = new KeyedMemo<DiscoveryDocument>({
+  key: "oidc.discovery",
+  ttlMs: DISCOVERY_CACHE_TTL_MS,
+  load: (issuer) => fetchDiscovery(issuer),
+});
 
 async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -88,11 +90,11 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
   }
 }
 
-async function discover(issuer: string): Promise<DiscoveryDocument> {
-  if (discoveryCache && discoveryCache.issuer === issuer && Date.now() - discoveryCache.fetchedAt < DISCOVERY_CACHE_TTL_MS) {
-    return discoveryCache.doc;
-  }
+function discover(issuer: string): Promise<DiscoveryDocument> {
+  return discoveryMemo.get(issuer);
+}
 
+async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   let res: Response;
   try {
     res = await fetchWithTimeout(`${issuer}/.well-known/openid-configuration`);
@@ -118,7 +120,6 @@ async function discover(issuer: string): Promise<DiscoveryDocument> {
     throw new OidcError("discovery_failed", "discovery document issuer mismatch");
   }
 
-  discoveryCache = { issuer, doc, fetchedAt: Date.now() };
   return doc;
 }
 

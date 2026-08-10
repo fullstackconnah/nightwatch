@@ -1,0 +1,676 @@
+"use client";
+
+/* THESIS: one panel picks which brain hermes calls next run — a tier switch
+   (LOCAL/OPENROUTER/ANTHROPIC), a model picker whose shape depends on the
+   tier, and the two hosted-tier API keys under the same write-only masked
+   semantics as settings-integrations.tsx's SecretField. Saving writes both
+   config.json (this panel's own read model) and a sibling hermes-model.json
+   that the hermes daemon hot-reads — see src/app/api/hermes/model/route.ts.
+   OWN-WORLD: nightwatch console — segmented control idiom for the tier,
+   mono for every model id/price/context figure, honest unreachable copy for
+   the two live model-list fetches (ollama, openrouter). */
+
+import { useEffect, useMemo, useState } from "react";
+import useSWR from "swr";
+import { Save, Search, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, Input, Label, Select } from "@/components/ui/input";
+import { SegmentButton } from "@/components/ui/segment-button";
+import { HaSwitchControl } from "@/components/integrations/ha-toggle";
+import { fetcher, postJson } from "@/lib/client";
+import { formatNumber, relativeTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
+
+type Tier = "local" | "openrouter" | "anthropic";
+
+const TIERS: { id: Tier; label: string }[] = [
+  { id: "local", label: "LOCAL" },
+  { id: "openrouter", label: "OPENROUTER" },
+  { id: "anthropic", label: "ANTHROPIC" },
+];
+
+const ANTHROPIC_MODELS = ["claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"];
+
+interface LocalModelsResponse {
+  reachable: boolean;
+  detail?: string;
+  suggested: string;
+  models: string[];
+}
+
+/** Mirrors OpenRouterModel from src/app/api/hermes/openrouter-models/route.ts
+ *  (kept as a local copy rather than a cross-import from an API route module,
+ *  same self-containment as every other settings-*.tsx piece here). */
+interface OpenRouterModel {
+  id: string;
+  name: string;
+  promptPrice: number | null;
+  completionPrice: number | null;
+  contextLength: number | null;
+}
+
+interface OpenRouterModelsResponse {
+  status: "ok" | "stale" | "error";
+  detail?: string;
+  cachedAt: string | null;
+  models: OpenRouterModel[];
+}
+
+function useLocalModels(enabled: boolean) {
+  return useSWR<LocalModelsResponse>(enabled ? "/api/hermes/local-models" : null, fetcher);
+}
+
+function useOpenRouterModels(enabled: boolean) {
+  return useSWR<OpenRouterModelsResponse>(enabled ? "/api/hermes/openrouter-models" : null, fetcher, {
+    revalidateOnFocus: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+
+function ModelOptionRow({
+  id,
+  sublabel,
+  selected,
+  onSelect,
+}: {
+  id: string;
+  sublabel?: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={cn(
+        "w-full flex items-center justify-between gap-2 px-3 min-h-11 md:min-h-9 md:py-1 rounded-md border text-left transition cursor-pointer",
+        selected
+          ? "bg-accent/10 border-accent/30 text-accent"
+          : "border-line text-ink-dim hover:text-ink hover:bg-panel-2 hover:border-line-bright",
+      )}
+    >
+      <span className="font-mono text-xs truncate">{id}</span>
+      {sublabel && <span className="text-[0.7rem] text-ink-faint shrink-0">{sublabel}</span>}
+    </button>
+  );
+}
+
+function ModelPickerSkeleton() {
+  return (
+    <div className="space-y-1.5">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="h-11 md:h-9 rounded-md bg-panel-2 animate-pulse motion-reduce:animate-none"
+          style={{ animationDelay: `${i * 90}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function LocalModelPicker({ model, onSelect }: { model: string; onSelect: (id: string) => void }) {
+  const { data, isLoading } = useLocalModels(true);
+
+  return (
+    <div className="space-y-1.5">
+      <ModelOptionRow
+        id="hermes-local"
+        sublabel="default → qwen3:8b"
+        selected={model === "hermes-local"}
+        onSelect={() => onSelect("hermes-local")}
+      />
+      {isLoading && <ModelPickerSkeleton />}
+      {data && data.reachable && (
+        data.models.length > 0 ? (
+          data.models.map((name) => (
+            <ModelOptionRow key={name} id={name} selected={model === name} onSelect={() => onSelect(name)} />
+          ))
+        ) : (
+          <p className="text-[0.7rem] text-ink-faint px-1">ollama is reachable but has no models installed.</p>
+        )
+      )}
+      {data && !data.reachable && (
+        <div className="space-y-2 pt-1">
+          <p className="text-[0.7rem] text-warn/80">{data.detail}</p>
+          <Field label="Model name (manual)">
+            <Input
+              value={model === "hermes-local" ? "" : model}
+              onChange={(e) => onSelect(e.target.value)}
+              placeholder="ollama/llama3:70b"
+            />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+const VISIBLE_CAP = 40;
+
+function formatPerMillion(pricePerToken: number | null): string {
+  if (pricePerToken == null) return "—";
+  const perM = pricePerToken * 1_000_000;
+  return `$${perM < 1 ? perM.toFixed(3) : perM.toFixed(2)}/M`;
+}
+
+function OpenRouterPicker({ model, onSelect }: { model: string; onSelect: (id: string) => void }) {
+  const { data, isLoading, error } = useOpenRouterModels(true);
+  const [query, setQuery] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!data) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return data.models;
+    return data.models.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
+  }, [data, query]);
+
+  const visible = filtered.slice(0, VISIBLE_CAP);
+  const more = filtered.length - visible.length;
+
+  return (
+    <div className="space-y-2">
+      <div className="relative">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-faint pointer-events-none" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="filter models — id or name"
+          aria-label="Filter OpenRouter models"
+          className="h-11 md:h-8 w-full rounded-md bg-panel-2 border border-line pl-8 pr-8 font-mono text-xs placeholder:text-ink-faint focus:outline-none focus:border-accent/50 transition-colors"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="Clear filter"
+            className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-11 w-11 md:h-6 md:w-6 text-ink-faint hover:text-ink cursor-pointer"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {isLoading && <ModelPickerSkeleton />}
+
+      {error && (
+        <p className="text-[0.7rem] text-bad px-1">Could not load the OpenRouter catalogue — {error.message}</p>
+      )}
+
+      {data && data.status === "error" && (
+        <p className="text-[0.7rem] text-bad px-1">{data.detail ?? "openrouter unreachable"}</p>
+      )}
+
+      {data && data.status === "stale" && (
+        <p className="text-[0.7rem] text-warn/80 px-1">
+          openrouter unreachable — showing the cached catalogue from{" "}
+          {data.cachedAt ? relativeTime(data.cachedAt) : "earlier"}.
+        </p>
+      )}
+
+      {data && data.models.length > 0 && (
+        <>
+          {filtered.length === 0 ? (
+            <p className="text-[0.7rem] text-ink-faint px-1">no models match &quot;{query}&quot;.</p>
+          ) : (
+            <div className="panel divide-y divide-line/50 max-h-72 overflow-y-auto">
+              {visible.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => onSelect(m.id)}
+                  aria-pressed={model === m.id}
+                  className={cn(
+                    "w-full flex items-center justify-between gap-3 px-3 py-2 min-h-11 md:min-h-0 md:py-1.5 text-left cursor-pointer transition",
+                    model === m.id ? "bg-accent/10 text-accent" : "hover:bg-panel-2 text-ink-dim",
+                  )}
+                >
+                  <span className="min-w-0">
+                    <span className="block font-mono text-xs truncate">{m.id}</span>
+                    <span className="block text-[0.7rem] text-ink-faint truncate">{m.name}</span>
+                  </span>
+                  <span className="shrink-0 text-right font-mono text-[0.65rem] text-ink-faint leading-tight">
+                    <span className="block">{formatPerMillion(m.promptPrice)} in</span>
+                    <span className="block">{formatPerMillion(m.completionPrice)} out</span>
+                    {m.contextLength != null && <span className="block">{formatNumber(m.contextLength)} ctx</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {more > 0 && (
+            <p className="text-[0.7rem] text-ink-faint px-1">{more} more — refine filter</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function HermesSkeleton() {
+  return (
+    <div className="space-y-3">
+      <div className="h-3 w-2/3 rounded bg-panel-2 animate-pulse motion-reduce:animate-none" />
+      <div className="h-10 w-48 rounded bg-panel-2 animate-pulse motion-reduce:animate-none" />
+      <ModelPickerSkeleton />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GOAL B: the daemon's own hot-read settings file (data/hermes/hermes-settings.json),
+// entirely separate from config.json's hermes.tier/model above — Discord
+// wiring, the digest schedule, and the pipeline budget/model picks. Keys
+// present here override the daemon's own env var; keys absent fall back to
+// its env, so this card's fields are individually optional overrides, not a
+// full replacement config. Same write-only SecretField semantics as every
+// other secret in this app for the two Discord credentials.
+
+const DIGEST_HOURS = Array.from({ length: 24 }, (_, i) => i);
+const DIGEST_MINUTES = [0, 15, 30, 45];
+
+function HermesDaemonCard() {
+  const { data, mutate } = useSettingsFull();
+  const daemon = data?.hermesDaemon;
+
+  const [webhookDraft, setWebhookDraft] = useState("");
+  const [botTokenDraft, setBotTokenDraft] = useState("");
+  const [channelId, setChannelId] = useState("");
+  const [allowedUserIds, setAllowedUserIds] = useState("");
+  const [dryRun, setDryRun] = useState(false);
+  const [digestHour, setDigestHour] = useState(9);
+  const [digestMinute, setDigestMinute] = useState(0);
+  const [pipelineEnabled, setPipelineEnabled] = useState(false);
+  const [pipelineBudget, setPipelineBudget] = useState("");
+  const [pipelineModel, setPipelineModel] = useState("");
+  const [pipelineModelHard, setPipelineModelHard] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (daemon && !seeded) {
+      setChannelId(daemon.discordChannelId ?? "");
+      setAllowedUserIds((daemon.discordAllowedUserIds ?? []).join(", "));
+      setDryRun(daemon.dryRun ?? false);
+      setDigestHour(daemon.digestHour ?? 9);
+      setDigestMinute(daemon.digestMinute ?? 0);
+      setPipelineEnabled(daemon.pipelineEnabled ?? false);
+      setPipelineBudget(daemon.pipelineDailyBudgetUsd != null ? String(daemon.pipelineDailyBudgetUsd) : "");
+      setPipelineModel(daemon.pipelineModel ?? "");
+      setPipelineModelHard(daemon.pipelineModelHard ?? "");
+      setSeeded(true);
+    }
+  }, [daemon, seeded]);
+
+  const commandsReady = Boolean(
+    (daemon?.discordBotTokenConfigured || botTokenDraft.trim()) && channelId.trim() && allowedUserIds.trim(),
+  );
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = {
+        discordChannelId: channelId,
+        discordAllowedUserIds: allowedUserIds
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean),
+        dryRun,
+        digestHour,
+        digestMinute,
+        pipelineEnabled,
+        pipelineModel,
+        pipelineModelHard,
+      };
+      if (webhookDraft.trim()) body.discordWebhookUrl = webhookDraft.trim();
+      if (botTokenDraft.trim()) body.discordBotToken = botTokenDraft.trim();
+      if (pipelineBudget.trim()) {
+        const n = Number(pipelineBudget);
+        if (!Number.isFinite(n) || n < 0) throw new Error("Daily budget must be a non-negative number");
+        body.pipelineDailyBudgetUsd = n;
+      }
+      await postJson("/api/settings/hermes-daemon", body);
+      await mutate();
+      setWebhookDraft("");
+      setBotTokenDraft("");
+      setSaveVersion((v) => v + 1);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="microlabel !text-accent">Hermes · daemon</h2>
+        {saved && <Badge variant="ok">saved</Badge>}
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Discord &amp; pipeline</CardTitle>
+          {daemon?.updatedAt ? (
+            <span className="text-[0.7rem] text-ink-faint">last saved {relativeTime(daemon.updatedAt)}</span>
+          ) : (
+            <Badge variant="neutral">never saved</Badge>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {!data && <HermesSkeleton />}
+          {data && (
+            <>
+              <p className="text-[0.7rem] text-ink-dim">
+                Read by the ops daemon on its own loop — changes reach it on the next tick (≤60s), no
+                restart needed. A field left blank falls back to the daemon&apos;s own environment.
+              </p>
+
+              <div className="space-y-3">
+                <div className="microlabel">Discord</div>
+                <SecretField
+                  key={`webhook-${saveVersion}`}
+                  label="Webhook URL"
+                  configured={daemon?.discordWebhookConfigured ?? false}
+                  updatedAt={daemon?.updatedAt ?? undefined}
+                  draft={webhookDraft}
+                  onDraftChange={setWebhookDraft}
+                  placeholder="https://discord.com/api/webhooks/…"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <SecretField
+                    key={`bot-${saveVersion}`}
+                    label="Bot token"
+                    configured={daemon?.discordBotTokenConfigured ?? false}
+                    updatedAt={daemon?.updatedAt ?? undefined}
+                    draft={botTokenDraft}
+                    onDraftChange={setBotTokenDraft}
+                  />
+                  <Field label="Channel ID">
+                    <Input value={channelId} onChange={(e) => setChannelId(e.target.value)} placeholder="123456789012345678" />
+                  </Field>
+                </div>
+                <Field
+                  label="Allowed user IDs (comma-separated)"
+                  describedBy="discord-commands-hint"
+                >
+                  <Input value={allowedUserIds} onChange={(e) => setAllowedUserIds(e.target.value)} placeholder="111…, 222…" />
+                </Field>
+                <p id="discord-commands-hint" className={cn("text-[0.7rem]", commandsReady ? "text-ink-faint" : "text-warn/80")}>
+                  Bot token, channel ID and at least one allowed user ID are all required before Discord
+                  commands work — the webhook alone only covers outbound digests/alerts.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 pt-1">
+                <div>
+                  <span className="text-xs font-medium text-ink">Dry run</span>
+                  <p className="text-[0.7rem] text-ink-dim">Reports print to logs instead of posting to Discord.</p>
+                </div>
+                <HaSwitchControl on={dryRun} onToggle={() => setDryRun((v) => !v)} label="Dry run" />
+              </div>
+              {dryRun && (
+                <p className="text-[0.7rem] text-warn/80 -mt-2">
+                  Dry run is on — reports print to logs, not Discord.
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Digest hour">
+                  <Select value={digestHour} onChange={(e) => setDigestHour(Number(e.target.value))}>
+                    {DIGEST_HOURS.map((h) => (
+                      <option key={h} value={h}>
+                        {String(h).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Digest minute">
+                  <Select value={digestMinute} onChange={(e) => setDigestMinute(Number(e.target.value))}>
+                    {DIGEST_MINUTES.map((m) => (
+                      <option key={m} value={m}>
+                        {String(m).padStart(2, "0")}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+
+              <div className="border-t border-line/50 space-y-3 pt-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-medium text-ink">Pipeline</span>
+                    <p className="text-[0.7rem] text-ink-dim">Automated multi-step ticket handling.</p>
+                  </div>
+                  <HaSwitchControl on={pipelineEnabled} onToggle={() => setPipelineEnabled((v) => !v)} label="Pipeline enabled" />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <Field label="Daily budget (USD)">
+                    <Input
+                      inputMode="decimal"
+                      value={pipelineBudget}
+                      onChange={(e) => setPipelineBudget(e.target.value)}
+                      placeholder="5.00"
+                    />
+                  </Field>
+                  <Field label="Model">
+                    <Input
+                      className="font-mono"
+                      value={pipelineModel}
+                      onChange={(e) => setPipelineModel(e.target.value)}
+                      placeholder="claude-sonnet-5"
+                    />
+                  </Field>
+                  <Field label="Hard-ticket model">
+                    <Input
+                      className="font-mono"
+                      value={pipelineModelHard}
+                      onChange={(e) => setPipelineModelHard(e.target.value)}
+                      placeholder="claude-opus-5"
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+                {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+                <Button size="sm" disabled={saving} onClick={handleSave}>
+                  <Save size={13} /> Save
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+export { HermesDaemonCard as SettingsHermesDaemon };
+
+export function SettingsHermes() {
+  const { data, mutate } = useSettingsFull();
+  const [tier, setTier] = useState<Tier>("local");
+  const [model, setModel] = useState("");
+  const [openrouterKey, setOpenrouterKey] = useState("");
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  // Bumped on every successful save and used as the two SecretFields' `key` —
+  // forces a remount so replacing an already-configured key collapses back to
+  // the masked view too (see the identical pattern/comment in
+  // settings-integrations.tsx's UrlTokenPanel).
+  const [saveVersion, setSaveVersion] = useState(0);
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setTier(data.config.hermes?.tier ?? "local");
+      setModel(data.config.hermes?.model ?? "");
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+
+  const hermesStatus = data?.integrations.hermes;
+  const lastSaved = data?.meta.hermesModelUpdatedAt ?? null;
+
+  const needsOpenrouterKey = tier === "openrouter" && !hermesStatus?.openrouterConfigured && !openrouterKey.trim();
+  const needsAnthropicKey = tier === "anthropic" && !hermesStatus?.anthropicConfigured && !anthropicKey.trim();
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await postJson("/api/hermes/model", {
+        tier,
+        model,
+        openrouterApiKey: openrouterKey || undefined,
+        anthropicApiKey: anthropicKey || undefined,
+      });
+      await mutate();
+      setOpenrouterKey("");
+      setAnthropicKey("");
+      setSaveVersion((v) => v + 1);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="microlabel !text-accent">Hermes · model</h2>
+        {saved && <Badge variant="ok">saved</Badge>}
+      </div>
+      <div className="panel p-4 space-y-4">
+        {!data && <HermesSkeleton />}
+        {data && (
+          <>
+            <p className="text-[0.7rem] text-ink-dim">
+              Changes apply on hermes&apos;s next scheduled run — no restart needed.
+              {lastSaved && <> Model file last written {relativeTime(lastSaved)}.</>}
+            </p>
+
+            <div>
+              {/* Not a Field: this Label captions a button group, not a single
+                  control, so it's wired via aria-labelledby (valid on any
+                  role="group") rather than the htmlFor Field assumes. */}
+              <Label id="hermes-tier-label">Tier</Label>
+              <div className="panel p-1 flex gap-1 w-fit" role="group" aria-labelledby="hermes-tier-label">
+                {TIERS.map((t) => (
+                  <SegmentButton key={t.id} active={tier === t.id} label={t.label} onClick={() => setTier(t.id)}>
+                    {t.label}
+                  </SegmentButton>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              {/* Same reasoning as Tier above — "Model" captions a list of
+                  buttons (or a picker with its own internal controls), not
+                  one input. */}
+              <Label id="hermes-model-label">Model</Label>
+              <div role="group" aria-labelledby="hermes-model-label">
+                {tier === "local" && <LocalModelPicker model={model} onSelect={setModel} />}
+                {tier === "openrouter" && <OpenRouterPicker model={model} onSelect={setModel} />}
+                {tier === "anthropic" && (
+                  <div className="space-y-1.5">
+                    {ANTHROPIC_MODELS.map((id) => (
+                      <ModelOptionRow key={id} id={id} selected={model === id} onSelect={() => setModel(id)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {model && (
+                <p className="mt-1.5 text-[0.7rem] text-ink-faint">
+                  selected: <span className="font-mono text-ink-dim">{model}</span>
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <SecretField
+                  key={saveVersion}
+                  label="OpenRouter API key"
+                  configured={hermesStatus?.openrouterConfigured ?? false}
+                  updatedAt={hermesStatus?.openrouterConfigured ? (lastSaved ?? undefined) : undefined}
+                  draft={openrouterKey}
+                  onDraftChange={setOpenrouterKey}
+                  placeholder="sk-or-..."
+                />
+                <p className="mt-1 text-[0.7rem] text-ink-dim">
+                  Mint one at{" "}
+                  <a
+                    href="https://openrouter.ai/settings/keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    openrouter.ai/settings/keys
+                  </a>
+                  .
+                </p>
+              </div>
+              <div>
+                <SecretField
+                  key={saveVersion}
+                  label="Anthropic API key"
+                  configured={hermesStatus?.anthropicConfigured ?? false}
+                  updatedAt={hermesStatus?.anthropicConfigured ? (lastSaved ?? undefined) : undefined}
+                  draft={anthropicKey}
+                  onDraftChange={setAnthropicKey}
+                  placeholder="sk-ant-..."
+                />
+                <p className="mt-1 text-[0.7rem] text-ink-dim">
+                  Mint one at{" "}
+                  <a
+                    href="https://console.anthropic.com"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent hover:underline"
+                  >
+                    console.anthropic.com
+                  </a>
+                  .
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+              {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+              <Button
+                size="sm"
+                disabled={saving || !model.trim() || needsOpenrouterKey || needsAnthropicKey}
+                onClick={handleSave}
+              >
+                <Save size={13} /> Save
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}

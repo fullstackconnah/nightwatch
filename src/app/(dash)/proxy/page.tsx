@@ -2,9 +2,9 @@
 
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CertificatesPanel } from "@/components/proxy-certificates";
-import { RouteTable } from "@/components/proxy-routes";
-import { ProxyError, ProxyLoading, ProxyUnconfigured } from "@/components/proxy-status";
+import { CertificatesPanel } from "@/components/integrations/proxy-certificates";
+import { RouteTable } from "@/components/integrations/proxy-routes";
+import { ProxyError, ProxyLoading, ProxyUnconfigured } from "@/components/integrations/proxy-status";
 import { useProxyManager } from "@/lib/use-npm";
 import { cn } from "@/lib/utils";
 

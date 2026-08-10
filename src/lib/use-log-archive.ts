@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { LogLine } from "@/lib/log-types";
+import type { LogLine } from "@/lib/types/log";
 import {
   EMPTY_STATS,
   archiveAvailable,

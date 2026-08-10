@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
-import { KioskThemeScope } from "@/components/kiosk-theme";
-import { KioskSky } from "@/components/kiosk-sky";
-import { KioskSunroomLight } from "@/components/kiosk-sunroom";
-import { KioskSunroomWeather } from "@/components/kiosk-sunroom-weather";
-import { KioskGlassWeather } from "@/components/kiosk-glass-weather";
+import { KioskThemeScope } from "@/components/kiosk/kiosk-theme";
+import { KioskSky } from "@/components/kiosk/kiosk-sky";
+import { KioskSunroomLight } from "@/components/kiosk/kiosk-sunroom";
+import { KioskSunroomWeather } from "@/components/kiosk/kiosk-sunroom-weather";
+import { KioskGlassWeather } from "@/components/kiosk/kiosk-glass-weather";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",

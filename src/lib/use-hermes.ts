@@ -22,7 +22,7 @@ import type {
   HermesJob,
   HermesJobKind,
   HermesStatusResponse,
-} from "@/lib/hermes-types";
+} from "@/lib/types/hermes";
 
 const STATUS_KEY = "/api/hermes-ctl/status";
 const ACTIVITY_KEY = "/api/hermes-ctl/activity";
@@ -96,4 +96,4 @@ export function useHermesRun(): UseHermesRunResult {
   return { jobId, job, starting, startError, start, reset };
 }
 
-export type { HermesActivityItem, HermesActivityKind, HermesJob, HermesJobKind, HermesStatusOk } from "@/lib/hermes-types";
+export type { HermesActivityItem, HermesActivityKind, HermesJob, HermesJobKind, HermesStatusOk } from "@/lib/types/hermes";

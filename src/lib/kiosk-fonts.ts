@@ -15,7 +15,7 @@
    the result have no shared ancestor worth hanging a context provider on. */
 
 import { useEffect, useState } from "react";
-import { KIOSK_THEMES, type KioskTheme } from "@/components/kiosk-theme";
+import { KIOSK_THEMES, type KioskTheme } from "@/components/kiosk/kiosk-theme";
 
 export type KioskFontId =
   | "terminal"

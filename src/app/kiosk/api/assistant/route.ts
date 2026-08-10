@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getHaStates, performHaAction } from "@/lib/ha";
 import { getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
 import { matchIntent, type KioskIntent } from "@/lib/kiosk-intent";
-import type { HaActionRequest } from "@/lib/ha-types";
+import type { HaActionRequest } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
 

@@ -2,7 +2,7 @@
 
 import useSWR, { mutate as globalMutate } from "swr";
 import { fetcher, postJson } from "@/lib/client";
-import type { GitSnapshot } from "@/lib/forgejo-types";
+import type { GitSnapshot } from "@/lib/types/forgejo";
 
 const GIT_KEY = "/api/git";
 

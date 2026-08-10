@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import type { HostVitals } from "@/lib/client";
-import type { NowPlayingSnapshot } from "@/lib/nowplaying-types";
+import type { NowPlayingSnapshot } from "@/lib/types/nowplaying";
 
 export type FreshnessStatus = "loading" | "unreachable-empty" | "ready" | "ready-stale";
 
@@ -142,6 +142,60 @@ export function useKioskVitalsHistory(refreshMs = 5000): {
 export function useKioskHealth(refreshMs = 5000) {
   return useSWR<KioskHealthCounts>("/kiosk/api/health", fetcher, {
     refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+export type KioskSunPhase = "night" | "dawn" | "day" | "dusk";
+
+/**
+ * The /kiosk/api/weather payload, declared once.
+ *
+ * Five components subscribe to this endpoint — the three backdrops
+ * (kiosk-sky, kiosk-sunroom, kiosk-sunroom-weather), kiosk-glass-weather, and
+ * kiosk-display's useWeatherView — and each used to declare its own narrower
+ * view of the same JSON plus its own copy of WEATHER_REFRESH_MS. SWR dedupes
+ * the network by key, so the duplication never cost a request; it cost the
+ * guarantee that all five agreed, since the dedupe only holds while every
+ * copy of the interval stays identical.
+ *
+ * Fields are optional where the SERVER may genuinely omit them, not where a
+ * particular consumer happens not to read them.
+ */
+export interface KioskWeatherOk {
+  status: "ok";
+  current?: { cloudCoverPct?: number; precipMm?: number; windKmh?: number; code?: string };
+  rain?: { nowcast?: Array<{ minutesFromNow: number; precipMmHr: number }> };
+  sun?: {
+    elevationDeg: number;
+    phase: KioskSunPhase;
+    progress01: number;
+    /** Optional at runtime even though the server always sends it now: a
+     *  response cached from before that field existed would arrive without
+     *  it, and the theme must not break on a stale cache. */
+    hourAngleDeg?: number;
+    /** Same cache-compat story as `hourAngleDeg`. When present, redirects the
+     *  sunroom shadow's DIRECTION to true sun geometry; when absent (stale
+     *  cache), the stop ramp's own hand-tuned direction is left untouched. */
+    azimuthDeg?: number;
+  };
+}
+
+export type KioskWeatherResponse =
+  | KioskWeatherOk
+  | { status: "unconfigured" | "unreachable"; detail?: string };
+
+/**
+ * 15 minutes. The single source of truth for this cadence — SWR's dedupe
+ * across the five subscribers only holds while they all agree, and they now
+ * agree by construction rather than by five constants staying in sync.
+ */
+export const WEATHER_REFRESH_MS = 15 * 60_000;
+
+/** The shared weather subscription. Callers read the slice they need. */
+export function useKioskWeather() {
+  return useSWR<KioskWeatherResponse>("/kiosk/api/weather", fetcher, {
+    refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
   });
 }

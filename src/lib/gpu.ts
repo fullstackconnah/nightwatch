@@ -3,11 +3,11 @@ import fsp from "node:fs/promises";
 import { promisify } from "node:util";
 import { listContainers, type ContainerSummary } from "@/lib/docker";
 import { HOST_PROC } from "@/lib/host-metrics";
-import type { GpuDevice, GpuProcess, GpuSnapshot, GpuUnavailable, GpuUnavailableReason } from "@/lib/gpu-types";
+import type { GpuDevice, GpuProcess, GpuSnapshot, GpuUnavailable, GpuUnavailableReason } from "@/lib/types/gpu";
 
 /**
  * nvidia-smi collector. Server-only: child_process + dockerode must never reach
- * src/lib/client.ts (see the import-free-leaf comment in gpu-types.ts).
+ * src/lib/client.ts (see the import-free-leaf comment in types/gpu.ts).
  */
 
 const execFile = promisify(execFileCb);
@@ -332,7 +332,7 @@ async function buildProcesses(rows: string[][]): Promise<GpuProcess[]> {
  * --query-gpu CSV route (temperature.gpu.tmax / .tlimit) doesn't work here.
  *
  * Falls back to Shutdown only when Slowdown itself is unsupported. GpuDevice
- * has just the one tempMaxC field (see its comment in gpu-types.ts), so
+ * has just the one tempMaxC field (see its comment in types/gpu.ts), so
  * taking this fallback means the gauge's ceiling silently becomes the
  * shutdown point rather than the slowdown point for that card.
  */

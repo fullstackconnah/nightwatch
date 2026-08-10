@@ -1,6 +1,6 @@
 import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { formatBytes, formatNumber, formatPercent } from "@/lib/format";
-import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/downloads-types";
+import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/types/downloads";
 import { resolvePath } from "./jsonpath";
 import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 

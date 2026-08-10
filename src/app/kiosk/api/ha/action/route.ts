@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { performHaAction } from "@/lib/ha";
-import type { HaActionRequest, HaActionResult } from "@/lib/ha-types";
+import type { HaActionRequest, HaActionResult } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runHermesJob, type HermesRunResult } from "@/lib/hermes-ctl";
-import type { HermesJobKind } from "@/lib/hermes-types";
+import type { HermesJobKind } from "@/lib/types/hermes";
 
 export const dynamic = "force-dynamic";
 

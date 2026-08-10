@@ -6,7 +6,7 @@ import type {
   HermesJobResult,
   HermesStatusOk,
   HermesStatusResponse,
-} from "@/lib/hermes-types";
+} from "@/lib/types/hermes";
 import { systemSetting } from "@/lib/config";
 
 /**

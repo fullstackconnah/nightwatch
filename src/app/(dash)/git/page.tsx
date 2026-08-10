@@ -1,10 +1,10 @@
 "use client";
 
 import { useGit } from "@/lib/use-forgejo";
-import { GitStatusPanel } from "@/components/git-status-panel";
-import { GitCommitStream } from "@/components/git-commit-stream";
-import { GitBranchesPanel } from "@/components/git-branches-panel";
-import { GitMirrorPanel } from "@/components/git-mirror-panel";
+import { GitStatusPanel } from "@/components/integrations/git-status-panel";
+import { GitCommitStream } from "@/components/integrations/git-commit-stream";
+import { GitBranchesPanel } from "@/components/integrations/git-branches-panel";
+import { GitMirrorPanel } from "@/components/integrations/git-mirror-panel";
 
 function GitLoadingSkeleton() {
   return (

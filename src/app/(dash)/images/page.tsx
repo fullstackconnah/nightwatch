@@ -4,16 +4,16 @@ import { useMemo, useState } from "react";
 import useSWR, { mutate as globalMutate } from "swr";
 import { ChevronDown } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { ReclaimImagesPanel } from "@/components/reclaim-images";
-import { ReclaimedBanner, type PruneResult } from "@/components/reclaim-shared";
-import { ImageDeleteAction, type ImageDeleteResult } from "@/components/image-delete-action";
+import { ReclaimImagesPanel } from "@/components/resources/reclaim-images";
+import { ReclaimedBanner, type PruneResult } from "@/components/resources/reclaim-shared";
+import { ImageDeleteAction, type ImageDeleteResult } from "@/components/resources/image-delete-action";
 import {
   buildImageGroups,
   RegistryChip,
   UNTAGGED,
   type ImageGroup,
   type ImageRow,
-} from "@/components/image-groups";
+} from "@/components/resources/image-groups";
 import { fetcher } from "@/lib/client";
 import { formatBytes, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";

@@ -1,6 +1,7 @@
 import { loadConfig } from "@/lib/config";
+import { Memo } from "@/lib/cache";
 import { getHermesActivity, getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
-import type { HermesActivityItem } from "@/lib/hermes-types";
+import type { HermesActivityItem } from "@/lib/types/hermes";
 
 /**
  * Server-only "morning briefing" assembler for the public /kiosk display:
@@ -237,8 +238,37 @@ async function fetchNews(cfg: BriefingConfig): Promise<BriefingNews | null> {
 
 // --- assembly, daily cache + in-flight guard ---------------------------------
 
-let cached: { date: string; data: BriefingOk } | null = null;
-let inflight: { date: string; promise: Promise<BriefingOk> } | null = null;
+/**
+ * The local calendar date the memo's current slot belongs to, and the date the
+ * next load is for. A single slot (rather than one per date) matches what the
+ * hand-rolled cache did and keeps memory flat: yesterday's briefing is dead
+ * weight the moment the date rolls over.
+ */
+let cachedDate: string | null = null;
+let pendingDate = "";
+let pendingConfig: BriefingConfig | null = null;
+
+/**
+ * One assembled briefing per local calendar day. The TTL is nominal — 25h, just
+ * over a day, so a slot can never outlive its own date even if `isValid` were
+ * somehow bypassed — because the real freshness test is the date check below.
+ *
+ * Memo's in-flight dedup replaces the hand-rolled `inflight` guard this module
+ * used to carry (it was the first cache here to need one): the news summary is
+ * an LLM round-trip, so the first kiosk request of the day pays for it and a
+ * second tab racing the first joins that same promise rather than starting a
+ * second Hermes job.
+ */
+const briefingMemo = new Memo<BriefingOk>({
+  key: "briefing.daily",
+  ttlMs: 25 * 60 * 60 * 1000,
+  isValid: () => cachedDate === pendingDate,
+  load: async () => {
+    const data = await assembleBriefing(pendingConfig!, pendingDate);
+    cachedDate = pendingDate;
+    return data;
+  },
+});
 
 async function assembleBriefing(cfg: BriefingConfig, date: string): Promise<BriefingOk> {
   const [digest, news] = await Promise.all([
@@ -261,24 +291,7 @@ export async function getBriefing(): Promise<BriefingResponse> {
     return { status: "unconfigured", date: new Date().toISOString().slice(0, 10), detail: BRIEFING_UNCONFIGURED_DETAIL };
   }
 
-  const date = localDateString(cfg.timezone);
-  if (cached && cached.date === date) return cached.data;
-  if (inflight && inflight.date === date) return inflight.promise;
-
-  const promise = assembleBriefing(cfg, date).then(
-    (data) => {
-      cached = { date, data };
-      inflight = null;
-      return data;
-    },
-    (err) => {
-      // Defensive only — assembleBriefing's own fetchDigest/fetchNews calls
-      // already catch their failures internally. Guarantees the in-flight
-      // guard can't wedge a whole day's requests behind one unexpected throw.
-      inflight = null;
-      throw err;
-    },
-  );
-  inflight = { date, promise };
-  return promise;
+  pendingDate = localDateString(cfg.timezone);
+  pendingConfig = cfg;
+  return briefingMemo.get();
 }

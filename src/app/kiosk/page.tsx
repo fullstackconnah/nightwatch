@@ -1,10 +1,10 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { KioskSurface } from "@/components/kiosk-surface";
-import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk-display";
-import { KioskPinPad } from "@/components/kiosk-pin-pad";
-import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk-doorbell";
+import { KioskSurface } from "@/components/kiosk/kiosk-surface";
+import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk/kiosk-display";
+import { KioskPinPad } from "@/components/kiosk/kiosk-pin-pad";
+import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk/kiosk-doorbell";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 

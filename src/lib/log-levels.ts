@@ -3,7 +3,7 @@
 // calling a client export throws at runtime. tsc and the webpack build both pass
 // anyway — the symptom was every scrollback seed failing against a live host.
 import { stripAnsi } from "@/lib/ansi-escapes";
-import type { LogLevel } from "@/lib/log-types";
+import type { LogLevel } from "@/lib/types/log";
 
 /**
  * Classifies a log line's severity from its own text, container-agnostic.

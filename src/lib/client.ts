@@ -8,11 +8,11 @@ import type { ContainerStatsSnapshot, ResourceSnapshot } from "@/lib/docker";
 import type { DiskUsageScan } from "@/lib/disk-usage";
 import type { WidgetData } from "@/lib/widgets/types";
 import type { AppConfig } from "@/lib/config";
-import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/telemetry-types";
-import type { TranscodeSnapshot } from "@/lib/transcode-types";
-import type { ProcessSnapshot, ProcessRow } from "@/lib/process-types";
-import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/smart-types";
-import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/network-types";
+import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/types/telemetry";
+import type { TranscodeSnapshot } from "@/lib/types/transcode";
+import type { ProcessSnapshot, ProcessRow } from "@/lib/types/process";
+import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/types/smart";
+import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/types/network";
 
 export class ApiError extends Error {
   status: number;

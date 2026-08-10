@@ -23,4 +23,5 @@ npm-debug.log*
 .omc/
 .claude/
 .impeccable/
+.superpowers/
 docs/PENDING-SETUP.md

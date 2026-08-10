@@ -6,7 +6,7 @@ import { Activity, ChevronDown, ChevronUp, Plus, Search } from "lucide-react";
 import { Badge, stateBadgeVariant } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/input";
-import { stateDotClass } from "@/components/container-tile";
+import { stateDotClass } from "@/components/resources/container-tile";
 import {
   ContainerStatus,
   LifecycleActions,
@@ -14,8 +14,8 @@ import {
   OpenAppLink,
   PortChips,
   useLifecycle,
-} from "@/components/container-controls";
-import { CreateContainerDialog } from "@/components/create-container";
+} from "@/components/resources/container-controls";
+import { CreateContainerDialog } from "@/components/resources/create-container";
 import { useContainers, useResources, type TiledContainer } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import { processesHref, stateSeverity } from "@/lib/container-rank";

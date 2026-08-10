@@ -1,12 +1,13 @@
 import fsp from "node:fs/promises";
 import { HOST_PROC, HOST_SYS } from "@/lib/host-metrics";
 import { listContainers } from "@/lib/docker";
-import type { ProcessRow, ProcessSnapshot } from "@/lib/process-types";
+import { Memo } from "@/lib/cache";
+import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
 
 /**
  * Host-wide process table collector. Server-only: node:fs + dockerode must
  * never reach src/lib/client.ts (see the import-free-leaf comment in
- * process-types.ts).
+ * types/process.ts).
  *
  * Reads through the /host/proc and /host/sys bind mounts as an unprivileged
  * (uid 1000) reader. /proc/<pid>/io is 0400 and unreadable for all but a
@@ -53,18 +54,14 @@ interface ProcessCacheEntry {
   io: Map<string, number>; // containerId -> cumulative rbytes+wbytes at ts
 }
 
-interface ContainerNameCacheEntry {
-  ts: number;
-  map: Map<string, string>;
-}
-
 // Mirrors gpu.ts/docker.ts's globalForX pattern: state on globalThis survives
-// Next dev HMR reloads of this module.
+// Next dev HMR reloads of this module. (The container-name cache that used to
+// live here is now a Memo — see namesMemo below, which is globalThis-backed
+// the same way.)
 const globalForProcesses = globalThis as unknown as {
   /** Recent samples, OLDEST FIRST. See getProcessSnapshot for why a ring rather
    *  than a single previous sample. */
   __processSamples?: ProcessCacheEntry[];
-  __processContainerNameCache?: ContainerNameCacheEntry;
   /** undefined = never looked up; null = looked up and we are not in a container. */
   __processOwnContainerId?: string | null;
 };
@@ -264,30 +261,40 @@ async function readPidDetail(pid: number, ownContainerId: string | null): Promis
 
 // --- container name resolution -----------------------------------------------
 
+/** The ids the next name resolution applies to — same handover pattern as
+ *  docker.ts's requestedRuntimeIds, and safe for the same reason: one caller. */
+let pendingContainerIds: Set<string> = new Set();
+
+const namesMemo = new Memo<Map<string, string>>({
+  key: "processes.containerNames",
+  ttlMs: CONTAINER_NAME_TTL_MS,
+  // A docker failure should leave the previous names on screen rather than
+  // blanking every row — this is the whole reason serveStaleOnError exists.
+  serveStaleOnError: true,
+  load: async () => {
+    const containers = await listContainers();
+    const map = new Map<string, string>();
+    for (const id of pendingContainerIds) {
+      const match = containers.find((c) => c.id === id || c.id.startsWith(id));
+      if (match) map.set(id, match.name);
+    }
+    return map;
+  },
+});
+
 /** Resolves 64-hex container ids to human names via the existing docker
  * listContainers() helper (same one gpu.ts uses), cached for
  * CONTAINER_NAME_TTL_MS so a 2s poll doesn't hammer the docker socket. */
 async function resolveContainerNames(containerIds: Set<string>): Promise<Map<string, string>> {
   if (containerIds.size === 0) return new Map();
 
-  const cached = globalForProcesses.__processContainerNameCache;
-  const now = Date.now();
-  if (cached && now - cached.ts < CONTAINER_NAME_TTL_MS) return cached.map;
-
-  let containers: Awaited<ReturnType<typeof listContainers>>;
-  try {
-    containers = await listContainers();
-  } catch {
-    return cached?.map ?? new Map();
-  }
-
-  const map = new Map<string, string>();
-  for (const id of containerIds) {
-    const match = containers.find((c) => c.id === id || c.id.startsWith(id));
-    if (match) map.set(id, match.name);
-  }
-  globalForProcesses.__processContainerNameCache = { ts: now, map };
-  return map;
+  pendingContainerIds = containerIds;
+  // serveStaleOnError (below) reproduces the old `return cached?.map ?? new Map()`
+  // fallback: a docker blip should leave the names as they were rather than
+  // blanking every row. The bare `new Map()` half of that expression is what
+  // Memo does anyway when it has nothing cached and rethrows — except it would
+  // rethrow, so the empty-map default is kept explicit at the call site below.
+  return namesMemo.get().catch(() => new Map<string, string>());
 }
 
 // --- cgroup io.stat -----------------------------------------------------------

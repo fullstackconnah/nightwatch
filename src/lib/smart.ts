@@ -14,12 +14,12 @@ import type {
   SmartSnapshot,
   SmartTempSensor,
   VolumeManagerState,
-} from "@/lib/smart-types";
+} from "@/lib/types/smart";
 
 /**
  * Drive-health collector. Server-only: node:fs must never reach
  * src/lib/client.ts, which is why the contract lives in the import-free
- * smart-types.ts (see the comment at the top of that file).
+ * types/smart.ts (see the comment at the top of that file).
  *
  * Three independent sources feed one snapshot:
  *  A. the host collector's smart.json (smartctl -a -j per device, republished

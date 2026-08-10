@@ -24,8 +24,8 @@
 */
 
 import { listContainers } from "@/lib/docker";
-import { LogConsole } from "@/components/log-console";
-import type { RailContainer } from "@/components/container-rail";
+import { LogConsole } from "@/components/logs/log-console";
+import type { RailContainer } from "@/components/resources/container-rail";
 
 export const dynamic = "force-dynamic";
 

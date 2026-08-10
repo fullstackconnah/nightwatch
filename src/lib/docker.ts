@@ -1,5 +1,6 @@
 import Docker from "dockerode";
 import { getHostVitals } from "@/lib/host-metrics";
+import { Memo } from "@/lib/cache";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -20,10 +21,6 @@ function createClient(): Docker {
   });
 }
 
-interface StatsCacheEntry {
-  data: Record<string, ContainerStatsRow>;
-  ts: number;
-}
 interface DfCacheEntry {
   data: DfSnapshot;
   ts: number;
@@ -32,16 +29,10 @@ interface DockerRootCacheEntry {
   data: string | null;
   ts: number;
 }
-interface RuntimeCacheEntry {
-  data: Record<string, ContainerRuntime>;
-  ts: number;
-}
 const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
-  __statsCache?: StatsCacheEntry;
   __dfCache?: DfCacheEntry;
   __dockerRootCache?: DockerRootCacheEntry;
-  __runtimeCache?: RuntimeCacheEntry;
 };
 export const docker: Docker = globalForDocker.__docker ?? createClient();
 globalForDocker.__docker = docker;
@@ -61,7 +52,7 @@ export interface ContainerSummary {
   networkMode?: string;
 }
 
-export async function listContainers(): Promise<ContainerSummary[]> {
+async function collectContainers(): Promise<ContainerSummary[]> {
   const raw = await docker.listContainers({ all: true });
   return raw.map((c) => {
     const status = c.Status || "";
@@ -101,6 +92,39 @@ export async function listContainers(): Promise<ContainerSummary[]> {
       networkMode: (c.HostConfig as { NetworkMode?: string })?.NetworkMode,
     };
   });
+}
+
+/**
+ * The container inventory, collected at most once every LIST_TTL_MS.
+ *
+ * This is the most-called Docker operation in the app — /api/docker/containers
+ * and /kiosk/api/health both poll it at 5s, and processes.ts, gpu.ts,
+ * network.ts, the widgets collector and log-stream.ts all reach for it too.
+ * It was the one hot docker call with no cache at all, so a desk browser and a
+ * wall tablet each drove their own full `GET /containers/json?all=1` past the
+ * socket proxy, several times over per poll window.
+ *
+ * 2s, matching host.vitals: below every caller's poll interval, so nobody
+ * receives an inventory older than the cadence they asked for. The in-flight
+ * dedup matters more than the TTL here — the point is that six collectors
+ * mounting at once share one round-trip.
+ *
+ * NOT invalidated by performContainerAction(): a lifecycle verb changes a
+ * container's `state`, and 2s of lag on that is already the shape of the
+ * existing UI (the next poll picks it up). containerRuntimes IS invalidated
+ * there, because uptime restarting from zero is the thing someone is watching
+ * for in that exact moment.
+ */
+const LIST_TTL_MS = 2_000;
+
+const containersMemo = new Memo<ContainerSummary[]>({
+  key: "docker.containers",
+  ttlMs: LIST_TTL_MS,
+  load: collectContainers,
+});
+
+export function listContainers(): Promise<ContainerSummary[]> {
+  return containersMemo.get();
 }
 
 /**
@@ -146,12 +170,7 @@ function parseDockerTime(value: string | undefined): number | null {
  * `stats`, which blocks ~1s per call to fill precpu. Fanning it out across ~26
  * containers costs a few milliseconds.
  */
-async function containerRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
-  const now = Date.now();
-  const cached = globalForDocker.__runtimeCache;
-  if (cached && now - cached.ts < RUNTIME_TTL_MS && ids.every((id) => id in cached.data)) {
-    return cached.data;
-  }
+async function collectRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
   const settled = await Promise.allSettled(
     ids.map(async (id) => {
       const info = await docker.getContainer(id).inspect();
@@ -170,8 +189,34 @@ async function containerRuntimes(ids: string[]): Promise<Record<string, Containe
     // its caller renders the same "unknown" branch as a never-started one.
     if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
   }
-  globalForDocker.__runtimeCache = { data, ts: now };
   return data;
+}
+
+/**
+ * The ids the next runtime load/validity check applies to.
+ *
+ * containerRuntimes() is parameterised by id list but Memo's `load` takes no
+ * arguments, so the requested set is handed over here immediately before
+ * `.get()`. Module scope is safe because every caller passes the SAME set —
+ * "every container in the current inventory" — via listContainersWithRuntime,
+ * the only entry point. If a second caller with a genuinely different id set
+ * is ever added, give it its own Memo rather than widening this.
+ */
+let requestedRuntimeIds: string[] = [];
+
+const runtimesMemo = new Memo<Record<string, ContainerRuntime>>({
+  key: "docker.runtimes",
+  ttlMs: RUNTIME_TTL_MS,
+  load: () => collectRuntimes(requestedRuntimeIds),
+  // Membership, not just age — see collectRuntimes' doc comment. A container
+  // created since the last pass would otherwise show no uptime until the TTL
+  // expired, which is exactly when someone is watching it.
+  isValid: (cached) => requestedRuntimeIds.every((id) => id in cached),
+});
+
+function containerRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
+  requestedRuntimeIds = ids;
+  return runtimesMemo.get();
 }
 
 const UNKNOWN_RUNTIME: ContainerRuntime = {
@@ -303,15 +348,7 @@ export interface ContainerStatsRow {
  * Pass force=true to bypass the cache read (still writes the cache afterwards) — needed by
  * 1Hz streaming consumers that would otherwise see the same sample ~4 ticks out of 5.
  */
-export async function allContainerStats(force = false): Promise<Record<string, ContainerStatsRow>> {
-  const now = Date.now();
-  if (
-    !force &&
-    globalForDocker.__statsCache &&
-    now - globalForDocker.__statsCache.ts < STATS_TTL_MS
-  ) {
-    return globalForDocker.__statsCache.data;
-  }
+async function collectAllContainerStats(): Promise<Record<string, ContainerStatsRow>> {
   const running = await docker.listContainers({ all: false });
   const settled = await Promise.allSettled(
     running.map(async (c) => {
@@ -334,8 +371,28 @@ export async function allContainerStats(force = false): Promise<Record<string, C
   for (const r of settled) {
     if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
   }
-  globalForDocker.__statsCache = { data, ts: now };
   return data;
+}
+
+const statsMemo = new Memo<Record<string, ContainerStatsRow>>({
+  key: "docker.stats",
+  ttlMs: STATS_TTL_MS,
+  load: collectAllContainerStats,
+});
+
+/**
+ * Fan out one-shot stats to every running container; skip any that fail
+ * (mid-restart, etc). Pass force=true to bypass the cache read — needed by 1Hz
+ * streaming consumers that would otherwise see the same sample ~4 ticks out
+ * of 5.
+ *
+ * `force` no longer means "always start a new fan-out": it skips the cached
+ * value but still joins a load already in flight, because a collection that
+ * started microseconds ago is as fresh as one started now, and 26 more
+ * concurrent socket round-trips is the opposite of what any caller wants.
+ */
+export function allContainerStats(force = false): Promise<Record<string, ContainerStatsRow>> {
+  return statsMemo.get({ force });
 }
 
 export interface DfSnapshot {
@@ -729,7 +786,7 @@ export async function performContainerAction(id: string, action: ContainerAction
   try {
     await containerAction(id, action);
   } finally {
-    globalForDocker.__runtimeCache = undefined;
+    runtimesMemo.invalidate();
   }
 }
 

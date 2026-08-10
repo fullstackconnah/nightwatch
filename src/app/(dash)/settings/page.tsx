@@ -19,13 +19,13 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { putJson, useContainers } from "@/lib/client";
 import type { AppConfig, WidgetInstance } from "@/lib/config";
-import { SettingsIntegrations, useSettingsFull } from "@/components/settings-integrations";
-import { SettingsHermes, SettingsHermesDaemon } from "@/components/settings-hermes";
-import { SettingsAccess } from "@/components/settings-access";
-import { SettingsWidgets } from "@/components/settings-widgets";
-import { SettingsTiles } from "@/components/settings-tiles";
-import { SettingsReference } from "@/components/settings-reference";
-import { SettingsSectionNav, type SettingsSection } from "@/components/settings-section-nav";
+import { SettingsIntegrations, useSettingsFull } from "@/components/settings/settings-integrations";
+import { SettingsHermes, SettingsHermesDaemon } from "@/components/settings/settings-hermes";
+import { SettingsAccess } from "@/components/settings/settings-access";
+import { SettingsWidgets } from "@/components/settings/settings-widgets";
+import { SettingsTiles } from "@/components/settings/settings-tiles";
+import { SettingsReference } from "@/components/settings/settings-reference";
+import { SettingsSectionNav, type SettingsSection } from "@/components/settings/settings-section-nav";
 
 const SECTIONS: SettingsSection[] = [
   { id: "access", label: "Access" },

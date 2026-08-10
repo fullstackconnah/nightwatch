@@ -3,7 +3,7 @@ import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { getInterfaceCounters } from "@/lib/network";
 import { recordMetricsHistoryTick } from "@/lib/metrics-history";
-import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "./telemetry-types";
+import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "@/lib/types/telemetry";
 
 /**
  * 1Hz container telemetry: a single shared, refcounted collector feeds any number of
