@@ -83,7 +83,20 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     [entities],
   );
 
-  /* The engine: evaluated on every tick and on every config/HA-data change.
+  // Latest-value refs for `entities`/`ha`, kept current every render but
+  // deliberately NOT in the fire effect's deps (see below) — reading them
+  // fresh inside the effect body without retriggering on their churn.
+  const entitiesRef = useRef(entities);
+  entitiesRef.current = entities;
+  const haRef = useRef(ha);
+  haRef.current = ha;
+
+  /* The engine: evaluated on every tick and on every config change — NOT on
+   * HA-data churn. `entities`/`ha` are read via refs (above) so a live HA
+   * poll (7-20s cadence, and `ha` itself changes identity on every poll
+   * because runAction's deps include `data`) can't retrigger this effect
+   * mid-retry-sequence; without that, "one attempt per tick" (20 ticks ≈ 10
+   * minutes, see MAX_FIRE_ATTEMPTS) would actually burn out in ~2-3 minutes.
    * busyRef makes the volley single-flight; a FAILED volley leaves
    * lastRunDate unset so the next tick retries (against the then-current
    * on-list — units that did turn off drop out naturally), bounded by
@@ -96,6 +109,8 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     busyRef.current = true;
     void (async () => {
       try {
+        const entities = entitiesRef.current;
+        const ha = haRef.current;
         if (!entities) {
           // HA states unavailable (unreachable/unconfigured) — counts as a
           // failed attempt; the volley can't even be aimed yet.
@@ -120,13 +135,23 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
             if (!ok) allOk = false;
           }
           if (allOk) {
-            await postJson(CONFIG_KEY, { lastRunDate: win.dateKey });
-            attemptsRef.current = 0;
-            setNotice(null);
-            await mutate();
-            return;
+            try {
+              await postJson(CONFIG_KEY, { lastRunDate: win.dateKey });
+              attemptsRef.current = 0;
+              setNotice(null);
+              await mutate();
+              return;
+            } catch {
+              // Volley itself succeeded but the completion-marker POST
+              // didn't land — treat it as a failed attempt so a persistently
+              // failing marker POST still exhausts the retry budget and
+              // reaches the give-up path below (which has its own .catch),
+              // instead of silently re-running the full volley every tick.
+              attemptsRef.current += 1;
+            }
+          } else {
+            attemptsRef.current += 1;
           }
-          attemptsRef.current += 1;
         }
         if (attemptsRef.current >= MAX_FIRE_ATTEMPTS) {
           // Close the window server-side even on failure — without this the
@@ -141,7 +166,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
         busyRef.current = false;
       }
     })();
-  }, [nowMs, state, entities, ha, mutate]);
+  }, [nowMs, state, mutate]);
 
   const update = useCallback(
     async (patch: ClimateAutoOffPatch) => {
