@@ -132,6 +132,22 @@ function ClimateAutoOffSheet({
     };
   }, []);
 
+  // "Skip tonight" and "Resume tonight" are two DIFFERENT elements swapped by
+  // `status?.kind` (see below) — clicking one un-mounts it and mounts the
+  // other. If that click's button was the focused element (Tab or a screen
+  // reader would land it there), the browser drops focus to <body> once the
+  // DOM node is removed, which is OUTSIDE this dialog's subtree. onDialogKeyDown
+  // below is a React onKeyDown on the dialog div itself, so it only ever sees
+  // keydowns that bubble THROUGH that div — a keydown on <body> never reaches
+  // it, silently breaking Escape (and the Tab trap) for the rest of that open.
+  // Runs after the mount-focus effect above, so on the initial mount it's a
+  // no-op (activeElement is already the switch, inside the container) — it
+  // only acts on a later kind change, which is exactly the skip/resume swap.
+  useEffect(() => {
+    const container = dialogRef.current;
+    if (container && !container.contains(document.activeElement)) container.focus();
+  }, [status?.kind]);
+
   // Container-transform entrance — see kiosk-motion.ts's containerExpand and
   // kiosk-timers.tsx's KioskTimersOverlay for the house pattern. Layout
   // effect, not effect: must commit before this mount's first paint, or the
