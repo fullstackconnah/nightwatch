@@ -362,13 +362,21 @@ function ClimateAutoOffSheet({
 }
 
 export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffResult }) {
-  const { warn, onCount, notice, skipTonight, state } = autoOff;
+  const { warn, onCount, notice, skipTonight, state, dismissNotice } = autoOff;
   if (notice) {
     return (
       <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
         <Moon size={14} className="text-warn" aria-hidden />
         <span className="microlabel !text-warn">Auto-off</span>
         <span className="text-xs text-ink-dim">{notice}</span>
+        <button
+          type="button"
+          onClick={() => dismissNotice()}
+          aria-label="Dismiss"
+          className="kiosk-press ml-auto flex h-11 w-11 items-center justify-center rounded-md text-ink-dim outline-none hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+        >
+          <X size={16} />
+        </button>
       </div>
     );
   }

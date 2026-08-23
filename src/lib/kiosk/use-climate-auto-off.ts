@@ -49,6 +49,7 @@ export interface UseClimateAutoOffResult {
   saving: boolean;
   update: (patch: ClimateAutoOffPatch) => Promise<boolean>;
   skipTonight: () => Promise<boolean>;
+  dismissNotice: () => void;
 }
 
 function toConfig(state: ClimateAutoOffServerState): ClimateAutoOffConfig {
@@ -133,7 +134,6 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     void (async () => {
       try {
         const entities = entitiesRef.current;
-        const ha = haRef.current;
         if (!entities) {
           // HA states unavailable (unreachable/unconfigured) — counts as a
           // failed attempt; the volley can't even be aimed yet.
@@ -151,7 +151,14 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
                 x.entityId === c.entityId ? { ...x, hvacMode: "off" } : x,
               ),
             };
-            const ok = await ha.runAction(
+            // Read haRef.current fresh on EACH iteration, not once before the
+            // loop: `ha`'s identity changes on every HA poll (its runAction
+            // useCallback deps include `data`), so a stale single capture
+            // would let a later iteration's failed runAction roll the
+            // optimistic cache back to a stale pre-loop `data` snapshot,
+            // visually undoing earlier-in-this-volley successful offs (it
+            // self-heals on the next poll, but the flicker is real).
+            const ok = await haRef.current.runAction(
               { entityId: c.entityId, action: "set_hvac_mode", hvacMode: "off" },
               optimistic,
             );
@@ -233,6 +240,19 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     // eslint-disable-next-line react-hooks/exhaustive-deps -- warnRef is a ref, not a dep
   }, [state, nowMs]);
 
+  // A give-up notice is otherwise sticky for up to ~23h: lastRunDate was
+  // already written on give-up, so nothing re-evaluates the fire effect
+  // until tomorrow's window, and only a SUCCESSFUL volley clears `notice`.
+  // Tomorrow's pre-sweep warning opening supersedes yesterday's failure, so
+  // auto-clear here — `warn`'s identity is stabilized above (sameWindow), so
+  // this only re-fires when the warning window actually changes, not every
+  // 30s tick.
+  useEffect(() => {
+    if (warn) setNotice(null);
+  }, [warn]);
+
+  const dismissNotice = useCallback(() => setNotice(null), []);
+
   const skipTonight = useCallback(async () => {
     // The skip target is whichever window the user is being warned about /
     // is scheduled next; statusFor carries it for both cases.
@@ -244,7 +264,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
   }, [warn, status, update]);
 
   return useMemo(
-    () => ({ state, status, warn, onCount, notice, saving, update, skipTonight }),
-    [state, status, warn, onCount, notice, saving, update, skipTonight],
+    () => ({ state, status, warn, onCount, notice, saving, update, skipTonight, dismissNotice }),
+    [state, status, warn, onCount, notice, saving, update, skipTonight, dismissNotice],
   );
 }
