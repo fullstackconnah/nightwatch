@@ -71,6 +71,14 @@ function ClimateAutoOffSheet({
   const closeFiredRef = useRef(false);
   const [saveError, setSaveError] = useState(false);
 
+  // Kept current every render so failure callbacks (which resolve well after
+  // the render that started them) read the LATEST server value, not the one
+  // closed over at call time — a stale closure here would re-sync to
+  // whatever `state.time` was at the moment the request was fired, not what
+  // it is now.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
   // Local time while stepping; server state is the source of truth between
   // edits. Debounced POST so five fast taps are one write.
   const [localTime, setLocalTime] = useState(state?.time ?? "23:00");
@@ -93,7 +101,13 @@ function ClimateAutoOffSheet({
     setSaveError(false);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void update({ time: next }).then((ok) => setSaveError(!ok));
+      saveTimer.current = null;
+      void update({ time: next }).then((ok) => {
+        setSaveError(!ok);
+        // Failed save: the readout must not keep showing an unsaved time as
+        // if it were live — drop back to whatever the server actually has.
+        if (!ok && stateRef.current) setLocalTime(stateRef.current.time);
+      });
     }, SAVE_DEBOUNCE_MS);
   }
 
@@ -134,6 +148,17 @@ function ClimateAutoOffSheet({
   function requestClose() {
     if (closingRef.current) return;
     closingRef.current = true;
+
+    // Flush a pending debounced time save instead of dropping it — a
+    // tap-step-then-Escape/backdrop gesture inside the 600ms window is
+    // normal, and the unmount cleanup below only clears the timer, it
+    // doesn't fire it. Fire-and-forget: the sheet is on its way out, and
+    // the pill re-renders from server state once the POST lands.
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void update({ time: localTime });
+    }
 
     const node = dialogRef.current;
     if (originRect && node) {
@@ -197,8 +222,12 @@ function ClimateAutoOffSheet({
 
   if (!state) return null;
   const enabled = state.enabled;
+  // No disabled:opacity-40 here — the wrapper around the stepper cluster
+  // already applies opacity-40 when the schedule is off, and stacking a
+  // second 0.4 multiplier on top of it compounds to ~0.16, well past what
+  // the wrapper alone intends.
   const stepBtn =
-    "kiosk-press flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-40";
+    "kiosk-press flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent";
 
   return (
     <div
@@ -252,7 +281,10 @@ function ClimateAutoOffSheet({
             aria-checked={enabled}
             onClick={() => {
               setSaveError(false);
-              void update({ enabled: !enabled }).then((ok) => setSaveError(!ok));
+              void update({ enabled: !enabled }).then((ok) => {
+                setSaveError(!ok);
+                if (!ok && stateRef.current) setLocalTime(stateRef.current.time);
+              });
             }}
             className={cn(
               "kiosk-press flex h-11 w-full items-center justify-between rounded-md border px-3 outline-none focus-visible:ring-1 focus-visible:ring-accent",
