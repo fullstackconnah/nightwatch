@@ -60,6 +60,29 @@ function toConfig(state: ClimateAutoOffServerState): ClimateAutoOffConfig {
   };
 }
 
+// Content-equality for the two computed-every-tick values below. `statusFor`/
+// `warnWindow` are pure but return fresh object literals on every call — with
+// no equality check, `status`/`warn` (and therefore the hook's whole
+// useMemo'd return object, see the bottom of this file) would get a new
+// identity every 30s TICK_MS re-render even when nothing about the auto-off
+// situation actually changed, defeating ClimateSection's memo() in
+// kiosk-hub.tsx despite that component taking `autoOff` as a prop.
+function sameWindow(a: SweepWindow | null, b: SweepWindow | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return a.dateKey === b.dateKey && a.startMs === b.startMs && a.endMs === b.endMs;
+}
+
+function sameStatus(a: AutoOffStatus | null, b: AutoOffStatus | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "scheduled" || a.kind === "skipped") {
+    return sameWindow(a.window, (b as typeof a).window);
+  }
+  return true; // "off" | "done" carry no other data to compare
+}
+
 export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult {
   const { data: state, mutate } = useSWR<ClimateAutoOffServerState>(CONFIG_KEY, fetcher, {
     refreshInterval: TICK_MS,
@@ -184,8 +207,31 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     [mutate],
   );
 
-  const status = state ? statusFor(toConfig(state), new Date(nowMs)) : null;
-  const warn = state ? warnWindow(toConfig(state), new Date(nowMs)) : null;
+  // Computed under useMemo (re-evaluated on every TICK_MS/state change, same
+  // as the fire effect above) but identity-stabilized via the ref: a plain
+  // useMemo alone would still mint a fresh AutoOffStatus/SweepWindow literal
+  // every 30s tick (statusFor/warnWindow always return new objects), so
+  // instead of returning that fresh literal outright, keep last render's
+  // reference and only swap to the new one when sameStatus/sameWindow says
+  // the auto-off situation actually changed. `autoOff`'s own identity below
+  // (and therefore ClimateSection's memo() in kiosk-hub.tsx, which takes
+  // `autoOff` as a prop) only changes when this does — a few times a day,
+  // not every tick.
+  const statusRef = useRef<AutoOffStatus | null>(null);
+  const status = useMemo(() => {
+    const next = state ? statusFor(toConfig(state), new Date(nowMs)) : null;
+    if (!sameStatus(statusRef.current, next)) statusRef.current = next;
+    return statusRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- statusRef is a ref, not a dep
+  }, [state, nowMs]);
+
+  const warnRef = useRef<SweepWindow | null>(null);
+  const warn = useMemo(() => {
+    const next = state ? warnWindow(toConfig(state), new Date(nowMs)) : null;
+    if (!sameWindow(warnRef.current, next)) warnRef.current = next;
+    return warnRef.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- warnRef is a ref, not a dep
+  }, [state, nowMs]);
 
   const skipTonight = useCallback(async () => {
     // The skip target is whichever window the user is being warned about /

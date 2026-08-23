@@ -39,7 +39,16 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
           originRef.current = btnRef.current?.getBoundingClientRect() ?? null;
           setOpen(true);
         }}
-        className="kiosk-press flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        // -my-2.5 -mr-1: same "overflow without pushing layout" idiom as
+        // kiosk-timers.tsx's close X (-mr-2.5 there). The 44px h-11 touch
+        // target is a hard a11y floor and must not shrink, but this pill
+        // sits inline with SectionHeader in ClimateSection's header row —
+        // without the negative margin its full-height box would inflate that
+        // row ~18px taller than every other section's header. The negative
+        // vertical margin shrinks the button's margin box (what the flex row
+        // measures) back down near SectionHeader's own line height while the
+        // rendered 44px target still overflows the row invisibly above/below.
+        className="kiosk-press -my-2.5 -mr-1 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
         <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />
         <span

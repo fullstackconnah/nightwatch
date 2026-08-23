@@ -667,8 +667,13 @@ const ClimateSection = memo(function ClimateSection({
    *  fire effect must run regardless of whether this section is even mounted
    *  — see useClimateAutoOff's THESIS) and threaded down just for the header
    *  pill. Part of this component's memo-relevant props like everything else
-   *  here: the hook already returns a useMemo'd object, so passing it through
-   *  doesn't reintroduce the re-render memo() is guarding against. */
+   *  here: useClimateAutoOff identity-stabilizes `status`/`warn` internally
+   *  (content-equal values keep the same object across its own 30s tick, see
+   *  the sameStatus/sameWindow refs in use-climate-auto-off.ts) before
+   *  wrapping the result in its own useMemo, so `autoOff` itself only changes
+   *  identity when the auto-off situation actually does — a few times a day,
+   *  not every tick — and passing it through here doesn't reintroduce the
+   *  re-render memo() is guarding against. */
   autoOff: UseClimateAutoOffResult;
 }) {
   // Which tile (by entityId) is currently under adjustment, for the depth-
