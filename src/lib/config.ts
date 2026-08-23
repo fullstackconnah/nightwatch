@@ -144,6 +144,22 @@ export interface AppConfig {
    *  or moved; the panel degrades that one row honestly instead of dropping
    *  it. Mutated via POST /api/resources/pins, not the settings PUT route. */
   pinnedFolders?: string[];
+  /** Kiosk AC auto-off nightly sweep (docs/superpowers/specs/
+   *  2026-08-23-ac-auto-off-design.md). skipDate/lastRunDate live here —
+   *  server-side, not localStorage — so two kiosk devices can't double-fire
+   *  a sweep and a mid-night tab reload can't re-run one. Written ONLY by
+   *  the public POST /kiosk/api/climate-auto-off route (strictly validated;
+   *  same LAN-exposure class as the kiosk's existing HA action route). */
+  climateAutoOff?: {
+    enabled?: boolean;
+    /** "HH:MM" 24h, local kiosk time. */
+    time?: string;
+    /** "YYYY-MM-DD" — skip the sweep whose window starts this date. */
+    skipDate?: string;
+    /** "YYYY-MM-DD" — sweep already fired for this window date. */
+    lastRunDate?: string;
+    updatedAt?: string;
+  };
   /** Config-over-env overrides for nightwatch's own operational settings —
    *  the MCP bearer token, kiosk PIN, Hermes/voice sibling-daemon
    *  credentials, OIDC SSO config and the admin password hash. Every field
