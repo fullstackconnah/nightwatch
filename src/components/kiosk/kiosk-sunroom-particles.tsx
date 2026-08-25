@@ -2,15 +2,52 @@
 
 /* THESIS: High-performance 3D atmospheric weather overlay powered by Three.js.
  *
- * Replaces 2D canvas drawing with a WebGLRenderer scene (instanced particle system,
- * fog sprite planes, and gust line segments). Runs with strict frame-budget gating (~24fps),
- * automatic tab-visibility pausing, and complete GPU resource disposal on unmount.
+ * Replaces 2D canvas drawing with a WebGLRenderer scene (a points system for
+ * droplets, fog sprite planes, and gust line segments). Runs with strict
+ * frame-budget gating (~24fps), automatic tab-visibility pausing, and complete
+ * GPU resource disposal on unmount.
+ *
+ * COORDINATE CONVENTION — the one thing to get right in this file. The
+ * orthographic camera is set up as (left 0, right width, TOP height, BOTTOM 0),
+ * i.e. a normal maths orientation with y increasing UPWARD. The simulation
+ * below thinks in screen space (y increasing downward, 0 at the top edge),
+ * because that is how rain, mist height and gust bands are naturally described.
+ * Every write into a position buffer therefore converts once, as `height - y`,
+ * and nowhere else. Flipping the camera instead of the coordinates would break
+ * `resize()`, which can only ever set `camera.top`/`camera.right` — with the
+ * frustum inverted, `top` and `bottom` would both end up at `height`, the
+ * projection's y-scale would divide by zero, and the whole overlay would
+ * silently disappear on the first resize.
  */
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
+/* ~24fps. On a 60Hz panel this lands on every third vsync (an even 20fps)
+   rather than jittering, and this layer is soft blobs and hairlines — there is
+   nothing here whose motion a higher rate would improve. */
 const FRAME_BUDGET_MS = 1000 / 24;
+
+const MAX_DROPLETS = 40;
+const MAX_GUST_LINES = 32;
+const MIST_BLOBS = 5;
+
+/** Peak alpha of one mist blob before the dusk/fade multipliers. Blobs overlap,
+ *  so the on-screen worst case is a small multiple of this — it stays inside
+ *  the same 0.03–0.06 band kiosk-sunroom-weather.tsx's CSS cloud layer is
+ *  verified in. The previous 0.025 was below the threshold of visibility on
+ *  this tablet: fog was mounting a renderer to draw nothing. */
+const MIST_PEAK_ALPHA = 0.055;
+
+/** Same argument for the gust streaks. These are 1px hairlines alive for under
+ *  two seconds, not a full-viewport wash, so they need a higher number than the
+ *  wash band to register at all; 0.04 was invisible. */
+const GUST_PEAK_ALPHA = 0.13;
+
+/** Droplet sprite radius (px) per unit of simulated droplet radius. The sprite
+ *  texture's bright core is its inner ~40%, so the point has to be drawn
+ *  several times larger than the droplet it depicts. */
+const DROPLET_PX_PER_R = 4.2;
 
 interface DropletState {
   x: number;
@@ -40,7 +77,38 @@ interface GustState {
   durationMs: number;
 }
 
-/** Generates a soft radial droplet sprite texture for THREE.PointsMaterial */
+/* Per-point size and alpha, which THREE.PointsMaterial cannot express: its
+   `size` is one uniform for the whole system. The droplet simulation has always
+   computed a per-droplet radius and an age-based shrink — under PointsMaterial
+   both were discarded every frame and all 40 droplets drew as identical 16px
+   dots that vanished the instant they aged out. These two shaders are the
+   smallest thing that actually applies them. */
+const DROPLET_VERT = /* glsl */ `
+  attribute float aSize;
+  attribute float aAlpha;
+  varying float vAlpha;
+  void main() {
+    vAlpha = aAlpha;
+    gl_PointSize = aSize;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+  }
+`;
+
+const DROPLET_FRAG = /* glsl */ `
+  uniform sampler2D uMap;
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  varying float vAlpha;
+  void main() {
+    float a = texture2D( uMap, gl_PointCoord ).a * vAlpha * uOpacity;
+    // Fully-faded droplets still cost a blend without this.
+    if ( a < 0.003 ) discard;
+    gl_FragColor = vec4( uColor, a );
+    #include <colorspace_fragment>
+  }
+`;
+
+/** Generates a soft radial droplet sprite texture */
 function createDropletTexture(): THREE.CanvasTexture {
   const canvas = document.createElement("canvas");
   canvas.width = 64;
@@ -52,9 +120,7 @@ function createDropletTexture(): THREE.CanvasTexture {
   grad.addColorStop(1, "rgba(255, 255, 255, 0)");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 64, 64);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.needsUpdate = true;
-  return texture;
+  return finishTexture(new THREE.CanvasTexture(canvas));
 }
 
 /** Generates a soft volumetric mist sprite texture */
@@ -69,7 +135,16 @@ function createMistTexture(): THREE.CanvasTexture {
   grad.addColorStop(1, "rgba(255, 255, 255, 0)");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 128, 128);
-  const texture = new THREE.CanvasTexture(canvas);
+  return finishTexture(new THREE.CanvasTexture(canvas));
+}
+
+/** Both sprites are drawn once at a fixed on-screen size and never minified, so
+ *  a mip chain is pure upload cost and VRAM for levels that are never sampled. */
+function finishTexture(texture: THREE.CanvasTexture): THREE.CanvasTexture {
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
   return texture;
 }
@@ -95,17 +170,20 @@ export function KioskSunroomParticles({
     const container = containerRef.current;
     if (!container) return;
 
-    let width = container.clientWidth;
-    let height = container.clientHeight;
-    if (width === 0 || height === 0) return;
+    /* Never bail on a zero-sized container. This subtree is dynamically
+       imported into a `fixed inset-0` parent, so a first measurement of 0 is a
+       timing accident, not a permanent state — the ResizeObserver below corrects
+       it. Returning early here would leave the overlay dead for the session. */
+    let width = Math.max(1, container.clientWidth);
+    let height = Math.max(1, container.clientHeight);
 
     // --- 1. Three.js Setup ----------------------------------------------------
     const scene = new THREE.Scene();
 
-    // 2D orthographic projection matching container pixels (0..width, 0..height)
-    const camera = new THREE.OrthographicCamera(0, width, 0, height, 0.1, 1000);
+    // Pixel-for-pixel orthographic projection, y UP. See the coordinate note
+    // at the top of this file before touching these four numbers.
+    const camera = new THREE.OrthographicCamera(0, width, height, 0, 0.1, 1000);
     camera.position.z = 10;
-    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({
       alpha: true,
@@ -113,7 +191,9 @@ export function KioskSunroomParticles({
       powerPreference: "low-power",
     });
     renderer.setPixelRatio(1);
-    renderer.setSize(width, height);
+    // `false` keeps the canvas sized by CSS (100%/100% below) instead of having
+    // setSize stamp px dimensions over it every resize.
+    renderer.setSize(width, height, false);
     renderer.domElement.style.position = "absolute";
     renderer.domElement.style.inset = "0";
     renderer.domElement.style.width = "100%";
@@ -125,41 +205,57 @@ export function KioskSunroomParticles({
     const mistTexture = createMistTexture();
 
     // Droplets system (THREE.Points)
-    const maxDroplets = 40;
-    const dropletPositions = new Float32Array(maxDroplets * 3);
-    const dropletSizes = new Float32Array(maxDroplets);
-    const dropletOpacities = new Float32Array(maxDroplets);
+    const dropletPositions = new Float32Array(MAX_DROPLETS * 3);
+    const dropletSizes = new Float32Array(MAX_DROPLETS);
+    const dropletAlphas = new Float32Array(MAX_DROPLETS);
 
     const dropletGeo = new THREE.BufferGeometry();
-    dropletGeo.setAttribute("position", new THREE.BufferAttribute(dropletPositions, 3));
-    dropletGeo.setAttribute("size", new THREE.BufferAttribute(dropletSizes, 1));
-    dropletGeo.setAttribute("opacity", new THREE.BufferAttribute(dropletOpacities, 1));
+    const dropletPosAttr = new THREE.BufferAttribute(dropletPositions, 3).setUsage(THREE.DynamicDrawUsage);
+    const dropletSizeAttr = new THREE.BufferAttribute(dropletSizes, 1).setUsage(THREE.DynamicDrawUsage);
+    const dropletAlphaAttr = new THREE.BufferAttribute(dropletAlphas, 1).setUsage(THREE.DynamicDrawUsage);
+    dropletGeo.setAttribute("position", dropletPosAttr);
+    dropletGeo.setAttribute("aSize", dropletSizeAttr);
+    dropletGeo.setAttribute("aAlpha", dropletAlphaAttr);
+    dropletGeo.setDrawRange(0, 0);
 
-    const dropletMat = new THREE.PointsMaterial({
-      size: 16,
-      map: dropletTexture,
+    const dropletMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: dropletTexture },
+        uColor: { value: new THREE.Color(0xecf2fc) },
+        uOpacity: { value: 0.9 },
+      },
+      vertexShader: DROPLET_VERT,
+      fragmentShader: DROPLET_FRAG,
       transparent: true,
       depthWrite: false,
-      blending: THREE.NormalBlending,
+      depthTest: false,
     });
     const dropletPoints = new THREE.Points(dropletGeo, dropletMat);
+    // Every object here is authored directly in screen space and is on-screen
+    // by construction. Culling would need a bounding sphere recomputed from a
+    // buffer that changes every frame, for a test that can never fail.
+    dropletPoints.frustumCulled = false;
     scene.add(dropletPoints);
 
     // Fog / Mist System (Mesh planes with soft gradient textures)
     const mistPlaneGeo = new THREE.PlaneGeometry(1, 1);
-    const mistBlobs: MistState[] = Array.from({ length: 5 }, (_, i) => {
+    const mistBlobs: MistState[] = Array.from({ length: MIST_BLOBS }, (_, i) => {
       const mistMat = new THREE.MeshBasicMaterial({
         map: mistTexture,
         transparent: true,
         depthWrite: false,
+        depthTest: false,
         opacity: 0,
       });
       const mesh = new THREE.Mesh(mistPlaneGeo, mistMat);
       mesh.position.z = 1;
+      mesh.frustumCulled = false;
+      mesh.visible = false;
       scene.add(mesh);
 
       return {
-        baseY01: 0.55 + (i / 4) * 0.35 + (Math.random() - 0.5) * 0.1,
+        // Lower half of the screen: this is ground fog pooling, not overcast.
+        baseY01: 0.55 + (i / (MIST_BLOBS - 1)) * 0.35 + (Math.random() - 0.5) * 0.1,
         radius01: 0.25 + Math.random() * 0.2,
         crossSeconds: 60 + Math.random() * 60,
         phase: Math.random(),
@@ -171,24 +267,45 @@ export function KioskSunroomParticles({
     });
 
     // Wind Gust Lines System (THREE.LineSegments)
-    const maxGustLines = 32;
-    const gustPositions = new Float32Array(maxGustLines * 6); // 2 vertices per line (x1,y1,z1, x2,y2,z2)
+    const gustPositions = new Float32Array(MAX_GUST_LINES * 6); // 2 vertices per line
+    /* RGBA per vertex, not RGB. Three enables per-vertex ALPHA only when the
+       colour attribute has itemSize 4, and that alpha is the entire reason this
+       attribute exists: one LineBasicMaterial cannot give each streak its own
+       fade envelope, so without it every gust popped on and off at full
+       strength and every streak was equally bright end to end. */
+    const gustColors = new Float32Array(MAX_GUST_LINES * 8);
     const gustGeo = new THREE.BufferGeometry();
-    gustGeo.setAttribute("position", new THREE.BufferAttribute(gustPositions, 3));
+    const gustPosAttr = new THREE.BufferAttribute(gustPositions, 3).setUsage(THREE.DynamicDrawUsage);
+    const gustColorAttr = new THREE.BufferAttribute(gustColors, 4).setUsage(THREE.DynamicDrawUsage);
+    gustGeo.setAttribute("position", gustPosAttr);
+    gustGeo.setAttribute("color", gustColorAttr);
+    gustGeo.setDrawRange(0, 0);
     const gustMat = new THREE.LineBasicMaterial({
       color: 0xffffff,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.04,
+      opacity: GUST_PEAK_ALPHA,
       depthWrite: false,
+      depthTest: false,
     });
     const gustLines = new THREE.LineSegments(gustGeo, gustMat);
+    gustLines.frustumCulled = false;
     scene.add(gustLines);
 
     // --- 3. Simulation State ------------------------------------------------
     const droplets: DropletState[] = [];
     let dropletSpawnAcc = 0;
     let gusts: GustState[] = [];
-    let nextGustAt = performance.now() + (5 + Math.random() * 7) * 1000;
+    /* The first gust comes sooner than the steady-state cadence below. The
+       layer only mounts once it is genuinely windy, and opening with 5–12s of
+       empty screen reads as "nothing here" rather than as a lull. */
+    let nextGustAt = performance.now() + (1 + Math.random() * 3) * 1000;
+    /* Fog arrives and clears over minutes in the real world and over one SWR
+       tick here. Without an eased mix, a 15-minute poll that flips `fog` makes
+       five blobs appear at full strength between two frames. */
+    let fogMix = 0;
+    let lastColorHex = -1;
+    let drewLastFrame = true;
 
     const spawnDroplet = (): DropletState => {
       const r = 1.5 + Math.random() * 2.5;
@@ -226,7 +343,8 @@ export function KioskSunroomParticles({
     let lastFrame = 0;
     let running = true;
 
-    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+    // A gust enters fast and trails off; it does not ease into existence.
+    const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
     const frame = (now: number) => {
       if (!running) return;
@@ -237,9 +355,15 @@ export function KioskSunroomParticles({
       lastFrame = now;
 
       const p = propsRef.current;
-      const rgbColor = p.isDark ? 0xecf2fc : 0x283448;
-      dropletMat.color.setHex(rgbColor);
-      gustMat.color.setHex(rgbColor);
+      const colorHex = p.isDark ? 0xecf2fc : 0x283448;
+      // setHex runs an sRGB->working-space conversion; it does not need to run
+      // 20 times a second to answer a boolean that changes twice a day.
+      if (colorHex !== lastColorHex) {
+        lastColorHex = colorHex;
+        dropletMat.uniforms.uColor.value.setHex(colorHex);
+        gustMat.color.setHex(colorHex);
+        mistBlobs.forEach((m) => m.mesh.material.color.setHex(colorHex));
+      }
 
       // --- A. Rain Droplets Update ---
       if (p.rain01 > 0) {
@@ -251,7 +375,10 @@ export function KioskSunroomParticles({
           dropletSpawnAcc -= 1;
         }
 
-        const posAttr = dropletGeo.attributes.position as THREE.BufferAttribute;
+        /* Wind pushes water across the glass as it runs. Capped at 60km/h and
+           scaled to stay under the ~18° lean the CSS streak layer uses, so the
+           two halves of the rain read as one weather rather than two. */
+        const windDrift = Math.min(60, p.windKmh) * 0.25;
         let activeCount = 0;
 
         for (let i = droplets.length - 1; i >= 0; i--) {
@@ -260,7 +387,7 @@ export function KioskSunroomParticles({
             const targetV = (30 + d.r * 22) * (0.6 + p.rain01 * 0.6);
             d.vy += (targetV - d.vy) * Math.min(1, dt * 1.5);
             d.y += d.vy * dt;
-            d.x += Math.sin(now / 400 + d.born) * d.vx * dt;
+            d.x += (Math.sin(now / 400 + d.born) * d.vx + windDrift) * dt;
           }
           const age = (now - d.born) / 1000;
           const life = 6 + d.r;
@@ -272,16 +399,22 @@ export function KioskSunroomParticles({
             continue;
           }
 
-          // Y is inverted in Three.js orthographic coordinates (top = 0, bottom = height)
-          posAttr.setXYZ(activeCount, d.x, height - d.y, 2);
+          // Condensation forms, it does not appear. 350ms in, ~1s of fade out.
+          const fadeIn = Math.min(1, (now - d.born) / 350);
+
+          dropletPosAttr.setXYZ(activeCount, d.x, height - d.y, 2);
+          dropletSizeAttr.setX(activeCount, Math.max(3, rr * DROPLET_PX_PER_R));
+          dropletAlphaAttr.setX(activeCount, fadeIn * Math.min(1, fadeShrink));
           activeCount++;
         }
 
-        // Fill remaining buffer with zero/offscreen positions
-        for (let i = activeCount; i < maxDroplets; i++) {
-          posAttr.setXYZ(i, -9999, -9999, -9999);
+        // drawRange bounds the draw, so the tail of the buffer is never read —
+        // there is nothing to clear and no reason to write to it.
+        if (activeCount > 0) {
+          dropletPosAttr.needsUpdate = true;
+          dropletSizeAttr.needsUpdate = true;
+          dropletAlphaAttr.needsUpdate = true;
         }
-        posAttr.needsUpdate = true;
         dropletGeo.setDrawRange(0, activeCount);
       } else {
         if (droplets.length) droplets.length = 0;
@@ -289,25 +422,31 @@ export function KioskSunroomParticles({
       }
 
       // --- B. Mist Diffusion Update ---
+      const fogTarget = p.fog ? 1 : 0;
+      if (fogMix !== fogTarget) {
+        // ~2.5s to cross the full range, framerate-independent.
+        fogMix += Math.sign(fogTarget - fogMix) * Math.min(Math.abs(fogTarget - fogMix), dt / 2.5);
+      }
+
       const minDim = Math.min(width, height);
-      const baseAlpha = 0.025 * (0.75 + 0.25 * p.dusk01);
+      const baseAlpha = MIST_PEAK_ALPHA * (0.7 + 0.3 * p.dusk01) * fogMix;
 
       mistBlobs.forEach((m) => {
-        if (p.fog) {
-          const travel = ((now / 1000 / m.crossSeconds + m.phase) % 1) * m.dir;
-          const x = ((travel % 1) + 1) % 1 * (width + minDim * m.radius01 * 2) - minDim * m.radius01;
-          const breathe = Math.sin((now / 1000 / m.breathePeriodS + m.breathePhase) * Math.PI * 2) * 0.03 * height;
-          const y = m.baseY01 * height + breathe;
-          const r = minDim * m.radius01 * 2;
-
-          m.mesh.position.set(x, height - y, 1);
-          m.mesh.scale.set(r, r, 1);
-          m.mesh.material.color.setHex(rgbColor);
-          m.mesh.material.opacity = baseAlpha;
-          m.mesh.visible = true;
-        } else {
+        if (baseAlpha <= 0.001) {
           m.mesh.visible = false;
+          return;
         }
+        const travel = ((now / 1000 / m.crossSeconds + m.phase) % 1) * m.dir;
+        const span = width + minDim * m.radius01 * 2;
+        const x = ((((travel % 1) + 1) % 1) * span) - minDim * m.radius01;
+        const breathe = Math.sin((now / 1000 / m.breathePeriodS + m.breathePhase) * Math.PI * 2) * 0.03 * height;
+        const y = m.baseY01 * height + breathe;
+        const r = minDim * m.radius01 * 2;
+
+        m.mesh.position.set(x, height - y, 1);
+        m.mesh.scale.set(r, r, 1);
+        m.mesh.material.opacity = baseAlpha;
+        m.mesh.visible = true;
       });
 
       // --- C. Wind Gust Streaks Update ---
@@ -318,46 +457,63 @@ export function KioskSunroomParticles({
         }
         gusts = gusts.filter((g) => now - g.born < g.durationMs + 400);
 
-        const linePosAttr = gustGeo.attributes.position as THREE.BufferAttribute;
         let lineIdx = 0;
 
         for (const g of gusts) {
           for (const s of g.streaks) {
-            if (lineIdx >= maxGustLines) break;
+            if (lineIdx >= MAX_GUST_LINES) break;
             const t = (now - g.born - s.delay) / g.durationMs;
             if (t < 0 || t > 1) continue;
-            const eased = easeInOut(t);
+            const eased = easeOutCubic(t);
             const x = eased * (width + s.len) - s.len;
             const y = g.bandY + s.y;
+            // In and out over the streak's life, so nothing pops.
+            const env = Math.sin(Math.PI * t);
 
-            linePosAttr.setXYZ(lineIdx * 2, x, height - y, 3);
-            linePosAttr.setXYZ(lineIdx * 2 + 1, x + s.len, height - y, 3);
+            const tail = lineIdx * 2;
+            const head = tail + 1;
+            gustPosAttr.setXYZ(tail, x, height - y, 3);
+            gustPosAttr.setXYZ(head, x + s.len, height - y, 3);
+            // Bright at the leading edge, dissolving behind it: the shape a
+            // streak of moving air actually has.
+            gustColorAttr.setXYZW(tail, 1, 1, 1, env * 0.12);
+            gustColorAttr.setXYZW(head, 1, 1, 1, env);
             lineIdx++;
           }
         }
-        for (let i = lineIdx * 2; i < maxGustLines * 2; i++) {
-          linePosAttr.setXYZ(i, -9999, -9999, -9999);
+        if (lineIdx > 0) {
+          gustPosAttr.needsUpdate = true;
+          gustColorAttr.needsUpdate = true;
         }
-        linePosAttr.needsUpdate = true;
         gustGeo.setDrawRange(0, lineIdx * 2);
       } else {
         if (gusts.length) gusts = [];
         gustGeo.setDrawRange(0, 0);
       }
 
-      renderer.render(scene, camera);
+      /* Nothing to draw and nothing drawn last frame means the canvas already
+         holds the correct (empty) image. The one frame after everything clears
+         still renders, so the last droplet is erased rather than frozen. */
+      const drawing = dropletGeo.drawRange.count > 0 || baseAlpha > 0.001 || gustGeo.drawRange.count > 0;
+      if (drawing || drewLastFrame) renderer.render(scene, camera);
+      drewLastFrame = drawing;
     };
 
     // --- 5. Resize & Visibility Handlers ------------------------------------
     const resize = () => {
-      width = container.clientWidth;
-      height = container.clientHeight;
-      if (width === 0 || height === 0) return;
+      const w = Math.max(1, container.clientWidth);
+      const h = Math.max(1, container.clientHeight);
+      if (w === width && h === height) return;
+      width = w;
+      height = h;
 
-      camera.right = width;
-      camera.top = height;
+      // Only `right` and `top` move; `left`/`bottom` stay pinned at 0. This is
+      // exactly why the frustum is authored y-up — see the note at the top.
+      camera.right = w;
+      camera.top = h;
       camera.updateProjectionMatrix();
-      renderer.setSize(width, height);
+      renderer.setSize(w, h, false);
+      drewLastFrame = true;
     };
 
     const stop = () => {
@@ -377,15 +533,20 @@ export function KioskSunroomParticles({
       else start();
     };
 
-    window.addEventListener("resize", resize);
+    // The container tracks the viewport but can also be resized by a layout
+    // change that fires no window `resize` (orientation, panel reflow).
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
     document.addEventListener("visibilitychange", onVisibility);
     rafId = requestAnimationFrame(frame);
 
     // --- 6. Disposal & Cleanup ----------------------------------------------
     return () => {
       stop();
-      window.removeEventListener("resize", resize);
+      observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
+
+      scene.clear();
 
       dropletGeo.dispose();
       dropletMat.dispose();
