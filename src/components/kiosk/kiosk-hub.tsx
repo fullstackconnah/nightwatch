@@ -37,6 +37,8 @@ import { ApiError, fetcher, postJson } from "@/lib/client";
 import { KIOSK_IDLE_AFTER_MS, kioskEffectiveInterval, useKioskIdle, useKioskNight } from "@/lib/kiosk-activity";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 import { KioskClimateTile } from "@/components/kiosk/kiosk-climate";
+import { useClimateAutoOff, type UseClimateAutoOffResult } from "@/lib/kiosk/use-climate-auto-off";
+import { ClimateAutoOffBanner, ClimateAutoOffPill } from "@/components/kiosk/kiosk-climate-auto-off";
 import type {
   HaActionRequest,
   HaClimate,
@@ -645,6 +647,7 @@ const ClimateSection = memo(function ClimateSection({
   climates,
   entities,
   riseIndex,
+  autoOff,
 }: {
   ha: UseKioskHaResult;
   climates: HaClimate[];
@@ -660,6 +663,18 @@ const ClimateSection = memo(function ClimateSection({
    *  correct precisely because the set of sections and their order is fixed
    *  in source, not data-driven. */
   riseIndex: number;
+  /** The nightly-sweep engine result, lifted to KioskHub (its config poll and
+   *  fire effect must run regardless of whether this section is even mounted
+   *  — see useClimateAutoOff's THESIS) and threaded down just for the header
+   *  pill. Part of this component's memo-relevant props like everything else
+   *  here: useClimateAutoOff identity-stabilizes `status`/`warn` internally
+   *  (content-equal values keep the same object across its own 30s tick, see
+   *  the sameStatus/sameWindow refs in use-climate-auto-off.ts) before
+   *  wrapping the result in its own useMemo, so `autoOff` itself only changes
+   *  identity when the auto-off situation actually does — a few times a day,
+   *  not every tick — and passing it through here doesn't reintroduce the
+   *  re-render memo() is guarding against. */
+  autoOff: UseClimateAutoOffResult;
 }) {
   // Which tile (by entityId) is currently under adjustment, for the depth-
   // of-field exemption (globals.css's "focus isolation" block). Owned here,
@@ -674,7 +689,10 @@ const ClimateSection = memo(function ClimateSection({
       className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
       style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
     >
-      <SectionHeader icon={Thermometer} label="Climate" />
+      <div className="flex items-center justify-between gap-2">
+        <SectionHeader icon={Thermometer} label="Climate" />
+        <ClimateAutoOffPill autoOff={autoOff} />
+      </div>
       {/* Compact tiles in a grid, not stacked rows (2026-08-03 follow-up —
           supersedes the divide-y row list this used to be): fixed breakpoint
           columns rather than `repeat(auto-fit, minmax(...))` because the
@@ -847,6 +865,7 @@ function HubEmpty() {
 
 export function KioskHub() {
   const ha = useKioskHa();
+  const autoOff = useClimateAutoOff(ha);
   const { data, error, isLoading } = ha;
 
   if (isLoading && !data) return <HubSkeleton />;
@@ -878,6 +897,7 @@ export function KioskHub() {
 
   return (
     <div className="space-y-2.5">
+      <ClimateAutoOffBanner autoOff={autoOff} />
       {stale && (
         <div className="flex items-center gap-2 px-1">
           <StaleTag />
@@ -890,7 +910,7 @@ export function KioskHub() {
           the weather line above with nothing else between. Lights/switches/
           scenes condense into chip rows next; sensors, read-only, stay last. */}
       {entities.climates.length > 0 && (
-        <ClimateSection ha={ha} climates={entities.climates} entities={entities} riseIndex={3} />
+        <ClimateSection ha={ha} climates={entities.climates} entities={entities} riseIndex={3} autoOff={autoOff} />
       )}
       {entities.lights.length > 0 && (
         <LightsSection ha={ha} lights={entities.lights} entities={entities} riseIndex={4} />
