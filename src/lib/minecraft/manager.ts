@@ -122,3 +122,21 @@ export const mcManager = new McManagerClient();
 export function probeHttpStatus(p: ProbeFail): number {
   return p.status === "unconfigured" ? 409 : 502;
 }
+
+/**
+ * Full HTTP mapping for a failed Probe, for routes that forward the failure
+ * as `{ error }` JSON. Bubbles a genuine mc-manager 4xx (bad slug, instance
+ * already exists, instance not found, ...) through as its own status/detail
+ * rather than collapsing it into probeHttpStatus()'s generic 409/502 — those
+ * codes land in ProbeFail.httpStatus because IntegrationClient.request()
+ * classifies any non-401/403 non-OK response as "unreachable" with the
+ * upstream's real status attached, so a manager-side 400/404/409 is
+ * distinguishable from an actual transport failure by checking httpStatus,
+ * not `status`.
+ */
+export function probeErrorResponse(p: ProbeFail): { status: number; error: string } {
+  if (p.httpStatus !== undefined && [400, 404, 409].includes(p.httpStatus)) {
+    return { status: p.httpStatus, error: p.detail };
+  }
+  return { status: probeHttpStatus(p), error: p.detail };
+}
