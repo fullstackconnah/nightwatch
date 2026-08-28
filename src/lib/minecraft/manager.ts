@@ -41,10 +41,18 @@ const TIMEOUT_MS = 6000;
 const UNCONFIGURED_DETAIL =
   "Minecraft manager is not configured — add managerUrl and managerToken in Settings → Integrations.";
 
-function mcManagerCredentials(): McManagerCredentials | null {
-  const cfg = loadConfig();
-  const url = cfg.minecraft?.managerUrl?.trim().replace(/\/+$/, "");
-  const token = cfg.minecraft?.managerToken?.trim();
+/**
+ * Takes the `minecraft` config block as an argument (defaulting to
+ * `loadConfig().minecraft`) rather than reading it internally, purely so
+ * tests can exercise the real normalization logic (trim + strip trailing
+ * slashes) with an in-memory block instead of going through `loadConfig()` /
+ * `DATA_DIR`.
+ */
+export function mcManagerCredentials(
+  block: { managerUrl?: string; managerToken?: string } | undefined = loadConfig().minecraft,
+): McManagerCredentials | null {
+  const url = block?.managerUrl?.trim().replace(/\/+$/, "");
+  const token = block?.managerToken?.trim();
   if (!url || !token) return null;
   return { url, token };
 }

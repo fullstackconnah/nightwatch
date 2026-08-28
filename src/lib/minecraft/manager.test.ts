@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { McManagerClient, type McInstance } from "./manager.ts";
+import { McManagerClient, mcManagerCredentials, probeHttpStatus, type McInstance } from "./manager.ts";
+import type { ProbeFail } from "../integration-client.ts";
 
 /**
  * McManagerClient is a thin IntegrationClient subclass — the invariant it
@@ -88,5 +89,40 @@ describe("McManagerClient", () => {
     assert.equal((seenInit.headers as Record<string, string>).Authorization, "Bearer sekret");
     assert.equal(probe.status, "ok");
     assert.deepEqual(probe.status === "ok" ? probe.data : null, { instances, active: "atm10" });
+  });
+});
+
+describe("mcManagerCredentials", () => {
+  it("trims whitespace and strips trailing slashes from the url", () => {
+    const creds = mcManagerCredentials({ managerUrl: " http://x:8090// ", managerToken: " t " });
+    assert.deepEqual(creds, { url: "http://x:8090", token: "t" });
+  });
+
+  it("returns null when the token is missing", () => {
+    const creds = mcManagerCredentials({ managerUrl: "http://x:8090" });
+    assert.equal(creds, null);
+  });
+
+  it("returns null when the url is missing", () => {
+    const creds = mcManagerCredentials({ managerToken: "t" });
+    assert.equal(creds, null);
+  });
+
+  it("returns null for an undefined block", () => {
+    assert.equal(mcManagerCredentials(undefined), null);
+  });
+});
+
+describe("probeHttpStatus", () => {
+  it("maps unconfigured to 409", () => {
+    assert.equal(probeHttpStatus({ status: "unconfigured", detail: "" } satisfies ProbeFail), 409);
+  });
+
+  it("maps unreachable to 502", () => {
+    assert.equal(probeHttpStatus({ status: "unreachable", detail: "" } satisfies ProbeFail), 502);
+  });
+
+  it("maps unauthorized to 502", () => {
+    assert.equal(probeHttpStatus({ status: "unauthorized", detail: "" } satisfies ProbeFail), 502);
   });
 });
