@@ -20,6 +20,15 @@ describe("rcon packets", () => {
     assert.equal(packets[1].payload, "b");
     assert.equal(rest.length, 2);
   });
+
+  it("throws on a malformed frame instead of misparsing", () => {
+    const junk = Buffer.alloc(16);
+    junk.writeInt32LE(-4, 0);
+    assert.throws(() => decodePackets(junk), /malformed/);
+    const tiny = Buffer.alloc(16);
+    tiny.writeInt32LE(4, 0);
+    assert.throws(() => decodePackets(tiny), /malformed/);
+  });
 });
 
 describe("parsePlayerList", () => {

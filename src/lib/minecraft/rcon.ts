@@ -21,6 +21,7 @@ export function decodePackets(buf: Buffer): {
   let offset = 0;
   while (buf.length - offset >= 4) {
     const length = buf.readInt32LE(offset);
+    if (length < 10 || length > 1_048_576) throw new Error("rcon malformed frame");
     if (buf.length - offset - 4 < length) break;
     packets.push({
       id: buf.readInt32LE(offset + 4),
@@ -49,15 +50,20 @@ export function rconCommand(opts: {
     let authed = false;
     const responses: string[] = [];
     let settleTimer: NodeJS.Timeout | null = null;
+    let settled = false;
     const overall = setTimeout(() => fail(new Error("rcon unreachable")), timeoutMs);
 
     function done(value: string) {
+      if (settled) return;
+      settled = true;
       clearTimeout(overall);
       if (settleTimer) clearTimeout(settleTimer);
       socket.destroy();
       resolve(value);
     }
     function fail(err: Error) {
+      if (settled) return;
+      settled = true;
       clearTimeout(overall);
       if (settleTimer) clearTimeout(settleTimer);
       socket.destroy();
@@ -67,21 +73,29 @@ export function rconCommand(opts: {
     socket.on("error", () => fail(new Error("rcon unreachable")));
     socket.on("connect", () => socket.write(encodePacket(1, LOGIN, opts.password)));
     socket.on("data", (chunk) => {
-      pending = Buffer.concat([pending, chunk]);
-      const { packets, rest } = decodePackets(pending);
-      pending = rest;
-      for (const p of packets) {
-        if (!authed) {
-          if (p.id === -1) return fail(new Error("rcon auth failed"));
-          authed = true;
-          socket.write(encodePacket(2, COMMAND, opts.command));
-        } else {
-          responses.push(p.payload);
-          // Responses can span packets; settle 150ms after the last one.
-          if (settleTimer) clearTimeout(settleTimer);
-          settleTimer = setTimeout(() => done(responses.join("")), 150);
+      try {
+        pending = Buffer.concat([pending, chunk]);
+        const { packets, rest } = decodePackets(pending);
+        pending = rest;
+        for (const p of packets) {
+          if (!authed) {
+            if (p.type !== 2) continue;
+            if (p.id === -1) return fail(new Error("rcon auth failed"));
+            authed = true;
+            socket.write(encodePacket(2, COMMAND, opts.command));
+          } else {
+            responses.push(p.payload);
+            // Responses can span packets; settle 150ms after the last one.
+            if (settleTimer) clearTimeout(settleTimer);
+            settleTimer = setTimeout(() => done(responses.join("")), 150);
+          }
         }
+      } catch (err) {
+        fail(err instanceof Error ? err : new Error("rcon protocol error"));
       }
+    });
+    socket.on("close", () => {
+      if (!settled) fail(new Error("rcon unreachable"));
     });
   });
 }
