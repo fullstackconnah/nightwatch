@@ -13,6 +13,8 @@ import type { TranscodeSnapshot } from "@/lib/types/transcode";
 import type { ProcessSnapshot, ProcessRow } from "@/lib/types/process";
 import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/types/smart";
 import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/types/network";
+import type { McInstance, McBackup } from "@/lib/minecraft/manager";
+import type { PackResult } from "@/lib/minecraft/packs";
 
 export class ApiError extends Error {
   status: number;
@@ -102,6 +104,45 @@ export function useSmart(refreshMs = 30000) {
 // per-interface *rates* ride the 1Hz telemetry SSE instead, same split as host vitals.
 export function useNetwork(refreshMs = 15000) {
   return useSWR<NetworkSnapshot>("/api/network", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
+}
+
+export interface MinecraftStatusResponse {
+  manager: "ok" | "unconfigured" | "unreachable" | "unauthorized";
+  managerDetail?: string;
+  instances: McInstance[];
+  active: string | null;
+  players: { online: number; max: number; players: string[] } | null;
+  rcon: "ok" | "unavailable" | "unconfigured";
+}
+
+export function useMinecraftStatus(refreshMs = 10000) {
+  return useSWR<MinecraftStatusResponse>("/api/minecraft/status", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+export function useMinecraftBackups(refreshMs = 30000) {
+  return useSWR<{ backups: McBackup[] }>("/api/minecraft/backups", fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
+}
+
+export interface PackSearchResponse {
+  results: PackResult[];
+  curseforge: "ok" | "no-key" | "error";
+  modrinth: "ok" | "error";
+}
+
+export function useMinecraftPackSearch(q: string, source: "all" | "curseforge" | "modrinth") {
+  return useSWR<PackSearchResponse>(
+    q ? `/api/minecraft/packs/search?q=${encodeURIComponent(q)}&source=${source}` : null,
+    fetcher,
+    {
+      keepPreviousData: true,
+    },
+  );
 }
 
 function diskUsageKey(label: string): string {
