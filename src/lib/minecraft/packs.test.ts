@@ -21,7 +21,24 @@ describe("normalizeCurseforge", () => {
   });
   it("tolerates junk", () => {
     assert.deepEqual(normalizeCurseforge(null), []);
-    assert.deepEqual(normalizeCurseforge({ data: [{}] })[0].icon, null);
+    assert.deepEqual(normalizeCurseforge({ data: [{}] }), []);
+  });
+  it("drops malformed entries but keeps valid ones alongside them", () => {
+    const out = normalizeCurseforge({
+      data: [
+        {},
+        {
+          id: 925200, slug: "all-the-mods-10", name: "All The Mods 10",
+          summary: "ATM10", downloadCount: 1000000,
+          logo: { url: "https://cdn/logo.png" },
+          links: { websiteUrl: "https://www.curseforge.com/minecraft/modpacks/all-the-mods-10" },
+          latestFilesIndexes: [{ gameVersion: "1.21.1", modLoader: 6 }],
+        },
+      ],
+    });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].id, "925200");
+    assert.equal(out[0].slug, "all-the-mods-10");
   });
 });
 

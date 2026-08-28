@@ -51,6 +51,8 @@ export function normalizeCurseforge(json: unknown): PackResult[] {
     if (!isRecord(entry)) continue;
     const id = entry.id;
     const slug = typeof entry.slug === "string" ? entry.slug : "";
+    const hasId = typeof id === "number" || typeof id === "string";
+    if (!hasId || !slug) continue;
 
     const logo = isRecord(entry.logo) ? entry.logo : null;
     const icon = typeof logo?.url === "string" ? logo.url : null;
