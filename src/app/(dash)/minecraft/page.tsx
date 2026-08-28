@@ -149,19 +149,27 @@ export default function MinecraftPage() {
     void mutateContainers();
   });
 
-  const dotClass = !status
-    ? "dot-restarting"
-    : status.manager === "unreachable" || status.manager === "unauthorized"
-      ? "dot-dead"
-      : status.manager === "unconfigured"
-        ? "dot-stopped"
-        : container?.state === "running"
-          ? "dot-running"
-          : container?.state === "restarting"
-            ? "dot-restarting"
-            : "dot-stopped";
+  const dotClass = error
+    ? "dot-dead"
+    : !status
+      ? "dot-restarting"
+      : status.manager === "unreachable" || status.manager === "unauthorized"
+        ? "dot-dead"
+        : status.manager === "unconfigured"
+          ? "dot-stopped"
+          : container?.state === "running"
+            ? "dot-running"
+            : container?.state === "restarting"
+              ? "dot-restarting"
+              : "dot-stopped";
 
-  const statusLabel = !status ? "connecting" : status.manager !== "ok" ? status.manager : (container?.state ?? "no container");
+  const statusLabel = error
+    ? "unreachable"
+    : !status
+      ? "connecting"
+      : status.manager !== "ok"
+        ? status.manager
+        : (container?.state ?? "no container");
 
   return (
     <div className="space-y-5 pb-2">

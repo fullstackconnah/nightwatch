@@ -45,7 +45,9 @@ function installCopy(activeName: string | undefined, targetName: string): string
 }
 
 function switchCopy(activeName: string | undefined, targetName: string): string {
-  return activeName ? `Stops "${activeName}" and switches to "${targetName}".` : `Switches to "${targetName}".`;
+  return activeName
+    ? `Stops "${activeName}" and switches to "${targetName}". Loading the modpack can take a few minutes.`
+    : `Switches to "${targetName}". Loading the modpack can take a few minutes.`;
 }
 
 export function PackBrowser({
