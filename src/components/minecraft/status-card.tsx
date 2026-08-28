@@ -18,7 +18,7 @@ import {
 } from "@/components/resources/container-controls";
 import type { MinecraftStatusResponse, TiledContainer } from "@/lib/client";
 
-const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue" } as const;
+const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
 
 /**
  * Exactly one of: players online (rcon ok), booting (container running but

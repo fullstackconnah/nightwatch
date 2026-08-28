@@ -17,7 +17,7 @@ import { IntegrationClient, type Probe, type ProbeFail } from "../integration-cl
 export interface McInstance {
   slug: string;
   name: string;
-  source: "curseforge" | "modrinth";
+  source: "curseforge" | "modrinth" | "upload";
   packRef: string;
   mcVersion: string;
   memoryGb: number;

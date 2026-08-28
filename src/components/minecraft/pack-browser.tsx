@@ -20,8 +20,9 @@ import { ApiError, postJson, useMinecraftPackSearch } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import type { McInstance } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
+import { UploadPack } from "./upload-pack";
 
-const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue" } as const;
+const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
 const compactNumber = new Intl.NumberFormat("en", { notation: "compact" });
 
 /**
@@ -333,6 +334,8 @@ export function PackBrowser({
           )}
         </CardContent>
       </Card>
+
+      <UploadPack onChanged={onChanged} />
     </div>
   );
 }
