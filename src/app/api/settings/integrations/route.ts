@@ -23,12 +23,24 @@ export const dynamic = "force-dynamic";
  * when present.
  */
 
-type Patch = { url?: unknown; email?: unknown; token?: unknown; password?: unknown };
+type Patch = {
+  url?: unknown;
+  email?: unknown;
+  token?: unknown;
+  password?: unknown;
+  managerUrl?: unknown;
+  managerToken?: unknown;
+  curseforgeKey?: unknown;
+  rconHost?: unknown;
+  rconPort?: unknown;
+  rconPassword?: unknown;
+};
 type Body = {
   homeassistant?: Patch | null;
   npm?: Patch | null;
   forgejo?: Patch | null;
   github?: Patch | null;
+  minecraft?: Patch | null;
 };
 
 function str(v: unknown): string | undefined {
@@ -95,6 +107,26 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if ("minecraft" in body) {
+    if (body.minecraft === null) {
+      delete next.minecraft;
+    } else if (body.minecraft) {
+      const managerUrl = str(body.minecraft.managerUrl) ?? current.minecraft?.managerUrl;
+      const managerToken = mergedSecret(str(body.minecraft.managerToken), current.minecraft?.managerToken);
+      const curseforgeKey = mergedSecret(str(body.minecraft.curseforgeKey), current.minecraft?.curseforgeKey);
+      const rconHost = str(body.minecraft.rconHost) ?? current.minecraft?.rconHost;
+      const rconPortRaw = body.minecraft.rconPort;
+      const rconPort =
+        typeof rconPortRaw === "number" && Number.isInteger(rconPortRaw)
+          ? rconPortRaw
+          : current.minecraft?.rconPort ?? 25575;
+      const rconPassword = mergedSecret(str(body.minecraft.rconPassword), current.minecraft?.rconPassword);
+      if (!managerUrl) return NextResponse.json({ error: "Minecraft needs the manager URL" }, { status: 400 });
+      if (!managerToken) return NextResponse.json({ error: "Minecraft needs the manager token" }, { status: 400 });
+      next.minecraft = { managerUrl, managerToken, curseforgeKey, rconHost, rconPort, rconPassword, updatedAt: now };
+    }
+  }
+
   if ("github" in body) {
     if (body.github === null) {
       delete next.github;
@@ -121,6 +153,7 @@ export async function POST(req: NextRequest) {
       npm: { configured: Boolean(next.npm?.password), updatedAt: next.npm?.updatedAt },
       forgejo: { configured: Boolean(next.forgejo?.token), updatedAt: next.forgejo?.updatedAt },
       github: { configured: Boolean(next.github?.token), updatedAt: next.github?.updatedAt },
+      minecraft: { configured: Boolean(next.minecraft?.managerToken), updatedAt: next.minecraft?.updatedAt },
     },
   });
 }

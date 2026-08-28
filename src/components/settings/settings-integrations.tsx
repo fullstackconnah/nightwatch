@@ -55,6 +55,7 @@ export interface SettingsFullResponse {
     npm: IntegrationStatus;
     forgejo: IntegrationStatus;
     github: IntegrationStatus;
+    minecraft: IntegrationStatus;
     hermes: { openrouterConfigured: boolean; anthropicConfigured: boolean };
   };
   /** GOAL A: config.json's `system` block — MCP token, kiosk PIN, Hermes API,
@@ -548,6 +549,129 @@ function GithubPanel({ data, mutate }: { data: SettingsFullResponse | undefined;
 }
 
 // ---------------------------------------------------------------------------
+// Minecraft: mc-manager API (URL + token) + RCON (host/port/password) +
+// an optional CurseForge search key. Three secrets, mirroring NPM's
+// url+non-secret+secret shape but with an extra host/port pair for RCON.
+
+function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+  const status = data?.integrations.minecraft;
+  const configured = status?.configured ?? false;
+  const [managerUrl, setManagerUrl] = useState("");
+  const [managerToken, setManagerToken] = useState("");
+  const [curseforgeKey, setCurseforgeKey] = useState("");
+  const [rconHost, setRconHost] = useState("");
+  const [rconPort, setRconPort] = useState("");
+  const [rconPassword, setRconPassword] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
+  const { saving, error, clearStep, setClearStep, save, clear } = useIntegrationWrite(mutate);
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setManagerUrl(data.config.minecraft?.managerUrl ?? "");
+      setRconHost(data.config.minecraft?.rconHost ?? "");
+      setRconPort(data.config.minecraft?.rconPort ? String(data.config.minecraft.rconPort) : "");
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Minecraft</CardTitle>
+        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[0.7rem] text-ink-dim">
+          mc-manager runs in the minecraft stack; token is <span className="font-mono">MANAGER_TOKEN</span> in its
+          secrets.env. CurseForge key is optional — Modrinth search works without it.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Manager URL" required>
+            <Input
+              placeholder="http://192.168.1.70:8090"
+              value={managerUrl}
+              onChange={(e) => setManagerUrl(e.target.value)}
+            />
+          </Field>
+          <Field label="RCON host">
+            <Input placeholder="192.168.1.70" value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
+          </Field>
+          <Field label="RCON port">
+            <Input placeholder="25575" value={rconPort} onChange={(e) => setRconPort(e.target.value)} />
+          </Field>
+        </div>
+        <SecretField
+          key={`manager-${saveVersion}`}
+          label="Manager token"
+          configured={configured}
+          updatedAt={status?.updatedAt}
+          draft={managerToken}
+          onDraftChange={setManagerToken}
+        />
+        <SecretField
+          key={`curseforge-${saveVersion}`}
+          label="CurseForge API key"
+          configured={configured}
+          updatedAt={status?.updatedAt}
+          draft={curseforgeKey}
+          onDraftChange={setCurseforgeKey}
+          placeholder="optional — leave blank to skip"
+        />
+        <SecretField
+          key={`rcon-${saveVersion}`}
+          label="RCON password"
+          configured={configured}
+          updatedAt={status?.updatedAt}
+          draft={rconPassword}
+          onDraftChange={setRconPassword}
+        />
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+          {configured ? (
+            <ClearControl
+              step={clearStep}
+              setStep={setClearStep}
+              label="Minecraft"
+              onConfirm={async () => {
+                const ok = await clear("minecraft");
+                if (ok) setSaveVersion((v) => v + 1);
+              }}
+            />
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+            <Button
+              size="sm"
+              disabled={saving || !managerUrl.trim()}
+              onClick={async () => {
+                const ok = await save("minecraft", {
+                  managerUrl,
+                  rconHost,
+                  rconPort: Number(rconPort) || undefined,
+                  managerToken: managerToken || undefined,
+                  curseforgeKey: curseforgeKey || undefined,
+                  rconPassword: rconPassword || undefined,
+                });
+                if (ok) {
+                  setManagerToken("");
+                  setCurseforgeKey("");
+                  setRconPassword("");
+                  setSaveVersion((v) => v + 1);
+                }
+              }}
+            >
+              <Save size={13} /> Save
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Voice: server URL, TTS URL, STT/TTS model, voice — all non-secret text,
 // per GOAL C. Persisted into config.json's system block via
 // POST /api/settings/system, alongside MCP/kiosk/Hermes API/SSO. Honest
@@ -644,7 +768,7 @@ function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; m
 function IntegrationsSkeleton() {
   return (
     <div className="grid md:grid-cols-2 gap-3">
-      {["Home Assistant", "Nginx Proxy Manager", "Forgejo", "GitHub", "Voice"].map((label, i) => (
+      {["Home Assistant", "Nginx Proxy Manager", "Forgejo", "GitHub", "Minecraft", "Voice"].map((label, i) => (
         <div key={label} className="panel p-4 space-y-3">
           <div className="microlabel">{label}</div>
           <div className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none" style={{ animationDelay: `${i * 90}ms` }} />
@@ -704,6 +828,7 @@ export function SettingsIntegrations() {
             mutate={mutate}
           />
           <GithubPanel data={data} mutate={mutate} />
+          <MinecraftPanel data={data} mutate={mutate} />
           <VoiceCard data={data} mutate={mutate} />
         </div>
       )}

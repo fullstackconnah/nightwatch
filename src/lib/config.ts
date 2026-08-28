@@ -107,6 +107,16 @@ export interface AppConfig {
   forgejo?: { url?: string; token?: string; updatedAt?: string };
   /** GitHub PAT (read-only) for the local→cloud mirror sync visualizer. */
   github?: { token?: string; updatedAt?: string };
+  /** Minecraft stack: mc-manager API + RCON + CurseForge search key. */
+  minecraft?: {
+    managerUrl?: string;
+    managerToken?: string;
+    curseforgeKey?: string;
+    rconHost?: string;
+    rconPort?: number;
+    rconPassword?: string;
+    updatedAt?: string;
+  };
   /** Hermes model routing, set from the settings page's "Hermes · model"
    *  panel. This copy is the settings UI's own read model (so GET
    *  /api/settings has something to show); it is NOT what the hermes daemon

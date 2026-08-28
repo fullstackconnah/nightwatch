@@ -41,6 +41,14 @@ function sanitizeConfig(config: AppConfig): AppConfig {
       ? { url: config.forgejo.url, updatedAt: config.forgejo.updatedAt }
       : config.forgejo,
     github: config.github ? { updatedAt: config.github.updatedAt } : config.github,
+    minecraft: config.minecraft
+      ? {
+          managerUrl: config.minecraft.managerUrl,
+          rconHost: config.minecraft.rconHost,
+          rconPort: config.minecraft.rconPort,
+          updatedAt: config.minecraft.updatedAt,
+        }
+      : config.minecraft,
     hermes: config.hermes ? { tier: config.hermes.tier, model: config.hermes.model } : config.hermes,
     // system: only the fields the settings page's System/Voice/SSO cards
     // render as plain editable text (URLs, model/voice names, the OIDC
@@ -74,6 +82,7 @@ function integrationsMeta(config: AppConfig) {
     npm: status(config.npm, Boolean(config.npm?.password)),
     forgejo: status(config.forgejo, Boolean(config.forgejo?.token)),
     github: status(config.github, Boolean(config.github?.token)),
+    minecraft: status(config.minecraft, Boolean(config.minecraft?.managerToken)),
     hermes: {
       openrouterConfigured: Boolean(config.hermes?.openrouterApiKey),
       anthropicConfigured: Boolean(config.hermes?.anthropicApiKey),
