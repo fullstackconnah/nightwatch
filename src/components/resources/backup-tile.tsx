@@ -13,7 +13,7 @@ import { BACKUP_KIND_LABEL, BACKUP_TONE, summarizeBackup } from "@/lib/backup-st
 function Notice({ dot, title, children }: { dot: string; title: string; children: React.ReactNode }) {
   return (
     <div className="text-xs">
-      <p className="flex items-center gap-2 text-ink">
+      <p className="flex items-center gap-2 text-sm font-medium text-ink">
         <span className={cn("dot", dot)} aria-hidden />
         {title}
       </p>
@@ -27,7 +27,7 @@ export function BackupTile() {
   const { data, error } = useBackupStatus();
   // Ticking clock: SWR skips the re-render when the daily file is unchanged, so
   // without it "13h ago" would freeze on a tab left open.
-  const now = useNow(true);
+  const now = useNow(false);
   const summary = data?.status === "ok" && now > 0 ? summarizeBackup(data, now) : null;
 
   let body: React.ReactNode;
@@ -64,9 +64,9 @@ export function BackupTile() {
                 className="font-mono text-ink-dim whitespace-nowrap"
                 title={item.at ? new Date(item.at).toLocaleString() : undefined}
               >
-                {item.at ? relativeTime(item.at) : "no record"}
+                {item.at ? `${item.state === "OK" ? "" : "last ok "}${relativeTime(item.at)}` : "no record"}
               </span>
-              <Badge variant={tone.variant} className="ml-auto">
+              <Badge variant={tone.variant} className="ml-auto sm:ml-0">
                 {item.state}
               </Badge>
             </li>
@@ -88,7 +88,7 @@ export function BackupTile() {
             title={new Date(data.checkedAt).toLocaleString()}
           >
             {summary.checkStale
-              ? `check hasn't run · last ${relativeTime(data.checkedAt)}`
+              ? `check last ran ${relativeTime(data.checkedAt)}`
               : `checked ${relativeTime(data.checkedAt)}`}
           </span>
         )}
