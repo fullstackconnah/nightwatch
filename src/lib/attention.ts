@@ -2,7 +2,9 @@ import { listContainersWithRuntime, type RuntimeContainer } from "@/lib/docker";
 import { getSmartSnapshot } from "@/lib/smart";
 import { getHostVitals } from "@/lib/host-metrics";
 import { queryMountHistory } from "@/lib/metrics-history";
-import { formatUptime } from "@/lib/format";
+import { formatUptime, relativeTime } from "@/lib/format";
+import { readBackupStatus } from "@/lib/backup-status-read";
+import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
 import type { HealthVerdict } from "@/lib/types/smart";
 
@@ -258,6 +260,30 @@ async function probeDiskCapacity(): Promise<AttentionResult | null> {
   return null;
 }
 
+// --- (d2) ODIP backup ---------------------------------------------------------
+
+/**
+ * Same rules as the Overview tile (summarizeBackup): a FAILED item is "bad", a
+ * STALE item, a missing kind or a check that has stopped running is "warn". A
+ * missing or unreadable status file says nothing here — the tile already shows
+ * that, and a probe that cannot read its input must never fabricate an alert.
+ */
+async function probeBackup(): Promise<AttentionResult | null> {
+  const status = await readBackupStatus();
+  if (status.status !== "ok") return null;
+
+  const summary = summarizeBackup(status, Date.now());
+  if (summary.worst === "OK") return null;
+
+  const item = summary.items.find((i) => i.state === summary.worst)!;
+  const age = item.at ? `last success ${relativeTime(item.at)}` : "no record in the status file";
+  if (summary.worst === "FAILED") return hit("bad", backupHeadline(summary), age, item.at ?? undefined);
+  if (summary.checkStale) {
+    return hit("warn", "ODIP backup check hasn't run", `last check ${relativeTime(status.checkedAt)}`, status.checkedAt);
+  }
+  return hit("warn", backupHeadline(summary), age, item.at ?? undefined);
+}
+
 // --- (e) failing healthcheck -------------------------------------------------
 
 function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null {
@@ -283,6 +309,9 @@ async function computeAttention(): Promise<AttentionResult> {
     () => probeContainerDeath(containers),
     () => probeRestartLoop(containers),
     () => probeSmart(),
+    // After hardware: a dead drive outranks a late backup; before disk capacity,
+    // because an unrecoverable database is worse than a filling one.
+    () => probeBackup(),
     () => probeDiskCapacity(),
     () => probeUnhealthy(containers),
   ];
@@ -301,7 +330,7 @@ async function computeAttention(): Promise<AttentionResult> {
 }
 
 /** Module-level 30s cache — the kiosk polls this every 30s anyway, so there's
- *  no reason to re-run five probes (one of which does file IO across two
+ *  no reason to re-run six probes (one of which does file IO across two
  *  history reads) more often than the UI could show a change. */
 const attentionMemo = new Memo<AttentionResult>({
   key: "attention.result",
