@@ -78,13 +78,13 @@ export function BackupTile() {
 
   return (
     <section className="panel" aria-labelledby="backup-tile-title">
-      <CardHeader className="gap-3">
+      <CardHeader className="flex-wrap gap-x-3 gap-y-1">
         <CardTitle id="backup-tile-title" className="flex items-center gap-1.5">
           <DatabaseBackup size={11} aria-hidden /> ODIP backup
         </CardTitle>
         {summary && data?.status === "ok" && (
           <span
-            className={cn("microlabel truncate", summary.checkStale && "!text-warn")}
+            className={cn("microlabel", summary.checkStale && "!text-warn")}
             title={new Date(data.checkedAt).toLocaleString()}
           >
             {summary.checkStale
