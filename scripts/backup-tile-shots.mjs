@@ -54,6 +54,8 @@ try {
     );
     console.log(`${STATE} @ ${name}: horizontal overflow ${overflow}px`);
 
+    await tile.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+    await page.screenshot({ path: join(OUT_DIR, `backup-${STATE}-${name}-view.png`) });
     await tile.screenshot({ path: join(OUT_DIR, `backup-${STATE}-${name}-tile.png`) });
     await page.screenshot({ path: join(OUT_DIR, `backup-${STATE}-${name}-page.png`), fullPage: true });
     await context.close();
