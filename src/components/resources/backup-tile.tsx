@@ -25,8 +25,8 @@ function Notice({ dot, title, children }: { dot: string; title: string; children
 /** ODIP's nightly backup and weekly restore test, read from the host's daily status file. */
 export function BackupTile() {
   const { data, error } = useBackupStatus();
-  // Ticking clock: SWR skips the re-render when the daily file is unchanged, so
-  // without it "13h ago" would freeze on a tab left open.
+  // No timer: the Overview's own polls re-render this tile, and an hour-scale
+  // age doesn't need a 1 Hz clock.
   const now = useNow(false);
   const summary = data?.status === "ok" && now > 0 ? summarizeBackup(data, now) : null;
 
