@@ -95,3 +95,9 @@ export function summarizeBackup(s: Extract<BackupStatus, { status: "ok" }>, nowM
   const worst = items.reduce<BackupState>((w, i) => (RANK[i.state] > RANK[w] ? i.state : w), "OK");
   return { checkStale, items, worst };
 }
+
+/** Attention headline naming every item that is not OK, worst first. */
+export function backupHeadline(s: BackupSummary): string {
+  const bad = s.items.filter((i) => i.state !== "OK").sort((a, b) => RANK[b.state] - RANK[a.state]);
+  return "ODIP " + bad.map((i) => `${BACKUP_KIND_LABEL[i.kind].toLowerCase()} ${i.state.toLowerCase()}`).join(", ");
+}

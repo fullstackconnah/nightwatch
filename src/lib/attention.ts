@@ -4,7 +4,7 @@ import { getHostVitals } from "@/lib/host-metrics";
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
-import { BACKUP_KIND_LABEL, summarizeBackup } from "@/lib/backup-status";
+import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
 import type { HealthVerdict } from "@/lib/types/smart";
 
@@ -276,13 +276,12 @@ async function probeBackup(): Promise<AttentionResult | null> {
   if (summary.worst === "OK") return null;
 
   const item = summary.items.find((i) => i.state === summary.worst)!;
-  const what = `ODIP ${BACKUP_KIND_LABEL[item.kind].toLowerCase()}`;
   const age = item.at ? `last success ${relativeTime(item.at)}` : "no record in the status file";
-  if (summary.worst === "FAILED") return hit("bad", `${what} failed`, age, item.at ?? undefined);
+  if (summary.worst === "FAILED") return hit("bad", backupHeadline(summary), age, item.at ?? undefined);
   if (summary.checkStale) {
     return hit("warn", "ODIP backup check hasn't run", `last check ${relativeTime(status.checkedAt)}`, status.checkedAt);
   }
-  return hit("warn", `${what} is stale`, age, item.at ?? undefined);
+  return hit("warn", backupHeadline(summary), age, item.at ?? undefined);
 }
 
 // --- (e) failing healthcheck -------------------------------------------------

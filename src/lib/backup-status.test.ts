@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseBackupStatus, summarizeBackup, type BackupStatus } from "./backup-status.ts";
+import { parseBackupStatus, summarizeBackup, backupHeadline, type BackupStatus } from "./backup-status.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00+11:00");
 const HOUR = 3_600_000;
@@ -95,5 +95,15 @@ describe("summarizeBackup", () => {
     const s = summary(file({ restore: null }));
     assert.equal(s.worst, "STALE");
     assert.deepEqual(s.items[1], { kind: "restore-test", state: "STALE", at: null });
+  });
+});
+
+describe("backupHeadline", () => {
+  it("names both items when both are bad, worst first", () => {
+    const s = summary(file({ backup: { state: "STALE" }, restore: { state: "FAILED" } }));
+    assert.equal(backupHeadline(s), "ODIP restore test failed, nightly backup stale");
+  });
+  it("names one item when only one is bad", () => {
+    assert.equal(backupHeadline(summary(file({ backup: { state: "FAILED" } }))), "ODIP nightly backup failed");
   });
 });
