@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { VitalsStrip } from "@/components/resources/vitals-strip";
 import { ContainerTile } from "@/components/resources/container-tile";
+import { BackupTile } from "@/components/resources/backup-tile";
 import { useContainers, useResources, useWidgets, type TiledContainer } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import { stateSeverity } from "@/lib/container-rank";
@@ -157,6 +158,7 @@ export default function OverviewPage() {
       </header>
 
       <VitalsStrip />
+      <BackupTile />
 
       {error && (
         <div className="panel p-4 text-bad text-sm">

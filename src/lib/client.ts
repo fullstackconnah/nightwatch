@@ -12,6 +12,7 @@ import { RING_CAPACITY, type TelemetryRow, type TelemetrySample } from "@/lib/ty
 import type { TranscodeSnapshot } from "@/lib/types/transcode";
 import type { ProcessSnapshot, ProcessRow } from "@/lib/types/process";
 import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/types/smart";
+import type { BackupStatus } from "@/lib/backup-status";
 import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/types/network";
 import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
@@ -98,6 +99,11 @@ export function useProcesses(refreshMs = 2000, enabled = true) {
 // temperatures embedded in each drive move faster than the collector cadence.
 export function useSmart(refreshMs = 30000) {
   return useSWR<SmartSnapshot>("/api/smart", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
+}
+
+// 60s: the status file is rewritten once a day; this only needs to notice that day's write.
+export function useBackupStatus(refreshMs = 60000) {
+  return useSWR<BackupStatus>("/api/backup", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
 }
 
 // 15s: interface inventory/sockets change slowly (link flaps, new listeners) —
