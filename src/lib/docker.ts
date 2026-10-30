@@ -1,6 +1,7 @@
 import Docker from "dockerode";
 import { getHostVitals } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
+import { validateCreateSpec } from "@/lib/create-spec";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -801,6 +802,10 @@ export interface CreateContainerSpec {
 }
 
 export async function createAndStartContainer(spec: CreateContainerSpec): Promise<string> {
+  // Defence in depth: the route checks too, but this is the one place that mounts.
+  const refusal = validateCreateSpec(spec);
+  if (refusal) throw new Error(refusal);
+
   // Pull the image first (no-op if present). Requires IMAGES=1 + POST=1 on the proxy.
   await new Promise<void>((resolve, reject) => {
     docker.pull(spec.image, (err: Error | null, stream: NodeJS.ReadableStream) => {

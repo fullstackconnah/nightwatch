@@ -4,6 +4,7 @@ import {
   listContainersWithRuntime,
   type CreateContainerSpec,
 } from "@/lib/docker";
+import { validateCreateSpec } from "@/lib/create-spec";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
     spec.ports ||= [];
     spec.env ||= [];
     spec.volumes ||= [];
+    const refusal = validateCreateSpec(spec);
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
     const id = await createAndStartContainer(spec);
     return NextResponse.json({ ok: true, id });
   } catch (e) {
