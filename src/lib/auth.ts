@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { kioskMayCall } from "./kiosk-access.ts";
 
 export const SESSION_COOKIE = "hd_session";
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -89,15 +90,17 @@ export function kioskElevationCookieOptions() {
 
 /**
  * The one check every protected route effectively runs (via middleware.ts):
- * a normal admin session OR a still-valid kiosk PIN elevation both count as
- * "authenticated". Kept as its own function rather than folded into
- * verifySessionToken so the normal login flow's own check never changes
- * shape — this is strictly additive.
+ * a normal admin session passes everywhere; a still-valid kiosk PIN elevation
+ * passes only the few API calls the elevated kiosk makes (kiosk-access.ts).
+ * Kept as its own function rather than folded into verifySessionToken so the
+ * normal login flow's own check never changes shape.
  */
 export async function isRequestAuthenticated(
   sessionToken: string | undefined,
   kioskElevationToken: string | undefined,
+  method: string,
+  pathname: string,
 ): Promise<boolean> {
   if (await verifySessionToken(sessionToken)) return true;
-  return verifyKioskElevationToken(kioskElevationToken);
+  return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken));
 }
