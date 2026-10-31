@@ -1,4 +1,9 @@
-import type { OrchestratorInFlight, OrchestratorRunState, OrchestratorSummary } from "./types/orchestra.ts";
+import type { OrchestraSnapshot, OrchestratorInFlight, OrchestratorRunState, OrchestratorSummary } from "./types/orchestra.ts";
+
+/** Last ok snapshot, held in module memory so it survives client-side navigation but not a reload. */
+let lastOk: OrchestraSnapshot | null = null;
+export const trackLastOk = (d?: OrchestraSnapshot) => (d?.status === "ok" ? (lastOk = d) : lastOk);
+export const resetLastOk = () => { lastOk = null; };
 
 /** Pure copy and badge logic for the Orchestra page, kept free of React so node:test can pin it. */
 

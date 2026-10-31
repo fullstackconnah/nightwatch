@@ -38,7 +38,8 @@ for (const { name, ...opts } of VIEWPORTS) {
 }
 
 async function signIn({ page }) {
-  await page.goto(`${BASE_URL}/login`, { waitUntil: "domcontentloaded" });
+  // networkidle: with domcontentloaded the dev build has not hydrated yet and Unlock stays disabled.
+  await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle", timeout: 90_000 });
   await page.locator('input[type="password"]').fill("x");
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: SLOW }), page.locator('button[type="submit"]').click()]);
 }
@@ -66,6 +67,8 @@ const badges = (n) => (page) => page.locator("[data-state-badge]").nth(n - 1).wa
 async function shoot(s, key, crop) {
   const { page, name, opts } = s;
   const base = join(OUT_DIR, `orchestra-${key}-${name}`);
+  // Hide the Next dev indicator (it covers sidebar and bottom-nav labels) before every shot.
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${base}-view.png` });
   if (crop) await page.locator(crop).first().screenshot({ path: `${base}-crop.png` });
@@ -74,7 +77,10 @@ async function shoot(s, key, crop) {
     await page.setViewportSize({ width: 390, height: Math.min(h, 6000) });
     await page.waitForTimeout(250);
     record("pointerCoarseAfterResize", `${key}@390`, await page.evaluate(() => matchMedia("(pointer: coarse)").matches));
+    // The fixed mobile header and bottom nav would be stitched across the middle of a tall page: unpin them for this shot.
+    const unpin = await page.addStyleTag({ content: "header, nav { position: static !important; }" });
     await page.screenshot({ path: `${base}-page.png` });
+    await unpin.evaluate((n) => n.remove());
     await page.setViewportSize(opts.viewport);
   } else {
     await page.screenshot({ path: `${base}-page.png`, fullPage: true });
@@ -169,7 +175,7 @@ try {
   await setCfg(first, { orchestraUrl: UNREACHABLE_URL });
   await each(async (s) => {
     await s.page.getByText("is not answering").first().waitFor({ timeout: SLOW });
-    await shoot(s, "10-unreachable-stale", "main");
+    await shoot(s, "10-unreachable-stale", "article:has-text('design')");
     record("badgesStale", s.name, await texts(s.page, "[data-state-badge]"));
     record("liveStale", s.name, await live(s.page));
   });

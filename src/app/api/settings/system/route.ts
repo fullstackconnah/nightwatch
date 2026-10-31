@@ -184,6 +184,7 @@ export async function POST(req: NextRequest) {
       orchestraConfigured: Boolean(
         systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"),
       ),
+      orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN")),
       oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     },
   });

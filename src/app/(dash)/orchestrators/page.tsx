@@ -51,7 +51,7 @@ export default function OrchestratorsPage() {
           {cards.length > 0 && (
             <section className="space-y-3">
               <h2 className="microlabel">Orchestrators</h2>
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
                 {cards.map((o) => (
                   <OrchestraCard key={o.name} o={o} stale={stale} />
                 ))}

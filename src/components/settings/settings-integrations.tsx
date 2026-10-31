@@ -48,6 +48,7 @@ export interface SettingsFullResponse {
     kioskPinConfigured: boolean;
     hermesApiConfigured?: boolean;
     orchestraConfigured?: boolean;
+    orchestraTokenSet?: boolean;
     ssoConfigured?: boolean;
     ssoIssuerHost?: string | null;
   };

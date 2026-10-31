@@ -3,8 +3,8 @@
 /* The non-band /orchestrators states (loading, load failed, unconfigured), same
    real-copy idiom as hermes-status.tsx. The band states live in orchestra-band.tsx. */
 
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { loadErrorCopy } from "@/lib/orchestra-view";
 
 export function OrchestraLoadError({ status }: { status?: number }) {
@@ -17,7 +17,6 @@ export function OrchestraLoadError({ status }: { status?: number }) {
 }
 
 export function OrchestraUnconfigured() {
-  const router = useRouter();
   return (
     <div className="panel p-4 space-y-3">
       <div className="text-sm font-medium text-warn">Orchestra is not connected</div>
@@ -25,9 +24,9 @@ export function OrchestraUnconfigured() {
         Add the service&apos;s address and token in Settings, under Access. They are saved on this server and never sent to
         the browser.
       </p>
-      <Button variant="outline" onClick={() => router.push("/settings#access")}>
+      <Link href="/settings#access" className={buttonVariants({ variant: "outline" })}>
         Open settings
-      </Button>
+      </Link>
     </div>
   );
 }

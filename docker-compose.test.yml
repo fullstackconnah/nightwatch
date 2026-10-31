@@ -84,6 +84,8 @@ services:
     # vars (e.g. the hermes control-API token) can reach the test stack for
     # live verification WITHOUT re-enabling the login gate — never put
     # ADMIN_PASSWORD_HASH in it.
+    # Never put a real ORCHESTRA_TOKEN (or HERMES_API_TOKEN) in .env.test: this stack has no login, so anyone
+    # on the LAN can point the URL at their own machine and receive the token.
     env_file:
       - path: .env.test
         required: false

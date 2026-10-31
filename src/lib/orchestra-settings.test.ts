@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { mergeOrchestraSettings, publicSystem } from "./orchestra-settings.ts";
+import { resetLastOk, trackLastOk } from "./orchestra-view.ts";
+import type { OrchestraSnapshot } from "./types/orchestra.ts";
 
 const SENTINEL = "tok-SENTINEL-do-not-leak";
 
@@ -61,6 +63,21 @@ describe("settings GET wiring (source-level)", () => {
   it("sanitizes through publicSystem and reports orchestraConfigured, never the token", () => {
     assert.match(src, /publicSystem\(config\.system\)/);
     assert.match(src, /orchestraConfigured/);
-    assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "")), false);
+    assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "").replace(/orchestraTokenSet/g, "")), false);
+  });
+
+  it("reports orchestraTokenSet from the token alone (URL empty), as a boolean only", () => {
+    assert.ok(src.includes('orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN"))'));
+  });
+});
+
+describe("last-known snapshot", () => {
+  const snap = (name: string) => ({ status: "ok", orchestrators: [{ name }] }) as unknown as OrchestraSnapshot;
+  it("keeps the last ok snapshot until a settings save resets it", () => {
+    resetLastOk();
+    assert.equal(trackLastOk(snap("old")), trackLastOk(undefined));
+    assert.equal(trackLastOk({ status: "unreachable" } as unknown as OrchestraSnapshot)?.orchestrators[0]?.name, "old");
+    resetLastOk();
+    assert.equal(trackLastOk({ status: "unreachable" } as unknown as OrchestraSnapshot), null);
   });
 });

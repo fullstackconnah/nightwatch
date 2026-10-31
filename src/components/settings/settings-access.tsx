@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
+import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { CopyButton } from "@/components/settings/settings-reference";
 import { SecretField, useSettingsFull, type SettingsFullResponse } from "@/components/settings/settings-integrations";
 
@@ -304,6 +305,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
       const body: Record<string, unknown> = { orchestraUrl: url };
       if (token.trim()) body.orchestraToken = token.trim();
       await postJson("/api/settings/system", body);
+      resetOrchestraStatus(); // a new service must not show the old one's last-known cards
       await mutate();
       setToken("");
       setSaveVersion((v) => v + 1);
@@ -317,7 +319,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   }
 
   return (
-    <Card>
+    <Card className="self-start">
       <CardHeader>
         <CardTitle>Orchestra</CardTitle>
         {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
@@ -336,7 +338,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
         <SecretField
           key={saveVersion}
           label="Service token"
-          configured={Boolean(data?.meta.orchestraConfigured)}
+          configured={Boolean(data?.meta.orchestraTokenSet)}
           updatedAt={data?.system.updatedAt}
           draft={token}
           onDraftChange={setToken}
