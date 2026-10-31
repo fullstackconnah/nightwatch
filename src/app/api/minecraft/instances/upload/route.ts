@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE } from "@/lib/auth";
+import { uploadAuthorized } from "@/lib/upload-auth";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +20,12 @@ const VALID_LOADERS = new Set(["forge", "neoforge", "fabric"]);
  * this TypeScript version ships, hence the cast.
  */
 export async function POST(req: NextRequest) {
+  // Excluded from the middleware matcher (see middleware.ts), so authenticate
+  // here, before the body or upstream is touched.
+  if (!(await uploadAuthorized(req.cookies.get(SESSION_COOKIE)?.value))) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   const creds = mcManagerCredentials();
   if (!creds) {
     return NextResponse.json(
