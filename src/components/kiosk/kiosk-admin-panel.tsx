@@ -77,9 +77,9 @@ function AdminRow({ c, onChanged }: { c: TiledContainer; onChanged: () => void }
 /**
  * The admin surface a PIN-elevated kiosk unlocks: the same container list and
  * start/stop/restart controls the logged-in dashboard has, reached through
- * the SAME authenticated /api/docker/containers[...] routes — the kiosk
- * elevation cookie is what middleware.ts now accepts alongside a real
- * session, so nothing here talks to Docker directly.
+ * the SAME authenticated /api/docker/containers[...] routes. The kiosk
+ * elevation cookie reaches only the kiosk allowlist (lib/kiosk-access.ts), not
+ * the dashboard pages, so nothing here talks to Docker directly.
  */
 export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLock: () => void }) {
   const { data, error, mutate } = useContainers(5000);
@@ -103,10 +103,10 @@ export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLo
         </div>
         <div className="flex items-center gap-1.5">
           <Link
-            href="/"
+            href="/login"
             className="h-11 px-3.5 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs flex items-center gap-1.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
           >
-            <LayoutGrid size={13} /> Dashboard
+            <LayoutGrid size={13} /> Sign in to dashboard
           </Link>
           <button
             type="button"
