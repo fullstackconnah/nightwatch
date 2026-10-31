@@ -20,12 +20,14 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
-  // A valid kiosk PIN elevation counts as authenticated too, so the existing
-  // authenticated docker API routes (start/stop/restart) work unchanged from
-  // an elevated kiosk without weakening what they accept from anyone else.
+  // A real session passes everywhere. A kiosk PIN elevation passes only the
+  // API calls the elevated kiosk makes (container list/lifecycle, voice — see
+  // lib/kiosk-access.ts); anything else it requests is refused like no login.
   const ok = await isRequestAuthenticated(
     req.cookies.get(SESSION_COOKIE)?.value,
     req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value,
+    req.method,
+    pathname,
   );
   if (ok) return NextResponse.next();
 
