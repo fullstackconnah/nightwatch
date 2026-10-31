@@ -831,7 +831,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
     ExposedPorts: exposedPorts,
     HostConfig: {
       PortBindings: portBindings,
-      Mounts: buildMounts(spec.volumes),
+      Mounts: buildMounts(spec.volumes) as never, // @types/dockerode lacks BindOptions.ReadOnlyForceRecursive
       RestartPolicy: { Name: spec.restartPolicy || "unless-stopped" },
       NetworkMode: createNetwork(spec),
     },

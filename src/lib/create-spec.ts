@@ -83,7 +83,7 @@ export function buildMounts(volumes: { host: string; container: string; readonly
     .filter((v) => v.host && v.container)
     .map((v) =>
       v.host.startsWith("/")
-        ? { Type: "bind" as const, Source: normalise(v.host), Target: v.container, ReadOnly: true }
+        ? { Type: "bind" as const, Source: normalise(v.host), Target: v.container, ReadOnly: true, BindOptions: { ReadOnlyForceRecursive: true } }
         : { Type: "volume" as const, Source: v.host, Target: v.container, ReadOnly: !!v.readonly },
     );
 }
@@ -114,7 +114,7 @@ export async function checkCreateSpecHost(spec: Checkable, deps: CreateDeps): Pr
           return `Mounting "${v.host}" is not allowed: "${cur}" is a symlink.`;
         }
       } catch (e) {
-        if ((e as NodeJS.ErrnoException).code === "ENOENT") break; // Docker creates the rest
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") break; // missing tail: Docker refuses the mount
         return `Mounting "${v.host}" is refused: cannot check "${cur}".`;
       }
     }

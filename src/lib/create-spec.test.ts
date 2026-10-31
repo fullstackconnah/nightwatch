@@ -186,7 +186,7 @@ test("container path must be absolute and already normalised", () => {
 test("binds become read-only Mounts with the checked source; the readonly flag is ignored", () => {
   for (const readonly of [undefined, false, true]) {
     const m = buildMounts([{ host: "/mnt/media//x/", container: "/data", readonly }]);
-    assert.deepEqual(m, [{ Type: "bind", Source: "/mnt/media/x", Target: "/data", ReadOnly: true }]);
+    assert.deepEqual(m, [{ Type: "bind", Source: "/mnt/media/x", Target: "/data", ReadOnly: true, BindOptions: { ReadOnlyForceRecursive: true } }]);
   }
 });
 

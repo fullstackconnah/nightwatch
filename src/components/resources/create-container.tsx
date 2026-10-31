@@ -211,11 +211,11 @@ export function CreateContainerDialog({
               <Plus size={12} /> add
             </Button>
           </div>
+          <p className="text-xs text-ink-dim mb-1.5">Host folders mount read-only and must already exist.</p>
           {vols.map((v, i) => (
             <div key={i} className="flex flex-wrap gap-2 mb-1.5 items-center">
-              <Input placeholder="/mnt/docker/stacks/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
+              <Input placeholder="/mnt/media/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
               <Input placeholder="/data" value={v.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
-              <span className="text-xs text-ink-dim whitespace-nowrap">Read-only</span>
               <Button size="icon" variant="ghost" onClick={() => setVols(vols.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </Button>
