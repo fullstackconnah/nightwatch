@@ -44,6 +44,24 @@ services:
     labels:
       - dashboard.enable=false
 
+  # Synthetic Orchestra service for the /orchestrators page. Internal network only (no ports published);
+  # in the Settings > Access card set the URL to http://orchestra-mock:7420 and the token to mock-mixed,
+  # mock-empty, mock-slow, or anything else for the 401 state.
+  orchestra-mock:
+    image: node:22-alpine
+    container_name: homelab-dashboard-test-orchestra-mock
+    restart: "no"
+    command: ["node", "/mock/orchestra-mock.mjs"]
+    environment:
+      - HOST=0.0.0.0
+      - PORT=7420
+    volumes:
+      - ./scripts/fixtures/orchestra-mock.mjs:/mock/orchestra-mock.mjs:ro
+    networks:
+      - internal
+    labels:
+      - dashboard.enable=false
+
   dashboard:
     build:
       context: .
