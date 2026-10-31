@@ -26,6 +26,16 @@ export function createKioskLockout(now: () => number = Date.now) {
       }
       return this.lockedUntil();
     },
+    /** Whole decision, synchronous: lock check, compare, then fail/reset with no await between. */
+    attempt(pinOk: () => boolean): { status: 200 | 401 | 429; lockedUntil: number } {
+      const locked = this.lockedUntil();
+      if (locked) return { status: 429, lockedUntil: locked };
+      if (pinOk()) {
+        this.reset();
+        return { status: 200, lockedUntil: 0 };
+      }
+      return { status: 401, lockedUntil: this.fail() };
+    },
     reset() {
       failures = lockouts = until = 0;
     },

@@ -49,17 +49,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const ok = typeof pin === "string" && pin.length > 0 && safeEqual(pin, expected);
-
-  if (!ok) {
-    const lockedUntil = lockout.fail();
-    return NextResponse.json(
-      { error: "Incorrect PIN", lockedUntil: lockedUntil || undefined },
-      { status: 401 },
-    );
+  // attempt() re-checks the lock and compares with no await in between, so requests that
+  // parsed their body during a burst cannot each get a guess once the lock trips.
+  const r = lockout.attempt(() => typeof pin === "string" && pin.length > 0 && safeEqual(pin, expected));
+  if (r.status === 429) {
+    return NextResponse.json({ error: "Too many attempts — locked out", lockedUntil: r.lockedUntil }, { status: 429 });
+  }
+  if (r.status === 401) {
+    return NextResponse.json({ error: "Incorrect PIN", lockedUntil: r.lockedUntil || undefined }, { status: 401 });
   }
 
-  lockout.reset();
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ ok: true, expiresAt });
   res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions());

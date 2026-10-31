@@ -48,6 +48,18 @@ describe("kiosk PIN lockout", () => {
     assert.equal(s.lock.lockedUntil(), 0);
   });
 
+  it("attempt(): queued attempts after the 5th failure get 429 without comparing", () => {
+    const s = setup();
+    for (let i = 0; i < 5; i++) assert.equal(s.lock.attempt(() => false).status, 401);
+    let compared = 0;
+    for (let i = 0; i < 2; i++) {
+      assert.equal(s.lock.attempt(() => (compared++, true)).status, 429);
+    }
+    assert.equal(compared, 0);
+    s.advance(30_000);
+    assert.equal(s.lock.attempt(() => true).status, 200);
+  });
+
   it("a correct PIN resets failures and the escalation", () => {
     const s = setup();
     const until = trip(s);
