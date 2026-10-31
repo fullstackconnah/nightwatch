@@ -32,7 +32,6 @@ export interface OrchestraSnapshot {
   detail: string;
   fetchedAt: string;
   orchestrators: OrchestratorSummary[];
-  registryErrors?: string[];
 }
 
 export interface OrchestraDetailResponse {
