@@ -4,7 +4,11 @@ import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
 // public on the LAN — it's an ambient wall display that exposes only host
-// vitals and container health counts, never logs or secrets. /api/auth/kiosk
+// vitals and container health counts. Kiosk speech that matches no intent falls
+// through to a Hermes `ask`, which can read nightwatch MCP resources (container
+// logs included); Hermes is asked to block log reads for ask jobs (vault handover
+// Projects/HermesAIOps/Handovers/2026-10-31-kiosk-ask-logs) and asks are rate limited.
+// /api/auth/kiosk
 // (PIN submit + its refresh/lock siblings) must also be reachable from that
 // unauthenticated surface, the same way /api/auth/login is exempted for /login.
 // /api/mcp carries its own Bearer-token auth (MCP clients never hold the
