@@ -89,12 +89,13 @@ describe("name validation", () => {
 
 describe("getOrchestraDetail", () => {
   it("maps detail without leaking paths of agents, and upstream 404 is ok with null", async () => {
-    const full = { ...dev, addDirs: ["F:\\y"], plugins: ["p"], checkpoint: "c", inFlight: [{ name: "a1", where: "F:\\secret", quietMin: 21 }, 5] };
+    const full = { ...dev, addDirs: ["F:\\y"], plugins: ["p"], checkpoint: "c", sessionId: "11111111-2222-3333-4444-555555555555", inFlight: [{ name: "a1", where: "F:\\secret", quietMin: 21 }, 5] };
     const url = await stub((u) => (u === "/v1/orchestrators/dev" ? { code: 200, body: full } : { code: 404, body: { error: "not found" } }));
     const d = await getOrchestraDetail("dev", { url, token: TOKEN });
     assert.equal(d.status, "ok");
     assert.deepEqual(d.orchestrator?.inFlight, [{ name: "a1", quietMin: 21 }]);
     assert.equal(d.orchestrator?.checkpoint, "c");
+    assert.equal(d.orchestrator?.sessionId, "11111111-2222-3333-4444-555555555555");
     const missing = await getOrchestraDetail("nope", { url, token: TOKEN });
     assert.deepEqual([missing.status, missing.orchestrator], ["ok", null]);
   });

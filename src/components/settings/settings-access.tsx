@@ -25,7 +25,7 @@ import { Field, Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { CopyButton } from "@/components/settings/settings-reference";
-import { SecretField, useSettingsFull, type SettingsFullResponse } from "@/components/settings/settings-integrations";
+import { ClearControl, SecretField, useSettingsFull, type ClearStep, type SettingsFullResponse } from "@/components/settings/settings-integrations";
 
 function AuthPanel({ data }: { data: SettingsFullResponse | undefined }) {
   const configured = data?.meta.authConfigured ?? false;
@@ -284,6 +284,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clearStep, setClearStep] = useState<ClearStep>("idle");
 
   useEffect(() => {
     if (data && !seeded) {
@@ -318,6 +319,21 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
     }
   }
 
+  async function handleClear() {
+    setClearStep("busy");
+    setError(null);
+    try {
+      await postJson("/api/settings/system", { clearOrchestraToken: true });
+      resetOrchestraStatus();
+      await mutate();
+      setSaveVersion((v) => v + 1);
+    } catch (e) {
+      setError(`Could not clear the token. ${e instanceof Error ? e.message : ""}`.trim());
+    } finally {
+      setClearStep("idle");
+    }
+  }
+
   return (
     <Card className="self-start">
       <CardHeader>
@@ -343,12 +359,19 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
           draft={token}
           onDraftChange={setToken}
         />
-        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-          {saved && <Badge variant="ok">saved</Badge>}
-          <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
-            <Save size={13} /> Save
-          </Button>
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+          {data?.meta.orchestraTokenSet ? (
+            <ClearControl step={clearStep} setStep={setClearStep} label="Orchestra" onConfirm={handleClear} />
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+            {saved && <Badge variant="ok">saved</Badge>}
+            <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
+              <Save size={13} /> Save
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

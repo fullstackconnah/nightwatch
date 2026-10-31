@@ -78,6 +78,11 @@ function DetailBody({ data, error, loading, onRetry }: {
             </ul>
           )}
         </div>
+        {detail.sessionId && (
+          <Figure label="session">
+            <span title={detail.sessionId} className="block truncate">{detail.sessionId}</span>
+          </Figure>
+        )}
         <div className="grid grid-cols-2 gap-x-3 gap-y-3">
           <List label="extra dirs" items={detail.addDirs} />
           <List label="plugins" items={detail.plugins} />
