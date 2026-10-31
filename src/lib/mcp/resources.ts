@@ -1,5 +1,6 @@
 import { containerLogs, listContainers } from "@/lib/docker";
 import { getHostVitals } from "@/lib/host-metrics";
+import { getOrchestraSnapshot } from "@/lib/orchestra";
 import { getSmartSnapshot } from "@/lib/smart";
 import { JSON_RPC_ERROR_CODES, McpError } from "./errors";
 
@@ -33,6 +34,7 @@ export interface McpResourceTemplate {
 const CONTAINERS_URI = "nightwatch://containers";
 const TELEMETRY_URI = "nightwatch://telemetry";
 const SMART_URI = "nightwatch://smart";
+const ORCHESTRATORS_URI = "nightwatch://orchestrators";
 const LOGS_PREFIX = "nightwatch://logs/";
 
 export const LOG_RESOURCE_TEMPLATE: McpResourceTemplate = {
@@ -59,6 +61,12 @@ const STATIC_RESOURCES: McpResourceDescriptor[] = [
     uri: SMART_URI,
     name: "smart",
     description: "Drive health summary: SMART status per drive plus RAID/LVM/ZFS/Btrfs integrity.",
+    mimeType: "application/json",
+  },
+  {
+    uri: ORCHESTRATORS_URI,
+    name: "orchestrators",
+    description: "Claude Code orchestrators on the owner's PC: state, in-flight and stalled agents, Slack watcher. Read-only.",
     mimeType: "application/json",
   },
 ];
@@ -103,6 +111,10 @@ export async function readResource(uri: string): Promise<McpResourceContent> {
   if (uri === SMART_URI) {
     const snapshot = await getSmartSnapshot();
     return { uri, mimeType: "application/json", text: JSON.stringify(snapshot, null, 2) };
+  }
+
+  if (uri === ORCHESTRATORS_URI) {
+    return { uri, mimeType: "application/json", text: JSON.stringify(await getOrchestraSnapshot(), null, 2) };
   }
 
   if (uri.startsWith(LOGS_PREFIX)) {
