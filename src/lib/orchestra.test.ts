@@ -58,7 +58,7 @@ describe("getOrchestraSnapshot", () => {
       home: "F:\\x", inFlightCount: 2, stalledCount: 1, watcher: "online",
     });
   });
-  it("a server that never answers is unreachable within 6 s", async () => {
+  it("a server that never answers is unreachable within 6 s", { timeout: 8000 }, async () => {
     const url = await stub(() => "hang");
     const t = Date.now();
     assert.equal((await getOrchestraSnapshot({ url, token: TOKEN })).status, "unreachable");
