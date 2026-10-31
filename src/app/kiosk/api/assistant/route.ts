@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getHaStates, performHaAction } from "@/lib/ha";
 import { getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
+import { allowAsk } from "@/lib/kiosk-ask-limit";
 import { matchIntent, type KioskIntent } from "@/lib/kiosk-intent";
 import type { HaActionRequest } from "@/lib/types/ha";
 
@@ -159,6 +160,12 @@ export async function POST(req: NextRequest) {
          reported its real state, and pointed at the dashboard). */
 
       case "ask": {
+        // Each ask starts a Hermes job on a public route; cap it process-wide.
+        const gate = allowAsk();
+        if (!gate.ok) {
+          const say = gate.reason === "daily" ? "That's all the questions I can take today." : "One question at a time. Try again in a few seconds.";
+          return reply({ ok: false, say, kind: intent.kind }, 429);
+        }
         const answer = await askHermes(intent.question);
         if (!answer) return reply({ ok: false, say: "I couldn't reach Hermes for that.", kind: intent.kind });
         return reply({ ok: true, say: answer, kind: intent.kind, answer });
