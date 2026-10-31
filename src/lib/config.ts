@@ -249,9 +249,9 @@ export function saveConfig(config: AppConfig): void {
 function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = filePath + ".tmp";
+  // writeFileSync's mode applies only when it creates the file; drop a leftover .tmp so secrets never land in a looser one
+  if (mode !== undefined) fs.rmSync(tmp, { force: true });
   fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: "utf8", mode });
-  // writeFileSync's mode applies only when it creates the file; chmod also covers a leftover .tmp
-  if (mode !== undefined) fs.chmodSync(tmp, mode);
   fs.renameSync(tmp, filePath);
 }
 
