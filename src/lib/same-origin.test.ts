@@ -70,5 +70,4 @@ test("upload route calls the guard before uploadAuthorized", () => {
   assert.ok(guard > 0, "guard not called");
   assert.ok(guard < src.indexOf("await uploadAuthorized("), "guard must precede uploadAuthorized");
   assert.match(src, REFUSE);
-  assert.match(src, REFUSE);
 });

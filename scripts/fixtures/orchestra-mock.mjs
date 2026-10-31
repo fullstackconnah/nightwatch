@@ -42,6 +42,7 @@ const DETAILS = {
   dev: {
     addDirs: ["C:/projects/personal/example-app"], plugins: ["ponytail", "impeccable"],
     checkpoint: "Reviewing the open PR; merge once CI is green.",
+    sessionId: "3f2a9c1e-7b4d-4e8a-9c05-1d6f8a2b7e43",
     inFlight: [{ name: "dev-builder", where: "C:/t/a.jsonl", quietMin: 3 }, { name: "dev-reviewer", where: "C:/t/b.jsonl", quietMin: 12 }],
   },
   design: { addDirs: [], plugins: [], checkpoint: null, inFlight: [] },

@@ -71,7 +71,8 @@ async function shoot(s, key, crop) {
   await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${base}-view.png` });
-  if (crop) await page.locator(crop).first().screenshot({ path: `${base}-crop.png` });
+  const shootCrop = () => crop && page.locator(crop).first().screenshot({ path: `${base}-crop.png` });
+  if (name !== "390") await shootCrop();
   if (name === "390") {
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.setViewportSize({ width: 390, height: Math.min(h, 6000) });
@@ -79,6 +80,7 @@ async function shoot(s, key, crop) {
     record("pointerCoarseAfterResize", `${key}@390`, await page.evaluate(() => matchMedia("(pointer: coarse)").matches));
     // The fixed mobile header and bottom nav would be stitched across the middle of a tall page: unpin them for this shot.
     const unpin = await page.addStyleTag({ content: "header, nav { position: static !important; }" });
+    await shootCrop(); // the crop gets the unpinned chrome too, so the fixed bottom nav cannot cover the card
     await page.screenshot({ path: `${base}-page.png` });
     await unpin.evaluate((n) => n.remove());
     await page.setViewportSize(opts.viewport);

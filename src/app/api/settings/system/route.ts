@@ -40,6 +40,7 @@ interface Body {
 
   orchestraUrl?: unknown;
   orchestraToken?: unknown;
+  clearOrchestraToken?: unknown;
 
   voiceServerUrl?: unknown;
   voiceTtsUrl?: unknown;

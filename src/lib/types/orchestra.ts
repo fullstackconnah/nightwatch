@@ -24,6 +24,7 @@ export interface OrchestratorDetail extends OrchestratorSummary {
   addDirs: string[];
   plugins: string[];
   checkpoint: string | null;
+  sessionId?: string | null;
   inFlight: OrchestratorInFlight[];
 }
 

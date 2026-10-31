@@ -4,7 +4,7 @@ type Orchestra = Pick<SystemSettings, "orchestraUrl" | "orchestraToken">;
 
 /** Same idioms as the Hermes pair in POST /api/settings/system: a present url key wins (even ""), an empty token keeps the stored one. */
 export function mergeOrchestraSettings(
-  body: { orchestraUrl?: unknown; orchestraToken?: unknown },
+  body: { orchestraUrl?: unknown; orchestraToken?: unknown; clearOrchestraToken?: unknown },
   existing: Orchestra,
 ): Orchestra | { error: string } {
   let orchestraUrl = existing.orchestraUrl;
@@ -16,7 +16,8 @@ export function mergeOrchestraSettings(
     orchestraUrl = url;
   }
   const typed = typeof body.orchestraToken === "string" ? body.orchestraToken.trim() : "";
-  return { orchestraUrl, orchestraToken: typed || existing.orchestraToken };
+  // An explicit clear wins over a typed token, like clearMcpToken.
+  return { orchestraUrl, orchestraToken: body.clearOrchestraToken === true ? undefined : typed || existing.orchestraToken };
 }
 
 /** The `system` fields GET /api/settings may send to the browser: plain-text settings only, never a secret. */

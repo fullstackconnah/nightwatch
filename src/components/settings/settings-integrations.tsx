@@ -97,7 +97,7 @@ export function useSettingsFull() {
 // ---------------------------------------------------------------------------
 // Shared bits: the masked secret field and the inline two-step "Clear".
 
-type ClearStep = "idle" | "confirm" | "busy";
+export type ClearStep = "idle" | "confirm" | "busy";
 
 export function SecretField({
   label,
@@ -218,7 +218,7 @@ export function SecretField({
   );
 }
 
-function ClearControl({
+export function ClearControl({
   step,
   setStep,
   onConfirm,
