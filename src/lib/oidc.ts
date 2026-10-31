@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { SignJWT, createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
-import { secretKey } from "@/lib/auth";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims } from "@/lib/auth";
 import { systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 
@@ -271,34 +271,8 @@ export async function verifyIdToken(idToken: string, expectedNonce: string): Pro
 // tampered cookie fails verification outright rather than being trusted.
 
 export const OIDC_FLOW_COOKIE = "hd_oidc_flow";
-const OIDC_FLOW_TTL_SECONDS = 5 * 60; // 5 minutes
-
-export interface OidcFlowClaims {
-  state: string;
-  nonce: string;
-  verifier: string;
-}
-
-export async function createOidcFlowToken(claims: OidcFlowClaims): Promise<string> {
-  return new SignJWT({ ...claims })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${OIDC_FLOW_TTL_SECONDS}s`)
-    .sign(secretKey());
-}
-
-export async function verifyOidcFlowToken(token: string | undefined): Promise<OidcFlowClaims | null> {
-  if (!token) return null;
-  try {
-    const { payload } = await jwtVerify(token, secretKey());
-    if (typeof payload.state !== "string" || typeof payload.nonce !== "string" || typeof payload.verifier !== "string") {
-      return null;
-    }
-    return { state: payload.state, nonce: payload.nonce, verifier: payload.verifier };
-  } catch {
-    return null;
-  }
-}
+// Sign/verify live in auth.ts beside the other token kinds (each carries its own `typ`).
+export { createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims };
 
 export function oidcFlowCookieOptions() {
   return {
