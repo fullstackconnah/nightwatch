@@ -31,6 +31,10 @@ describe("mergeOrchestraSettings", () => {
     // a clear wins over a typed token, like clearMcpToken
     assert.equal((mergeOrchestraSettings({ clearOrchestraToken: true, orchestraToken: "x" }, existing) as { orchestraToken?: string }).orchestraToken, undefined);
     assert.equal((mergeOrchestraSettings({ clearOrchestraToken: false }, existing) as { orchestraToken?: string }).orchestraToken, "old-token");
+    // only a real boolean true clears; a string or number from a sloppy client keeps the token
+    for (const sloppy of ["true", 1]) {
+      assert.equal((mergeOrchestraSettings({ clearOrchestraToken: sloppy }, existing) as { orchestraToken?: string }).orchestraToken, "old-token");
+    }
   });
 
   it("rejects a url that is not http(s)", () => {

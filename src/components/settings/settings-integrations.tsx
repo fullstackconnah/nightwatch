@@ -223,17 +223,19 @@ export function ClearControl({
   setStep,
   onConfirm,
   label,
+  message,
 }: {
   step: ClearStep;
   setStep: (s: ClearStep) => void;
   onConfirm: () => void;
   label: string;
+  message?: string;
 }) {
   if (step === "confirm") {
     return (
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[0.7rem] text-ink-dim">
-          Remove the {label} connection? You&apos;ll need to re-enter its credentials to reconnect.
+          {message ?? <>Remove the {label} connection? You&apos;ll need to re-enter its credentials to reconnect.</>}
         </span>
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel

@@ -79,9 +79,10 @@ function DetailBody({ data, error, loading, onRetry }: {
           )}
         </div>
         {detail.sessionId && (
-          <Figure label="session">
-            <span title={detail.sessionId} className="block truncate">{detail.sessionId}</span>
-          </Figure>
+          <div className="space-y-1">
+            <div className="microlabel">session</div>
+            <div title={detail.sessionId} className="block truncate font-mono text-[0.7rem] text-ink-dim">{detail.sessionId}</div>
+          </div>
         )}
         <div className="grid grid-cols-2 gap-x-3 gap-y-3">
           <List label="extra dirs" items={detail.addDirs} />
