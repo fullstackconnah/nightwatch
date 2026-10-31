@@ -1,7 +1,11 @@
 // Policy for the create-container feature. The socket proxy can't narrow
 // container writes, so anything a created container may mount or join is
 // decided here: returns the refusal message, or null when the spec is allowed.
-// Pure and import-free so node --test can load it.
+// validateCreateSpec is pure; the async checks below touch the host rootfs and
+// Docker through injected deps, so node --test can load this file.
+
+import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 
 interface Checkable {
   volumes: { host: string; container: string }[];
@@ -23,8 +27,9 @@ function normalise(p: string): string {
 const inside = (path: string, dir: string) => path === dir || path.startsWith(dir + "/");
 
 // Allowed host roots for bind mounts. `/` and protected dirs are never roots.
+// /mnt/docker/stacks is deliberately not a default: it holds every stack's compose file and .env.
 export function bindRoots(): string[] {
-  const raw = process.env.CREATE_BIND_ROOTS || "/mnt/docker/stacks,/mnt/media";
+  const raw = process.env.CREATE_BIND_ROOTS || "/mnt/media";
   return raw
     .split(",")
     .map((r) => r.trim())
@@ -32,6 +37,14 @@ export function bindRoots(): string[] {
     .map(normalise)
     .filter((r) => r !== "/" && !PROTECTED.some((d) => inside(r, d)));
 }
+
+// Networks a created container may join; blank means bridge.
+export function createNetworks(): string[] {
+  const raw = process.env.CREATE_NETWORKS || "bridge";
+  return raw.split(",").map((n) => n.trim()).filter(Boolean);
+}
+
+export const createNetwork = (spec: Checkable) => spec.network?.trim() || "bridge";
 
 export function validateCreateSpec(spec: Checkable): string | null {
   const roots = bindRoots();
@@ -49,9 +62,53 @@ export function validateCreateSpec(spec: Checkable): string | null {
       return `Mounting "${v.host}" is not allowed. Bind mounts must be under: ${roots.join(", ")}.`;
     }
   }
-  const net = spec.network?.trim();
-  if (net === "host" || net?.startsWith("container:")) {
-    return `Network "${net}" is not allowed.`;
+  const net = createNetwork(spec);
+  if (!createNetworks().includes(net)) {
+    return `Network "${net}" is not allowed. Allowed: ${createNetworks().join(", ")}.`;
+  }
+  return null;
+}
+
+export interface CreateDeps {
+  rootfs?: string;
+  inspectVolume: (name: string) => Promise<unknown>;
+}
+
+const isNamed = (h: string) => !h.startsWith("/");
+
+// Async half of the policy: refuses symlinked bind paths and reuse of existing
+// named volumes. Fails closed on any unexpected error.
+export async function checkCreateSpecHost(spec: Checkable, deps: CreateDeps): Promise<string | null> {
+  const rows = spec.volumes.filter((v) => v.host && v.container);
+  for (const v of rows.filter((v) => !isNamed(v.host))) {
+    if (!deps.rootfs) return "Bind mounts are refused: the host rootfs is not available to check for symlinks.";
+    try {
+      await lstat(deps.rootfs);
+    } catch {
+      return "Bind mounts are refused: the host rootfs is not readable to check for symlinks.";
+    }
+    let cur = "";
+    for (const seg of normalise(v.host).split("/").filter(Boolean)) {
+      cur += "/" + seg;
+      try {
+        if ((await lstat(join(deps.rootfs, cur))).isSymbolicLink()) {
+          return `Mounting "${v.host}" is not allowed: "${cur}" is a symlink.`;
+        }
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === "ENOENT") break; // Docker creates the rest
+        return `Mounting "${v.host}" is refused: cannot check "${cur}".`;
+      }
+    }
+  }
+  for (const v of rows.filter((v) => isNamed(v.host))) {
+    try {
+      await deps.inspectVolume(v.host);
+      return `Volume "${v.host}" already exists; creating a container may not reuse it.`;
+    } catch (e) {
+      if ((e as { statusCode?: number }).statusCode !== 404) {
+        return `Volume "${v.host}" could not be checked.`;
+      }
+    }
   }
   return null;
 }

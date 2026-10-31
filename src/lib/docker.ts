@@ -1,7 +1,7 @@
 import Docker from "dockerode";
-import { getHostVitals } from "@/lib/host-metrics";
+import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
-import { validateCreateSpec } from "@/lib/create-spec";
+import { checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -835,9 +835,20 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
         .filter((v) => v.host && v.container)
         .map((v) => `${v.host}:${v.container}${v.readonly ? ":ro" : ""}`),
       RestartPolicy: { Name: spec.restartPolicy || "unless-stopped" },
-      NetworkMode: spec.network || undefined,
+      NetworkMode: createNetwork(spec),
     },
   });
   await container.start();
   return container.id;
+}
+
+// Full create policy: the pure rules, then the checks that need the host rootfs and Docker.
+export async function refuseCreate(spec: CreateContainerSpec): Promise<string | null> {
+  return (
+    validateCreateSpec(spec) ??
+    (await checkCreateSpecHost(spec, {
+      rootfs: HOST_ROOTFS,
+      inspectVolume: (n) => docker.getVolume(n).inspect(),
+    }))
+  );
 }

@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateCreateSpec } from "./create-spec.ts";
+import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { checkCreateSpecHost, validateCreateSpec } from "./create-spec.ts";
 
 const spec = (host: string, network?: string) => ({
   image: "nginx",
@@ -40,7 +43,6 @@ const refusedBinds = [
   "/mnt",
   "/opt/x",
   "/mnt/docker",
-  "/mnt/docker/stacks/../../etc",
   "../x",
   "/etcetera",
   "/rootfs",
@@ -55,8 +57,6 @@ for (const host of refusedBinds) {
 }
 
 const allowedBinds = [
-  "/mnt/docker/stacks/x",
-  "/mnt/docker/stacks/app/data",
   "/mnt/media",
   "/mnt/media/",
   "/mnt/media/films",
@@ -78,7 +78,7 @@ test("refuses odd named volumes", () => {
 test("refusal names the allowed roots", () => {
   assert.equal(
     validateCreateSpec(spec("/var")),
-    'Mounting "/var" is not allowed. Bind mounts must be under: /mnt/docker/stacks, /mnt/media.',
+    'Mounting "/var" is not allowed. Bind mounts must be under: /mnt/media.',
   );
 });
 
@@ -102,13 +102,68 @@ test("refuses network host and container:", () => {
   assert.equal(typeof validateCreateSpec(spec("/mnt/media/a", "container:abc")), "string");
 });
 
-test("allows bridge, named and blank networks", () => {
-  for (const n of ["bridge", "homelab_default", "hostnet", "", undefined]) {
-    assert.equal(validateCreateSpec(spec("/mnt/media/a", n)), null);
+test("allows bridge and blank networks; refuses everything else by default", () => {
+  for (const n of ["bridge", "", undefined]) assert.equal(validateCreateSpec(spec("/mnt/media/a", n)), null);
+  for (const n of ["homelab-dashboard_internal", "x_internal", "a".repeat(64), "host", "none", "homelab_default"]) {
+    assert.equal(typeof validateCreateSpec(spec("/mnt/media/a", n)), "string", n);
+  }
+});
+
+test("CREATE_NETWORKS extends the network allowlist", () => {
+  const old = process.env.CREATE_NETWORKS;
+  process.env.CREATE_NETWORKS = "bridge, media_net";
+  try {
+    assert.equal(validateCreateSpec(spec("/mnt/media/a", "media_net")), null);
+    assert.equal(typeof validateCreateSpec(spec("/mnt/media/a", "other_net")), "string");
+  } finally {
+    if (old === undefined) delete process.env.CREATE_NETWORKS;
+    else process.env.CREATE_NETWORKS = old;
+  }
+});
+
+test("/mnt/docker/stacks is refused by default and allowed when listed", () => {
+  assert.equal(typeof validateCreateSpec(spec("/mnt/docker/stacks/x")), "string");
+  const old = process.env.CREATE_BIND_ROOTS;
+  process.env.CREATE_BIND_ROOTS = "/mnt/docker/stacks";
+  try {
+    assert.equal(validateCreateSpec(spec("/mnt/docker/stacks/x")), null);
+  } finally {
+    if (old === undefined) delete process.env.CREATE_BIND_ROOTS;
+    else process.env.CREATE_BIND_ROOTS = old;
   }
 });
 
 test("rows with a blank host or container path are ignored like the create call does", () => {
   const s = { ...spec("/mnt/media/a"), volumes: [{ host: "", container: "" }] };
   assert.equal(validateCreateSpec(s), null);
+});
+
+const notFound = () => Promise.reject({ statusCode: 404 });
+const mkRoot = () => {
+  const root = mkdtempSync(join(tmpdir(), "nw-rootfs-"));
+  mkdirSync(join(root, "mnt/media/a/plain"), { recursive: true });
+  // junction works without privileges on Windows and is a symlink to lstat; ignored on POSIX
+  symlinkSync(root, join(root, "mnt/media/a/link"), "junction");
+  return root;
+};
+
+test("host check refuses symlinked components, allows plain and missing paths", async () => {
+  const rootfs = mkRoot();
+  const run = (host: string, r: string | null = rootfs) =>
+    checkCreateSpecHost(spec(host), { rootfs: r ?? undefined, inspectVolume: notFound });
+  assert.equal(typeof (await run("/mnt/media/a/link")), "string");
+  assert.equal(typeof (await run("/mnt/media/a/link/sub")), "string");
+  assert.equal(await run("/mnt/media/a/plain"), null);
+  assert.equal(await run("/mnt/media/a/new/dir"), null);
+  assert.equal(typeof (await run("/mnt/media/a/plain", null)), "string");
+  assert.equal(typeof (await run("/mnt/media/a/plain", join(rootfs, "missing"))), "string");
+});
+
+test("host check: existing named volume refused, 404 allowed, other errors refused", async () => {
+  const run = (inspectVolume: () => Promise<unknown>) =>
+    checkCreateSpecHost(spec("app_data"), { inspectVolume });
+  assert.equal(typeof (await run(() => Promise.resolve({}))), "string");
+  assert.equal(await run(notFound), null);
+  assert.equal(typeof (await run(() => Promise.reject({ statusCode: 500 }))), "string");
+  assert.equal(typeof (await run(() => Promise.reject(new Error("down")))), "string");
 });
