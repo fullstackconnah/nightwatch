@@ -185,6 +185,8 @@ export interface AppConfig {
     kioskPin?: string;
     hermesApiUrl?: string;
     hermesApiToken?: string;
+    orchestraUrl?: string;
+    orchestraToken?: string;
     voiceServerUrl?: string;
     voiceTtsUrl?: string;
     voiceSttModel?: string;
