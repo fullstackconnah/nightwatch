@@ -57,7 +57,7 @@ function DetailBody({ data, error, loading, onRetry }: {
       <>
         <div className="space-y-1">
           <div className="microlabel">checkpoint</div>
-          <p className={`whitespace-pre-line text-xs [overflow-wrap:anywhere] ${cp.empty ? "text-ink-dim" : "text-ink"}`}>{cp.text}</p>
+          <p data-checkpoint="" className={`whitespace-pre-line text-xs [overflow-wrap:anywhere] ${cp.empty ? "text-ink-dim" : "text-ink"}`}>{cp.text}</p>
           {cp.cut && <p className="text-[0.65rem] text-ink-faint">The service keeps the first 300 characters.</p>}
         </div>
         <div className="space-y-1">
