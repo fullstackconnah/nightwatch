@@ -1,10 +1,13 @@
 // Exactly what an elevated kiosk calls (kiosk-admin-panel + KioskVoicePanel):
-// the container list, container lifecycle actions (the route itself accepts only
+// the container list, the voice-panel Hermes status/run/job calls, container lifecycle actions (the route itself accepts only
 // start/stop/restart/pause/unpause — no remove or kill), and the voice proxy.
 // Everything else needs a real session.
 const ELEVATED_KIOSK_ALLOWED: ReadonlyArray<readonly [method: string, path: RegExp]> = [
   ["GET", /^\/api\/docker\/containers$/],
   ["POST", /^\/api\/docker\/containers\/[^/]+\/action$/],
+  ["GET", /^\/api\/hermes-ctl\/status$/],
+  ["POST", /^\/api\/hermes-ctl\/run$/], // the route limits elevation-only callers to kind "ask"
+  ["GET", /^\/api\/hermes-ctl\/jobs\/[^/]+$/],
   ["GET", /^\/api\/voice\/status$/],
   ["POST", /^\/api\/voice\/(transcribe|speak)$/],
 ];
