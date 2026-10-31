@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   createAndStartContainer,
   listContainersWithRuntime,
+  refuseCreate,
   type CreateContainerSpec,
 } from "@/lib/docker";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
@@ -50,11 +51,18 @@ export async function POST(req: NextRequest) {
     spec.ports ||= [];
     spec.env ||= [];
     spec.volumes ||= [];
+    const refusal = await refuseCreate(spec);
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 400 });
     const id = await createAndStartContainer(spec);
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "create failed" },
+      {
+        error:
+          e instanceof Error
+            ? e.message + (/bind source path does not exist/i.test(e.message) ? " Bind sources must already exist on the host; they are not created." : "")
+            : "create failed",
+      },
       { status: 500 },
     );
   }
