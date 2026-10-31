@@ -47,6 +47,8 @@ export interface SettingsFullResponse {
     mcpEndpoint: string;
     kioskPinConfigured: boolean;
     hermesApiConfigured?: boolean;
+    orchestraConfigured?: boolean;
+    orchestraTokenSet?: boolean;
     ssoConfigured?: boolean;
     ssoIssuerHost?: string | null;
   };

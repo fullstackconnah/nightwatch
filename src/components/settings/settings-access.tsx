@@ -22,7 +22,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
-import { postJson } from "@/lib/client";
+import { ApiError, postJson } from "@/lib/client";
+import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { CopyButton } from "@/components/settings/settings-reference";
 import { SecretField, useSettingsFull, type SettingsFullResponse } from "@/components/settings/settings-integrations";
 
@@ -273,6 +274,87 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
   );
 }
 
+function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+  const configured = data?.meta.orchestraConfigured ?? false;
+  const stored = data?.config.system?.orchestraUrl ?? "";
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setUrl(stored);
+      setSeeded(true);
+    }
+  }, [data, seeded, stored]);
+
+  const changed = url.trim() !== stored || token.trim() !== "";
+
+  async function handleSave() {
+    if (url.trim() && !/^https?:\/\/\S+$/.test(url.trim())) {
+      setError("Enter a full address, for example http://192.0.2.10:7420.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const body: Record<string, unknown> = { orchestraUrl: url };
+      if (token.trim()) body.orchestraToken = token.trim();
+      await postJson("/api/settings/system", body);
+      resetOrchestraStatus(); // a new service must not show the old one's last-known cards
+      await mutate();
+      setToken("");
+      setSaveVersion((v) => v + 1);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof ApiError && e.status === 400 ? e.message : `Could not save. ${e instanceof Error ? e.message : ""}`.trim());
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="self-start">
+      <CardHeader>
+        <CardTitle>Orchestra</CardTitle>
+        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-[0.7rem] text-ink-dim">
+          Connects the Orchestra page to the status service on the PC. Saved on this server; the token is never sent back to
+          the browser.
+        </p>
+        <Field
+          label="Service URL"
+          hint="The PC's LAN address and port, exactly as the service binds them. The service refuses any other host name."
+        >
+          <Input placeholder="http://192.0.2.10:7420" value={url} onChange={(e) => setUrl(e.target.value)} />
+        </Field>
+        <SecretField
+          key={saveVersion}
+          label="Service token"
+          configured={Boolean(data?.meta.orchestraTokenSet)}
+          updatedAt={data?.system.updatedAt}
+          draft={token}
+          onDraftChange={setToken}
+        />
+        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {saved && <Badge variant="ok">saved</Badge>}
+          <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
+            <Save size={13} /> Save
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SsoCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
   const secretConfigured = data?.system.oidcClientSecretConfigured ?? false;
   const [issuer, setIssuer] = useState("");
@@ -509,6 +591,7 @@ export function SettingsAccess() {
           <ChangePasswordCard data={data} />
           <SystemConfigCard data={data} mutate={mutate} />
           <SsoCard data={data} mutate={mutate} />
+          <OrchestraSettingsCard data={data} mutate={mutate} />
           <SystemAccessPanel data={data} />
         </div>
       )}
