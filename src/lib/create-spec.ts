@@ -41,15 +41,21 @@ export function bindRoots(): string[] {
 // Networks a created container may join; blank means bridge.
 export function createNetworks(): string[] {
   const raw = process.env.CREATE_NETWORKS || "bridge";
-  return raw.split(",").map((n) => n.trim()).filter(Boolean);
+  // Never joinable even if listed: shared host/none stacks, another container's stack, internal-only networks.
+  return raw.split(",").map((n) => n.trim()).filter((n) => n && n !== "host" && n !== "none" && !n.startsWith("container:") && !n.endsWith("_internal"));
 }
 
 export const createNetwork = (spec: Checkable) => spec.network?.trim() || "bridge";
 
 export function validateCreateSpec(spec: Checkable): string | null {
   const roots = bindRoots();
-  // Same row filter createAndStartContainer applies when building Binds.
+  // Same row filter createAndStartContainer applies when building Mounts.
   for (const v of spec.volumes.filter((v) => v.host && v.container)) {
+    // ":" could smuggle extra fields into a mount string; Mounts has none, but refuse anyway.
+    if (v.host.includes(":") || v.container.includes(":")) return `Paths may not contain ":" ("${v.host}" -> "${v.container}").`;
+    if (!v.container.startsWith("/") || normalise(v.container) !== v.container) {
+      return `Container path "${v.container}" must be absolute, without "..", "." or repeated slashes.`;
+    }
     // Named Docker volume.
     if (!v.host.startsWith("/") && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(v.host)) continue;
     if (!v.host.startsWith("/")) return `Host path "${v.host}" must be absolute.`;
@@ -67,6 +73,19 @@ export function validateCreateSpec(spec: Checkable): string | null {
     return `Network "${net}" is not allowed. Allowed: ${createNetworks().join(", ")}.`;
   }
   return null;
+}
+
+// Bind mounts are always read-only (the spec's readonly flag is ignored for them) and use the same
+// normalised source the guard checked. Mounts, unlike Binds, makes Docker fail on a missing source
+// instead of creating it as root: wanted, so a bad path fails closed.
+export function buildMounts(volumes: { host: string; container: string; readonly?: boolean }[]) {
+  return volumes
+    .filter((v) => v.host && v.container)
+    .map((v) =>
+      v.host.startsWith("/")
+        ? { Type: "bind" as const, Source: normalise(v.host), Target: v.container, ReadOnly: true }
+        : { Type: "volume" as const, Source: v.host, Target: v.container, ReadOnly: !!v.readonly },
+    );
 }
 
 export interface CreateDeps {

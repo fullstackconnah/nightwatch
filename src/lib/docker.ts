@@ -1,7 +1,7 @@
 import Docker from "dockerode";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
-import { checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
+import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -831,9 +831,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
     ExposedPorts: exposedPorts,
     HostConfig: {
       PortBindings: portBindings,
-      Binds: spec.volumes
-        .filter((v) => v.host && v.container)
-        .map((v) => `${v.host}:${v.container}${v.readonly ? ":ro" : ""}`),
+      Mounts: buildMounts(spec.volumes),
       RestartPolicy: { Name: spec.restartPolicy || "unless-stopped" },
       NetworkMode: createNetwork(spec),
     },

@@ -57,7 +57,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "create failed" },
+      {
+        error:
+          e instanceof Error
+            ? e.message + (/bind source path does not exist/i.test(e.message) ? " Bind sources must already exist on the host; they are not created." : "")
+            : "create failed",
+      },
       { status: 500 },
     );
   }

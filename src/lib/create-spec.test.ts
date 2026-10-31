@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { checkCreateSpecHost, validateCreateSpec } from "./create-spec.ts";
+import { buildMounts, checkCreateSpecHost, validateCreateSpec } from "./create-spec.ts";
 
 const spec = (host: string, network?: string) => ({
   image: "nginx",
@@ -166,4 +166,44 @@ test("host check: existing named volume refused, 404 allowed, other errors refus
   assert.equal(await run(notFound), null);
   assert.equal(typeof (await run(() => Promise.reject({ statusCode: 500 }))), "string");
   assert.equal(typeof (await run(() => Promise.reject(new Error("down")))), "string");
+});
+
+const withVols = (volumes: { host: string; container: string; readonly?: boolean }[]) => ({ image: "nginx", ports: [], env: [], volumes });
+
+test("colon in a host or container path is refused (no Binds string to split)", () => {
+  assert.ok(validateCreateSpec(withVols([{ host: "/mnt/media/../../..:/../mnt/media/z", container: "/data" }])));
+  assert.ok(validateCreateSpec(withVols([{ host: "/mnt/media/x", container: "/data:/etc" }])));
+  assert.ok(validateCreateSpec(withVols([{ host: "/mnt/media/x", container: "/data:ro" }])));
+});
+
+test("container path must be absolute and already normalised", () => {
+  for (const c of ["data", "/a/../b", "/a/./b", "/a//b", "/a/"]) {
+    assert.ok(validateCreateSpec(withVols([{ host: "/mnt/media/x", container: c }])), c);
+  }
+  assert.equal(validateCreateSpec(withVols([{ host: "/mnt/media/x", container: "/data" }])), null);
+});
+
+test("binds become read-only Mounts with the checked source; the readonly flag is ignored", () => {
+  for (const readonly of [undefined, false, true]) {
+    const m = buildMounts([{ host: "/mnt/media//x/", container: "/data", readonly }]);
+    assert.deepEqual(m, [{ Type: "bind", Source: "/mnt/media/x", Target: "/data", ReadOnly: true }]);
+  }
+});
+
+test("named volumes become volume Mounts and keep their readonly flag", () => {
+  assert.deepEqual(buildMounts([{ host: "vol1", container: "/d", readonly: false }, { host: "", container: "/skip" }]), [
+    { Type: "volume", Source: "vol1", Target: "/d", ReadOnly: false },
+  ]);
+});
+
+test("CREATE_NETWORKS never lets host, none, container: or *_internal through", () => {
+  process.env.CREATE_NETWORKS = "bridge,host,none,container:abc,x_internal";
+  try {
+    assert.equal(validateCreateSpec(spec("/mnt/media/x", "bridge")), null);
+    for (const n of ["host", "none", "container:abc", "x_internal"]) {
+      assert.ok(validateCreateSpec(spec("/mnt/media/x", n)), n);
+    }
+  } finally {
+    delete process.env.CREATE_NETWORKS;
+  }
 });
