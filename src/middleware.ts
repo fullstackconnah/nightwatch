@@ -41,6 +41,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Everything except static assets.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  // Everything except static assets, and the Minecraft pack upload: Next 15.5
+  // buffers (and truncates at 10 MB) the body of any matched path, but that
+  // route streams ~300 MB zips. It authenticates itself (lib/upload-auth.ts).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|api/minecraft/instances/upload$).*)"],
 };
