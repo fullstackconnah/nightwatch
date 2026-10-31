@@ -1,6 +1,7 @@
 import Docker from "dockerode";
-import { getHostVitals } from "@/lib/host-metrics";
+import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
+import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -801,6 +802,10 @@ export interface CreateContainerSpec {
 }
 
 export async function createAndStartContainer(spec: CreateContainerSpec): Promise<string> {
+  // Defence in depth: the route checks too, but this is the one place that mounts.
+  const refusal = validateCreateSpec(spec);
+  if (refusal) throw new Error(refusal);
+
   // Pull the image first (no-op if present). Requires IMAGES=1 + POST=1 on the proxy.
   await new Promise<void>((resolve, reject) => {
     docker.pull(spec.image, (err: Error | null, stream: NodeJS.ReadableStream) => {
@@ -826,13 +831,22 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
     ExposedPorts: exposedPorts,
     HostConfig: {
       PortBindings: portBindings,
-      Binds: spec.volumes
-        .filter((v) => v.host && v.container)
-        .map((v) => `${v.host}:${v.container}${v.readonly ? ":ro" : ""}`),
+      Mounts: buildMounts(spec.volumes) as never, // @types/dockerode lacks BindOptions.ReadOnlyForceRecursive
       RestartPolicy: { Name: spec.restartPolicy || "unless-stopped" },
-      NetworkMode: spec.network || undefined,
+      NetworkMode: createNetwork(spec),
     },
   });
   await container.start();
   return container.id;
+}
+
+// Full create policy: the pure rules, then the checks that need the host rootfs and Docker.
+export async function refuseCreate(spec: CreateContainerSpec): Promise<string | null> {
+  return (
+    validateCreateSpec(spec) ??
+    (await checkCreateSpecHost(spec, {
+      rootfs: HOST_ROOTFS,
+      inspectVolume: (n) => docker.getVolume(n).inspect(),
+    }))
+  );
 }
