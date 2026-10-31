@@ -237,7 +237,7 @@ export function loadConfig(): AppConfig {
 }
 
 export function saveConfig(config: AppConfig): void {
-  writeJsonAtomic(configPath(), config);
+  writeJsonAtomic(configPath(), config, 0o600);
   cache = null;
 }
 
@@ -246,10 +246,12 @@ export function saveConfig(config: AppConfig): void {
  *  concurrently-hot-reading process (the daemon's readers below, and this
  *  module's own loadConfig()) — a reader never observes a half-written
  *  file, only the old version or the fully-written new one. */
-function writeJsonAtomic(filePath: string, data: unknown): void {
+function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = filePath + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf8");
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: "utf8", mode });
+  // writeFileSync's mode applies only when it creates the file; chmod also covers a leftover .tmp
+  if (mode !== undefined) fs.chmodSync(tmp, mode);
   fs.renameSync(tmp, filePath);
 }
 
