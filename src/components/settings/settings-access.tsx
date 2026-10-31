@@ -361,7 +361,13 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
         />
         <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
           {data?.meta.orchestraTokenSet ? (
-            <ClearControl step={clearStep} setStep={setClearStep} label="Orchestra" onConfirm={handleClear} />
+            <ClearControl
+              step={clearStep}
+              setStep={setClearStep}
+              label="Orchestra"
+              message="Remove the saved Orchestra token? You'll need to enter it again to reconnect."
+              onConfirm={handleClear}
+            />
           ) : (
             <span />
           )}
