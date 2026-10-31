@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfig, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,9 @@ interface Body {
   hermesApiUrl?: unknown;
   hermesApiToken?: unknown;
   clearHermesApiToken?: unknown;
+
+  orchestraUrl?: unknown;
+  orchestraToken?: unknown;
 
   voiceServerUrl?: unknown;
   voiceTtsUrl?: unknown;
@@ -104,6 +108,10 @@ export async function POST(req: NextRequest) {
     ? undefined
     : mergedSecret(str(body.hermesApiToken), existing.hermesApiToken);
 
+  // --- Orchestra ----------------------------------------------------------
+  const orchestra = mergeOrchestraSettings(body, existing);
+  if ("error" in orchestra) return NextResponse.json({ error: orchestra.error }, { status: 400 });
+
   // --- Voice --------------------------------------------------------------
   const voiceServerUrl = "voiceServerUrl" in body ? (str(body.voiceServerUrl) ?? existing.voiceServerUrl) : existing.voiceServerUrl;
   const voiceTtsUrl = "voiceTtsUrl" in body ? (str(body.voiceTtsUrl) ?? existing.voiceTtsUrl) : existing.voiceTtsUrl;
@@ -126,6 +134,8 @@ export async function POST(req: NextRequest) {
       kioskPin,
       hermesApiUrl,
       hermesApiToken,
+      orchestraUrl: orchestra.orchestraUrl,
+      orchestraToken: orchestra.orchestraToken,
       voiceServerUrl,
       voiceTtsUrl,
       voiceSttModel,
@@ -170,6 +180,9 @@ export async function POST(req: NextRequest) {
       kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
       hermesApiConfigured: Boolean(
         systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
+      ),
+      orchestraConfigured: Boolean(
+        systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"),
       ),
       oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     },

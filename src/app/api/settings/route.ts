@@ -11,6 +11,7 @@ import {
 } from "@/lib/config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
+import { publicSystem } from "@/lib/orchestra-settings";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 
 export const dynamic = "force-dynamic";
@@ -56,21 +57,12 @@ function sanitizeConfig(config: AppConfig): AppConfig {
     // adminPasswordHash never leave the server — same bar as every secret
     // above, applied field-by-field because system is one flat block rather
     // than one block per service.
-    system: config.system
-      ? {
-          hermesApiUrl: config.system.hermesApiUrl,
-          voiceServerUrl: config.system.voiceServerUrl,
-          voiceTtsUrl: config.system.voiceTtsUrl,
-          voiceSttModel: config.system.voiceSttModel,
-          voiceTtsModel: config.system.voiceTtsModel,
-          voiceTtsVoice: config.system.voiceTtsVoice,
-          oidcIssuer: config.system.oidcIssuer,
-          oidcClientId: config.system.oidcClientId,
-          updatedAt: config.system.updatedAt,
-        }
-      : config.system,
+    system: publicSystem(config.system),
   };
 }
+
+const orchestraConfigured = () =>
+  Boolean(systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"));
 
 function integrationsMeta(config: AppConfig) {
   const status = (block: { updatedAt?: string } | undefined, secretPresent: boolean): IntegrationStatus => ({
@@ -101,6 +93,7 @@ function systemMeta(config: AppConfig) {
       systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
     ),
     voiceConfigured: Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL")),
+    orchestraConfigured: orchestraConfigured(),
     oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     updatedAt: config.system?.updatedAt,
   };
@@ -163,6 +156,7 @@ export async function GET(req: NextRequest) {
       // never the value" idiom — src/lib/oidc.ts is the only place the OIDC
       // client secret is ever read for real. Host only, never the full
       // issuer URL or the secret, mirrors mcpEndpoint's "safe to show" bar.
+      orchestraConfigured: orchestraConfigured(),
       ssoConfigured: oidcConfig() !== null,
       ssoIssuerHost: oidcIssuerHost(),
     },
