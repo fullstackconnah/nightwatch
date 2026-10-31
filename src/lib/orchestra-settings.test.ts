@@ -26,6 +26,13 @@ describe("mergeOrchestraSettings", () => {
     assert.equal((mergeOrchestraSettings({ orchestraUrl: "" }, existing) as { orchestraUrl: string }).orchestraUrl, "");
   });
 
+  it("clearOrchestraToken drops the stored token and leaves the url alone", () => {
+    assert.deepEqual(mergeOrchestraSettings({ clearOrchestraToken: true }, existing), { orchestraUrl: existing.orchestraUrl, orchestraToken: undefined });
+    // a clear wins over a typed token, like clearMcpToken
+    assert.equal((mergeOrchestraSettings({ clearOrchestraToken: true, orchestraToken: "x" }, existing) as { orchestraToken?: string }).orchestraToken, undefined);
+    assert.equal((mergeOrchestraSettings({ clearOrchestraToken: false }, existing) as { orchestraToken?: string }).orchestraToken, "old-token");
+  });
+
   it("rejects a url that is not http(s)", () => {
     for (const bad of ["ftp://x:1", "192.0.2.10:7420", "not a url", "javascript:alert(1)"]) {
       assert.deepEqual(mergeOrchestraSettings({ orchestraUrl: bad }, existing), { error: "orchestraUrl must be an http(s) URL" });
@@ -55,6 +62,9 @@ describe("system route wiring (source-level)", () => {
     const block = /system: \{[\s\S]*?updatedAt: now,/.exec(src)?.[0] ?? "";
     assert.match(block, /orchestraUrl/);
     assert.match(block, /orchestraToken/);
+  });
+  it("declares clearOrchestraToken on the body type", () => {
+    assert.match(src, /clearOrchestraToken\?: unknown/);
   });
 });
 

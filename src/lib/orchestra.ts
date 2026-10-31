@@ -53,7 +53,7 @@ async function get(creds: OrchestraCredentials, path: string): Promise<Fetched> 
     if (!res.ok) return { kind: "unreachable", detail: `The orchestra service answered HTTP ${res.status}.` };
     return { kind: "ok", status: res.status, body: await res.json() };
   } catch {
-    return { kind: "unreachable", detail: `The orchestra service did not answer within ${TIMEOUT_MS / 1000}s (the PC may be off or asleep).` };
+    return { kind: "unreachable", detail: `The orchestra service did not answer within ${TIMEOUT_MS / 1000}s.` };
   }
 }
 
@@ -95,7 +95,7 @@ function mapDetail(raw: unknown): OrchestratorDetail | null {
     const q = obj(e).quietMin;
     return name ? [{ name, quietMin: typeof q === "number" && Number.isFinite(q) ? q : null }] : [];
   });
-  return { ...base, addDirs: strings(r.addDirs), plugins: strings(r.plugins), checkpoint: str(r.checkpoint), inFlight };
+  return { ...base, addDirs: strings(r.addDirs), plugins: strings(r.plugins), checkpoint: str(r.checkpoint), sessionId: str(r.sessionId), inFlight };
 }
 
 // --- snapshots -------------------------------------------------------------------
