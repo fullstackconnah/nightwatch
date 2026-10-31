@@ -11,7 +11,9 @@ import {
   verifyKioskElevationToken,
   verifySessionToken,
 } from "./auth.ts";
-import { kioskMayCall } from "./kiosk-access.ts";
+import { SignJWT } from "jose";
+import { secretKey } from "./auth.ts";
+import { jobVisible, kioskMayCall, runAllowed } from "./kiosk-access.ts";
 import { isContainerId } from "./container-id.ts";
 
 describe("isContainerId", () => {
@@ -131,6 +133,30 @@ describe("isRequestAuthenticated", () => {
     assert.equal(await verifyOidcFlowToken(await createSessionToken()), null);
     assert.equal(await verifyOidcFlowToken(await createKioskElevationToken()), null);
     assert.ok(await verifyOidcFlowToken(flow));
+  });
+
+  // Right secret, every other claim valid: only the `typ` check can refuse these.
+  const sign = (claims: Record<string, unknown>) =>
+    new SignJWT(claims).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("60s").sign(secretKey());
+
+  it("each verifier refuses a wrong or missing typ on its own", async () => {
+    assert.ok(!(await verifySessionToken(await sign({ sub: "admin", typ: "kiosk" }))));
+    assert.ok(!(await verifySessionToken(await sign({ sub: "admin" }))));
+    assert.ok(!(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "session" }))));
+    assert.ok(!(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true }))));
+    const flow = { state: "s", nonce: "n", verifier: "v" };
+    assert.equal(await verifyOidcFlowToken(await sign({ ...flow, typ: "session" })), null);
+    assert.equal(await verifyOidcFlowToken(await sign(flow)), null);
+  });
+
+  it("an elevation-only caller may start or read only ask jobs", () => {
+    for (const fn of [runAllowed, jobVisible]) {
+      assert.equal(fn("ask", false), true);
+      assert.equal(fn("digest", false), false);
+      assert.equal(fn("alert-test", false), false);
+      assert.equal(fn("bogus", false), false);
+      for (const kind of ["ask", "digest", "alert-test"]) assert.equal(fn(kind, true), true);
+    }
   });
 
   it("no cookie passes nothing", async () => {

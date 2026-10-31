@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { runAllowed } from "@/lib/kiosk-access";
 import { runHermesJob, type HermesRunResult } from "@/lib/hermes-ctl";
 import type { HermesJobKind } from "@/lib/types/hermes";
 
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
 
   // Middleware lets a PIN-elevated kiosk reach this route and the kiosk only asks questions, so
   // without a real session nothing but "ask" (no digest, no alert-test) is allowed.
-  if (body.kind !== "ask" && !(await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value))) {
+  if (!runAllowed(body.kind, await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value))) {
     return NextResponse.json({ error: "kind not available to the kiosk" }, { status: 403 });
   }
 

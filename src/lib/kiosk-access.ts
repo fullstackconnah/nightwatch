@@ -15,3 +15,12 @@ const ELEVATED_KIOSK_ALLOWED: ReadonlyArray<readonly [method: string, path: RegE
 export function kioskMayCall(method: string, pathname: string): boolean {
   return ELEVATED_KIOSK_ALLOWED.some(([m, re]) => m === method && re.test(pathname));
 }
+
+// Hermes job kinds a caller without a real session (kiosk PIN elevation only) may start or read: only "ask".
+// Unknown kinds are refused.
+export function runAllowed(kind: string, hasSession: boolean): boolean {
+  return hasSession || kind === "ask";
+}
+
+// Same rule for reading a job back (/api/hermes-ctl/jobs/[id]); the route answers 404 when this is false.
+export const jobVisible = runAllowed;
