@@ -70,9 +70,12 @@ ssh server "cd /mnt/docker/stacks/homelab-dashboard-test \
 
 ## Quality gate
 
-No ESLint config (`npm run lint` drops into an interactive setup prompt) and no test
-runner anywhere in the repo. `npx tsc --noEmit && npm run build` is the only automated
-gate — everything else is browser-verified on the test stack.
+No ESLint config (`npm run lint` drops into an interactive setup prompt). The gates are
+`npx tsc --noEmit`, `npm test` (node's built-in runner over `src/**/*.test.ts`) and
+`npm run build`. GitHub Actions (`.github/workflows/ci.yml`, job `ci`) runs all three on
+every PR and on pushes to `main`; PRs merge only on green CI for their exact head, then
+deploy and health-check after the merge. Everything else is browser-verified on the test
+stack.
 
 ## Gotchas
 
