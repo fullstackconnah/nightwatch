@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "@/lib/auth";
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
@@ -18,6 +19,11 @@ const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // Before the public-path return so login/kiosk/logout writes are covered too.
+  // /api/mcp uses a bearer token, no cookie, so there is nothing to forge.
+  if (pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/") && crossSiteWriteRefused(req.method, req.headers)) {
+    return NextResponse.json({ error: "cross-site request refused" }, { status: 403 });
+  }
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
 
   // A real session passes everywhere. A kiosk PIN elevation passes only the
