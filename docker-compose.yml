@@ -56,6 +56,7 @@ services:
       - HOST_NAME=homelab # /host/proc hostname resolves to the container's UTS namespace, not the host's
       - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
+      # - CREATE_BIND_ROOTS=/mnt/docker/stacks,/mnt/media # create-container bind allowlist (default shown)
       - NVIDIA_VISIBLE_DEVICES=all
       # utility = nvidia-smi/NVML only. No CUDA, no video encode: this container
       # only ever reads counters, so it has no business holding an encode session.
