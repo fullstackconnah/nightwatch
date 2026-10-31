@@ -56,7 +56,8 @@ git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
    scp data/config.json homelab@192.168.1.70:/tmp/hd-config.json
    ssh homelab@192.168.1.70 "sudo mkdir -p /mnt/docker/stacks/homelab-dashboard/data \
      && sudo mv /tmp/hd-config.json /mnt/docker/stacks/homelab-dashboard/data/config.json \
-     && sudo chown -R 1000:1000 /mnt/docker/stacks/homelab-dashboard/data"
+     && sudo chown -R 1000:1000 /mnt/docker/stacks/homelab-dashboard/data \
+     && sudo chmod 600 /mnt/docker/stacks/homelab-dashboard/data/config.json"
    ```
 
    (uid 1000 = the `node` user in the container; the data dir must stay
