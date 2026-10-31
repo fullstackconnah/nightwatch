@@ -21,7 +21,7 @@ export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // Before the public-path return so login/kiosk/logout writes are covered too.
   // /api/mcp uses a bearer token, no cookie, so there is nothing to forge.
-  if (!pathname.startsWith("/api/mcp") && crossSiteWriteRefused(req.method, req.headers)) {
+  if (pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/") && crossSiteWriteRefused(req.method, req.headers)) {
     return NextResponse.json({ error: "cross-site request refused" }, { status: 403 });
   }
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();

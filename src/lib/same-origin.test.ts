@@ -28,6 +28,7 @@ test("other write methods behave like POST", () => {
 });
 
 test("origin fallback compares host:port", () => {
+  // plain-HTTP production: another port on the same IP is refused
   assert.equal(crossSiteWriteRefused("POST", h({ ...HOST, origin: "http://10.0.0.5:8080" })), true);
   assert.equal(crossSiteWriteRefused("POST", h({ ...HOST, origin: "http://10.0.0.5:3005" })), false);
   assert.equal(crossSiteWriteRefused("POST", h({ ...HOST, origin: "null" })), true);
@@ -38,11 +39,19 @@ test("origin fallback compares host:port", () => {
   );
 });
 
+test("origin fallback: x-forwarded-host wins over host, first value only", () => {
+  assert.equal(crossSiteWriteRefused("POST", h({ ...HOST, "x-forwarded-host": "evil.test", origin: "http://10.0.0.5:3005" })), true);
+  assert.equal(crossSiteWriteRefused("POST", h({ ...HOST, "x-forwarded-host": "10.0.0.5:3005, evil.test", origin: "http://10.0.0.5:3005" })), false);
+});
+
 test("no sec-fetch-site or origin: allowed (non-browser client)", () => {
   assert.equal(crossSiteWriteRefused("POST", h(HOST)), false);
 });
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+
+// the whole guarded statement, so a dropped return or an ignored result fails
+const REFUSE = /if \(.*crossSiteWriteRefused\(req\.method, req\.headers\)\) \{\s*return NextResponse\.json\({ error: "cross-site request refused" }, { status: 403 }\);/;
 
 test("middleware calls the guard before PUBLIC_PATHS and exempts /api/mcp", () => {
   const src = read("../middleware.ts");
@@ -50,8 +59,9 @@ test("middleware calls the guard before PUBLIC_PATHS and exempts /api/mcp", () =
   const pub = src.indexOf("PUBLIC_PATHS.some");
   assert.ok(guard > 0, "guard not called");
   assert.ok(guard < pub, "guard must run before the PUBLIC_PATHS early return");
-  assert.match(src, /!pathname\.startsWith\("\/api\/mcp"\)/);
-  assert.match(src, /cross-site request refused/);
+  assert.ok(src.includes('pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/")'), "exact-or-subpath mcp exemption");
+  assert.doesNotMatch(src, /startsWith\("\/api\/mcp"\)/, "loose mcp prefix exemption must stay gone");
+  assert.match(src, REFUSE);
 });
 
 test("upload route calls the guard before uploadAuthorized", () => {
@@ -59,4 +69,6 @@ test("upload route calls the guard before uploadAuthorized", () => {
   const guard = src.indexOf("crossSiteWriteRefused(");
   assert.ok(guard > 0, "guard not called");
   assert.ok(guard < src.indexOf("await uploadAuthorized("), "guard must precede uploadAuthorized");
+  assert.match(src, REFUSE);
+  assert.match(src, REFUSE);
 });
