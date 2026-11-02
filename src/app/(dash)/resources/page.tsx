@@ -796,7 +796,7 @@ function ResourcesPageInner() {
           <div className="font-mono text-ink mt-0.5">{formatPercent(data?.totals.cpuPct, 1)}</div>
         </div>
         <div>
-          <div className="microlabel">MEM</div>
+          <div className="microlabel">containers MEM</div>
           <div className="font-mono text-ink mt-0.5">
             {formatBytes(data?.totals.memBytes)} / {formatBytes(data?.totals.memTotal)}
           </div>

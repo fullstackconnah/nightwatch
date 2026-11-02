@@ -161,9 +161,9 @@ export function ResourceOverview({
 }
 
 /* ---------------------------------------------------------------------------
- * Metrics history — CPU/MEM tabs only. LIVE reuses the 60s trend Sparkline
- * above (via OverviewModel.series); 1H/24H/7D render a longer multi-series
- * chart here, fed by /api/telemetry/history (see resources/page.tsx, which
+ * Metrics history — CPU/MEM tabs only. Every range (LIVE, 1H, 24H, 7D)
+ * renders the same multi-series HistoryChart; LIVE is fed the SSE ring, the
+ * others the buckets fetched from /api/telemetry/history (see resources/page.tsx, which
  * owns the fetch and the range/selection state — this file only renders).
  * ------------------------------------------------------------------------- */
 
