@@ -1905,17 +1905,20 @@ body {
     width: 100%;
   }
 }
-.wl-rows {
+.wl-rows,
+.pt-rows {
   position: relative;
 }
-.wl-rows > .wl-item {
+.wl-rows > .wl-item,
+.pt-rows > .pt-item {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   transition: transform 420ms var(--ease-calm);
 }
-.wl-rows > .wl-item[data-new] {
+.wl-rows > .wl-item[data-new],
+.pt-rows > .pt-item[data-new] {
   transition: none;
 }
 .wl-rowbtn {
@@ -2123,6 +2126,322 @@ body {
   .wl-fill,
   .wl-chev,
   .wl-fold > .wl-fold-chev {
+    transition: none;
+  }
+}
+
+/* ── the ALL tab (resources, grouped processes) ───────────────────────────
+   Same row-move contract as the watchlist: absolute rows, translateY only
+   (rules shared above). Group rows 36px (56 at 390), process rows 32px
+   (56 at 390). Threads show from 768. The disk i/o cell belongs to the group;
+   process rows leave it empty because Linux has no per-process figure. */
+.pt-panel {
+  --pt-g: 36px;
+  --pt-p: 32px;
+  overflow: hidden;
+  transition: opacity 200ms var(--ease-calm);
+}
+.pt-panel[data-stale] {
+  opacity: 0.55;
+}
+@media (max-width: 767px) {
+  .pt-panel {
+    --pt-g: 56px;
+    --pt-p: 56px;
+  }
+}
+.pt-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.pt-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.pt-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 100%;
+  order: 3;
+}
+.pt-ctl {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+  width: 100%;
+  order: 4;
+}
+@media (min-width: 768px) {
+  .pt-filter {
+    flex: 0 1 18rem;
+    order: 0;
+  }
+  .pt-ctl {
+    width: auto;
+    order: 0;
+  }
+}
+.pt-input {
+  padding-left: 1.75rem;
+  padding-right: 2.75rem;
+}
+.pt-search {
+  position: absolute;
+  left: 0.625rem;
+  color: var(--color-ink-faint);
+  pointer-events: none;
+}
+.pt-kbd {
+  display: none;
+  position: absolute;
+  right: 0.5rem;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  line-height: 1;
+  color: var(--color-ink-faint);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+@media (min-width: 768px) {
+  .pt-kbd {
+    display: block;
+  }
+}
+.pt-clear {
+  position: absolute;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink-faint);
+  cursor: pointer;
+}
+.pt-clear:hover {
+  color: var(--color-ink);
+}
+@media (min-width: 768px) {
+  .pt-clear {
+    width: 32px;
+    height: 32px;
+  }
+}
+.pt-colhead,
+.pt-grow,
+.pt-pin {
+  display: grid;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0 1rem;
+  grid-template-columns: 8px minmax(0, 1fr) 56px 76px 84px 96px 56px 16px;
+}
+.pt-colhead {
+  height: 28px;
+  border-bottom: 1px solid var(--color-line);
+  font-size: 0.625rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+.pt-colhead > span {
+  text-align: right;
+  white-space: nowrap;
+}
+.pt-colhead > .pt-ch-name {
+  grid-column: 1 / 3;
+  text-align: left;
+}
+.pt-c {
+  text-align: right;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.pt-grow {
+  width: 100%;
+  height: var(--pt-g);
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 -1px 0 var(--color-line);
+  grid-template-areas: "dot name procs cpu mem io thr chev";
+}
+.pt-grow:hover,
+.pt-item[data-open] > .pt-grow {
+  background: var(--color-panel-2);
+}
+.pt-grow:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+.pt-dot {
+  grid-area: dot;
+}
+.pt-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pt-procs {
+  grid-area: procs;
+}
+.pt-cpu {
+  grid-area: cpu;
+}
+.pt-mem {
+  grid-area: mem;
+}
+.pt-io {
+  grid-area: io;
+}
+.pt-thr {
+  grid-area: thr;
+}
+.pt-unit {
+  display: none;
+}
+.pt-chev {
+  grid-area: chev;
+  color: var(--color-ink-faint);
+  transition: transform 200ms var(--ease-calm);
+}
+.pt-item[data-open] .pt-chev {
+  transform: rotate(180deg);
+}
+/* process rows: pid sits where the group name starts, so the right-hand columns line up with the group row */
+.pt-proc {
+  height: var(--pt-p);
+  background: color-mix(in srgb, var(--color-bg) 40%, var(--color-panel));
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+.pt-pin {
+  height: 100%;
+  padding-left: calc(1rem + 8px + 0.75rem);
+  grid-template-columns: 48px minmax(0, 1fr) 56px 76px 84px 96px 56px 16px;
+  grid-template-areas: "pid name state cpu mem . thr .";
+}
+.pt-pid {
+  grid-area: pid;
+  font-size: 0.72rem;
+}
+.pt-pname {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+.pt-state {
+  grid-area: state;
+  text-align: right;
+  font-size: 0.72rem;
+}
+.pt-pcpu {
+  grid-area: cpu;
+}
+.pt-pmem {
+  grid-area: mem;
+}
+.pt-pthr {
+  grid-area: thr;
+}
+.pt-skel {
+  display: flex;
+  align-items: center;
+  height: var(--pt-g);
+  padding: 0 1rem;
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+/* 390: two lines. Groups: dot, name, procs, chevron / cpu, mem, disk i/o. Processes: pid (before comm), comm, state / cpu, mem; column 4 stays empty (7.3). */
+@media (max-width: 767px) {
+  .pt-colhead,
+  .pt-grow,
+  .pt-pin {
+    grid-template-columns: 16px repeat(3, minmax(0, 1fr)) 16px;
+    column-gap: 0.5rem;
+    row-gap: 0.25rem;
+  }
+  .pt-ch-name,
+  .pt-ch-procs,
+  .pt-ch-thr {
+    display: none;
+  }
+  .pt-ch-cpu {
+    grid-column: 2;
+  }
+  .pt-ch-mem {
+    grid-column: 3;
+  }
+  .pt-ch-io {
+    grid-column: 4;
+  }
+  .pt-colhead > span {
+    text-align: left;
+  }
+  .pt-grow {
+    align-content: center;
+    grid-template-areas:
+      "dot name name procs chev"
+      ". cpu mem io .";
+  }
+  .pt-pin {
+    padding-left: 1rem;
+    align-content: center;
+    grid-template-areas:
+      ". pid name name state"
+      ". cpu mem . .";
+  }
+  .pt-pid {
+    text-align: left;
+  }
+  .pt-state {
+    text-align: center;
+  }
+  .pt-unit {
+    display: inline;
+  }
+  .pt-thr,
+  .pt-pthr {
+    display: none;
+  }
+  .pt-cpu,
+  .pt-mem,
+  .pt-io,
+  .pt-pcpu,
+  .pt-pmem,
+  .pt-procs {
+    text-align: left;
+  }
+  .pt-procs {
+    text-align: right;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pt-panel,
+  .pt-rows > .pt-item,
+  .pt-chev {
     transition: none;
   }
 }

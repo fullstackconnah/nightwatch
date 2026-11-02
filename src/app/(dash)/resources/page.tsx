@@ -812,7 +812,7 @@ function ResourcesPageInner() {
       )}
 
       {/* CPU/MEM: stale bar, then the box band (head, track, legend, figures, history chart, hint) */}
-      {historyMetric && status === "lost" && (
+      {(historyMetric || allActive) && status === "lost" && (
         <div role="status" className="panel px-4 py-2 flex items-center gap-2 text-xs text-ink-dim">
           <span className="dot-unhealthy shrink-0" aria-hidden />
           <span>
@@ -869,7 +869,7 @@ function ResourcesPageInner() {
           ~476 /proc reads never happen for the five container tabs. `?q=<name>`
           prefills the filter (see the mount effect above); other container
           surfaces link here via `/resources?metric=all&q=<name>`. */}
-      {allActive && <ProcessTable initialQuery={initialQuery} />}
+      {allActive && <ProcessTable initialQuery={initialQuery} stale={status === "lost"} />}
 
       {/* host disk breakdown (disk view only) */}
       {metric === "disk" && hostDisks && hostDisks.length > 0 && (
