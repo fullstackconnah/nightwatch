@@ -87,7 +87,7 @@ function MinecraftLoading() {
 function Logs({ id, name }: { id: string; name: string }) {
   const [tail, setTail] = useState(200);
   const [paused, setPaused] = useState(false);
-  const { data } = useSWR<{ logs: string }>(
+  const { data, error } = useSWR<{ logs: string }>(
     paused ? null : `/api/docker/containers/${id}/logs?tail=${tail}`,
     fetcher,
     { refreshInterval: 5000, keepPreviousData: true },
@@ -107,12 +107,12 @@ function Logs({ id, name }: { id: string; name: string }) {
         <div className="flex items-center gap-2">
           <Link
             href={`/logs?c=${encodeURIComponent(name)}`}
-            className="text-[0.7rem] text-ink-faint hover:text-accent transition-colors whitespace-nowrap"
+            className="inline-flex min-h-11 items-center text-[0.7rem] text-ink-faint hover:text-accent transition-colors whitespace-nowrap md:min-h-0"
           >
             open in console
           </Link>
           <Select
-            className="h-9 w-28 text-sm md:h-6 md:w-24 md:text-xs"
+            className="w-28 text-sm md:w-24 md:text-xs"
             value={tail}
             onChange={(e) => setTail(Number(e.target.value))}
           >
@@ -132,7 +132,8 @@ function Logs({ id, name }: { id: string; name: string }) {
           ref={boxRef}
           className="logbox bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim"
         >
-          {data?.logs || "no output"}
+          {error && data && <div className="text-bad">Couldn&apos;t refresh</div>}
+          {error && !data ? <span className="text-bad">Could not read logs.</span> : data?.logs || "no output"}
         </div>
       </CardContent>
     </Card>

@@ -63,7 +63,7 @@ export function PackBrowser({
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [source, setSource] = useState<"all" | "curseforge" | "modrinth">("all");
-  const { data: search } = useMinecraftPackSearch(debounced, source);
+  const { data: search, error: searchError } = useMinecraftPackSearch(debounced, source);
 
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
@@ -154,11 +154,13 @@ export function PackBrowser({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search modpacks…"
+              aria-label="Search modpacks"
               className="flex-1 min-w-[10rem]"
             />
             <Select
               value={source}
               onChange={(e) => setSource(e.target.value as "all" | "curseforge" | "modrinth")}
+              aria-label="Source"
               className="w-36"
             >
               <option value="all">All sources</option>
@@ -173,13 +175,15 @@ export function PackBrowser({
 
           {!debounced ? (
             <p className="text-xs text-ink-faint">Type to search modpacks.</p>
+          ) : searchError ? (
+            <p className="text-xs text-bad">Search failed, try again.</p>
           ) : !search ? (
             <p className="text-xs text-ink-faint">Searching…</p>
-          ) : search.results.length === 0 ? (
+          ) : search?.results.length === 0 ? (
             <p className="text-xs text-ink-faint">No results.</p>
           ) : (
             <div className="divide-y divide-line/50">
-              {search.results.map((r) => {
+              {search?.results.map((r) => {
                 const key = `install:${r.source}:${r.id}`;
                 return (
                   <div key={key} className="py-2 flex items-center gap-3 flex-wrap">
@@ -239,6 +243,7 @@ export function PackBrowser({
             <p className="text-xs text-ink-faint">Nothing installed yet.</p>
           ) : (
             <div className="divide-y divide-line/50">
+              {active && <p id="mc-pack-delete-reason" className="pb-2 text-xs text-ink-faint">The active pack can't be deleted. Activate another first.</p>}
               {instances.map((inst) => {
                 const isActive = inst.slug === active;
                 const activateKey = `activate:${inst.slug}`;
@@ -317,7 +322,7 @@ export function PackBrowser({
                         size="sm"
                         variant="outline"
                         disabled={isActive || pendingKey !== null}
-                        title={isActive ? "deactivate first" : undefined}
+                        aria-describedby={isActive ? "mc-pack-delete-reason" : undefined}
                         onClick={() => setConfirmKey(deleteKey)}
                       >
                         Delete

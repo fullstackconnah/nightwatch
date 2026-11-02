@@ -13,19 +13,21 @@ import { Archive, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { postJson, useMinecraftBackups } from "@/lib/client";
+import { backupReason } from "@/lib/mc-backup-reason";
 import { relativeTime } from "@/lib/format";
 
 const RESTORE_COPY =
-  "Stops nothing — restore only runs while the server is stopped. Current world is kept as data.pre-restore-*.";
+  "Replaces the current world with this backup. The current world is kept as a pre-restore copy.";
 
 export function BackupsPanel({ containerState }: { containerState: string | undefined }) {
-  const { data, mutate } = useMinecraftBackups();
+  const { data, error, isLoading, mutate } = useMinecraftBackups();
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [confirmKey, setConfirmKey] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const running = containerState === "running";
   const backups = data?.backups ?? [];
+  const reason = backupReason(containerState);
 
   function setError(key: string, message: string | null) {
     setErrors((e) => {
@@ -72,7 +74,7 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
         <Button
           size="sm"
           disabled={!running || pendingKey !== null}
-          title={running ? undefined : "start the server first"}
+          aria-describedby={reason && !running ? "mc-backup-reason" : undefined}
           onClick={() => void runBackup()}
         >
           {pendingKey === "run" && <RotateCw size={13} className="animate-spin" />}
@@ -81,7 +83,17 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
       </CardHeader>
       <CardContent className="space-y-2">
         {errors.run && <p className="text-[0.7rem] text-bad">{errors.run}</p>}
-        {backups.length === 0 ? (
+        {reason && (
+          <p id="mc-backup-reason" className="text-xs text-ink-faint">
+            {reason}
+          </p>
+        )}
+        {error && data && <p className="text-xs text-bad">Couldn&apos;t refresh</p>}
+        {error && !data ? (
+          <p className="text-xs text-bad">Could not read backups.</p>
+        ) : isLoading ? (
+          <p className="text-xs text-ink-faint">Reading backups…</p>
+        ) : backups.length === 0 ? (
           <p className="text-xs text-ink-faint">No backups yet.</p>
         ) : (
           <div className="divide-y divide-line/50">
@@ -120,7 +132,7 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
                       size="sm"
                       variant="outline"
                       disabled={running || pendingKey !== null}
-                      title={running ? "stop the server first" : undefined}
+                      aria-describedby={running ? "mc-backup-reason" : undefined}
                       onClick={() => setConfirmKey(key)}
                     >
                       Restore

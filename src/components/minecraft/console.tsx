@@ -86,6 +86,7 @@ export function Console({ rcon }: { rcon: "ok" | "unavailable" | "unconfigured" 
               if (e.key === "Enter") void send();
             }}
             placeholder={disabled ? (hint ?? "RCON unavailable") : "say hello"}
+            aria-label="Command"
             disabled={disabled || sending}
             className="flex-1"
           />

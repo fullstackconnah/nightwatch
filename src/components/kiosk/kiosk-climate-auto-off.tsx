@@ -339,7 +339,10 @@ function ClimateAutoOffSheet({
           {status?.kind === "skipped" && (
             <button
               type="button"
-              onClick={() => void update({ skipDate: null })}
+              onClick={() => {
+                setSaveError(false);
+                void update({ skipDate: null }).then((ok) => setSaveError(!ok));
+              }}
               className="kiosk-press h-11 w-full rounded-md border border-line text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
             >
               Resume tonight
@@ -348,7 +351,10 @@ function ClimateAutoOffSheet({
           {status?.kind === "scheduled" && (
             <button
               type="button"
-              onClick={() => void skipTonight()}
+              onClick={() => {
+                setSaveError(false);
+                void skipTonight().then((ok) => setSaveError(!ok));
+              }}
               className="kiosk-press h-11 w-full rounded-md border border-line text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
             >
               Skip tonight
@@ -363,6 +369,7 @@ function ClimateAutoOffSheet({
 
 export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffResult }) {
   const { warn, onCount, notice, skipTonight, state, dismissNotice } = autoOff;
+  const [skipFailed, setSkipFailed] = useState(false);
   if (notice) {
     return (
       <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
@@ -389,9 +396,13 @@ export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffRe
         {onCount === 1 ? "1 AC" : `${onCount} ACs`} turning off at{" "}
         <span className="font-mono tabular-nums text-ink">{state.time}</span>
       </span>
+      {skipFailed && <span className="text-xs text-warn">Couldn't skip — try again.</span>}
       <button
         type="button"
-        onClick={() => void skipTonight()}
+        onClick={() => {
+          setSkipFailed(false);
+          void skipTonight().then((ok) => setSkipFailed(!ok));
+        }}
         className="kiosk-press ml-auto h-11 rounded-md border border-line px-3 text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
       >
         Skip tonight

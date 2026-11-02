@@ -12,6 +12,7 @@ import {
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { publicSystem } from "@/lib/orchestra-settings";
+import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +75,7 @@ function integrationsMeta(config: AppConfig) {
     npm: status(config.npm, Boolean(config.npm?.password)),
     forgejo: status(config.forgejo, Boolean(config.forgejo?.token)),
     github: status(config.github, Boolean(config.github?.token)),
-    minecraft: status(config.minecraft, Boolean(config.minecraft?.managerToken)),
+    minecraft: { ...status(config.minecraft, Boolean(config.minecraft?.managerToken)), ...mcSecretFlags(config.minecraft) },
     hermes: {
       openrouterConfigured: Boolean(config.hermes?.openrouterApiKey),
       anthropicConfigured: Boolean(config.hermes?.anthropicApiKey),
