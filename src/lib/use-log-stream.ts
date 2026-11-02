@@ -182,6 +182,8 @@ export function useLogStream(selection: string[]): LogStreamResult {
   const liveAtRef = useRef<Record<string, number>>({});
   // When each container's seed arrived: the resume point for an empty buffer.
   const seededAtRef = useRef<Record<string, number>>({});
+  // Each container's last shown ts when this connection opened: replayed lines at or below it are repeats.
+  const replayFloorRef = useRef<Record<string, number | undefined>>({});
 
   const cancelPendingFrame = useCallback(() => {
     if (frameRef.current !== null) {
@@ -251,6 +253,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
         delete storeRef.current.seedCount[name];
         delete seededAtRef.current[name];
         delete liveAtRef.current[name];
+        delete replayFloorRef.current[name];
       }
     }
     for (const name of Object.keys(attemptsRef.current)) {
@@ -313,6 +316,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
 
     es.addEventListener("open", () => {
       errorStreak = 0;
+      for (const c of containers) replayFloorRef.current[c] = storeRef.current.lines[c]?.at(-1)?.ts;
       connectionRef.current = "live";
       scheduleRender();
     });
@@ -340,7 +344,8 @@ export function useLogStream(selection: string[]): LogStreamResult {
         const existing = storeRef.current.lines[parsed.container] ?? [];
         // EventSource reconnects itself to the same resume URL, so a replay can repeat shown lines.
         const replayed = parsed.id.startsWith(`${parsed.container}:r`);
-        if (replayed && existing.length > 0 && parsed.ts <= existing[existing.length - 1].ts) return;
+        // Frozen at open, not the moving tail, so same-ms lines in one replay all survive.
+        if (replayed && parsed.ts <= (replayFloorRef.current[parsed.container] ?? -Infinity)) return;
         const next = [...existing, parsed];
         storeRef.current.lines[parsed.container] =
           next.length > LOG_BUFFER_CAP ? next.slice(next.length - LOG_BUFFER_CAP) : next;
