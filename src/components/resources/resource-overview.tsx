@@ -351,7 +351,7 @@ function HistoryChart({
     </svg>
     <div aria-hidden="true" className="relative w-28 shrink-0" style={{ height: H }}>
       {labels.map(({ s, flat, y }) => (
-        <div key={s.key} className="absolute left-0 right-0 flex items-center gap-1 -translate-y-1/2" style={{ top: y }}>
+        <div key={s.key} className="absolute left-0 right-0 flex items-center gap-1 -translate-y-1/2 leading-[13px]" style={{ top: y }}>
           <SeriesSwatch slot={s.slot} />
           <span title={s.label} className="font-mono text-[0.65rem] text-ink-dim truncate">{s.label}</span>
           {flat && <span className="font-mono text-[0.65rem] text-ink-faint whitespace-nowrap">· flat</span>}
