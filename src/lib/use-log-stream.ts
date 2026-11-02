@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/types/log";
 import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/types/log";
-import { reconnectDelay, shouldResetAttempts, shouldRetry } from "@/lib/log-reconnect";
+import { attemptsSoFar, reconnectDelay, shouldRetry } from "@/lib/log-reconnect";
 
 export type LogConnection = "idle" | "connecting" | "live" | "lost" | "unauthorized";
 
@@ -174,11 +174,11 @@ export function useLogStream(selection: string[]): LogStreamResult {
   // Re-subscribe after a container's stream ends (restart/recreate): bumping
   // retryTick re-runs the connect effect, which resumes each buffered
   // container from its last line (or from its seed time when it had none).
-  // Attempts reset on a fresh line once the track has stayed live a while.
+  // Attempts reset once a track stayed live a while before it ended.
   const [retryTick, bumpRetry] = useReducer((v: number) => v + 1, 0);
   const attemptsRef = useRef<Record<string, number>>({});
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // When each track went live on the current stream (absent = not live).
+  // When each track first went live, kept across stream re-opens (absent = not live).
   const liveAtRef = useRef<Record<string, number>>({});
   // When each container's seed arrived: the resume point for an empty buffer.
   const seededAtRef = useRef<Record<string, number>>({});
@@ -250,13 +250,12 @@ export function useLogStream(selection: string[]): LogStreamResult {
         delete storeRef.current.short[name];
         delete storeRef.current.seedCount[name];
         delete seededAtRef.current[name];
+        delete liveAtRef.current[name];
       }
     }
     for (const name of Object.keys(attemptsRef.current)) {
       if (!selected.has(name)) delete attemptsRef.current[name];
     }
-    // Nothing is live on the stream about to open.
-    liveAtRef.current = {};
 
     // Only containers with no buffer yet need seeding — re-seeding an already
     // buffered container would duplicate its scrollback on every selection change.
@@ -338,11 +337,10 @@ export function useLogStream(selection: string[]): LogStreamResult {
     es.addEventListener("line", (event: MessageEvent<string>) => {
       try {
         const parsed = JSON.parse(event.data) as LogLine;
-        const replayed = parsed.id.startsWith(`${parsed.container}:r`);
-        if (shouldResetAttempts(liveAtRef.current[parsed.container] ?? null, Date.now(), replayed)) {
-          attemptsRef.current[parsed.container] = 0;
-        }
         const existing = storeRef.current.lines[parsed.container] ?? [];
+        // EventSource reconnects itself to the same resume URL, so a replay can repeat shown lines.
+        const replayed = parsed.id.startsWith(`${parsed.container}:r`);
+        if (replayed && existing.length > 0 && parsed.ts <= existing[existing.length - 1].ts) return;
         const next = [...existing, parsed];
         storeRef.current.lines[parsed.container] =
           next.length > LOG_BUFFER_CAP ? next.slice(next.length - LOG_BUFFER_CAP) : next;
@@ -358,12 +356,13 @@ export function useLogStream(selection: string[]): LogStreamResult {
     es.addEventListener("state", (event: MessageEvent<string>) => {
       try {
         let parsed = JSON.parse(event.data) as LogTrackState;
-        const attempts = attemptsRef.current[parsed.container] ?? 0;
         const now = Date.now();
         const liveAt = liveAtRef.current[parsed.container];
-        if (parsed.status === "live") liveAtRef.current[parsed.container] = now;
+        const liveFor = liveAt === undefined ? null : now - liveAt;
+        const attempts = attemptsSoFar(attemptsRef.current[parsed.container] ?? 0, liveFor);
+        if (parsed.status === "live") liveAtRef.current[parsed.container] ??= now;
         else delete liveAtRef.current[parsed.container];
-        if (shouldRetry(parsed.status, parsed.detail, attempts, liveAt === undefined ? null : now - liveAt)) {
+        if (shouldRetry(parsed.status, parsed.detail, attempts, liveFor)) {
           attemptsRef.current[parsed.container] = attempts + 1;
           parsed = { container: parsed.container, status: "connecting", detail: "reconnecting…" };
           if (retryTimerRef.current === null) {

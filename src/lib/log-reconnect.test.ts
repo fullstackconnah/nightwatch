@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   reconnectDelay,
   shouldRetry,
-  shouldResetAttempts,
+  attemptsSoFar,
   parseResume,
   readIdPrefix,
   MAX_RECONNECT_ATTEMPTS,
@@ -34,13 +34,22 @@ test("a track that never ran is not retried: stopped or removed before the page 
   assert.equal(shouldRetry("ended", null, 1, 50), true);
 });
 
-test("attempts reset only on a fresh line well after going live", () => {
-  const liveAt = 1_000_000;
-  assert.equal(shouldResetAttempts(liveAt, liveAt + SETTLED_MS, false), true);
-  assert.equal(shouldResetAttempts(liveAt, liveAt + SETTLED_MS - 1, false), false);
-  assert.equal(shouldResetAttempts(null, liveAt + SETTLED_MS, false), false);
-  // A replayed line proves nothing about the container staying up.
-  assert.equal(shouldResetAttempts(liveAt, liveAt + 10 * SETTLED_MS, true), false);
+test("attempts start over only when the track stayed live SETTLED_MS", () => {
+  assert.equal(attemptsSoFar(5, SETTLED_MS), 0);
+  assert.equal(attemptsSoFar(5, SETTLED_MS - 1), 5);
+  assert.equal(attemptsSoFar(5, null), 5);
+});
+
+test("a crash loop (live under SETTLED_MS each time) still runs out of attempts", () => {
+  let attempts = 0;
+  let retries = 0;
+  while (retries < 100) {
+    const a = attemptsSoFar(attempts, SETTLED_MS - 1);
+    if (!shouldRetry("ended", null, a, SETTLED_MS - 1)) break;
+    attempts = a + 1;
+    retries++;
+  }
+  assert.equal(retries, MAX_RECONNECT_ATTEMPTS);
 });
 
 test("parseResume keeps only names with 0 < ts <= now", () => {

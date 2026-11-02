@@ -13,7 +13,7 @@ export const UNKNOWN_CONTAINER = "unknown container";
  */
 export const MIN_LIVE_MS = 2_000;
 
-/** A fresh line this long after going live means the container stayed up, so attempts start over. */
+/** A track live this long before ending stayed up, so its attempts start over. */
 export const SETTLED_MS = 30_000;
 
 /** Backoff for the Nth retry (0-based): 1 s, 2 s, 4 s ... capped at 30 s. */
@@ -39,9 +39,9 @@ export function shouldRetry(
   return attempts > 0 || (liveForMs !== null && liveForMs >= MIN_LIVE_MS);
 }
 
-/** Whether a line proves the container stayed up: fresh (not replayed) and SETTLED_MS after going live. */
-export function shouldResetAttempts(liveAt: number | null, now: number, replayed: boolean): boolean {
-  return !replayed && liveAt !== null && now - liveAt >= SETTLED_MS;
+/** Attempts to count for a track that just left live: 0 once it stayed live SETTLED_MS. */
+export function attemptsSoFar(attempts: number, liveForMs: number | null): number {
+  return liveForMs !== null && liveForMs >= SETTLED_MS ? 0 : attempts;
 }
 
 /**
