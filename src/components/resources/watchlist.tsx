@@ -538,8 +538,8 @@ export function Watchlist(p: WatchlistProps) {
           <span className="text-2xs text-ink-dim truncate">{countText}</span>
         </div>
         <div className="wl-meta">
-          <span className={cn("microlabel !text-warn", !showHeld && "invisible")}>order held</span>
-          <span className="microlabel">{scaleText}</span>
+          <span className={cn("microlabel !text-warn order-2 md:order-none", !showHeld && "invisible")}>order held</span>
+          <span className="microlabel order-1 md:order-none">{scaleText}</span>
         </div>
         {create}
       </div>
