@@ -165,6 +165,8 @@ async function resolveContainerId(name: string): Promise<string> {
 export async function readContainerLogTail(
   name: string,
   tail: number,
+  /** Resume mode: only lines newer than this epoch ms (docker `since` is whole seconds, so filtered again below). */
+  sinceMs?: number,
 ): Promise<{ lines: LogLine[]; short: boolean }> {
   const id = await resolveContainerId(name);
   const container = docker.getContainer(id);
@@ -173,7 +175,7 @@ export async function readContainerLogTail(
     stderr: true,
     timestamps: true,
     follow: false,
-    tail,
+    ...(sinceMs === undefined ? { tail } : { since: Math.floor(sinceMs / 1000) }),
   })) as unknown as Buffer;
 
   const lines: LogLine[] = [];
@@ -181,6 +183,10 @@ export async function readContainerLogTail(
   demuxer.push(buf);
   demuxer.flush();
   lines.sort((a, b) => a.ts - b.ts);
+  if (sinceMs !== undefined) {
+    // shortcut: a different line sharing the exact last ms is dropped; negligible at this volume.
+    return { lines: lines.filter((l) => l.ts > sinceMs), short: false };
+  }
 
   return { lines, short: lines.length < tail };
 }

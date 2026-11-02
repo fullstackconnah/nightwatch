@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/types/log";
 import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/types/log";
+import { reconnectDelay, shouldRetry } from "@/lib/log-reconnect";
 
 export type LogConnection = "idle" | "connecting" | "live" | "lost" | "unauthorized";
 
@@ -170,6 +171,12 @@ export function useLogStream(selection: string[]): LogStreamResult {
   // flush below there's an accumulated render to catch consumers up on.
   const dirtyRef = useRef(false);
   const [version, bumpVersion] = useReducer((v: number) => v + 1, 0);
+  // Re-subscribe after a container's stream ends (restart/recreate): bumping
+  // retryTick re-runs the connect effect, which resumes each buffered
+  // container from its last line. Attempts reset on that container's next line.
+  const [retryTick, bumpRetry] = useReducer((v: number) => v + 1, 0);
+  const attemptsRef = useRef<Record<string, number>>({});
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelPendingFrame = useCallback(() => {
     if (frameRef.current !== null) {
@@ -251,6 +258,15 @@ export function useLogStream(selection: string[]): LogStreamResult {
     params.set("c", containers.join(","));
     if (seed.length > 0) params.set("seed", seed.join(","));
     params.set("tail", String(LOG_TAIL_DEFAULT));
+    // Buffered containers resume after their newest line, so a reconnect
+    // neither loses nor repeats lines (the server filters on exact ms).
+    const resume = containers
+      .filter((c) => !seed.includes(c))
+      .flatMap((c) => {
+        const buf = storeRef.current.lines[c];
+        return buf && buf.length > 0 ? [`${c}:${buf[buf.length - 1].ts}`] : [];
+      });
+    if (resume.length > 0) params.set("resume", resume.join(","));
 
     const es = new EventSource(`/api/logs/stream?${params.toString()}`);
 
@@ -307,6 +323,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
     es.addEventListener("line", (event: MessageEvent<string>) => {
       try {
         const parsed = JSON.parse(event.data) as LogLine;
+        attemptsRef.current[parsed.container] = 0;
         const existing = storeRef.current.lines[parsed.container] ?? [];
         const next = [...existing, parsed];
         storeRef.current.lines[parsed.container] =
@@ -322,7 +339,18 @@ export function useLogStream(selection: string[]): LogStreamResult {
 
     es.addEventListener("state", (event: MessageEvent<string>) => {
       try {
-        const parsed = JSON.parse(event.data) as LogTrackState;
+        let parsed = JSON.parse(event.data) as LogTrackState;
+        const attempts = attemptsRef.current[parsed.container] ?? 0;
+        if (shouldRetry(parsed.status, parsed.detail, attempts)) {
+          attemptsRef.current[parsed.container] = attempts + 1;
+          parsed = { container: parsed.container, status: "connecting", detail: "reconnecting…" };
+          if (retryTimerRef.current === null) {
+            retryTimerRef.current = setTimeout(() => {
+              retryTimerRef.current = null;
+              bumpRetry();
+            }, reconnectDelay(attempts));
+          }
+        }
         storeRef.current.tracks[parsed.container] = parsed;
         scheduleRender();
       } catch {
@@ -356,7 +384,14 @@ export function useLogStream(selection: string[]): LogStreamResult {
     // lines (whatever arrives between the old EventSource closing and the new
     // one's seed) — acceptable at ~17 lines/min across the fleet, so there's
     // no gap-recovery/resume-cursor logic here.
-  }, [key, scheduleRender, cancelPendingFrame]);
+  }, [key, retryTick, scheduleRender, cancelPendingFrame]);
+
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
+    },
+    [],
+  );
 
   return useMemo<LogStreamResult>(
     () => ({

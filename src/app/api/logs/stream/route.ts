@@ -35,6 +35,14 @@ export async function GET(request: Request): Promise<Response> {
   // Preserve `c`'s order for seeding, and only seed names that are actually tracked.
   const seedNames = names.filter((n) => seedRequested.has(n));
 
+  // resume=name:lastTs,... marks a reconnect after a restart; only newer lines are replayed.
+  const resumeFrom = new Map<string, number>();
+  for (const part of splitNames(url.searchParams.get("resume"))) {
+    const i = part.lastIndexOf(":");
+    const ts = Number(part.slice(i + 1));
+    if (i > 0 && Number.isFinite(ts)) resumeFrom.set(part.slice(0, i), ts);
+  }
+
   const encoder = new TextEncoder();
   const unsubscribes: (() => void)[] = [];
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -94,6 +102,19 @@ export async function GET(request: Request): Promise<Response> {
             detail: `could not read scrollback: ${message}`,
           };
           safeEnqueue(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+        }
+      }
+
+      // Resume replay goes out as plain `line` events, before going live.
+      for (const name of names) {
+        const since = resumeFrom.get(name);
+        if (closed) break;
+        if (since === undefined) continue;
+        try {
+          const { lines } = await readContainerLogTail(name, 0, since);
+          for (const line of lines) safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
+        } catch {
+          // Container briefly absent mid-recreate: the live subscribe below reports it.
         }
       }
 
