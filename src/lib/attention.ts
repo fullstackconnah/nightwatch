@@ -1,11 +1,13 @@
 import { listContainersWithRuntime, type RuntimeContainer } from "@/lib/docker";
 import { getSmartSnapshot } from "@/lib/smart";
-import { getHostVitals } from "@/lib/host-metrics";
+import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
 import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
+import { classifyMountError } from "@/lib/mount-probe";
+import { promises as fsp } from "node:fs";
 import type { HealthVerdict } from "@/lib/types/smart";
 
 /**
@@ -192,6 +194,40 @@ async function probeSmart(): Promise<AttentionResult | null> {
   return result;
 }
 
+// --- (c2) a mount that cannot be read ---------------------------------------
+
+const MOUNT_READ_TIMEOUT_MS = 3_000;
+
+/**
+ * 2026-10-09: the media drive dropped off SATA and the mount stayed on the dead
+ * device, so every read hit EIO while `df` looked normal for ~20 hours. Reads a
+ * mount root (via the host rootfs bind, like disk-usage.ts) with a 3s cap so a
+ * hung mount cannot stall the route. shortcut: a hung readdir cannot be
+ * cancelled and stays stuck until the kernel gives up; the 30s memo keeps it to
+ * one stuck call per mount per window.
+ */
+async function probeMountReadable(): Promise<AttentionResult | null> {
+  const vitals = await getHostVitals();
+  const mounts = new Set(vitals.disk.flatMap((g) => g.mounts ?? [g.mount]));
+  for (const mount of mounts) {
+    const target = mount === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${mount}`;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const code = await Promise.race([
+      fsp.readdir(target).then(
+        () => undefined,
+        (e: NodeJS.ErrnoException) => e.code,
+      ),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve("TIMEOUT"), MOUNT_READ_TIMEOUT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
+    const verdict = classifyMountError(mount, code);
+    if (verdict) return hit("bad", verdict.headline, verdict.detail);
+  }
+  return null;
+}
+
 // --- (d) disk / volume capacity ---------------------------------------------
 
 /**
@@ -309,6 +345,7 @@ async function computeAttention(): Promise<AttentionResult> {
     () => probeContainerDeath(containers),
     () => probeRestartLoop(containers),
     () => probeSmart(),
+    () => probeMountReadable(),
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.
     () => probeBackup(),
