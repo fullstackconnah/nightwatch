@@ -297,12 +297,12 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   const changed = url.trim() !== stored || token.trim() !== "";
 
   async function handleSave() {
+    setError(null);
     if (url.trim() && !/^https?:\/\/\S+$/.test(url.trim())) {
       setUrlError("Enter a full address, for example http://192.0.2.10:7420.");
       return;
     }
     setSaving(true);
-    setError(null);
     setUrlError(null);
     try {
       const body: Record<string, unknown> = { orchestraUrl: url };

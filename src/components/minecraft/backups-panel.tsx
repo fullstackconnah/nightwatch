@@ -13,6 +13,7 @@ import { Archive, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { postJson, useMinecraftBackups } from "@/lib/client";
+import { backupReason } from "@/lib/mc-backup-reason";
 import { relativeTime } from "@/lib/format";
 
 const RESTORE_COPY =
@@ -26,6 +27,7 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
 
   const running = containerState === "running";
   const backups = data?.backups ?? [];
+  const reason = backupReason(containerState);
 
   function setError(key: string, message: string | null) {
     setErrors((e) => {
@@ -72,6 +74,7 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
         <Button
           size="sm"
           disabled={!running || pendingKey !== null}
+          aria-describedby={reason && !running ? "mc-backup-reason" : undefined}
           onClick={() => void runBackup()}
         >
           {pendingKey === "run" && <RotateCw size={13} className="animate-spin" />}
@@ -80,7 +83,12 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
       </CardHeader>
       <CardContent className="space-y-2">
         {errors.run && <p className="text-[0.7rem] text-bad">{errors.run}</p>}
-        {!running && <p className="text-xs text-ink-faint">Start the server to back up. Stop it to restore.</p>}
+        {reason && (
+          <p id="mc-backup-reason" className="text-xs text-ink-faint">
+            {reason}
+          </p>
+        )}
+        {error && data && <p className="text-xs text-bad">Couldn&apos;t refresh</p>}
         {error && !data ? (
           <p className="text-xs text-bad">Could not read backups.</p>
         ) : isLoading ? (
@@ -124,6 +132,7 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
                       size="sm"
                       variant="outline"
                       disabled={running || pendingKey !== null}
+                      aria-describedby={running ? "mc-backup-reason" : undefined}
                       onClick={() => setConfirmKey(key)}
                     >
                       Restore

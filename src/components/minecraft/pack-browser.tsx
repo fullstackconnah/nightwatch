@@ -175,7 +175,7 @@ export function PackBrowser({
 
           {!debounced ? (
             <p className="text-xs text-ink-faint">Type to search modpacks.</p>
-          ) : !search && searchError ? (
+          ) : searchError ? (
             <p className="text-xs text-bad">Search failed, try again.</p>
           ) : !search ? (
             <p className="text-xs text-ink-faint">Searching…</p>
@@ -243,7 +243,7 @@ export function PackBrowser({
             <p className="text-xs text-ink-faint">Nothing installed yet.</p>
           ) : (
             <div className="divide-y divide-line/50">
-              {active && <p className="pb-2 text-xs text-ink-faint">The active pack can't be deleted. Activate another first.</p>}
+              {active && <p id="mc-pack-delete-reason" className="pb-2 text-xs text-ink-faint">The active pack can't be deleted. Activate another first.</p>}
               {instances.map((inst) => {
                 const isActive = inst.slug === active;
                 const activateKey = `activate:${inst.slug}`;
@@ -322,6 +322,7 @@ export function PackBrowser({
                         size="sm"
                         variant="outline"
                         disabled={isActive || pendingKey !== null}
+                        aria-describedby={isActive ? "mc-pack-delete-reason" : undefined}
                         onClick={() => setConfirmKey(deleteKey)}
                       >
                         Delete
