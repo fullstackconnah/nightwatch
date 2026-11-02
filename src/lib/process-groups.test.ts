@@ -50,6 +50,7 @@ test("filter matches container, comm, cmdline and exact pid only", () => {
   assert.equal(filterGroups(groups, "11").map((g) => g.name).join(), "web"); // exact pid 11, not 110
   assert.equal(filterGroups(groups, "zzz").length, 0);
   assert.equal(filterGroups(groups, "").length, 2);
+  assert.equal(filterGroups(buildGroups([p(5, { ...web, comm: "ab", cmdline: "cd" })]), "bc").length, 0); // no match across the comm/cmdline join
 });
 
 test("a group matched by pid lists only its hits; a name match lists all", () => {

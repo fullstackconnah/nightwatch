@@ -497,7 +497,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
     : grouped
       ? searching
         ? `${groups.length} groups match "${q}"`
-        : `${processes.length} processes · ${allGroups.length} groups · ${data.skipped} vanished mid-scan`
+        : `${processes.length} processes · ${allGroups.length} groups${data.skipped > 0 ? ` · ${data.skipped} vanished mid-scan` : ""}`
       : searching
         ? `${flatRows.length} of ${processes.length}`
         : `${processes.length} processes${data.skipped > 0 ? ` · ${data.skipped} vanished mid-scan` : ""}`;
@@ -878,7 +878,7 @@ function GroupRow({
     <div ref={(el) => register(g.id, el)} role="listitem" className="pt-item" data-row-id={g.id} data-rank={rank} data-open={open || undefined}>
       <button type="button" className="pt-grow" aria-expanded={open} onClick={() => onToggle(g.id)}>
         <span className={cn("dot pt-dot", g.other ? "dot-stopped" : "dot-running")} />
-        <span className={cn("pt-name font-mono text-[0.8rem]", g.other ? "text-ink-dim" : "text-ink")} title={g.name}>
+        <span className={cn("pt-name font-mono text-[0.8rem]", g.other ? "text-ink-dim" : "text-ink")} title={g.other ? `${g.procs.filter((p) => !p.isKernel).length} host processes and ${g.procs.filter((p) => p.isKernel).length} kernel threads, none of which belong to a container` : g.name}>
           {g.name}
         </span>
         <span className="pt-c pt-procs">
