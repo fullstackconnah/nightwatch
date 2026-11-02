@@ -1,11 +1,14 @@
 import { listContainersWithRuntime, type RuntimeContainer } from "@/lib/docker";
 import { getSmartSnapshot } from "@/lib/smart";
-import { getHostVitals } from "@/lib/host-metrics";
+import { getHostVitals, HOST_ROOTFS, HOST_SYS, readHostMounts } from "@/lib/host-metrics";
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
 import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
+import { blockDeviceName, classifyDeviceGone, classifyMountError, probeOne, type MountVerdict } from "@/lib/mount-probe";
+import fs, { promises as fsp } from "node:fs";
+import path from "node:path";
 import type { HealthVerdict } from "@/lib/types/smart";
 
 /**
@@ -192,6 +195,63 @@ async function probeSmart(): Promise<AttentionResult | null> {
   return result;
 }
 
+// --- (c2) a mount that cannot be read ---------------------------------------
+
+const MOUNT_READ_TIMEOUT_MS = 3_000;
+
+/**
+ * Is the mount's block device still on the bus? Reads the host sysfs bind
+ * (HOST_SYS, as host-metrics.ts does). No host sysfs (dev mode), an alias
+ * source or an unreadable node = null, never a false alarm.
+ */
+function deviceGone(mount: string, device: string | undefined): MountVerdict | null {
+  const name = blockDeviceName(device);
+  if (!name || !fs.existsSync(`${HOST_SYS}/class/block`)) return null;
+  const node = `${HOST_SYS}/class/block/${name}`;
+  if (!fs.existsSync(node)) return classifyDeviceGone(mount, name, false, null);
+  let real: string;
+  try {
+    real = fs.realpathSync(node);
+  } catch {
+    return null;
+  }
+  // A partition's sysfs dir sits inside its disk's dir; the disk owns device/state.
+  const disk = fs.existsSync(`${real}/partition`) ? path.dirname(real) : real;
+  let state: string | null = null;
+  try {
+    state = fs.readFileSync(`${disk}/device/state`, "utf8");
+  } catch {
+    // no state file (virtio, md, ...): nothing to say
+  }
+  return classifyDeviceGone(mount, name, true, state);
+}
+
+/**
+ * 2026-10-09: the media drive dropped off SATA and the mount stayed on the dead
+ * device, so every read hit EIO while `df` looked normal for ~20 hours. Two
+ * checks per mount, all mounts in parallel: is its block device still in host
+ * sysfs, and does a readdir of its root (via the host rootfs bind, like
+ * disk-usage.ts) answer within 3s. The root readdir can be served from cache,
+ * so it only catches mounts that error or hang; the sysfs check covers the
+ * drive that left the bus. probeOne never starts a second readdir on a mount
+ * whose first is still stuck.
+ */
+async function probeMountReadable(): Promise<AttentionResult | null> {
+  const vitals = await getHostVitals();
+  const mounts = [...new Set(vitals.disk.flatMap((g) => g.mounts ?? [g.mount]))];
+  const devices = new Map((readHostMounts() ?? []).map((m) => [m.mountpoint, m.device]));
+  const verdicts = await Promise.all(
+    mounts.map(async (mount) => {
+      const gone = deviceGone(mount, devices.get(mount));
+      if (gone) return gone;
+      const target = mount === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${mount}`;
+      return classifyMountError(mount, await probeOne(target, () => fsp.readdir(target), MOUNT_READ_TIMEOUT_MS));
+    }),
+  );
+  const verdict = verdicts.find((v) => v !== null);
+  return verdict ? hit("bad", verdict.headline, verdict.detail) : null;
+}
+
 // --- (d) disk / volume capacity ---------------------------------------------
 
 /**
@@ -309,6 +369,7 @@ async function computeAttention(): Promise<AttentionResult> {
     () => probeContainerDeath(containers),
     () => probeRestartLoop(containers),
     () => probeSmart(),
+    () => probeMountReadable(),
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.
     () => probeBackup(),
