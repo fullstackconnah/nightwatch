@@ -1,6 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { SeriesSwatch } from "@/components/resources/resource-overview";
+import { SERIES_SLOTS, assignSlots, type SeriesSlot } from "@/lib/chart-series";
 import { RX_GLYPH, TX_GLYPH, seriesIsIdle, seriesPeak, type RateSeries } from "@/components/resources/net-throughput";
 import { formatRate } from "@/lib/format";
 import type { TelemetrySample } from "@/lib/types/telemetry";
@@ -20,8 +22,6 @@ import { cn } from "@/lib/utils";
  * (unexported) ones — same math, so the two charts read as one family.
  */
 
-const SERIES_COLORS = ["var(--color-accent)", "var(--color-blue)", "#14b8a6", "#0f766e"];
-
 export interface CompareContainer {
   id: string;
   name: string;
@@ -30,7 +30,7 @@ export interface CompareContainer {
 interface CompareItem {
   id: string;
   name: string;
-  color: string;
+  slot: SeriesSlot;
   series: RateSeries;
   /** True once this container id has appeared in at least one sample. False
    *  means "no samples yet" — a fresh/just-selected container, distinct from
@@ -93,11 +93,9 @@ function LegendSwatch({ item }: { item: CompareItem }) {
           aria-hidden
         />
       ) : (
-        <span
-          className={cn("h-2 w-2 rounded-sm shrink-0", item.idle && "opacity-40")}
-          style={{ background: item.color }}
-          aria-hidden
-        />
+        <span className={cn("inline-flex", item.idle && "opacity-40")}>
+          <SeriesSwatch slot={item.slot} />
+        </span>
       )}
       <span className="font-mono text-[0.65rem] text-ink-dim truncate">{item.name}</span>
       <span className="font-mono text-[0.65rem] text-ink-faint tabular-nums whitespace-nowrap">{note}</span>
@@ -109,20 +107,27 @@ export function NetCompare({
   containers,
   samples,
 }: {
-  /** In selection order — first selected gets accent, second gets blue, and
-   *  so on, so the colour a container carries stays stable while it remains
-   *  selected even if others are added or removed around it. */
+  /** In selection order — slots follow the entity (chart-series.ts), so the
+   *  line a container carries stays stable while it remains selected even if
+   *  others are added or removed around it. */
   containers: CompareContainer[];
   samples: TelemetrySample[];
 }) {
+  const heldSlots = useRef<ReadonlyMap<string, number>>(new Map());
+  const slots = assignSlots(
+    containers.map((c) => c.id),
+    heldSlots.current,
+    0,
+  );
+  heldSlots.current = slots;
   const items = useMemo<CompareItem[]>(
     () =>
-      containers.map((c, i) => {
+      containers.map((c) => {
         const { series, measured } = containerRateSeries(samples, c.id);
         return {
           id: c.id,
           name: c.name,
-          color: SERIES_COLORS[i % SERIES_COLORS.length],
+          slot: SERIES_SLOTS[slots.get(c.id) ?? 0],
           series,
           measured,
           idle: seriesIsIdle(series),
@@ -174,19 +179,19 @@ export function NetCompare({
               const peak = Math.max(1, ...moving.map((it) => seriesPeak(it.series)));
               return (
                 <>
-                  {moving.map((it) => (
+                  {moving.filter((it) => !it.slot.dash).map((it) => (
                     <path
                       key={`${it.id}-rx-fill`}
                       d={areaPath(it.series.rx, peak, W, mid, amplitude, 1)}
-                      fill={it.color}
+                      fill={it.slot.stroke}
                       opacity={0.16}
                     />
                   ))}
-                  {moving.map((it) => (
+                  {moving.filter((it) => !it.slot.dash).map((it) => (
                     <path
                       key={`${it.id}-tx-fill`}
                       d={areaPath(it.series.tx, peak, W, mid, amplitude, -1)}
-                      fill={it.color}
+                      fill={it.slot.stroke}
                       opacity={0.16}
                     />
                   ))}
@@ -197,17 +202,17 @@ export function NetCompare({
                         <path
                           d={linePath(it.series.rx, peak, W, mid, amplitude, 1)}
                           fill="none"
-                          stroke={it.color}
+                          stroke={it.slot.stroke}
                           strokeWidth={1.25}
-                          strokeDasharray={it.idle ? "3 3" : undefined}
+                          strokeDasharray={it.slot.dash}
                           vectorEffect="non-scaling-stroke"
                         />
                         <path
                           d={linePath(it.series.tx, peak, W, mid, amplitude, -1)}
                           fill="none"
-                          stroke={it.color}
+                          stroke={it.slot.stroke}
                           strokeWidth={1.25}
-                          strokeDasharray={it.idle ? "3 3" : undefined}
+                          strokeDasharray={it.slot.dash}
                           vectorEffect="non-scaling-stroke"
                         />
                       </g>
