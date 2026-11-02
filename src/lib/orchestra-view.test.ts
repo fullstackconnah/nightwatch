@@ -6,8 +6,10 @@ import {
   checkpointView,
   formatQuiet,
   inFlightRows,
+  isLive,
   loadErrorCopy,
   okSentence,
+  orchestraAttention,
   pageKind,
 } from "./orchestra-view.ts";
 import type { OrchestratorSummary } from "./types/orchestra.ts";
@@ -104,5 +106,75 @@ describe("in-flight rows", () => {
     assert.equal(formatQuiet(12), "quiet 12m");
     assert.equal(formatQuiet(125), "quiet 2h 5m");
     assert.equal(formatQuiet(null), "no transcript yet");
+  });
+});
+
+describe("isLive", () => {
+  it("counts an entry with a transcript up to STALL_MAX; a dead marker or no transcript is not live", () => {
+    assert.equal(isLive(0), true);
+    assert.equal(isLive(360), true);
+    assert.equal(isLive(361), false);
+    assert.equal(isLive(null), false);
+  });
+});
+
+describe("orchestraAttention", () => {
+  const d = (name: string, quiet: (number | null)[], title: string | null = null) => ({
+    name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q })),
+  });
+
+  it("says nothing when orchestra is not configured, even with stalled agents", () => {
+    assert.equal(orchestraAttention("unconfigured", [d("dev", [42])]), null);
+  });
+
+  it("says nothing when every in-flight agent is fine", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [5, null]), d("odip", [])]), null);
+  });
+
+  it("names the orchestrator, the agent and the quiet time for one stalled agent", () => {
+    assert.deepEqual(orchestraAttention("ok", [d("dev", [3]), d("odip", [42], "ODIP")]), {
+      headline: "agent-odip-0 has gone quiet in ODIP",
+      detail: "quiet 42m; check it on the Orchestrators page",
+    });
+  });
+
+  it("counts several stalled agents and names the longest", () => {
+    assert.deepEqual(orchestraAttention("ok", [d("dev", [25]), d("odip", [5, 125])]), {
+      headline: "2 agents have gone quiet",
+      detail: "longest: agent-odip-1 in odip, quiet 2h 5m",
+    });
+  });
+
+  it("stays quiet when unreachable and the last good reading had nothing in flight", () => {
+    assert.equal(orchestraAttention("unreachable", [], 0), null);
+  });
+
+  it("stays quiet when unreachable with no good reading since the server started", () => {
+    assert.equal(orchestraAttention("unreachable", []), null);
+  });
+
+  it("flags a service that stopped answering while agents were running", () => {
+    assert.deepEqual(orchestraAttention("unreachable", [], 2), {
+      headline: "Orchestra stopped answering",
+      detail: "2 agents were running; the PC may be off or asleep",
+    });
+    assert.equal(orchestraAttention("unreachable", [], 1)?.detail, "1 agent was running; the PC may be off or asleep");
+  });
+
+  it("flags a rejected token", () => {
+    assert.deepEqual(orchestraAttention("unauthorized", [], 0), {
+      headline: "Orchestra rejected the token",
+      detail: "replace it in Settings, under Access",
+    });
+  });
+
+  it("follows isStalled at STALL_MAX: 360 min speaks, 361 is a dead marker", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [360])])?.headline, "agent-dev-0 has gone quiet in dev");
+    assert.equal(orchestraAttention("ok", [d("dev", [361])]), null);
+  });
+
+  it("follows isStalled at STALL_MIN: 19 min is still fine, 20 speaks", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [19])]), null);
+    assert.equal(orchestraAttention("ok", [d("dev", [20])])?.headline, "agent-dev-0 has gone quiet in dev");
   });
 });

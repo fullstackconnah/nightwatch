@@ -1,4 +1,11 @@
-import type { OrchestraSnapshot, OrchestratorInFlight, OrchestratorRunState, OrchestratorSummary } from "./types/orchestra.ts";
+import type {
+  OrchestraSnapshot,
+  OrchestraState,
+  OrchestratorDetail,
+  OrchestratorInFlight,
+  OrchestratorRunState,
+  OrchestratorSummary,
+} from "./types/orchestra.ts";
 
 /** Last ok snapshot, held in module memory so it survives client-side navigation but not a reload. */
 let lastOk: OrchestraSnapshot | null = null;
@@ -91,6 +98,8 @@ export function checkpointView(raw: string | null): { text: string; cut: boolean
 }
 
 export const isStalled = (quietMin: number | null): boolean => quietMin !== null && quietMin >= STALL_MIN && quietMin <= STALL_MAX;
+/** The service's own live rule: a marker entry quiet past STALL_MAX is a dead session's leftover. */
+export const isLive = (quietMin: number | null): boolean => quietMin !== null && quietMin <= STALL_MAX;
 
 export function inFlightRows(list: OrchestratorInFlight[]): (OrchestratorInFlight & { stalled: boolean })[] {
   return list
@@ -101,4 +110,34 @@ export function inFlightRows(list: OrchestratorInFlight[]): (OrchestratorInFligh
 export function formatQuiet(quietMin: number | null): string {
   if (quietMin === null) return "no transcript yet";
   return quietMin < 60 ? `quiet ${quietMin}m` : `quiet ${Math.floor(quietMin / 60)}h ${quietMin % 60}m`;
+}
+
+/**
+ * The attention-strip item for orchestra, or null. Always a warning (attention.ts), never critical. No
+ * number in the headline and no `since`: the kiosk keys an alert on headline + since, so a ticking value
+ * would re-raise the same alert every poll. The duration lives in the detail.
+ * Unreachable speaks only when the last good reading had work in flight (`lastInFlight`, 0 before any good
+ * reading): a PC that sleeps after its work is done must not leave an item on the wall all night.
+ */
+export function orchestraAttention(
+  status: OrchestraState,
+  details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[],
+  lastInFlight = 0,
+): { headline: string; detail: string } | null {
+  if (status === "unreachable") {
+    if (lastInFlight <= 0) return null;
+    const n = lastInFlight === 1 ? "1 agent was" : `${lastInFlight} agents were`;
+    return { headline: "Orchestra stopped answering", detail: `${n} running; the PC may be off or asleep` };
+  }
+  if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "replace it in Settings, under Access" };
+  if (status !== "ok") return null;
+  const stalled = details
+    .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))
+    .sort((a, b) => (b.quietMin ?? 0) - (a.quietMin ?? 0));
+  const top = stalled[0];
+  if (!top) return null;
+  if (stalled.length === 1) {
+    return { headline: `${top.agent} has gone quiet in ${top.orch}`, detail: `${formatQuiet(top.quietMin)}; check it on the Orchestrators page` };
+  }
+  return { headline: `${stalled.length} agents have gone quiet`, detail: `longest: ${top.agent} in ${top.orch}, ${formatQuiet(top.quietMin)}` };
 }

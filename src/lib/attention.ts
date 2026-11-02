@@ -6,6 +6,9 @@ import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
 import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
+import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
+import { isLive, orchestraAttention } from "@/lib/orchestra-view";
+import type { OrchestratorDetail } from "@/lib/types/orchestra";
 import { blockDeviceName, classifyDeviceGone, classifyMountError, probeOne, type MountVerdict } from "@/lib/mount-probe";
 import fs, { promises as fsp } from "node:fs";
 import path from "node:path";
@@ -352,6 +355,57 @@ function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null 
   return hit("warn", `${c.name} is failing its healthcheck`);
 }
 
+// --- (f) a stalled agent or an unanswering orchestra service ----------------
+
+const ORCHESTRA_RACE_MS = 3_000;
+/** Live in-flight agents (isLive) at the last good reading; 0 until the first one. Process lifetime, like the memos. */
+let orchestraLastInFlight = 0;
+
+/**
+ * The list call carries counts only; quietMin lives on each orchestrator's
+ * detail, so every orchestrator with work in flight is fetched in parallel and
+ * isStalled (orchestra-view.ts) decides, not the service's own stalledCount.
+ * A detail that comes back unreachable/unauthorized counts as that status.
+ */
+const orchestraMemo = new Memo<AttentionResult | null>({
+  key: "attention.orchestra",
+  ttlMs: CACHE_TTL_MS,
+  load: async () => {
+    const snap = await getOrchestraSnapshot();
+    let status = snap.status;
+    const details: OrchestratorDetail[] = [];
+    if (status === "ok") {
+      const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0);
+      for (const r of await Promise.all(busy.map((o) => getOrchestraDetail(o.name)))) {
+        if (r.status !== "ok") status = r.status;
+        else if (r.orchestrator) details.push(r.orchestrator);
+      }
+    }
+    // No busy orchestrators means no details, so an ok reading with nothing in flight resets this to 0.
+    if (status === "ok") orchestraLastInFlight = details.flatMap((o) => o.inFlight).filter((e) => isLive(e.quietMin)).length;
+    const item = orchestraAttention(status, details, orchestraLastInFlight);
+    return item ? hit("warn", item.headline, item.detail) : null;
+  },
+});
+
+/**
+ * The client waits up to 5s, and a PC that is off often hangs that long. On a
+ * 3s timeout this returns the last decision instead; the losing load keeps
+ * running and fills the memo, so "stopped answering" shows one cycle late
+ * rather than never.
+ */
+async function probeOrchestra(): Promise<AttentionResult | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<AttentionResult | null>((resolve) => {
+    timer = setTimeout(() => resolve(orchestraMemo.peek()), ORCHESTRA_RACE_MS);
+  });
+  try {
+    return await Promise.race([orchestraMemo.get(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- orchestration -----------------------------------------------------------
 
 async function computeAttention(): Promise<AttentionResult> {
@@ -375,6 +429,8 @@ async function computeAttention(): Promise<AttentionResult> {
     () => probeBackup(),
     () => probeDiskCapacity(),
     () => probeUnhealthy(containers),
+    // Last: a quiet agent is never a household outage.
+    () => probeOrchestra(),
   ];
 
   for (const probe of probes) {
