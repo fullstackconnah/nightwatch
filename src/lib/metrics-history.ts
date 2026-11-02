@@ -175,7 +175,7 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
     const name = names[id];
     if (!name) continue; // container vanished between allContainerStats and listContainers
     containers[name] = [
-      Math.round(row.cpuPct * 10) / 10,
+      Math.round(row.cpuPct * 100) / 100,
       Math.round(row.memBytes),
       Math.round(row.rxRate),
       Math.round(row.txRate),
@@ -327,7 +327,7 @@ function emitBuckets(
     const b = buckets.get(t);
     out.push({
       t,
-      cpuPct: b ? Math.round((b.cpuSum / b.cpuN) * 10) / 10 : null,
+      cpuPct: b ? Math.round((b.cpuSum / b.cpuN) * 100) / 100 : null,
       memBytes: b ? Math.round(b.memSum / b.memN) : null,
     });
   }

@@ -239,5 +239,14 @@ describe("matchIntent", () => {
         say: "Turning on Office Desk.",
       });
     });
+    it("a light whose own name holds a climate word is still a light", () => {
+      const ctx: IntentContext = { entities: { ...house.entities!, lights: [light("light.bath_heater", "Bathroom Heater")] } };
+      assert.deepEqual(matchIntent("turn on the bathroom heater", ctx), {
+        kind: "light",
+        entityId: "light.bath_heater",
+        action: "turn_on",
+        say: "Turning on Bathroom Heater.",
+      });
+    });
   });
 });

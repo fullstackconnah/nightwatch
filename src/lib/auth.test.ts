@@ -185,6 +185,9 @@ describe("auth", () => {
       await assert.rejects(createSessionToken(), /SESSION_SECRET/);
       const forged = await sign({ sub: "admin", typ: "session" }, "homelab-dashboard-dev-secret");
       assert.equal(await verifySessionToken(forged), false);
+      const forgedKiosk = await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, "homelab-dashboard-dev-secret");
+      assert.equal(await verifyKioskElevationToken(forgedKiosk), false);
+      assert.equal(await isRequestAuthenticated(forged, forgedKiosk, "POST", "/api/anything"), false);
     });
 
     // No minimum length is enforced; a short secret is used as-is.

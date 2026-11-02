@@ -37,3 +37,13 @@ test("ui blocks stop and pause, not restart", () => {
 test("mcp may only start a protected container", () => {
   assert.deepEqual([...MCP_ALLOWED_ON_PROTECTED], ["start"]);
 });
+
+import { findTarget } from "./protected-containers.ts";
+test("findTarget: 12-char prefix, exact name, name beats earlier hex-prefix id, unknown", () => {
+  const a = c({ id: "abcdef123456" + "0".repeat(52), name: "plex" });
+  const hexName = c({ id: "f".repeat(64), name: "abcdef123456" });
+  assert.equal(findTarget([a, hexName], "abcdef123456".slice(0, 12)), hexName);
+  assert.equal(findTarget([a], "abcdef123456"), a);
+  assert.equal(findTarget([a], "plex"), a);
+  assert.equal(findTarget([a], "nope"), undefined);
+});
