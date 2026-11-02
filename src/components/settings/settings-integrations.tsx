@@ -57,7 +57,7 @@ export interface SettingsFullResponse {
     npm: IntegrationStatus;
     forgejo: IntegrationStatus;
     github: IntegrationStatus;
-    minecraft: IntegrationStatus;
+    minecraft: IntegrationStatus & { curseforgeKeySet?: boolean; rconPasswordSet?: boolean };
     hermes: { openrouterConfigured: boolean; anthropicConfigured: boolean };
   };
   /** GOAL A: config.json's `system` block — MCP token, kiosk PIN, Hermes API,
@@ -616,7 +616,7 @@ function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefin
         <SecretField
           key={`curseforge-${saveVersion}`}
           label="CurseForge API key"
-          configured={configured}
+          configured={Boolean(status?.curseforgeKeySet)}
           updatedAt={status?.updatedAt}
           draft={curseforgeKey}
           onDraftChange={setCurseforgeKey}
@@ -625,7 +625,7 @@ function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefin
         <SecretField
           key={`rcon-${saveVersion}`}
           label="RCON password"
-          configured={configured}
+          configured={Boolean(status?.rconPasswordSet)}
           updatedAt={status?.updatedAt}
           draft={rconPassword}
           onDraftChange={setRconPassword}

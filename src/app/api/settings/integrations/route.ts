@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -153,7 +154,11 @@ export async function POST(req: NextRequest) {
       npm: { configured: Boolean(next.npm?.password), updatedAt: next.npm?.updatedAt },
       forgejo: { configured: Boolean(next.forgejo?.token), updatedAt: next.forgejo?.updatedAt },
       github: { configured: Boolean(next.github?.token), updatedAt: next.github?.updatedAt },
-      minecraft: { configured: Boolean(next.minecraft?.managerToken), updatedAt: next.minecraft?.updatedAt },
+      minecraft: {
+        configured: Boolean(next.minecraft?.managerToken),
+        updatedAt: next.minecraft?.updatedAt,
+        ...mcSecretFlags(next.minecraft),
+      },
     },
   });
 }

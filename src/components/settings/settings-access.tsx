@@ -285,6 +285,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clearStep, setClearStep] = useState<ClearStep>("idle");
+  const [urlError, setUrlError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data && !seeded) {
@@ -297,11 +298,12 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
 
   async function handleSave() {
     if (url.trim() && !/^https?:\/\/\S+$/.test(url.trim())) {
-      setError("Enter a full address, for example http://192.0.2.10:7420.");
+      setUrlError("Enter a full address, for example http://192.0.2.10:7420.");
       return;
     }
     setSaving(true);
     setError(null);
+    setUrlError(null);
     try {
       const body: Record<string, unknown> = { orchestraUrl: url };
       if (token.trim()) body.orchestraToken = token.trim();
@@ -348,8 +350,9 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
         <Field
           label="Service URL"
           hint="The PC's LAN address and port, exactly as the service binds them. The service refuses any other host name."
+          error={urlError}
         >
-          <Input placeholder="http://192.0.2.10:7420" value={url} onChange={(e) => setUrl(e.target.value)} />
+          <Input placeholder="http://192.0.2.10:7420" value={url} onChange={(e) => { setUrl(e.target.value); setUrlError(null); }} />
         </Field>
         <SecretField
           key={saveVersion}

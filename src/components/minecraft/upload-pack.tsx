@@ -100,18 +100,18 @@ export function UploadPack({ onChanged }: { onChanged: () => void }) {
             accept=".zip"
             disabled={busy}
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full text-xs text-ink-dim file:mr-3 file:h-9 file:rounded-md file:border file:border-line file:bg-panel-2 file:px-3 file:text-xs file:text-ink file:cursor-pointer disabled:opacity-40"
+            className="block w-full text-xs text-ink-dim file:mr-3 file:h-11 md:file:h-8 file:rounded-md file:border file:border-line file:bg-panel-2 file:px-3 file:text-xs file:text-ink file:cursor-pointer disabled:opacity-40"
           />
         </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Field label="Name">
+            <Field label="Name" required>
               <Input value={name} onChange={(e) => setName(e.target.value)} disabled={busy} placeholder="ATM10" />
             </Field>
             {name.trim() && <p className="microlabel mt-1">slug: {slug}</p>}
           </div>
-          <Field label="MC version">
+          <Field label="MC version" required>
             <Input
               value={mcVersion}
               onChange={(e) => setMcVersion(e.target.value)}
