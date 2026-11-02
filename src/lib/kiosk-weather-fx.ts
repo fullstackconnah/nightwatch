@@ -106,6 +106,109 @@ export function sampleStreak(p: RainParams, band: WetBand, rng: () => number): S
   return { depth, speed, length, width: d.width, aMult: d.alpha };
 }
 
+// --- puddle line -----------------------------------------------------------
+
+/* Rain marks beyond the streaks: rings on a wet floor, crowns on the forecast
+   panel's top edge, a floor sheen. Index 0..3 is drizzle..heavy, 4 is storm. */
+export const PUDDLE = {
+  ringRate: { day: [6, 14, 26, 40, 48], dark: [8, 16, 26, 40, 48] },
+  crownRate: [2, 5, 9, 14, 18],
+  ringLife: { day: 0.9, dark: 1.4 },
+  ringR: { day: [10, 24], dark: [14, 30] }, // base + span x u, before perspective
+  ringKind: { day: 2.0, dark: 2.2 }, // shader sigma = 0.09 + (kind - 2) x 0.1
+  ringAlpha: { day: 0.6, dark: 0.5 },
+  ringShadowAlpha: 0.12, // day only
+  crownAlpha: { day: 0.3, dark: 0.4 },
+  crownLife: 0.35,
+  crownRadius: 2.2,
+  crownFloor: 0.3,
+  sheenAlpha: { day: 0.1, dark: 0.06 },
+  sheenFloor: { day: 1, dark: 0 }, // a daytime lightening needs no mask
+  streakShare: 0.6,
+  // Day is 0.3, not the shape brief's 0.5: a wet dawn ground (inkDim base 5.0) drops to 4.29 at 0.5.
+  streakFloor: { day: 0.3, dark: 0.5 },
+  streakFloorStormDark: 0.3,
+  feather: 40,
+  poolRings: 96,
+  poolCrowns: 64,
+  poolQuads: 192,
+};
+
+export interface PuddleParams {
+  ringRate: number;
+  ringLife: number;
+  ringR0: number;
+  ringRSpan: number;
+  ringKind: number;
+  ringAlpha: number;
+  ringShadow: boolean;
+  crownRate: number;
+  crownAlpha: number;
+  sheenAlpha: number;
+  sheenFloor: number;
+  streakCount: number;
+  streakFloor: number;
+}
+
+export function puddleParams(band: WetBand, storm: boolean, isDark: boolean, w: number, h: number): PuddleParams {
+  const m = isDark ? "dark" : "day";
+  const i = storm ? 4 : BY_RANK.indexOf(band) - 1;
+  // Lengths scale with the stage, rates with its area, as rainParams scales count.
+  const s = Math.min(w / 1280, h / 800);
+  const area = (w * h) / (1280 * 800);
+  return {
+    ringRate: PUDDLE.ringRate[m][i] * area,
+    ringLife: PUDDLE.ringLife[m],
+    ringR0: PUDDLE.ringR[m][0] * s,
+    ringRSpan: PUDDLE.ringR[m][1] * s,
+    ringKind: PUDDLE.ringKind[m],
+    ringAlpha: PUDDLE.ringAlpha[m],
+    ringShadow: !isDark,
+    crownRate: PUDDLE.crownRate[i] * area,
+    crownAlpha: PUDDLE.crownAlpha[m],
+    sheenAlpha: PUDDLE.sheenAlpha[m],
+    sheenFloor: PUDDLE.sheenFloor[m],
+    streakCount: Math.round(PUDDLE.streakShare * rainParams(band, 0, w, h).count),
+    streakFloor: storm && isDark ? PUDDLE.streakFloorStormDark : PUDDLE.streakFloor[m],
+  };
+}
+
+/** 0 inside any zone rect, 1 at `feather` px or more from every one, a
+ *  smoothstep between. `zones` is n rects as [x0, y0, x1, y1] in CSS px, y down.
+ *  Allocates nothing: it runs per vertex per frame. */
+export function zoneMask(x: number, y: number, zones: Float32Array, n: number, feather = PUDDLE.feather): number {
+  let w = 1;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const dx = Math.max(zones[o] - x, x - zones[o + 2], 0);
+    const dy = Math.max(zones[o + 1] - y, y - zones[o + 3], 0);
+    const t = Math.min(1, Math.hypot(dx, dy) / feather);
+    w = Math.min(w, t * t * (3 - 2 * t));
+  }
+  return w;
+}
+
+/** True when the glance text (sentence slot 1 or tiles slot 2) is on screen.
+ *  Absent slots hold -1e5. Without them (the hub) rings and crowns stay off. */
+export function hasGlanceZones(zones: Float32Array): boolean {
+  return zones[4] > -1e4 || zones[8] > -1e4;
+}
+
+/** True when a ring of final radius `r` at (x, y), drawn as the ellipse
+ *  rx = r, ry = 0.3r + 1 grown by 12 px, misses every zone rect. */
+export function ringSpawnOk(x: number, y: number, r: number, zones: Float32Array, n: number): boolean {
+  const rx = r + 12;
+  const ry = 0.3 * r + 1 + 12;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    // Axis-aligned ellipse vs rect: scale to a circle, then the rect's nearest point is a per-axis clamp.
+    const nx = (Math.min(Math.max(x, zones[o]), zones[o + 2]) - x) / rx;
+    const ny = (Math.min(Math.max(y, zones[o + 1]), zones[o + 3]) - y) / ry;
+    if (nx * nx + ny * ny <= 1) return false;
+  }
+  return true;
+}
+
 // --- lightning -------------------------------------------------------------
 
 export const FLASH_PEAK_ALPHA = { dark: 0.18, light: 0.14 };

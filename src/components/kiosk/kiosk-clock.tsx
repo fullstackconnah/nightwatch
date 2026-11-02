@@ -35,7 +35,7 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
   const clock = date ? formatWallClock(date) : null;
 
   return (
-    <div ref={ref} className={cn("select-none", full ? "flex items-baseline gap-2.5" : "text-center")}>
+    <div ref={ref} data-rain-zone="clock" className={cn("select-none", full ? "flex items-baseline gap-2.5" : "text-center")}>
       <div
         className={cn(
           "font-mono tabular-nums leading-none text-ink",

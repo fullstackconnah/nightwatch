@@ -200,6 +200,73 @@ for (const cloud01 of [0, 0.35, 0.7, 1]) {
 }
 console.log(`\n  ${cubeChecked} samples checked, ${cubeExempt} exempt as light↔dark transit`);
 
+/* GATE 4 — rain marks over the wet grounds.
+ *
+ * The puddle-line rain keeps its loud marks (rings, crowns) out of the glance
+ * text zones by a mask, so what can reach text there is one streak at its
+ * zone floor, plus the storm flash at peak. Darkening marks go in at their
+ * maximum; the white day rings, the day sheen and the day flash only lighten,
+ * and the dark sheen is masked to 0, so they are left out (a lightening can
+ * only raise dark-ink contrast). Both inks are checked: inkDim is the stricter.
+ * The numbers come from the shipped kiosk-weather-fx.ts, read in a child node
+ * with type stripping so this file never holds a second copy. */
+console.log("\nGATE 4 — rain marks over the wet grounds\n");
+const fx = JSON.parse(
+  execFileSync(
+    process.execPath,
+    [
+      "--experimental-strip-types",
+      "--no-warnings",
+      "--input-type=module",
+      "-e",
+      `import * as f from "./src/lib/kiosk-weather-fx.ts";
+const out = { flash: f.FLASH_PEAK_ALPHA, glow: f.FLASH_GLOW_HEX, bands: {} };
+for (const [name, band, storm] of [["drizzle","drizzle",false],["light","light",false],["moderate","moderate",false],["heavy","heavy",false],["storm","heavy",true]]) {
+  const r = f.rainParams(band, 0, 1280, 800);
+  out.bands[name] = { alpha: r.alphaNear, floor: { day: f.puddleParams(band, storm, false, 1280, 800).streakFloor, dark: f.puddleParams(band, storm, true, 1280, 800).streakFloor }, storm };
+}
+console.log(JSON.stringify(out));`,
+    ],
+    { cwd: process.cwd() },
+  ).toString(),
+);
+const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const lumRgb = (c) => 0.2126 * channelLuminance(c[0]) + 0.7152 * channelLuminance(c[1]) + 0.0722 * channelLuminance(c[2]);
+const blend = (g, c, a) => g.map((v, i) => v * (1 - a) + c[i] * a);
+const contrastRgb = (a, b) => {
+  const [hi, lo] = [lumRgb(a), lumRgb(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+const glowRgb = hexRgb(fx.glow);
+const dayStreak = hexRgb("#283448");
+let rainChecked = 0;
+let rainWorst = null;
+let maxFlashStep = 0;
+for (let i = 0; i < SUNROOM_STOPS.length; i++) {
+  for (const k of [0, 0.5]) {
+    const st = sunroomStateAt(i + k, { cloud01: 1, rain01: 1 });
+    if (st.crossing) continue;
+    const mode = st.isDark ? "dark" : "light";
+    const bg = hexRgb(st.palette.bg);
+    maxFlashStep = Math.max(maxFlashStep, Math.abs(lumRgb(blend(bg, glowRgb, fx.flash[mode])) - lumRgb(bg)));
+    for (const ink of ["ink", "inkDim"]) {
+      const base = contrastRgb(hexRgb(st.palette[ink]), bg);
+      if (base < AA) continue; // only layers we add may fail
+      for (const [name, b] of Object.entries(fx.bands)) {
+        let px = bg;
+        if (b.storm && st.isDark) px = blend(px, glowRgb, fx.flash.dark);
+        px = blend(px, st.isDark ? glowRgb : dayStreak, b.alpha[mode] * (st.isDark ? b.floor.dark : b.floor.day));
+        const c = contrastRgb(hexRgb(st.palette[ink]), px);
+        rainChecked++;
+        if (!rainWorst || c < rainWorst.c) rainWorst = { c, label: `${SUNROOM_STOPS[i].name}+${k} ${ink} ${name}` };
+        if (c < AA) failures.push(`rain marks: ${SUNROOM_STOPS[i].name}+${k} wet ${ink} ${name} = ${c.toFixed(2)}`);
+      }
+    }
+  }
+}
+console.log(`  ${rainChecked} cells checked, worst ${rainWorst.c.toFixed(2)} (${rainWorst.label}); largest flash step ${maxFlashStep.toFixed(3)}`);
+if (maxFlashStep > 0.05) failures.push(`flash luminance step ${maxFlashStep.toFixed(3)} is over 0.05`);
+
 /* Not a contrast gate, but a cheap guard on the thing the whole design rests
  * on: if the shadow's horizontal offset does not actually change sign across
  * the day, the light is not travelling and this is just a recoloured static

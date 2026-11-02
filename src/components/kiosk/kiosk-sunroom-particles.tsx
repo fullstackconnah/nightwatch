@@ -2,12 +2,22 @@
 
 /* THESIS: High-performance 3D atmospheric weather overlay powered by Three.js.
  *
- * One WebGLRenderer scene: rain streaks (one mesh of quads), a lightning
- * glow, droplets on the glass (points), fog banks (sprite planes) and gust
- * line segments. At most 9 draw calls a frame. Runs with strict frame-budget
- * gating (30fps in rain, ~24 otherwise), automatic tab-visibility pausing, a
- * single still frame under reduced motion (fog only), and complete GPU
- * resource disposal on unmount.
+ * One WebGLRenderer scene: rain streaks (one mesh of quads), the puddle line
+ * (rings on the wet floor, crowns on the forecast panel, a floor sheen: one
+ * mesh), a lightning glow, fog banks (sprite planes) and gust line segments.
+ * Droplets on the glass are not drawn in rain. At most 9 draw calls a frame.
+ * Runs with strict frame-budget gating (30fps in rain, ~24 otherwise),
+ * automatic tab-visibility pausing, a single still frame under reduced motion
+ * (the wet-floor sheen when it rains, plus fog), and complete GPU resource
+ * disposal on unmount.
+ *
+ * ZONE-MASK CONTRACT. The loud marks (rings, crowns, the dark sheen) never
+ * reach glance text: the glance clock, sentence and briefing, light/timer row
+ * and Admin button carry `data-rain-zone`, their rects are read into a mask,
+ * and rings are masked to 0 inside them (and not spawned within 12 px).
+ * Streaks and gust lines are multiplied by it too (streaks keep a floor,
+ * gust lines go to 0). So the text gate is the zone floors, not low alphas;
+ * see kiosk-weather-fx.ts (PUDDLE) and its tests.
  *
  * COORDINATE CONVENTION — the one thing to get right in this file. The
  * orthographic camera is set up as (left 0, right width, TOP height, BOTTOM 0),
@@ -27,11 +37,17 @@ import * as THREE from "three";
 import {
   FLASH_PEAK_ALPHA,
   MAX_RAIN_STREAKS,
+  PUDDLE,
   flashEnvelope,
   leanAt,
+  puddleParams,
   rainParams,
+  hasGlanceZones,
+  ringSpawnOk,
   sampleStreak,
   stepStrikes,
+  zoneMask,
+  type PuddleParams,
   type RainBand,
   type RainParams,
   type StreakSpec,
@@ -61,28 +77,14 @@ const MIST_PEAK_ALPHA = { dark: 0.055, light: 0.07 };
  *  drowned them. */
 const DROPLET_OPACITY = { dark: 0.16, light: 0.12 };
 
-/** How wet the glass gets per band; drizzle leaves it dry. */
-const GLASS_WETNESS: Record<RainBand, number> = { none: 0, drizzle: 0, light: 0.4, moderate: 0.7, heavy: 1 };
-
 /** Same argument for the gust streaks. These are 1px hairlines alive for under
  *  two seconds, not a full-viewport wash, so they need a higher number than the
  *  wash band to register at all; 0.04 was invisible. */
 const GUST_PEAK_ALPHA = 0.13;
 
-/** Droplet sprite radius (px) per unit of simulated droplet radius. The sprite
- *  texture's bright core is its inner ~40%, so the point has to be drawn
- *  several times larger than the droplet it depicts. */
-const DROPLET_PX_PER_R = 2.6;
-
-interface DropletState {
-  x: number;
-  y: number;
-  r: number;
-  vx: number;
-  vy: number;
-  wobbleUntil: number;
-  born: number;
-}
+/* The puddle line draws no glass droplets in rain, so the Points system
+   below stays (its texture, geometry and material are disposed with the rest)
+   but its draw range is 0 and nothing simulates it. */
 
 interface MistState {
   baseY01: number;
@@ -130,6 +132,67 @@ const DROPLET_FRAG = /* glsl */ `
     if ( a < 0.003 ) discard;
     gl_FragColor = vec4( uColor, a );
     #include <colorspace_fragment>
+  }
+`;
+
+/* The puddle line: one ShaderMaterial for rings (kind 2 + sigma offset), crown
+   blobs (kind 3) and the floor sheen (kind 4). The zone mask runs per fragment
+   on `vP`, the vertex's CSS-px position with y DOWN (the simulation's own
+   coordinates, recovered from the scene's y-up position and the stage height).
+   Never gl_FragCoord: that is in device pixels with y up. Output is
+   premultiplied; the colour-space step runs before the alpha multiply. */
+const PUDDLE_VERT = /* glsl */ `
+  attribute vec4 aColor;
+  attribute float aKind;
+  attribute float aFloor;
+  uniform float uHeight;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  varying float vKind;
+  varying float vFloor;
+  varying vec2 vP;
+  void main() {
+    vUv = uv;
+    vColor = aColor;
+    vKind = aKind;
+    vFloor = aFloor;
+    vP = vec2( position.x, uHeight - position.y );
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+  }
+`;
+
+const PUDDLE_FRAG = /* glsl */ `
+  uniform vec4 uZones[4];
+  uniform float uFeather;
+  varying vec2 vUv;
+  varying vec4 vColor;
+  varying float vKind;
+  varying float vFloor;
+  varying vec2 vP;
+  void main() {
+    float a = vColor.a;
+    float d = length( vUv * 2.0 - 1.0 );
+    if ( vKind < 3.5 ) {
+      if ( d > 1.0 ) discard;
+      if ( vKind < 2.5 ) {
+        float r = ( d - 0.84 ) / ( 0.09 + ( vKind - 2.0 ) * 0.1 );
+        a *= exp( -r * r );
+      } else {
+        float f = 1.0 - d * d;
+        a *= f * f;
+      }
+    }
+    float m = 1.0;
+    for ( int i = 0; i < 4; i++ ) {
+      vec4 z = uZones[i];
+      vec2 dd = max( max( z.xy - vP, vP - z.zw ), 0.0 );
+      m = min( m, smoothstep( 0.0, uFeather, length( dd ) ) );
+    }
+    a *= mix( vFloor, 1.0, m );
+    if ( a < 0.002 ) discard;
+    gl_FragColor = vec4( vColor.rgb, a );
+    #include <colorspace_fragment>
+    gl_FragColor.rgb *= a;
   }
 `;
 
@@ -186,7 +249,7 @@ export function KioskSunroomParticles({
 }: {
   band: RainBand;
   storm: boolean;
-  /** Reduced motion: no loop at all. Only fog mounts, drawn as one still frame. */
+  /** Reduced motion: no loop at all. One still frame: the wet-floor sheen when it rains, plus fog. */
   reduced: boolean;
   fog: boolean;
   windKmh: number;
@@ -200,10 +263,11 @@ export function KioskSunroomParticles({
   propsRef.current = { band, storm, reduced, fog, windKmh, isDark, dusk01, firstStrikeMs };
   const redrawRef = useRef<(() => void) | null>(null);
   // A still frame has no loop to pick up a change, and a stopped loop must
-  // restart when reduced motion turns off; both go through redraw.
+  // restart when reduced motion turns off; both go through redraw. A band or
+  // storm change also re-reads the zone rects there.
   useEffect(() => {
     redrawRef.current?.();
-  }, [reduced, fog, isDark, dusk01]);
+  }, [reduced, fog, isDark, dusk01, band, storm]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -314,6 +378,131 @@ export function KioskSunroomParticles({
     streakMesh.position.z = 2;
     scene.add(streakMesh);
 
+    /* The puddle line: rings on the wet floor, crowns on the forecast panel's
+       top edge and a floor sheen, in ONE mesh of up to 192 indexed quads.
+       WINDING: three culls clockwise (FrontSide) triangles, so every quad is
+       counter-clockwise in the y-up scene: corners 0 bottom-left, 1 bottom-right,
+       2 top-left, 3 top-right, triangles (0,1,2) and (2,1,3). Drawn just under
+       the streaks (z 1.5 against 2), over the fog (z 1). */
+    const PQ = PUDDLE.poolQuads;
+    const puddlePositions = new Float32Array(PQ * 4 * 3);
+    const puddleUvs = new Float32Array(PQ * 4 * 2);
+    const puddleColors = new Float32Array(PQ * 4 * 4);
+    const puddleKinds = new Float32Array(PQ * 4);
+    const puddleFloors = new Float32Array(PQ * 4);
+    const puddleIndex = new Uint16Array(PQ * 6);
+    for (let i = 0; i < PQ; i++) {
+      const v = i * 4;
+      puddleIndex.set([v, v + 1, v + 2, v + 2, v + 1, v + 3], i * 6);
+      puddleUvs.set([0, 0, 1, 0, 0, 1, 1, 1], v * 2);
+    }
+    const puddleGeo = new THREE.BufferGeometry();
+    const puddlePosAttr = new THREE.BufferAttribute(puddlePositions, 3).setUsage(THREE.DynamicDrawUsage);
+    const puddleColorAttr = new THREE.BufferAttribute(puddleColors, 4).setUsage(THREE.DynamicDrawUsage);
+    const puddleKindAttr = new THREE.BufferAttribute(puddleKinds, 1).setUsage(THREE.DynamicDrawUsage);
+    const puddleFloorAttr = new THREE.BufferAttribute(puddleFloors, 1).setUsage(THREE.DynamicDrawUsage);
+    puddleGeo.setAttribute("position", puddlePosAttr);
+    puddleGeo.setAttribute("uv", new THREE.BufferAttribute(puddleUvs, 2));
+    puddleGeo.setAttribute("aColor", puddleColorAttr);
+    puddleGeo.setAttribute("aKind", puddleKindAttr);
+    puddleGeo.setAttribute("aFloor", puddleFloorAttr);
+    puddleGeo.setIndex(new THREE.BufferAttribute(puddleIndex, 1));
+    puddleGeo.setDrawRange(0, 0);
+    // Four zone rects in CSS px, y down; unused slots sit far off-stage, where the mask is 1.
+    const uZones = [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()];
+    const puddleMat = new THREE.ShaderMaterial({
+      uniforms: { uZones: { value: uZones }, uFeather: { value: PUDDLE.feather }, uHeight: { value: height } },
+      vertexShader: PUDDLE_VERT,
+      fragmentShader: PUDDLE_FRAG,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.CustomBlending,
+      blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor,
+      blendDst: THREE.OneMinusSrcAlphaFactor,
+    });
+    const puddleMesh = new THREE.Mesh(puddleGeo, puddleMat);
+    puddleMesh.frustumCulled = false;
+    puddleMesh.position.z = 1.5;
+    scene.add(puddleMesh);
+
+    /* Zone rects (glance text) and the forecast panel, read from the DOM tags
+       `data-rain-zone` / `data-rain-panel`. Same-named elements are unioned (the
+       outlook and briefing share the "sentence" zone). Re-read on mount, on
+       container resize, on a prop change and then at most once a second from the
+       frame loop, so tags that appear late (weather data), vanish or move
+       (glance <-> full) are picked up within a second. */
+    const ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3 } as const;
+    const zoneRects = new Float32Array(16);
+    const panelRect = new Float32Array(4);
+    let panelOk = false;
+    let glance = false;
+    let rectsAt = 0;
+    const readRects = () => {
+      rectsAt = performance.now();
+      const o = container.getBoundingClientRect();
+      for (let i = 0; i < 4; i++) {
+        zoneRects[i * 4] = zoneRects[i * 4 + 1] = Infinity;
+        zoneRects[i * 4 + 2] = zoneRects[i * 4 + 3] = -Infinity;
+      }
+      document.querySelectorAll<HTMLElement>("[data-rain-zone]").forEach((el) => {
+        const slot = ZONE_SLOT[el.dataset.rainZone as keyof typeof ZONE_SLOT];
+        const r = el.getBoundingClientRect();
+        if (slot === undefined || r.width * r.height === 0) return;
+        const k = slot * 4;
+        zoneRects[k] = Math.min(zoneRects[k], r.left - o.left);
+        zoneRects[k + 1] = Math.min(zoneRects[k + 1], r.top - o.top);
+        zoneRects[k + 2] = Math.max(zoneRects[k + 2], r.right - o.left);
+        zoneRects[k + 3] = Math.max(zoneRects[k + 3], r.bottom - o.top);
+      });
+      for (let i = 0; i < 4; i++) {
+        const k = i * 4;
+        if (zoneRects[k] === Infinity) zoneRects.fill(-1e5, k, k + 4);
+        uZones[i].set(zoneRects[k], zoneRects[k + 1], zoneRects[k + 2], zoneRects[k + 3]);
+      }
+      glance = hasGlanceZones(zoneRects);
+      const panel = document.querySelector<HTMLElement>("[data-rain-panel]")?.getBoundingClientRect();
+      panelOk = !!panel && panel.width > 40;
+      if (panel) {
+        panelRect[0] = panel.left - o.left;
+        panelRect[1] = panel.top - o.top;
+        panelRect[2] = panel.right - o.left;
+        panelRect[3] = panel.bottom - o.top;
+      }
+    };
+
+    // One quad into the pool, in simulation coordinates (y down). aTop/aBot are the alpha at the quad's top and bottom edge.
+    let pq = 0;
+    const putQuad = (
+      x0: number,
+      yTop: number,
+      x1: number,
+      yBot: number,
+      c: THREE.Color,
+      aTop: number,
+      aBot: number,
+      kind: number,
+      floor: number,
+    ) => {
+      if (pq >= PQ) return;
+      const v = pq++ * 4;
+      const yb = height - yBot;
+      const yt = height - yTop;
+      puddlePosAttr.setXYZ(v, x0, yb, 0);
+      puddlePosAttr.setXYZ(v + 1, x1, yb, 0);
+      puddlePosAttr.setXYZ(v + 2, x0, yt, 0);
+      puddlePosAttr.setXYZ(v + 3, x1, yt, 0);
+      puddleColorAttr.setXYZW(v, c.r, c.g, c.b, aBot);
+      puddleColorAttr.setXYZW(v + 1, c.r, c.g, c.b, aBot);
+      puddleColorAttr.setXYZW(v + 2, c.r, c.g, c.b, aTop);
+      puddleColorAttr.setXYZW(v + 3, c.r, c.g, c.b, aTop);
+      for (let k = 0; k < 4; k++) {
+        puddleKindAttr.setX(v + k, kind);
+        puddleFloorAttr.setX(v + k, floor);
+      }
+    };
+
     const mistPlaneGeo = new THREE.PlaneGeometry(1, 1);
 
     // Lightning: one soft glow from the mist sprite, hidden between strikes so
@@ -388,8 +577,31 @@ export function KioskSunroomParticles({
 
     // --- 3. Simulation State ------------------------------------------------
     const mountedAt = performance.now();
-    const droplets: DropletState[] = [];
-    let dropletSpawnAcc = 0;
+    // Puddle line state: typed arrays sized once at their pool maximum, packed [0, count), swap-removed.
+    const ringX = new Float32Array(PUDDLE.poolRings);
+    const ringY = new Float32Array(PUDDLE.poolRings);
+    const ringR = new Float32Array(PUDDLE.poolRings);
+    const ringAge = new Float32Array(PUDDLE.poolRings);
+    const ringLife = new Float32Array(PUDDLE.poolRings);
+    let ringCount = 0;
+    let ringAcc = 0;
+    const crownX = new Float32Array(PUDDLE.poolCrowns);
+    const crownY = new Float32Array(PUDDLE.poolCrowns);
+    const crownVx = new Float32Array(PUDDLE.poolCrowns);
+    const crownVy = new Float32Array(PUDDLE.poolCrowns);
+    const crownAge = new Float32Array(PUDDLE.poolCrowns);
+    let crownCount = 0;
+    let crownAcc = 0;
+    let pp0 = { band: "none" as WetBand, storm: false, isDark: false, w: 0, h: 0 };
+    let pp: PuddleParams | null = null;
+    // Mark colours, linear working space like every other colour here.
+    const whiteInk = new THREE.Color(0xffffff);
+    const dayInk = new THREE.Color(0x283448);
+    const nightInk = new THREE.Color(0xecf2fc);
+    // ?wx= preview only: time the puddle step, log once.
+    let timeSum = 0;
+    let timeMax = 0;
+    let timeN = 0;
     const gusts: GustState[] = [];
     /* The first gust comes sooner than the steady-state cadence below. The
        layer only mounts once it is genuinely windy, and opening with 5–12s of
@@ -412,20 +624,6 @@ export function KioskSunroomParticles({
     // Lightning schedule: armed when a storm starts, disarmed when it ends.
     const strikeClock = { nextAt: Infinity, firstUsed: false };
     let strike: { at: number; hold: number; double: boolean } | null = null;
-
-    const spawnDroplet = (): DropletState => {
-      const r = 1.5 + Math.random() * 2.5;
-      const now = performance.now();
-      return {
-        x: Math.random() * width,
-        y: Math.random() * height * 0.8,
-        r,
-        vx: (Math.random() - 0.5) * 6,
-        vy: 0,
-        wobbleUntil: now + 400 + Math.random() * 900,
-        born: now,
-      };
-    };
 
     /** Puts streak `i` just above the top edge (or anywhere, for the first
      *  fill), across the upwind span a leaning field needs to fill its corner. */
@@ -471,6 +669,132 @@ export function KioskSunroomParticles({
       mistBlobs.forEach((m) => m.mesh.material.color.setHex(isDark ? 0xecf2fc : 0xffffff));
     };
 
+    const getPuddle = (band: WetBand, storm: boolean, isDark: boolean): PuddleParams => {
+      if (!pp || band !== pp0.band || storm !== pp0.storm || isDark !== pp0.isDark || width !== pp0.w || height !== pp0.h) {
+        pp0 = { band, storm, isDark, w: width, h: height };
+        pp = puddleParams(band, storm, isDark, width, height);
+      }
+      return pp;
+    };
+
+    /** True when (x, y) is inside a zone rect grown by `g` px. */
+    const inGrownZone = (x: number, y: number, g: number): boolean => {
+      for (let i = 0; i < 16; i += 4) {
+        if (x > zoneRects[i] - g && x < zoneRects[i + 2] + g && y > zoneRects[i + 1] - g && y < zoneRects[i + 3] + g) return true;
+      }
+      return false;
+    };
+
+    /** The wet-floor sheen quad: full width, 0.70H to H, clear at the top. */
+    const putSheen = (q: PuddleParams, isDark: boolean) =>
+      putQuad(0, height * 0.7, width, height, isDark ? nightInk : whiteInk, 0, q.sheenAlpha, 4, q.sheenFloor);
+
+    const flushPuddle = () => {
+      if (pq > 0) {
+        puddlePosAttr.needsUpdate = true;
+        puddleColorAttr.needsUpdate = true;
+        puddleKindAttr.needsUpdate = true;
+        puddleFloorAttr.needsUpdate = true;
+      }
+      puddleGeo.setDrawRange(0, pq * 6);
+    };
+
+    /** One frame of the puddle line: sheen, rings, crowns. No allocation. */
+    const stepPuddle = (dt: number, q: PuddleParams, isDark: boolean, timed: boolean) => {
+      const t0 = timed ? performance.now() : 0;
+      const sc = Math.min(width / 1280, height / 800);
+      const mark = isDark ? nightInk : whiteInk;
+      pq = 0;
+      putSheen(q, isDark);
+
+      // Rings: spawn on the floor band, away from the text zones (20 tries, then skip).
+      ringAcc = Math.min(ringAcc + q.ringRate * dt, 8);
+      for (; ringAcc >= 1; ringAcc--) {
+        if (!glance || ringCount >= PUDDLE.poolRings) continue; // the hub has no quiet gaps, so no rings
+        for (let tries = 0; tries < 20; tries++) {
+          const y = height * (0.75 + 0.25 * Math.sqrt(Math.random()));
+          const persp = 0.6 + (0.4 * (y - height * 0.75)) / (height * 0.25);
+          const r = (q.ringR0 + q.ringRSpan * Math.random()) * persp;
+          const x = Math.random() * width;
+          if (!ringSpawnOk(x, y, r, zoneRects, 4)) continue;
+          ringX[ringCount] = x;
+          ringY[ringCount] = y;
+          ringR[ringCount] = r;
+          ringAge[ringCount] = 0;
+          ringLife[ringCount] = q.ringLife;
+          ringCount++;
+          break;
+        }
+      }
+      for (let i = ringCount - 1; i >= 0; i--) {
+        ringAge[i] += dt;
+        const p = ringAge[i] / ringLife[i];
+        if (p >= 1) {
+          const last = --ringCount;
+          ringX[i] = ringX[last];
+          ringY[i] = ringY[last];
+          ringR[i] = ringR[last];
+          ringAge[i] = ringAge[last];
+          ringLife[i] = ringLife[last];
+          continue;
+        }
+        const rx = ringR[i] * (1 - (1 - p) * (1 - p)) + 1.5;
+        const ry = 0.3 * rx + 1;
+        const fall = (1 - p) * Math.sqrt(1 - p);
+        if (q.ringShadow) {
+          const sx = rx * 0.86;
+          const sy = 0.26 * sx + 1;
+          const cy = ringY[i] + 1.2;
+          const a = PUDDLE.ringShadowAlpha * fall;
+          putQuad(ringX[i] - sx, cy - sy, ringX[i] + sx, cy + sy, dayInk, a, a, q.ringKind, 0);
+        }
+        // Day: white, fading as it opens. Dusk and night: a 110 ms soft attack, then a linear fade.
+        const a = isDark ? q.ringAlpha * Math.min(1, p / 0.08) * (1 - p) : q.ringAlpha * fall;
+        putQuad(ringX[i] - rx, ringY[i] - ry, ringX[i] + rx, ringY[i] + ry, mark, a, a, q.ringKind, 0);
+      }
+
+      // Crowns: three blobs thrown up off the forecast panel's top edge.
+      if (panelOk && glance) {
+        crownAcc = Math.min(crownAcc + q.crownRate * dt, 8);
+        for (; crownAcc >= 1; crownAcc--) {
+          const x = panelRect[0] + 20 + Math.random() * Math.max(0, panelRect[2] - panelRect[0] - 40);
+          for (let k = 0; k < 3 && crownCount < PUDDLE.poolCrowns; k++, crownCount++) {
+            crownX[crownCount] = x;
+            crownY[crownCount] = panelRect[1] - 1;
+            crownVx[crownCount] = (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 40) * sc;
+            crownVy[crownCount] = -(120 + Math.random() * 100) * sc;
+            crownAge[crownCount] = 0;
+          }
+        }
+      } else crownCount = 0;
+      const rad = PUDDLE.crownRadius * Math.max(sc, 0.5);
+      for (let i = crownCount - 1; i >= 0; i--) {
+        crownAge[i] += dt;
+        crownVy[i] += 900 * sc * dt;
+        crownX[i] += crownVx[i] * dt;
+        crownY[i] += crownVy[i] * dt;
+        if (crownY[i] > panelRect[1] || crownAge[i] >= PUDDLE.crownLife || inGrownZone(crownX[i], crownY[i], 8)) {
+          const last = --crownCount;
+          crownX[i] = crownX[last];
+          crownY[i] = crownY[last];
+          crownVx[i] = crownVx[last];
+          crownVy[i] = crownVy[last];
+          crownAge[i] = crownAge[last];
+          continue;
+        }
+        const a = q.crownAlpha * (1 - crownAge[i] / PUDDLE.crownLife);
+        putQuad(crownX[i] - rad, crownY[i] - rad, crownX[i] + rad, crownY[i] + rad, isDark ? nightInk : dayInk, a, a, 3, PUDDLE.crownFloor);
+      }
+      flushPuddle();
+
+      if (timed) {
+        const ms = performance.now() - t0;
+        timeSum += ms;
+        timeMax = Math.max(timeMax, ms);
+        if (++timeN === 150) console.info(`[wx] puddle step ${(timeSum / timeN).toFixed(2)} ms avg, ${timeMax.toFixed(2)} ms max, ${pq} quads`);
+      }
+    };
+
     /** Moves the fog banks; returns the alpha drawn this frame (0 = none). */
     const updateMist = (now: number, dt: number, instant: boolean): number => {
       const p = propsRef.current;
@@ -507,17 +831,21 @@ export function KioskSunroomParticles({
       return baseAlpha;
     };
 
-    /** Reduced motion: fog at full strength, nothing else, one frame. */
+    /** Reduced motion: the still wet floor (the sheen alone, when it rains) and
+     *  fog at full strength, one frame. No rings, crowns, streaks or flash. */
     const renderStill = () => {
-      applyGround(propsRef.current.isDark);
-      droplets.length = 0;
+      const p = propsRef.current;
+      applyGround(p.isDark);
       gusts.length = 0;
       live = 0;
+      ringCount = crownCount = 0;
       strike = null;
-      dropletGeo.setDrawRange(0, 0);
       streakGeo.setDrawRange(0, 0);
       gustGeo.setDrawRange(0, 0);
       flashMesh.visible = false;
+      pq = 0;
+      if (p.band !== "none") putSheen(getPuddle(p.band, p.storm, p.isDark), p.isDark);
+      flushPuddle();
       updateMist(performance.now(), 0, true);
       renderer.render(scene, camera);
       drewLastFrame = true;
@@ -541,6 +869,7 @@ export function KioskSunroomParticles({
       if (now - lastFrame < (p.band === "none" ? FRAME_BUDGET_MS : RAIN_FRAME_BUDGET_MS)) return;
       const dt = Math.min(0.1, (now - lastFrame) / 1000);
       lastFrame = now;
+      if (now - rectsAt > 1000) readRects();
 
       applyGround(p.isDark);
       const mode = p.isDark ? "dark" : "light";
@@ -553,6 +882,7 @@ export function KioskSunroomParticles({
           rp = rainParams(p.band, p.windKmh, width, height);
         }
         const params = rp;
+        const pq0 = getPuddle(p.band, p.storm, p.isDark);
         const lean = (leanAt(params, now / 1000) * Math.PI) / 180;
         const sinL = Math.sin(lean);
         const cosL = Math.cos(lean);
@@ -561,11 +891,11 @@ export function KioskSunroomParticles({
 
         if (live === 0) {
           // Already raining when it appears: never a curtain entering from the top.
-          for (; live < params.count; live++) placeStreak(live, params, p.band, tanL, true);
+          for (; live < pq0.streakCount; live++) placeStreak(live, params, p.band, tanL, true);
           streakSpawnAcc = 0;
-        } else if (live < params.count) {
+        } else if (live < pq0.streakCount) {
           // A heavier band fills in over about 3s, from the top.
-          streakSpawnAcc = Math.min(streakSpawnAcc + (dt * params.count) / 3, params.count - live);
+          streakSpawnAcc = Math.min(streakSpawnAcc + (dt * pq0.streakCount) / 3, pq0.streakCount - live);
           for (; streakSpawnAcc >= 1; streakSpawnAcc--) placeStreak(live++, params, p.band, tanL, false);
         }
 
@@ -575,7 +905,7 @@ export function KioskSunroomParticles({
           s.y += s.speed * cosL * dt;
           if (s.y - s.length * cosL <= height && s.x - s.length * sinL <= width) continue;
           // Off-screen. A lighter band lets the excess go rather than popping it.
-          if (live > params.count) {
+          if (live > pq0.streakCount) {
             live--;
             [streaks[i], streaks[live]] = [streaks[live], streaks[i]];
           } else placeStreak(i, params, p.band, tanL, false);
@@ -593,8 +923,18 @@ export function KioskSunroomParticles({
           streakPosAttr.setXYZ(v + 1, tx + hx, height - (ty + hy), 2);
           streakPosAttr.setXYZ(v + 2, s.x - hx, height - (s.y - hy), 2);
           streakPosAttr.setXYZ(v + 3, s.x + hx, height - (s.y + hy), 2);
+          /* Quieter near glance text: the streak's alpha takes the smallest zone
+             mask of its head, middle and tail, so no pixel inside a zone can
+             exceed peak x floor (the contrast gate's assumption). */
+          const mask = glance
+            ? Math.min(
+                zoneMask(s.x, s.y, zoneRects, 4),
+                zoneMask((s.x + tx) / 2, (s.y + ty) / 2, zoneRects, 4),
+                zoneMask(tx, ty, zoneRects, 4),
+              )
+            : 0; // the hub: zone floor everywhere
           // Clear at the tail, full at the head.
-          const a = peak * s.aMult;
+          const a = peak * s.aMult * (pq0.streakFloor + (1 - pq0.streakFloor) * mask);
           streakColorAttr.setXYZW(v, 1, 1, 1, 0);
           streakColorAttr.setXYZW(v + 1, 1, 1, 1, 0);
           streakColorAttr.setXYZW(v + 2, 1, 1, 1, a);
@@ -605,9 +945,14 @@ export function KioskSunroomParticles({
           streakColorAttr.needsUpdate = true;
         }
         streakGeo.setDrawRange(0, live * 6);
+        stepPuddle(dt, pq0, p.isDark, p.firstStrikeMs !== undefined);
       } else {
         live = 0;
         streakGeo.setDrawRange(0, 0);
+        ringCount = crownCount = 0;
+        ringAcc = crownAcc = 0;
+        pq = 0;
+        flushPuddle();
       }
 
       // --- B. Lightning ---
@@ -628,60 +973,7 @@ export function KioskSunroomParticles({
       flashMesh.visible = level > 0;
       flashMat.opacity = level * FLASH_PEAK_ALPHA[mode];
 
-      // --- C. Glass droplets ---
-      const wet = GLASS_WETNESS[p.band];
-      if (wet > 0) {
-        const targetCount = Math.round(6 + wet * 12);
-        dropletSpawnAcc += dt * (targetCount / 3);
-        dropletSpawnAcc = Math.min(dropletSpawnAcc, 3);
-        while (dropletSpawnAcc >= 1 && droplets.length < targetCount) {
-          droplets.push(spawnDroplet());
-          dropletSpawnAcc -= 1;
-        }
-
-        // Wind pushes water across the glass to the right, the way the rain leans.
-        const windDrift = Math.min(60, p.windKmh) * 0.25;
-        let activeCount = 0;
-
-        for (let i = droplets.length - 1; i >= 0; i--) {
-          const d = droplets[i];
-          if (now >= d.wobbleUntil) {
-            const targetV = (30 + d.r * 22) * (0.6 + wet * 0.6);
-            d.vy += (targetV - d.vy) * Math.min(1, dt * 1.5);
-            d.y += d.vy * dt;
-            d.x += (Math.sin(now / 400 + d.born) * d.vx + windDrift) * dt;
-          }
-          const age = (now - d.born) / 1000;
-          const life = 6 + d.r;
-          const fadeShrink = age > life * 0.7 ? 1 - (age - life * 0.7) / (life * 0.3) : 1;
-          const rr = Math.max(0.3, d.r * Math.max(0, fadeShrink));
-
-          if (d.y - rr > height || age > life || rr <= 0.3) {
-            droplets.splice(i, 1);
-            continue;
-          }
-
-          // Condensation forms, it does not appear. 350ms in, ~1s of fade out.
-          const fadeIn = Math.min(1, (now - d.born) / 350);
-
-          dropletPosAttr.setXYZ(activeCount, d.x, height - d.y, 2);
-          dropletSizeAttr.setX(activeCount, Math.max(3, rr * DROPLET_PX_PER_R));
-          dropletAlphaAttr.setX(activeCount, fadeIn * Math.min(1, fadeShrink));
-          activeCount++;
-        }
-
-        // drawRange bounds the draw, so the tail of the buffer is never read —
-        // there is nothing to clear and no reason to write to it.
-        if (activeCount > 0) {
-          dropletPosAttr.needsUpdate = true;
-          dropletSizeAttr.needsUpdate = true;
-          dropletAlphaAttr.needsUpdate = true;
-        }
-        dropletGeo.setDrawRange(0, activeCount);
-      } else {
-        if (droplets.length) droplets.length = 0;
-        dropletGeo.setDrawRange(0, 0);
-      }
+      // --- C. Glass droplets: none in rain (the puddle line has none); the draw range stays 0. ---
 
       // --- D. Mist ---
       const mistAlpha = updateMist(now, dt, false);
@@ -716,8 +1008,9 @@ export function KioskSunroomParticles({
             gustPosAttr.setXYZ(head, x + s.len, height - y, 3);
             // Bright at the leading edge, dissolving behind it: the shape a
             // streak of moving air actually has.
-            gustColorAttr.setXYZW(tail, 1, 1, 1, env * 0.12);
-            gustColorAttr.setXYZW(head, 1, 1, 1, env);
+            // Out of every text zone by construction: floor 0 on the mask.
+            gustColorAttr.setXYZW(tail, 1, 1, 1, env * 0.12 * zoneMask(x, y, zoneRects, 4));
+            gustColorAttr.setXYZW(head, 1, 1, 1, env * zoneMask(x + s.len, y, zoneRects, 4));
             lineIdx++;
           }
         }
@@ -735,13 +1028,14 @@ export function KioskSunroomParticles({
          holds the correct (empty) image. The one frame after everything clears
          still renders, so the last droplet is erased rather than frozen. */
       const drawing =
-        live > 0 || flashMesh.visible || dropletGeo.drawRange.count > 0 || mistAlpha > 0.001 || gustGeo.drawRange.count > 0;
+        live > 0 || flashMesh.visible || puddleGeo.drawRange.count > 0 || mistAlpha > 0.001 || gustGeo.drawRange.count > 0;
       if (drawing || drewLastFrame) renderer.render(scene, camera);
       drewLastFrame = drawing;
     };
 
     // --- 5. Resize & Visibility Handlers ------------------------------------
     const resize = () => {
+      readRects();
       const w = Math.max(1, container.clientWidth);
       const h = Math.max(1, container.clientHeight);
       if (w === width && h === height) return;
@@ -754,6 +1048,7 @@ export function KioskSunroomParticles({
       camera.top = h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      puddleMat.uniforms.uHeight.value = h;
       drewLastFrame = true;
       // setSize clears the canvas, and a still frame has no loop to repaint it.
       if (propsRef.current.reduced) renderStill();
@@ -773,6 +1068,7 @@ export function KioskSunroomParticles({
 
     // Props changed: a still frame repaints, a live loop (re)starts.
     redrawRef.current = () => {
+      readRects();
       if (document.hidden) return;
       if (propsRef.current.reduced) renderStill();
       else start();
@@ -794,6 +1090,7 @@ export function KioskSunroomParticles({
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     document.addEventListener("visibilitychange", onVisibility);
+    readRects();
     rafId = requestAnimationFrame(frame);
 
     // --- 6. Disposal & Cleanup ----------------------------------------------
@@ -812,6 +1109,8 @@ export function KioskSunroomParticles({
 
       streakGeo.dispose();
       streakMat.dispose();
+      puddleGeo.dispose();
+      puddleMat.dispose();
       flashMat.dispose();
 
       mistPlaneGeo.dispose();
