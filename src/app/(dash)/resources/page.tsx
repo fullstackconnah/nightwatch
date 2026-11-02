@@ -17,9 +17,9 @@ import { SegmentButton } from "@/components/ui/segment-button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/resources/treemap";
+import { BoxBand } from "@/components/resources/box-band";
 import {
   ResourceOverview,
-  MetricHistoryPanel,
   type OverviewModel,
   type HistoryRangeOption,
 } from "@/components/resources/resource-overview";
@@ -175,8 +175,6 @@ type OverviewHost = NonNullable<TelemetrySample["host"]>;
 // text-[0.625rem] inline segment-label size.
 const OVERVIEW_FILL_PRIMARY = "var(--color-ramp-teal-mid)"; // "writable"/"used" teal
 const OVERVIEW_FILL_SECONDARY = "var(--color-ramp-teal)"; // "volumes" teal
-const OVERVIEW_FILL_OTHER = "var(--color-line-bright)"; // "other used" slate
-const OVERVIEW_FILL_TRACK = "var(--color-panel-2)"; // "free" track treatment
 
 function finite(n: number): number {
   return Number.isFinite(n) ? n : 0;
@@ -184,80 +182,6 @@ function finite(n: number): number {
 
 function emptyOverview(): OverviewModel {
   return { scale: 0, segments: [], headline: "—", caption: "", figures: [] };
-}
-
-function buildCpuOverview(
-  host: OverviewHost | undefined,
-  samples: TelemetrySample[],
-  containers: Record<string, TelemetryRow> | undefined,
-): OverviewModel {
-  if (!host) return emptyOverview();
-  // 60s trend, same idiom buildNetOverview/buildBlkioOverview already use — CPU
-  // and MEM previously lacked this `series`, the one asymmetry this closes; the
-  // LIVE range of the new history panel below is exactly this ring, unmodified.
-  const series = samples.map((s) => Math.max(0, finite(s.host?.cpuPct ?? 0)));
-  const rows = containers ? Object.values(containers) : [];
-  // row.cpuPct and host.cpuPct are both 0-100 of the whole box, so the sum needs no scaling.
-  const containerPct = Math.max(0, finite(rows.reduce((a, r) => a + r.cpuPct, 0)));
-  const hostPct = Math.max(0, finite(host.cpuPct));
-  const containersSeg = Math.max(0, Math.min(containerPct, hostPct));
-  const otherSeg = Math.max(0, hostPct - containerPct);
-  const idleSeg = Math.max(0, 100 - hostPct);
-
-  const load = host.loadAvg ?? [];
-  const figures: { label: string; value: string }[] = [
-    { label: "load 1m", value: load[0] != null ? load[0].toFixed(2) : "—" },
-    { label: "load 5m", value: load[1] != null ? load[1].toFixed(2) : "—" },
-    { label: "load 15m", value: load[2] != null ? load[2].toFixed(2) : "—" },
-  ];
-  if (host.tempC != null) figures.push({ label: "temp", value: `${host.tempC.toFixed(0)}°C` });
-
-  return {
-    scale: 100,
-    segments: [
-      { key: "containers", label: "containers", value: containersSeg, fill: OVERVIEW_FILL_PRIMARY, display: formatPercent(containersSeg, 1) },
-      { key: "other", label: "other", value: otherSeg, fill: OVERVIEW_FILL_OTHER, display: formatPercent(otherSeg, 1) },
-      { key: "idle", label: "idle", value: idleSeg, fill: OVERVIEW_FILL_TRACK, display: formatPercent(idleSeg, 1) },
-    ],
-    headline: `${formatPercent(hostPct, 0)} of ${host.cores} cores`,
-    caption: `containers ${formatPercent(containersSeg, 1)} · other ${formatPercent(otherSeg, 1)}`,
-    figures,
-    series,
-  };
-}
-
-function buildMemOverview(
-  host: OverviewHost | undefined,
-  samples: TelemetrySample[],
-  containers: Record<string, TelemetryRow> | undefined,
-): OverviewModel {
-  if (!host) return emptyOverview();
-  const series = samples.map((s) => Math.max(0, finite(s.host?.memUsed ?? 0)));
-  const rows = containers ? Object.values(containers) : [];
-  const containerBytes = Math.max(0, finite(rows.reduce((a, r) => a + r.memBytes, 0)));
-  const memUsed = Math.max(0, finite(host.memUsed));
-  const memTotal = Math.max(0, finite(host.memTotal));
-  const memAvailable = Math.max(0, finite(host.memAvailable));
-  const containersSeg = Math.max(0, Math.min(containerBytes, memUsed));
-  const otherSeg = Math.max(0, memUsed - containerBytes);
-
-  return {
-    scale: memTotal,
-    segments: [
-      { key: "containers", label: "containers", value: containersSeg, fill: OVERVIEW_FILL_PRIMARY, display: formatBytes(containersSeg) },
-      { key: "other", label: "other", value: otherSeg, fill: OVERVIEW_FILL_OTHER, display: formatBytes(otherSeg) },
-      { key: "available", label: "available", value: memAvailable, fill: OVERVIEW_FILL_TRACK, display: formatBytes(memAvailable) },
-    ],
-    headline: `${formatBytes(memUsed)} / ${formatBytes(memTotal)}`,
-    caption: "",
-    figures: [
-      { label: "used", value: formatBytes(memUsed) },
-      { label: "containers", value: formatBytes(containersSeg) },
-      { label: "other", value: formatBytes(otherSeg) },
-      { label: "available", value: formatBytes(memAvailable) },
-    ],
-    series,
-  };
 }
 
 function buildNetOverview(
@@ -358,10 +282,10 @@ function buildOverviewModel(
   containers: Record<string, TelemetryRow> | undefined,
 ): OverviewModel {
   switch (metric) {
+    // CPU and MEM render BoxBand (box-band.tsx) and never reach ResourceOverview.
     case "cpu":
-      return buildCpuOverview(host, samples, containers);
     case "mem":
-      return buildMemOverview(host, samples, containers);
+      return emptyOverview();
     case "net":
       return buildNetOverview(host, samples, containers);
     case "blkio":
@@ -732,6 +656,24 @@ function ResourcesPageInner() {
     if (!historyData || !historyMetric) return undefined;
     return historyData.host.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
   }, [historyData, historyMetric]);
+  // LIVE with compares draws the 60-sample SSE ring through the same points props.
+  const livePoints = useMemo(() => {
+    if (!historyMetric || historyRange !== "live") return null;
+    const cpu = historyMetric === "cpu";
+    const per: Record<string, (number | null)[]> = {};
+    for (const name of historyContainers) {
+      const id = containers.find((c) => c.name === name)?.id;
+      per[name] = samples.map((s) => {
+        const row = id ? s.containers[id] : undefined;
+        return row ? (cpu ? row.cpuPct : row.memBytes) : null;
+      });
+    }
+    return {
+      times: samples.map((s) => s.ts),
+      host: samples.map((s) => (s.host ? (cpu ? s.host.cpuPct : s.host.memUsed) : null)),
+      per,
+    };
+  }, [historyMetric, historyRange, historyContainers, samples, containers]);
   const historyContainerPoints = useMemo(() => {
     if (!historyData || !historyMetric) return {};
     const out: Record<string, (number | null)[]> = {};
@@ -846,14 +788,15 @@ function ResourcesPageInner() {
         </p>
       </header>
 
-      {/* totals strip */}
+      {/* totals strip: CPU, MEM and ALL read the box band (or the process table) instead */}
+      {!(historyMetric || allActive) && (
       <div className="panel px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:flex sm:items-center sm:flex-wrap text-xs">
         <div>
-          <div className="microlabel">CPU</div>
+          <div className="microlabel">containers CPU</div>
           <div className="font-mono text-ink mt-0.5">{formatPercent(data?.totals.cpuPct, 1)}</div>
         </div>
         <div>
-          <div className="microlabel">MEM</div>
+          <div className="microlabel">containers MEM</div>
           <div className="font-mono text-ink mt-0.5">
             {formatBytes(data?.totals.memBytes)} / {formatBytes(data?.totals.memTotal)}
           </div>
@@ -874,6 +817,7 @@ function ResourcesPageInner() {
           </div>
         )}
       </div>
+      )}
 
       {/* segmented control */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -895,7 +839,7 @@ function ResourcesPageInner() {
             </SegmentButton>
           ))}
         </div>
-        {status === "lost" && !allActive && (
+        {status === "lost" && !allActive && !historyMetric && (
           <div className="microlabel !text-warn/80 shrink-0">connection lost — reconnecting</div>
         )}
       </div>
@@ -918,31 +862,42 @@ function ResourcesPageInner() {
       {/* host-level overview for the selected metric — DISK is excluded, the HOST DISK
           panel below already fills that role and must not be duplicated; GPU is
           excluded because GpuView owns its own VRAM overview band below */}
-      {metric !== "disk" && !gpuActive && !allActive && (
+      {metric !== "disk" && !gpuActive && !allActive && !historyMetric && (
         <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
           <ResourceOverview key={metric} title={METRIC_LABELS[metric]} model={overviewModel} />
         </div>
       )}
 
-      {/* CPU/MEM only: long-range history — a range control always shown, plus
-          (once off LIVE) the comparison chart. LIVE needs nothing extra here; the
-          panel above already carries the 60s trend via overviewModel.series. */}
-      {historyMetric && (
-        <div className="panel p-4">
-          <MetricHistoryPanel
-            range={historyRange}
-            onRangeChange={setHistoryRange}
-            containerOptions={historyContainerOptions}
-            selectedContainers={historyContainers}
-            onToggleContainer={toggleHistoryContainer}
-            hostPoints={historyHostPoints}
-            containerPoints={historyContainerPoints}
-            bucketTimes={historyBucketTimes}
-            formatValue={(v) => formatValue(historyMetric, v)}
-            recordingSince={historyData?.recordingSince ?? null}
-            isLoading={historyLoading}
-          />
+      {/* CPU/MEM: stale bar, then the box band (head, track, legend, figures, history chart, hint) */}
+      {historyMetric && status === "lost" && (
+        <div role="status" className="panel px-4 py-2 flex items-center gap-2 text-xs text-ink-dim">
+          <span className="dot-unhealthy shrink-0" aria-hidden />
+          <span>
+            connection lost · last reading {latest ? relativeTime(latest.ts) : "unknown"} · reconnecting
+          </span>
         </div>
+      )}
+      {historyMetric && (
+        <BoxBand
+          key={historyMetric}
+          kind={historyMetric}
+          host={latest?.host}
+          containers={latest?.containers}
+          samples={samples}
+          range={historyRange}
+          onRangeChange={setHistoryRange}
+          stale={status === "lost"}
+          history={{
+            containerOptions: historyContainerOptions,
+            selectedContainers: historyContainers,
+            onToggleContainer: toggleHistoryContainer,
+            hostPoints: livePoints ? livePoints.host : historyHostPoints,
+            containerPoints: livePoints ? livePoints.per : historyContainerPoints,
+            bucketTimes: livePoints ? livePoints.times : historyBucketTimes,
+            recordingSince: historyData?.recordingSince ?? null,
+            isLoading: historyLoading,
+          }}
+        />
       )}
 
       {/* GPU metric view — its own band-stack (verdict, thermal/core, VRAM, NVENC,
