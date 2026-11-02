@@ -188,6 +188,12 @@ export function zoneMask(x: number, y: number, zones: Float32Array, n: number, f
   return w;
 }
 
+/** True when the glance text (sentence slot 1 or tiles slot 2) is on screen.
+ *  Absent slots hold -1e5. Without them (the hub) rings and crowns stay off. */
+export function hasGlanceZones(zones: Float32Array): boolean {
+  return zones[4] > -1e4 || zones[8] > -1e4;
+}
+
 /** True when a ring of final radius `r` at (x, y), drawn as the ellipse
  *  rx = r, ry = 0.3r + 1 grown by 12 px, misses every zone rect. */
 export function ringSpawnOk(x: number, y: number, r: number, zones: Float32Array, n: number): boolean {

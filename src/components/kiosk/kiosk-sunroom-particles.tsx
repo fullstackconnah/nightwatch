@@ -42,6 +42,7 @@ import {
   leanAt,
   puddleParams,
   rainParams,
+  hasGlanceZones,
   ringSpawnOk,
   sampleStreak,
   stepStrikes,
@@ -428,15 +429,18 @@ export function KioskSunroomParticles({
 
     /* Zone rects (glance text) and the forecast panel, read from the DOM tags
        `data-rain-zone` / `data-rain-panel`. Same-named elements are unioned (the
-       outlook and briefing share the "sentence" zone). Never read per frame.
-       shortcut: rects refresh on resize and prop change only, not on glance
-       layout shifts without a resize; add a ResizeObserver on the marked nodes
-       if the glance layout starts moving. */
+       outlook and briefing share the "sentence" zone). Re-read on mount, on
+       container resize, on a prop change and then at most once a second from the
+       frame loop, so tags that appear late (weather data), vanish or move
+       (glance <-> full) are picked up within a second. */
     const ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3 } as const;
     const zoneRects = new Float32Array(16);
     const panelRect = new Float32Array(4);
     let panelOk = false;
+    let glance = false;
+    let rectsAt = 0;
     const readRects = () => {
+      rectsAt = performance.now();
       const o = container.getBoundingClientRect();
       for (let i = 0; i < 4; i++) {
         zoneRects[i * 4] = zoneRects[i * 4 + 1] = Infinity;
@@ -457,6 +461,7 @@ export function KioskSunroomParticles({
         if (zoneRects[k] === Infinity) zoneRects.fill(-1e5, k, k + 4);
         uZones[i].set(zoneRects[k], zoneRects[k + 1], zoneRects[k + 2], zoneRects[k + 3]);
       }
+      glance = hasGlanceZones(zoneRects);
       const panel = document.querySelector<HTMLElement>("[data-rain-panel]")?.getBoundingClientRect();
       panelOk = !!panel && panel.width > 40;
       if (panel) {
@@ -587,7 +592,7 @@ export function KioskSunroomParticles({
     const crownAge = new Float32Array(PUDDLE.poolCrowns);
     let crownCount = 0;
     let crownAcc = 0;
-    let puddleKey = "";
+    let pp0 = { band: "none" as WetBand, storm: false, isDark: false, w: 0, h: 0 };
     let pp: PuddleParams | null = null;
     // Mark colours, linear working space like every other colour here.
     const whiteInk = new THREE.Color(0xffffff);
@@ -665,9 +670,8 @@ export function KioskSunroomParticles({
     };
 
     const getPuddle = (band: WetBand, storm: boolean, isDark: boolean): PuddleParams => {
-      const key = `${band}|${storm}|${isDark}|${width}|${height}`;
-      if (key !== puddleKey || !pp) {
-        puddleKey = key;
+      if (!pp || band !== pp0.band || storm !== pp0.storm || isDark !== pp0.isDark || width !== pp0.w || height !== pp0.h) {
+        pp0 = { band, storm, isDark, w: width, h: height };
         pp = puddleParams(band, storm, isDark, width, height);
       }
       return pp;
@@ -706,7 +710,7 @@ export function KioskSunroomParticles({
       // Rings: spawn on the floor band, away from the text zones (20 tries, then skip).
       ringAcc = Math.min(ringAcc + q.ringRate * dt, 8);
       for (; ringAcc >= 1; ringAcc--) {
-        if (ringCount >= PUDDLE.poolRings) continue;
+        if (!glance || ringCount >= PUDDLE.poolRings) continue; // the hub has no quiet gaps, so no rings
         for (let tries = 0; tries < 20; tries++) {
           const y = height * (0.75 + 0.25 * Math.sqrt(Math.random()));
           const persp = 0.6 + (0.4 * (y - height * 0.75)) / (height * 0.25);
@@ -750,7 +754,7 @@ export function KioskSunroomParticles({
       }
 
       // Crowns: three blobs thrown up off the forecast panel's top edge.
-      if (panelOk) {
+      if (panelOk && glance) {
         crownAcc = Math.min(crownAcc + q.crownRate * dt, 8);
         for (; crownAcc >= 1; crownAcc--) {
           const x = panelRect[0] + 20 + Math.random() * Math.max(0, panelRect[2] - panelRect[0] - 40);
@@ -865,6 +869,7 @@ export function KioskSunroomParticles({
       if (now - lastFrame < (p.band === "none" ? FRAME_BUDGET_MS : RAIN_FRAME_BUDGET_MS)) return;
       const dt = Math.min(0.1, (now - lastFrame) / 1000);
       lastFrame = now;
+      if (now - rectsAt > 1000) readRects();
 
       applyGround(p.isDark);
       const mode = p.isDark ? "dark" : "light";
@@ -921,11 +926,13 @@ export function KioskSunroomParticles({
           /* Quieter near glance text: the streak's alpha takes the smallest zone
              mask of its head, middle and tail, so no pixel inside a zone can
              exceed peak x floor (the contrast gate's assumption). */
-          const mask = Math.min(
-            zoneMask(s.x, s.y, zoneRects, 4),
-            zoneMask((s.x + tx) / 2, (s.y + ty) / 2, zoneRects, 4),
-            zoneMask(tx, ty, zoneRects, 4),
-          );
+          const mask = glance
+            ? Math.min(
+                zoneMask(s.x, s.y, zoneRects, 4),
+                zoneMask((s.x + tx) / 2, (s.y + ty) / 2, zoneRects, 4),
+                zoneMask(tx, ty, zoneRects, 4),
+              )
+            : 0; // the hub: zone floor everywhere
           // Clear at the tail, full at the head.
           const a = peak * s.aMult * (pq0.streakFloor + (1 - pq0.streakFloor) * mask);
           streakColorAttr.setXYZW(v, 1, 1, 1, 0);

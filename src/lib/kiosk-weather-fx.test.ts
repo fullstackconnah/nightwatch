@@ -15,6 +15,7 @@ import {
   stepStrikes,
   rainParams,
   sampleStreak,
+  hasGlanceZones,
   ringSpawnOk,
   zoneMask,
   type RainBand,
@@ -372,5 +373,25 @@ describe("applyWxPreview", () => {
     assert.equal(effectiveMmHr({ status: "ok", current: { precipMm: 0.5 }, rain: { nowcast: [{ minutesFromNow: 0, precipMmHr: 3 }] } }), 3);
     assert.equal(effectiveMmHr({ status: "ok", current: { precipMm: 0.5 } }), 2);
     assert.equal(effectiveMmHr({ status: "ok" }), 0);
+  });
+});
+
+describe("zones in one y-down space (1280x800 lab rects)", () => {
+  it("rejects a ring over the tiles, accepts one between zones, and the mask is 0 in the tiles", () => {
+    assert.equal(ringSpawnOk(200, 756, 20, LAB_ZONES, 4), false);
+    assert.equal(ringSpawnOk(700, 756, 20, LAB_ZONES, 4), true);
+    assert.equal(zoneMask(200, 756, LAB_ZONES, 4), 0);
+    assert.equal(zoneMask(700, 756, LAB_ZONES, 4), 1);
+  });
+  it("hasGlanceZones is false only when both the sentence and tiles slots are absent", () => {
+    const none = new Float32Array(16).fill(-1e5);
+    const clockOnly = new Float32Array(none);
+    clockOnly.set([480, 84, 800, 284], 0); // the hub's clock
+    assert.equal(hasGlanceZones(none), false);
+    assert.equal(hasGlanceZones(clockOnly), false);
+    assert.equal(hasGlanceZones(LAB_ZONES), true);
+    const tilesOnly = new Float32Array(clockOnly);
+    tilesOnly.set([20, 724, 430, 788], 8);
+    assert.equal(hasGlanceZones(tilesOnly), true);
   });
 });
