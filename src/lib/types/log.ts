@@ -28,7 +28,7 @@ export type LogLevel = "debug" | "info" | "warn" | "error" | "none";
 export type LogStream = "stdout" | "stderr";
 
 export interface LogLine {
-  /** `${container}:${monotonic seq}` — assigned server-side, stable as a React key. */
+  /** `${container}:${read prefix}${seq}` — assigned server-side, unique per read (see readIdPrefix), stable as a React key. */
   id: string;
   /** Container NAME, not id: the rail, the URL and the gutter all speak names. */
   container: string;

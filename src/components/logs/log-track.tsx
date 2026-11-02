@@ -64,7 +64,7 @@ function StatusReadout({ state, newest }: { state: LogTrackState | undefined; ne
   const status = state?.status ?? "connecting";
 
   if (status === "connecting") {
-    return <span className="text-xs text-ink-dim">connecting…</span>;
+    return <span className="text-xs text-ink-dim">{state?.detail ?? "connecting…"}</span>;
   }
   if (status === "ended") {
     return (
@@ -715,7 +715,7 @@ export function LogTrack({
                   {status === "live"
                     ? "waiting for the first line — quiet is normal here."
                     : status === "connecting"
-                      ? "reading scrollback…"
+                      ? (state?.detail ?? "reading scrollback…")
                       : status === "ended"
                         ? "this container exited without logging anything."
                         : "connection lost before any line arrived."}
