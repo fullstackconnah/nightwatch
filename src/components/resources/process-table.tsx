@@ -158,7 +158,7 @@ function SortHeader({
         onClick={() => onSort(columnKey)}
         title={title ?? `Sort by ${label.toLowerCase()}`}
         className={cn(
-          "group inline-flex items-baseline gap-1 cursor-pointer rounded transition-colors",
+          "group relative inline-flex items-baseline gap-1 cursor-pointer rounded transition-colors after:absolute after:-inset-y-[9px] after:-inset-x-1 after:content-['']",
           "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent/60",
           active ? "text-accent" : "text-ink-faint hover:text-ink-dim",
         )}
@@ -546,8 +546,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
               type="search"
               value={query}
               onChange={(e) => changeQuery(e.target.value)}
-              placeholder="filter: container, process, pid"
-              aria-label={grouped ? "Filter containers" : "Filter processes"}
+              placeholder="Filter by name"
+              aria-label="Filter by container, process, command or pid"
               className="pt-input"
             />
             {!query && (
@@ -563,7 +563,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
           </div>
           <div className="pt-ctl">
             {grouped ? (
-              <div className="flex gap-1" role="group" aria-label="Sort groups by">
+              <div className="flex gap-1 [&>button]:min-w-11" role="group" aria-label="Sort groups by">
                 <SegmentButton active={gsort === "cpu"} onClick={() => setGsort("cpu")}>
                   CPU
                 </SegmentButton>
@@ -833,14 +833,14 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                   <button
                     type="button"
                     onClick={() => setLimit((n) => n + PAGE)}
-                    className="text-xs text-ink-dim hover:text-accent cursor-pointer"
+                    className="text-xs text-ink-dim hover:text-accent cursor-pointer min-h-11 md:min-h-8 inline-flex items-center"
                   >
                     Show {Math.min(PAGE, flatRows.length - visible.length)} more
                   </button>
                   <button
                     type="button"
                     onClick={() => setLimit(flatRows.length)}
-                    className="text-xs text-ink-dim hover:text-accent cursor-pointer"
+                    className="text-xs text-ink-dim hover:text-accent cursor-pointer min-h-11 md:min-h-8 inline-flex items-center"
                   >
                     Show all
                   </button>
@@ -849,7 +849,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
             )}
             {paginate && limit > PAGE && flatRows.length <= visible.length && (
               <div className="border-t border-line px-3 py-2">
-                <button type="button" onClick={() => setLimit(PAGE)} className="text-xs text-ink-dim hover:text-accent cursor-pointer">
+                <button type="button" onClick={() => setLimit(PAGE)} className="text-xs text-ink-dim hover:text-accent cursor-pointer min-h-11 md:min-h-8 inline-flex items-center">
                   Collapse to top {PAGE}
                 </button>
               </div>
