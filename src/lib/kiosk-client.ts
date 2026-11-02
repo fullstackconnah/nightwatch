@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
 import type { HostVitals } from "@/lib/client";
 import type { NowPlayingSnapshot } from "@/lib/types/nowplaying";
+import { applyWxPreview } from "@/lib/kiosk-weather-fx";
 
 export type FreshnessStatus = "loading" | "unreachable-empty" | "ready" | "ready-stale";
 
@@ -192,12 +193,30 @@ export type KioskWeatherResponse =
  */
 export const WEATHER_REFRESH_MS = 15 * 60_000;
 
-/** The shared weather subscription. Callers read the slice they need. */
+/** `?wx=<preset>&wxsun=day|dusk|night`: a weather preview for this session.
+ *  Read in an effect and never persisted, the same way `?theme=` is
+ *  (kiosk-theme.tsx); see WX_PRESETS for the values. */
+export function useWxParams(): { wx: string | null; wxsun: string | null } {
+  const [params, setParams] = useState<{ wx: string | null; wxsun: string | null }>({ wx: null, wxsun: null });
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("wx")) setParams({ wx: q.get("wx"), wxsun: q.get("wxsun") });
+  }, []);
+  return params;
+}
+
+/** The shared weather subscription. Callers read the slice they need. A
+ *  `?wx=` preview replaces `data` for every subscriber, so the backdrops and
+ *  the header always describe the same weather. */
 export function useKioskWeather() {
-  return useSWR<KioskWeatherResponse>("/kiosk/api/weather", fetcher, {
+  const swr = useSWR<KioskWeatherResponse>("/kiosk/api/weather", fetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
   });
+  const { wx, wxsun } = useWxParams();
+  // Memoised: a fresh object every render would re-run every [data] effect.
+  const data = useMemo(() => applyWxPreview(swr.data, wx, wxsun), [swr.data, wx, wxsun]);
+  return data === swr.data ? swr : { ...swr, data };
 }
 
 /** "Now playing" pill data — hits the public /kiosk/api/nowplaying route.
