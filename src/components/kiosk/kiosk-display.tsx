@@ -18,7 +18,7 @@
    and an unreachable read that still has a last-known-good payload keeps
    showing it with a tiny stale tag rather than blanking. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
@@ -40,7 +40,8 @@ import {
   Wind,
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
-import { WEATHER_REFRESH_MS } from "@/lib/kiosk-client";
+import { WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
+import { applyWxPreview } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -204,10 +205,14 @@ interface WeatherView {
  *  keepPreviousData (which only bridges a revalidation in flight, not a
  *  fetch that completed with a different shape). */
 export function useWeatherView(): WeatherView {
-  const { data, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", fetcher, {
+  const { data: raw, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", fetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
   });
+  // The ?wx= preview fills every field this view reads (see applyWxPreview),
+  // so the header agrees with the backdrop. Memoised for the [data] effect.
+  const { wx, wxsun } = useWxParams();
+  const data = useMemo(() => applyWxPreview(raw, wx, wxsun) as WeatherResponse | undefined, [raw, wx, wxsun]);
   const [lastOk, setLastOk] = useState<WeatherOk | null>(null);
   useEffect(() => {
     if (data?.status === "ok") setLastOk(data);
