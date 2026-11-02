@@ -822,7 +822,7 @@ function ResourcesPageInner() {
       )}
       {historyMetric && (
         <BoxBand
-          key={historyMetric}
+          key={`band-${historyMetric}`}
           kind={historyMetric}
           host={latest?.host}
           containers={latest?.containers}
@@ -844,7 +844,7 @@ function ResourcesPageInner() {
 
       {historyMetric && (
         <Watchlist
-          key={historyMetric}
+          key={`watch-${historyMetric}`}
           kind={historyMetric}
           containers={containers}
           hasData={!!data}

@@ -10,7 +10,7 @@
  * (memo equality) and never reads layout.
  */
 
-import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ExternalLink, GitCompare, List, Plus, RotateCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -165,7 +165,7 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
   const lifecycle = useLifecycle(c.id, onChanged);
   const memPct = row && row.memLimit > 0 ? (row.memBytes / row.memLimit) * 100 : null;
   const sizesLate = c.sizeRootFs == null || c.sizeRw == null;
-  const link = buttonVariants({ variant: "outline", size: "sm" });
+  const link = cn(buttonVariants({ variant: "outline", size: "sm" }), "md:h-8");
   return (
     <div id={id} className="wl-detail">
       <div className="wl-dgrid">
@@ -219,7 +219,7 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
           <Button
             size="sm"
             variant={compared ? "default" : "outline"}
-            className="wl-compare"
+            className="wl-compare md:h-8"
             aria-pressed={compared}
             disabled={!compared && compareFull}
             title={!compared && compareFull ? "4 is the most a chart stays readable" : undefined}
@@ -281,6 +281,10 @@ export function Watchlist(p: WatchlistProps) {
   const [creating, setCreating] = useState(false);
   const [bump, setBump] = useState(0);
   const held = hover || focusIn || openId != null || stale;
+  // An open container that left the list would hold the order for good.
+  useEffect(() => {
+    if (openId && !containers.some((c) => c.id === openId)) setOpenId(null);
+  }, [openId, containers]);
 
   const rankerRef = useRef<Ranker | null>(null);
   rankerRef.current ??= createRanker();
@@ -407,7 +411,7 @@ export function Watchlist(p: WatchlistProps) {
     : "";
 
   const create = (
-    <Button size="sm" className="wl-create" onClick={() => setCreating(true)}>
+    <Button size="sm" className="wl-create md:h-8" onClick={() => setCreating(true)}>
       <Plus size={12} aria-hidden /> New container
     </Button>
   );
