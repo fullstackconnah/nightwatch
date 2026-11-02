@@ -36,3 +36,22 @@ export function assignSlots(ids: string[], prior: ReadonlyMap<string, number>, f
   }
   return out;
 }
+
+/** Y positions for direct end labels: a downward pass pushes overlaps apart, an upward pass from
+ *  the floor pulls them back, all within [6, H-6]. If they can't fit `gap` apart, spread evenly.
+ *  Returns new ys in input order. */
+export function layoutEndLabels(ys: number[], H: number, gap: number): number[] {
+  const lo = 6;
+  const hi = H - 6;
+  const order = ys.map((_, i) => i).sort((a, b) => ys[a] - ys[b]);
+  const out = new Array<number>(ys.length);
+  if (ys.length > 1 && (ys.length - 1) * gap > hi - lo) {
+    order.forEach((idx, k) => (out[idx] = lo + (k * (hi - lo)) / (ys.length - 1)));
+    return out;
+  }
+  const v = order.map((i) => Math.min(Math.max(ys[i], lo), hi));
+  for (let k = 1; k < v.length; k++) v[k] = Math.max(v[k], v[k - 1] + gap);
+  for (let k = v.length - 1; k >= 0; k--) v[k] = Math.min(v[k], k === v.length - 1 ? hi : v[k + 1] - gap);
+  order.forEach((idx, k) => (out[idx] = v[k]));
+  return out;
+}

@@ -390,7 +390,7 @@ Borders are the primary form-defining device and they are always 1px. A thicker 
 
 ### Named Rules
 
-**The Hatch-Not-Empty Rule.** An absent measurement is drawn as a 135° hatched track, never as an empty one. An empty bar beside a full one reads as "pristine" or "nothing left" — both are claims the data does not support. The same applies to a zero-amplitude chart: an idle series draws a *dashed* baseline so "measured, nothing moved" cannot be mistaken for "chart failed".
+**The Hatch-Not-Empty Rule.** An absent measurement is drawn as a 135° hatched track, never as an empty one. An empty bar beside a full one reads as "pristine" or "nothing left" — both are claims the data does not support. The same applies to a zero-amplitude chart: an idle series keeps its slot's dash and is labelled `· flat`, so "measured, nothing moved" cannot be mistaken for "chart failed".
 
 ## Components
 
@@ -464,7 +464,7 @@ The companion rail is the other half of the metaphor: selecting a container does
 - **Do** reach for the four-step teal ramp — `var(--color-ramp-teal-deep/mid/DEFAULT/bright)` (`#134e4a` / `#0f766e` / `#0d9488` / `#14b8a6`), darkest = largest — when one bar or map has to separate composed parts (part-to-whole only; compare series use the chart-series slots).
 - **Do** pair touch and pointer heights on every control (`h-11 md:h-8`, `min-h-11 md:min-h-0`) and ship a `md:hidden` card rendering beside every `hidden md:table`.
 - **Do** write empty, idle and unavailable states as real copy that says what is true — "waiting for the first line — quiet is normal here", "no traffic in the window", "unattributed", "only 37 lines exist for this container". On a host this quiet, a healthy-but-idle stream must never render as "no data".
-- **Do** distinguish "measured zero" from "could not measure": dashed baseline for the former, hatched track and named reason for the latter.
+- **Do** distinguish "measured zero" from "could not measure": an idle series that keeps its slot's dash and `· flat` label for the former, hatched track and named reason for the latter.
 - **Do** gate every authored animation behind `prefers-reduced-motion` (either the CSS media query or `motion-reduce:transition-none`) and keep it to one moment per surface.
 - **Do** bend any external colour onto these tokens before it reaches the screen.
 

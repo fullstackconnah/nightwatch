@@ -5,7 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { Sparkline } from "@/components/sparkline";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { cn } from "@/lib/utils";
-import { SERIES_SLOTS, assignSlots, type SeriesSlot } from "@/lib/chart-series";
+import { SERIES_SLOTS, assignSlots, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
 import { relativeTime } from "@/lib/format";
 
 export interface OverviewSegment {
@@ -289,7 +289,7 @@ function buildSegments(points: (number | null)[], width: number, height: number,
   return segments;
 }
 
-const END_LABEL_GAP = 12;
+const END_LABEL_GAP = 14;
 
 /** Direct end labels: one per series with data, at its last value's height, nudged apart so they don't overlap. */
 function endLabels(series: HistoryLineSeries[], H: number, yMax: number) {
@@ -303,12 +303,8 @@ function endLabels(series: HistoryLineSeries[], H: number, yMax: number) {
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
     .sort((a, b) => a.y - b.y);
-  let prev = -Infinity;
-  for (const r of rows) {
-    r.y = Math.min(Math.max(r.y, prev + END_LABEL_GAP, 6), H - 6);
-    prev = r.y;
-  }
-  return rows;
+  const ys = layoutEndLabels(rows.map((r) => r.y), H, END_LABEL_GAP);
+  return rows.map((r, i) => ({ ...r, y: ys[i] }));
 }
 
 function HistoryChart({
@@ -353,11 +349,11 @@ function HistoryChart({
           ));
         })}
     </svg>
-    <div className="relative w-28 shrink-0" style={{ height: H }}>
+    <div aria-hidden="true" className="relative w-28 shrink-0" style={{ height: H }}>
       {labels.map(({ s, flat, y }) => (
         <div key={s.key} className="absolute left-0 right-0 flex items-center gap-1 -translate-y-1/2" style={{ top: y }}>
           <SeriesSwatch slot={s.slot} />
-          <span className="font-mono text-[0.65rem] text-ink-dim truncate">{s.label}</span>
+          <span title={s.label} className="font-mono text-[0.65rem] text-ink-dim truncate">{s.label}</span>
           {flat && <span className="font-mono text-[0.65rem] text-ink-faint whitespace-nowrap">· flat</span>}
         </div>
       ))}

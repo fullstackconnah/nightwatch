@@ -13,8 +13,8 @@ import { formatBytes, relativeTime } from "@/lib/format";
  * metrics history (see metrics-history.ts's queryMountHistory, additive to
  * that module). One line per mount, same hand-rolled SVG grammar
  * resource-overview.tsx's MetricHistoryPanel already established (gap-broken
- * paths, dashed-idle series, hairline baseline) — reusing containerHistoryColor
- * from there rather than inventing a second palette for "compare N peers on
+ * paths, hairline baseline), taking each mount's stroke and dash from the shared
+ * SERIES_SLOTS in chart-series.ts rather than inventing a second palette for "compare N peers on
  * one chart".
  */
 
