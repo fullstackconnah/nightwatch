@@ -11,17 +11,18 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
-import { ChevronDown, ExternalLink, Play, RotateCw, Square } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/resources/treemap";
 import { BoxBand } from "@/components/resources/box-band";
+import { LifecycleGroup, Watchlist, telemetryRowEqual } from "@/components/resources/watchlist";
 import {
   ResourceOverview,
   type OverviewModel,
   type HistoryRangeOption,
+  useCompareSlots,
 } from "@/components/resources/resource-overview";
 import { DiskContentsPanel } from "@/components/resources/disk-contents";
 
@@ -29,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import {
   fetcher,
-  postJson,
   useResources,
   useTelemetryStream,
   useWidgets,
@@ -303,47 +303,6 @@ function buildOverviewModel(
   }
 }
 
-function ContainerActions({
-  id,
-  running,
-  onDone,
-}: {
-  id: string;
-  running: boolean;
-  onDone: () => void;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
-  async function act(action: "start" | "stop" | "restart") {
-    setBusy(action);
-    try {
-      await postJson(`/api/docker/containers/${id.slice(0, 12)}/action`, { action });
-      onDone();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "action failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-  return (
-    <div className="flex items-center gap-1.5">
-      {running ? (
-        <>
-          <Button size="sm" variant="outline" disabled={!!busy} onClick={() => act("restart")}>
-            <RotateCw size={12} className={busy === "restart" ? "animate-spin" : ""} /> Restart
-          </Button>
-          <Button size="sm" variant="danger" disabled={!!busy} onClick={() => act("stop")}>
-            <Square size={12} /> Stop
-          </Button>
-        </>
-      ) : (
-        <Button size="sm" disabled={!!busy} onClick={() => act("start")}>
-          <Play size={12} /> Start
-        </Button>
-      )}
-    </div>
-  );
-}
-
 interface ContainerRowProps {
   c: ResourceContainer;
   metric: Metric;
@@ -355,24 +314,6 @@ interface ContainerRowProps {
   widgetFields: { label: string; value: string; intent?: "ok" | "warn" | "bad" }[] | undefined;
   onActionDone: () => void;
   rowRef: (el: HTMLDivElement | null) => void;
-}
-
-/** Field-by-field, not `===`: `row` is a fresh object out of every 1Hz telemetry
- * sample even when a container is genuinely idle, so comparing by reference would
- * never let a quiet row skip a render. */
-function telemetryRowEqual(a: TelemetryRow | undefined, b: TelemetryRow | undefined): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.cpuPct === b.cpuPct &&
-    a.memBytes === b.memBytes &&
-    a.memLimit === b.memLimit &&
-    a.rxRate === b.rxRate &&
-    a.txRate === b.txRate &&
-    a.blkReadRate === b.blkReadRate &&
-    a.blkWriteRate === b.blkWriteRate &&
-    a.pids === b.pids
-  );
 }
 
 /** `onToggle`/`onActionDone`/`rowRef` are deliberately excluded: the parent
@@ -515,7 +456,7 @@ const ContainerRow = memo(function ContainerRow({
           )}
 
           <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-            <ContainerActions id={c.id} running={running} onDone={onActionDone} />
+            <LifecycleGroup c={c} onDone={onActionDone} />
             <Link
               href={`/containers/${c.id.slice(0, 12)}`}
               className="text-xs text-ink-dim hover:text-accent flex items-center gap-1"
@@ -541,7 +482,7 @@ export default function ResourcesPage() {
 }
 
 function ResourcesPageInner() {
-  const { data, mutate } = useResources(10000);
+  const { data, mutate, error: resourcesError } = useResources(10000);
   const { data: widgetData } = useWidgets(20000);
   const { samples, status } = useTelemetryStream();
   const [metric, setMetric] = useState<Metric>("cpu");
@@ -592,6 +533,8 @@ function ResourcesPageInner() {
 
   const containers = data?.containers ?? [];
   const latest = samples[samples.length - 1];
+  // CPU and MEM render the band and the Watchlist (which ranks itself); every other tab keeps the sorted rows.
+  const historyMetric = metric === "cpu" || metric === "mem" ? metric : null;
 
   // latest is a new object reference every 1Hz tick (client.ts appends a fresh
   // sample), so using it directly as a useMemo dep below would re-sort and
@@ -601,13 +544,16 @@ function ResourcesPageInner() {
   // string, which useMemo can compare by value instead of by reference — this
   // is cheap (one pass building a string) versus the O(n log n) sort +
   // fresh-array-of-every-row cost it guards.
-  const valueSignature = containers
+  const valueSignature = historyMetric
+    ? ""
+    : containers
     .map((c) => `${c.id}:${valueOf(c, metric, latest?.containers[c.id]) ?? ""}`)
     .join("|");
 
   const { active, idle } = useMemo(() => {
     const a: ResourceContainer[] = [];
     const i: ResourceContainer[] = [];
+    if (historyMetric) return { active: a, idle: i };
     for (const c of containers) {
       const v = valueOf(c, metric, latest?.containers[c.id]);
       if (v != null && v > 0) a.push(c);
@@ -631,7 +577,6 @@ function ResourcesPageInner() {
 
   // Metrics history (G1): CPU/MEM only, one shared range + comparison selection so
   // flipping between the two tabs keeps whatever the owner was just comparing.
-  const historyMetric = metric === "cpu" || metric === "mem" ? metric : null;
   const [historyRange, setHistoryRange] = useState<HistoryRangeOption>("live");
   const [historyContainers, setHistoryContainers] = useState<string[]>([]);
   function toggleHistoryContainer(name: string) {
@@ -682,9 +627,7 @@ function ResourcesPageInner() {
     }
     return out;
   }, [historyData, historyMetric]);
-  // Busiest-first, mirroring the ranked rows below — the containers worth
-  // comparing are usually the ones already leading the current metric.
-  const historyContainerOptions = useMemo(() => [...active, ...idle].map((c) => c.name), [active, idle]);
+  const compareSlots = useCompareSlots(historyContainers);
 
   // `active` above is now only a fresh reference when valueSignature actually
   // changed, so keying off `active` here (instead of `latest` directly) gets
@@ -888,15 +831,32 @@ function ResourcesPageInner() {
           onRangeChange={setHistoryRange}
           stale={status === "lost"}
           history={{
-            containerOptions: historyContainerOptions,
             selectedContainers: historyContainers,
-            onToggleContainer: toggleHistoryContainer,
+            slots: compareSlots,
             hostPoints: livePoints ? livePoints.host : historyHostPoints,
             containerPoints: livePoints ? livePoints.per : historyContainerPoints,
             bucketTimes: livePoints ? livePoints.times : historyBucketTimes,
             recordingSince: historyData?.recordingSince ?? null,
             isLoading: historyLoading,
           }}
+        />
+      )}
+
+      {historyMetric && (
+        <Watchlist
+          key={historyMetric}
+          kind={historyMetric}
+          containers={containers}
+          hasData={!!data}
+          error={resourcesError}
+          latest={latest}
+          samples={samples}
+          stale={status === "lost"}
+          compare={historyContainers}
+          slots={compareSlots}
+          onToggleCompare={toggleHistoryContainer}
+          widgetFieldsOf={(name) => widgetData?.widgets[name]?.fields}
+          onChanged={() => void mutate()}
         />
       )}
 
@@ -1026,7 +986,7 @@ function ResourcesPageInner() {
       {/* treemap hero + ranked rows — suppressed for GPU. Only containers holding VRAM
           would ever appear in a GPU treemap — realistically one, and a single-cell
           treemap asserts a proportion that does not exist. Don't feed GPU into it. */}
-      {!gpuActive && !allActive && (
+      {!gpuActive && !allActive && !historyMetric && (
         <>
           <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
             <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />

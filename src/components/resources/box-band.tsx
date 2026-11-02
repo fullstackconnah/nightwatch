@@ -14,9 +14,8 @@ import type { TelemetryRow, TelemetrySample } from "@/lib/client";
 
 type BandHistory = Pick<
   MetricHistoryPanelProps,
-  | "containerOptions"
   | "selectedContainers"
-  | "onToggleContainer"
+  | "slots"
   | "hostPoints"
   | "containerPoints"
   | "bucketTimes"

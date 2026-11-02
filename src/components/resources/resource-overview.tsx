@@ -203,61 +203,13 @@ export function HistoryRangeControl({
   );
 }
 
-/** Pill chips, up to `max` selected — the log rail's own chip shape
- *  (panel/panel-hover, h-11 md:h-8, horizontal snap on a phone) reused here,
- *  though the selection semantics are the opposite of the rail's "hollow to
- *  remove": here a chip fills in, with its assigned series colour, to ADD a
- *  container's line to the chart. */
-export function ContainerHistoryPicker({
-  options,
-  selected,
-  onToggle,
-  slots,
-  max = 4,
-}: {
-  options: string[];
-  selected: string[];
-  onToggle: (name: string) => void;
-  slots: ReadonlyMap<string, number>;
-  max?: number;
-}) {
-  const atCap = selected.length >= max;
-
-  if (options.length === 0) return null;
-
-  return (
-    <div
-      className="flex gap-1.5 flex-nowrap overflow-x-auto snap-x pb-1 md:flex-wrap md:overflow-x-visible md:pb-0"
-      style={{ overscrollBehaviorX: "contain" }}
-      role="group"
-      aria-label="Compare containers"
-    >
-      {options.map((name) => {
-        const idx = selected.indexOf(name);
-        const isSelected = idx !== -1;
-        const disabled = !isSelected && atCap;
-        return (
-          <button
-            key={name}
-            type="button"
-            onClick={() => onToggle(name)}
-            aria-pressed={isSelected}
-            disabled={disabled}
-            title={disabled ? `Comparing ${max} already — remove one to add ${name}` : name}
-            className={cn(
-              "h-11 md:h-8 shrink-0 snap-start inline-flex items-center gap-1.5 rounded-md px-2.5",
-              "outline-none focus-visible:ring-1 focus-visible:ring-accent cursor-pointer",
-              isSelected ? "bg-accent/10 border border-accent/30" : "panel panel-hover",
-              disabled && "opacity-40 cursor-not-allowed pointer-events-none",
-            )}
-          >
-            {isSelected && <SeriesSwatch slot={SERIES_SLOTS[slots.get(name) ?? 1]} />}
-            <span className="font-mono text-xs text-ink truncate max-w-[8rem]">{name}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
+/** Compare slots, one assignment for the chart and the watchlist rows. Slot 0 is the host;
+ *  a compare keeps its slot until removed (colour follows the entity, never its rank). */
+export function useCompareSlots(selected: string[]): ReadonlyMap<string, number> {
+  const held = useRef<ReadonlyMap<string, number>>(new Map());
+  const slots = assignSlots(selected, held.current, 1);
+  held.current = slots;
+  return slots;
 }
 
 export interface HistoryLineSeries {
@@ -384,9 +336,9 @@ function HistoryLegend({ series }: { series: HistoryLineSeries[] }) {
 
 export interface MetricHistoryPanelProps {
   range: HistoryRangeOption;
-  containerOptions: string[];
   selectedContainers: string[];
-  onToggleContainer: (name: string) => void;
+  /** From useCompareSlots, shared with the watchlist rows. */
+  slots: ReadonlyMap<string, number>;
   /** Points aligned 1:1 with `bucketTimes`; null values are gaps. For LIVE the caller
    *  passes the SSE ring (one point per sample), for 1H/24H/7D the fetched buckets. */
   hostPoints: (number | null)[] | undefined;
@@ -411,9 +363,8 @@ const utc = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", "
 /** The band's lower half: compare picker, chart, legend and the one-line hint (reserved height, never shifts). */
 export function MetricHistoryPanel({
   range,
-  containerOptions,
   selectedContainers,
-  onToggleContainer,
+  slots,
   hostPoints,
   containerPoints,
   bucketTimes,
@@ -425,11 +376,6 @@ export function MetricHistoryPanel({
 }: MetricHistoryPanelProps) {
   const isLive = range === "live";
   const isThin = recordingSince == null || Date.now() - recordingSince < THIN_HISTORY_MS;
-
-  // Slot 0 is the host; compares keep their slot until removed (colour follows the entity).
-  const heldSlots = useRef<ReadonlyMap<string, number>>(new Map());
-  const slots = assignSlots(selectedContainers, heldSlots.current, 1);
-  heldSlots.current = slots;
 
   const series: HistoryLineSeries[] = [];
   if (hostPoints) series.push({ key: "host", label: "box", slot: SERIES_SLOTS[0], points: hostPoints });
@@ -446,7 +392,7 @@ export function MetricHistoryPanel({
   const showChart = isLive ? selectedContainers.length > 0 : !isThin && !(isLoading && noData);
 
   let hint = "";
-  if (isLive) hint = selectedContainers.length ? "Live: the last 60 readings." : "Pick up to 4 containers to chart them here.";
+  if (isLive) hint = selectedContainers.length ? "Live: the last 60 readings." : "Pick up to 4 containers with Compare to chart them here.";
   else if (recordingSince == null) hint = "Recording starts on the next telemetry tick. Check back in about a minute.";
   else if (isThin) hint = `Recording since ${relativeTime(recordingSince)}: a fuller picture needs about an hour.`;
   else if (isLoading && noData) hint = "Loading history…";
@@ -460,7 +406,6 @@ export function MetricHistoryPanel({
 
   return (
     <div className="space-y-3">
-      <ContainerHistoryPicker options={containerOptions} selected={selectedContainers} onToggle={onToggleContainer} slots={slots} />
       {showChart && <HistoryChart series={series} yMax={yMax} formatAxis={formatAxis} formatValue={formatValue} />}
       {showChart && series.length >= 2 && (
         <div className="flex items-center justify-between gap-2 flex-wrap">
