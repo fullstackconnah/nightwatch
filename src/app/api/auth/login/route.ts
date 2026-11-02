@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { createSessionToken, isMissingSecretError, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true });
   try {
     res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions());
-  } catch {
+  } catch (e) {
+    if (!isMissingSecretError(e)) throw e;
     return NextResponse.json({ error: "SESSION_SECRET is not set — login disabled" }, { status: 503 });
   }
   return res;

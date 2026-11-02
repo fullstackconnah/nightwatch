@@ -17,6 +17,9 @@ export function secretKey(): Uint8Array {
   return new TextEncoder().encode("homelab-dashboard-dev-secret");
 }
 
+// Only the missing-secret throw above maps to a 503 in the login routes; any other error is a real fault.
+export const isMissingSecretError = (e: unknown): boolean => e instanceof Error && e.message.includes("SESSION_SECRET");
+
 // The admin password-hash lookup lives in src/lib/auth-server.ts, NOT here:
 // this module is imported by client components and the edge middleware, so
 // it must never reach node:fs (loadConfig). See auth-server.ts for the
