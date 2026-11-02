@@ -54,7 +54,7 @@ import { fetcher } from "@/lib/client";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { sunroomIsDark } from "@/lib/sunroom-light";
 import { prefersReducedMotion } from "@/lib/kiosk-motion";
-import { clamp01, effectiveMmHr, rainBand } from "@/lib/kiosk-weather-fx";
+import { WX_PRESETS, clamp01, effectiveMmHr, rainBand } from "@/lib/kiosk-weather-fx";
 
 /**
  * three.js is ~560 kB of chunk, and this module is reached from
@@ -256,7 +256,7 @@ export function KioskSunroomWeather() {
           windKmh={windKmh}
           isDark={isDark}
           dusk01={dusk01}
-          firstStrikeMs={wx ? 1500 : undefined}
+          firstStrikeMs={wx && Object.hasOwn(WX_PRESETS, wx) ? 1500 : undefined}
         />
       )}
     </div>

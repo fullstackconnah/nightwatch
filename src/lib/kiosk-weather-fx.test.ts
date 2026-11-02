@@ -7,9 +7,10 @@ import {
   effectiveMmHr,
   flashEnvelope,
   flashPeakDeltaL,
-  flashPulses,
   leanAt,
+  PULSE2_OFFSET_MS,
   rainBand,
+  stepStrikes,
   rainParams,
   sampleStreak,
   type RainBand,
@@ -81,6 +82,8 @@ describe("rainBand", () => {
     assert.equal(rainBand(0, "thunderstorm"), "moderate");
     assert.equal(rainBand(0, "drizzle"), "drizzle");
     assert.equal(rainBand(0, "snow"), "none");
+    assert.equal(rainBand(1.2, "snow"), "none");
+    assert.equal(rainBand(12, "snow"), "none");
     assert.equal(rainBand(NaN, "clear"), "none");
   });
   it("never lowers a band the rate already earned", () => {
@@ -145,19 +148,40 @@ describe("lean", () => {
   });
 });
 
-describe("flashPulses", () => {
+/** Drives the renderer's strike scheduler at 30 fps, toggling the storm off for
+ *  a while mid-run, and returns every strike it started. */
+function runStrikes(seed: number, durationMs: number, firstAt?: number) {
+  const rng = mulberry32(seed);
+  const clock = { nextAt: Infinity, firstUsed: false };
+  const out: Array<{ at: number; hold: number; double: boolean }> = [];
+  for (let now = 0; now < durationMs; now += 33) {
+    const storm = !(now > 100_000 && now < 130_000);
+    const s = stepStrikes(clock, now, storm, rng, firstAt);
+    if (s) out.push(s);
+  }
+  return out;
+}
+describe("lightning", () => {
   it("keeps strikes 8s apart and at most 2 pulses in any second", () => {
-    const pulses = flashPulses(mulberry32(42), 600_000);
-    assert.ok(pulses.length > 10);
-    const starts = pulses.map((p) => p.at);
-    for (let i = 0; i < starts.length; i++) {
-      assert.ok(starts.filter((s) => s >= starts[i] && s < starts[i] + 1000).length <= 2);
+    for (const firstAt of [undefined, 1500]) {
+      const strikes = runStrikes(42, 600_000, firstAt);
+      assert.ok(strikes.length > 10);
+      for (let i = 1; i < strikes.length; i++) assert.ok(strikes[i].at - strikes[i - 1].at >= 8000);
+      const starts = strikes.flatMap((s) => (s.double ? [s.at, s.at + PULSE2_OFFSET_MS] : [s.at]));
+      for (const t of starts) assert.ok(starts.filter((u) => u >= t && u < t + 1000).length <= 2);
     }
-    const strikes = pulses.filter((p) => p.pulse === 1).map((p) => p.at);
-    for (let i = 1; i < strikes.length; i++) assert.ok(strikes[i] - strikes[i - 1] >= 8000);
   });
-  it("honours a fixed first strike", () => {
-    assert.equal(flashPulses(mulberry32(1), 60_000, 1500)[0].at, 1500);
+  it("fires the preview's first strike once, at its time, as a single long pulse", () => {
+    const strikes = runStrikes(1, 600_000, 1500);
+    assert.ok(strikes[0].at >= 1500 && strikes[0].at < 1500 + 33);
+    assert.deepEqual([strikes[0].hold, strikes[0].double], [500, false]);
+    assert.equal(strikes.filter((s) => s.hold === 500).length, 1);
+    assert.ok(strikes.slice(1).every((s) => s.hold === 60));
+  });
+  it("starts nothing while the storm is off", () => {
+    const clock = { nextAt: Infinity, firstUsed: false };
+    for (let now = 0; now < 60_000; now += 33) assert.equal(stepStrikes(clock, now, false, mulberry32(3), 0), null);
+    assert.equal(clock.nextAt, Infinity);
   });
   it("envelope stays in 0..1 and ends", () => {
     for (const opts of [{}, { double: true }, { hold: 500 }]) {

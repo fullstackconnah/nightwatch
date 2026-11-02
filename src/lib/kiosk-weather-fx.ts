@@ -18,6 +18,7 @@ const CODE_FLOOR: Record<string, RainBand> = { drizzle: "drizzle", rain: "light"
 
 /** Standard light/moderate/heavy rain-rate cut-offs are 2.5 and 7.6 mm/h. */
 export function rainBand(mmHr: number, code?: string): RainBand {
+  if (code === "snow") return "none"; // no snow effect: snow keeps the cloud layer only
   const mm = Number.isFinite(mmHr) ? mmHr : 0;
   const byRate: RainBand = mm < 0.05 ? "none" : mm < 0.5 ? "drizzle" : mm < 2.5 ? "light" : mm < 7.6 ? "moderate" : "heavy";
   const floor = (code && CODE_FLOOR[code]) || "none";
@@ -120,17 +121,28 @@ export function isDoubleStrike(rng: () => number): boolean {
   return rng() < 0.5;
 }
 
-/** Pulse start times for a simulated run. Strikes are 8-25s apart and carry
- *  at most 2 pulses, so a second never holds more than 2 (WCAG 2.3.1 allows 3). */
-export function flashPulses(rng: () => number, durationMs: number, firstAtMs?: number): Array<{ at: number; pulse: 1 | 2 }> {
-  const out: Array<{ at: number; pulse: 1 | 2 }> = [];
-  let at = firstAtMs ?? nextStrikeGapMs(rng);
-  while (at < durationMs) {
-    out.push({ at, pulse: 1 });
-    if (isDoubleStrike(rng)) out.push({ at: at + PULSE2_OFFSET_MS, pulse: 2 });
-    at += nextStrikeGapMs(rng);
+/** The renderer's strike scheduler, one call per frame. Strikes are 8-25s
+ *  apart and carry at most 2 pulses, so a second never holds more than 2
+ *  (WCAG 2.3.1 allows 3). `firstAt` (absolute ms) is the preview's first
+ *  strike: it fires once, as a single pulse held 500ms so a capture can land
+ *  on it. Storm off disarms the clock. Returns the strike to start now. */
+export function stepStrikes(
+  clock: { nextAt: number; firstUsed: boolean },
+  now: number,
+  storm: boolean,
+  rng: () => number,
+  firstAt?: number,
+): { at: number; hold: number; double: boolean } | null {
+  if (!storm) {
+    clock.nextAt = Infinity;
+    return null;
   }
-  return out;
+  const previewFirst = !clock.firstUsed && firstAt !== undefined;
+  if (clock.nextAt === Infinity) clock.nextAt = previewFirst ? firstAt : now + nextStrikeGapMs(rng);
+  if (now < clock.nextAt) return null;
+  clock.firstUsed = true;
+  clock.nextAt = now + nextStrikeGapMs(rng);
+  return { at: now, hold: previewFirst ? 500 : DEFAULT_HOLD_MS, double: !previewFirst && isDoubleStrike(rng) };
 }
 
 /** Flash level 0..1 `tMs` after a strike: 40ms rise, hold, 80ms fall to 30%,

@@ -28,11 +28,10 @@ import {
   FLASH_PEAK_ALPHA,
   MAX_RAIN_STREAKS,
   flashEnvelope,
-  isDoubleStrike,
   leanAt,
-  nextStrikeGapMs,
   rainParams,
   sampleStreak,
+  stepStrikes,
   type RainBand,
   type RainParams,
   type StreakSpec,
@@ -225,11 +224,17 @@ export function KioskSunroomParticles({
     const camera = new THREE.OrthographicCamera(0, width, height, 0, 0.1, 1000);
     camera.position.z = 10;
 
-    const renderer = new THREE.WebGLRenderer({
-      alpha: true,
-      antialias: false,
-      powerPreference: "low-power",
-    });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: false,
+        powerPreference: "low-power",
+      });
+    } catch {
+      // No WebGL (blocked after GPU resets, or switched off): no rain layer; the CSS cloud and star layers stay.
+      return;
+    }
     renderer.setPixelRatio(1);
     // `false` keeps the canvas sized by CSS (100%/100% below) instead of having
     // setSize stamp px dimensions over it every resize.
@@ -287,7 +292,8 @@ export function KioskSunroomParticles({
     const streakIndex = new Uint16Array(MAX_RAIN_STREAKS * 6);
     for (let i = 0; i < MAX_RAIN_STREAKS; i++) {
       const v = i * 4;
-      streakIndex.set([v, v + 1, v + 2, v + 2, v + 1, v + 3], i * 6);
+      // Counter-clockwise on screen (y up): a clockwise quad is back-face culled and draws nothing.
+      streakIndex.set([v, v + 2, v + 1, v + 1, v + 2, v + 3], i * 6);
     }
     const streakGeo = new THREE.BufferGeometry();
     const streakPosAttr = new THREE.BufferAttribute(streakPositions, 3).setUsage(THREE.DynamicDrawUsage);
@@ -404,8 +410,7 @@ export function KioskSunroomParticles({
     let rp: RainParams | null = null;
 
     // Lightning schedule: armed when a storm starts, disarmed when it ends.
-    let nextStrikeAt = Infinity;
-    let firstStrikeUsed = false;
+    const strikeClock = { nextAt: Infinity, firstUsed: false };
     let strike: { at: number; hold: number; double: boolean } | null = null;
 
     const spawnDroplet = (): DropletState => {
@@ -606,22 +611,17 @@ export function KioskSunroomParticles({
       }
 
       // --- B. Lightning ---
-      if (p.storm) {
-        const previewFirst = !firstStrikeUsed && p.firstStrikeMs !== undefined;
-        if (nextStrikeAt === Infinity) {
-          nextStrikeAt = previewFirst ? mountedAt + (p.firstStrikeMs ?? 0) : now + nextStrikeGapMs(Math.random);
-        }
-        if (now >= nextStrikeAt) {
-          // The preview's first strike holds its peak for 500ms so a capture can
-          // land on it; it is still one pulse.
-          firstStrikeUsed = true;
-          strike = { at: now, hold: previewFirst ? 500 : 60, double: !previewFirst && isDoubleStrike(Math.random) };
-          flashMesh.position.set((0.15 + Math.random() * 0.7) * width, height - Math.random() * 0.4 * height, 0.5);
-          flashMesh.scale.set(width * 1.6, height * 1.2, 1);
-          nextStrikeAt = now + nextStrikeGapMs(Math.random);
-        }
-      } else {
-        nextStrikeAt = Infinity;
+      const started = stepStrikes(
+        strikeClock,
+        now,
+        p.storm,
+        Math.random,
+        p.firstStrikeMs === undefined ? undefined : mountedAt + p.firstStrikeMs,
+      );
+      if (started) {
+        strike = started;
+        flashMesh.position.set((0.15 + Math.random() * 0.7) * width, height - Math.random() * 0.4 * height, 0.5);
+        flashMesh.scale.set(width * 1.6, height * 1.2, 1);
       }
       const level = strike ? flashEnvelope(now - strike.at, strike) : 0;
       if (strike && level === 0 && now - strike.at > 100) strike = null;
@@ -778,6 +778,12 @@ export function KioskSunroomParticles({
       else start();
     };
 
+    // three re-uploads everything on restore; a still frame has no loop to repaint it.
+    const onContextRestored = () => {
+      if (propsRef.current.reduced) renderStill();
+    };
+    renderer.domElement.addEventListener("webglcontextrestored", onContextRestored);
+
     const onVisibility = () => {
       if (document.hidden) stop();
       else redrawRef.current?.();
@@ -796,6 +802,7 @@ export function KioskSunroomParticles({
       redrawRef.current = null;
       observer.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
+      renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored);
 
       scene.clear();
 
