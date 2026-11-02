@@ -377,6 +377,19 @@ export function parseContainerMountsFallback(content: string, hostRootfsPrefix: 
   return dedupeByDeviceShortest(entries);
 }
 
+/** The host's real block-device mounts: host PID 1's table, else the container's own, else null. */
+export function readHostMounts(): HostMountEntry[] | null {
+  try {
+    return parseHostMounts(fs.readFileSync(`${HOST_PROC}/1/mounts`, "utf8"));
+  } catch {
+    try {
+      return parseContainerMountsFallback(fs.readFileSync("/proc/mounts", "utf8"), HOST_ROOTFS);
+    } catch {
+      return null;
+    }
+  }
+}
+
 // --- physical-disk grouping --------------------------------------------------
 
 const PARTITION_PATTERNS: [RegExp, (m: RegExpMatchArray) => string][] = [
@@ -537,17 +550,7 @@ async function collectHostVitals(): Promise<HostVitals> {
   let disks: HostVitals["disk"] = [];
   if (inContainer) {
     let hostMounts: HostMountEntry[] | null = null;
-    try {
-      const content = fs.readFileSync(`${HOST_PROC}/1/mounts`, "utf8");
-      hostMounts = parseHostMounts(content);
-    } catch {
-      try {
-        const content = fs.readFileSync("/proc/mounts", "utf8");
-        hostMounts = parseContainerMountsFallback(content, HOST_ROOTFS);
-      } catch {
-        hostMounts = null;
-      }
-    }
+    hostMounts = readHostMounts();
 
     if (hostMounts) {
       const seenFingerprints: { device: string; total: number; used: number }[] = [];
