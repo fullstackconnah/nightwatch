@@ -315,7 +315,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 400 ? e.message : `Could not save. ${e instanceof Error ? e.message : ""}`.trim());
+      setError(e instanceof ApiError && e.status === 400 ? e.message : `Couldn't save${e instanceof Error && e.message ? `: ${e.message}` : "."}`);
     } finally {
       setSaving(false);
     }
@@ -330,7 +330,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
       await mutate();
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      setError(`Could not clear the token. ${e instanceof Error ? e.message : ""}`.trim());
+      setError(`Couldn't clear the token${e instanceof Error && e.message ? `: ${e.message}` : "."}`);
     } finally {
       setClearStep("idle");
     }
