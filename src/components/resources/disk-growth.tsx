@@ -3,7 +3,8 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { SegmentButton } from "@/components/ui/segment-button";
-import { containerHistoryColor } from "@/components/resources/resource-overview";
+import { SeriesSwatch } from "@/components/resources/resource-overview";
+import { SERIES_SLOTS } from "@/lib/chart-series";
 import { fetcher } from "@/lib/client";
 import { formatBytes, relativeTime } from "@/lib/format";
 
@@ -12,8 +13,8 @@ import { formatBytes, relativeTime } from "@/lib/format";
  * metrics history (see metrics-history.ts's queryMountHistory, additive to
  * that module). One line per mount, same hand-rolled SVG grammar
  * resource-overview.tsx's MetricHistoryPanel already established (gap-broken
- * paths, dashed-idle series, hairline baseline) — reusing containerHistoryColor
- * from there rather than inventing a second palette for "compare N peers on
+ * paths, hairline baseline), taking each mount's stroke and dash from the shared
+ * SERIES_SLOTS in chart-series.ts rather than inventing a second palette for "compare N peers on
  * one chart".
  */
 
@@ -83,21 +84,17 @@ function GrowthChart({ data, mountpoints }: { data: MountGrowthResponse; mountpo
         {hasData &&
           mountpoints.map((mount, i) => {
             const points = (data.mounts[mount] ?? []).map((p) => p.usedBytes);
-            const values = points.filter((v): v is number => v != null);
-            // Measured-but-flat (idle, not absent) draws dashed — "measured,
-            // nothing moved" must not read as "no data" or "chart failed".
-            const isIdleFlat = values.length > 0 && values.every((v) => v === values[0]);
             const segments = buildSegments(points, W, H, yMin, yMax);
-            const color = containerHistoryColor(i);
+            const slot = SERIES_SLOTS[i % SERIES_SLOTS.length];
             return segments.map((d, si) => (
               <path
                 key={`${mount}-${si}`}
                 d={d}
                 fill="none"
-                stroke={color}
+                stroke={slot.stroke}
                 strokeWidth={1.5}
                 strokeLinejoin="round"
-                strokeDasharray={isIdleFlat ? "4 3" : undefined}
+                strokeDasharray={slot.dash}
                 vectorEffect="non-scaling-stroke"
               />
             ));
@@ -106,7 +103,7 @@ function GrowthChart({ data, mountpoints }: { data: MountGrowthResponse; mountpo
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         {mountpoints.map((mount, i) => (
           <div key={mount} className="flex items-center gap-1.5 min-w-0">
-            <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: containerHistoryColor(i) }} />
+            <SeriesSwatch slot={SERIES_SLOTS[i % SERIES_SLOTS.length]} />
             <span className="microlabel truncate max-w-[9rem]" title={mount}>
               {mount}
             </span>

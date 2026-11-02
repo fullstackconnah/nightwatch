@@ -256,7 +256,7 @@ A fourteen-token palette that is almost entirely one desaturated blue, spent so 
 - **Signal Sky** (`blue`): the *second* series, and only ever the second. Transmit against the accent's receive in every paired throughput chart, the `restarting` status dot, and the "this attribute actually predicts failure" marker on SMART rows. It never appears alone as a primary accent.
 
 ### Tertiary
-- **Sequential Teal Ramp** (`ramp-teal-deep` → `ramp-teal-mid` → `ramp-teal` → `ramp-teal-bright`): the four-step ordered ramp used when a single bar or treemap has to separate composed parts — disk segments (images / writable layers / volumes / build cache), the treemap's magnitude quartiles, the VRAM attribution bar. Darkest carries the largest value, so light labels sitting on top keep contrast. Promoted to real CSS tokens 2026-08-03 (`--color-ramp-teal-deep/mid/DEFAULT/bright` in `globals.css`, giving `bg-ramp-teal-*`/`text-ramp-teal-*` utilities and `var(--color-ramp-teal-*)`) after an audit found the four values retyped as literal hex 29 times across 6 files — reach for the token, not the hex. `resources/page.tsx` (12 occurrences) is migrated; `disk-contents.tsx`, `gpu-view.tsx`, `net-compare.tsx`, `resource-overview.tsx` and `treemap.tsx` still carry literal hex pending a follow-up pass.
+- **Sequential Teal Ramp** (`ramp-teal-deep` → `ramp-teal-mid` → `ramp-teal` → `ramp-teal-bright`): the four-step ordered ramp used when a single bar or treemap has to separate composed parts — disk segments (images / writable layers / volumes / build cache), the treemap's magnitude quartiles, the VRAM attribution bar. Darkest carries the largest value, so light labels sitting on top keep contrast. Promoted to real CSS tokens 2026-08-03 (`--color-ramp-teal-deep/mid/DEFAULT/bright` in `globals.css`, giving `bg-ramp-teal-*`/`text-ramp-teal-*` utilities and `var(--color-ramp-teal-*)`) after an audit found the four values retyped as literal hex 29 times across 6 files — reach for the token, not the hex. `resources/page.tsx` (12 occurrences) is migrated; `disk-contents.tsx`, `gpu-view.tsx` and `treemap.tsx` still carry literal hex pending a follow-up pass. The ramp is for part-to-whole segments only; compare series never use it.
 
 ### Neutral
 - **Deep Night** (`bg`): the page ground, also the browser theme colour and the resting fill of form inputs.
@@ -275,7 +275,7 @@ A fourteen-token palette that is almost entirely one desaturated blue, spent so 
 
 ### Named Rules
 
-**The One Live Hue Rule.** Teal is the only colour that may carry data by default. A second hue enters only when a chart genuinely has two series (then it is `blue`, in that order), or when a real threshold has been crossed (then it is `ok`/`warn`/`bad`). A magnitude is expressed by bar length, cell area, or ramp position — never by rainbow.
+**The One Live Hue Rule.** Teal is the only colour that may carry data by default. A second hue enters only when a chart genuinely has two or more series (then it is `blue` and the dash slots below, in that order), or when a real threshold has been crossed (then it is `ok`/`warn`/`bad`). A magnitude is expressed by bar length, cell area, or ramp position — never by rainbow.
 
 **The Bent-Colour Rule.** External colour is translated into this palette, never passed through. The log console's ANSI renderer maps every terminal colour onto app tokens (red→`bad`, green→`ok`, yellow→`warn`, blue→`blue`, cyan and magenta→`accent`, white→`ink`, black→`ink-faint`), resolves 256-colour and truecolour parameters down to those same eight tokens by hue, and renders bright variants as `filter: brightness(1.15)` rather than as a brighter token that does not exist. A raw `#00ff00` must never reach the screen.
 
@@ -390,7 +390,7 @@ Borders are the primary form-defining device and they are always 1px. A thicker 
 
 ### Named Rules
 
-**The Hatch-Not-Empty Rule.** An absent measurement is drawn as a 135° hatched track, never as an empty one. An empty bar beside a full one reads as "pristine" or "nothing left" — both are claims the data does not support. The same applies to a zero-amplitude chart: an idle series draws a *dashed* baseline so "measured, nothing moved" cannot be mistaken for "chart failed".
+**The Hatch-Not-Empty Rule.** An absent measurement is drawn as a 135° hatched track, never as an empty one. An empty bar beside a full one reads as "pristine" or "nothing left" — both are claims the data does not support. The same applies to a zero-amplitude chart: an idle series keeps its slot's dash and is labelled `· flat`, so "measured, nothing moved" cannot be mistaken for "chart failed".
 
 ## Components
 
@@ -442,6 +442,7 @@ Every chart in this system is hand-rolled SVG on a fluid `viewBox` with `preserv
 
 - **Sparkline / area:** a 1.5px stroke over a 12–16% fill of the same colour. Colour comes from `currentColor` in the newer implementation, so the caller sets the hue with a text class.
 - **Bidirectional throughput:** receive above a shared baseline, transmit mirrored below it, `accent` above and `blue` below, both at 16% fill with a 1.25px stroke, and the baseline drawn *last* in `line-bright` so it reads as the axis rather than as something buried under the fills.
+- **Compare series:** every multi-line comparison (resource history, net-compare, disk growth) takes its stroke from the five slots in `src/lib/chart-series.ts`: accent solid, blue solid, accent `5 4`, blue `5 4`, accent dotted `1.5 3`. Accent and blue alone fail the normal-vision floor on this surface, so identity is dash plus a direct end label plus the legend, with hue a third cue. Swatches are 16×8 inline SVG lines (stroke 2, the slot's colour and dash). Only solid slots keep the area fill; dashed and dotted series are strokes only. Slots go by pick order and a series keeps its slot until removed. A flat (idle) series keeps its slot's dash and gets " · flat" after its end label.
 - **Segmented capacity bar:** a `1.25rem` tall `line`-ground strip of ramp-coloured segments separated by 2px gaps, with the segment's own label printed inside it once it exceeds 9% of the width, a `panel-2` "free" remainder, and a microlabel legend of `0.5rem` swatches beneath.
 - **Meter:** a `0.375rem` `line/60` pill whose fill switches accent→warn→bad at 80/92 and carries a 33% glow of its own colour.
 - **Ring / arc gauge:** a `line` track with a rounded coloured arc, the figure in mono at the centre and a microlabel beneath it, animated by `stroke-dashoffset`.
@@ -460,10 +461,10 @@ The companion rail is the other half of the metaphor: selecting a container does
 - **Do** build surfaces out of `.panel` with hairline `line` dividers, hovering to `panel-2` / `line-bright`.
 - **Do** carry state with a `.dot`, and reserve the pulsing variants for `unhealthy` and `restarting`.
 - **Do** keep teal as the only data hue, add `blue` only as a genuine second series, and let bar length, cell area or ramp position carry magnitude.
-- **Do** reach for the four-step teal ramp — `var(--color-ramp-teal-deep/mid/DEFAULT/bright)` (`#134e4a` / `#0f766e` / `#0d9488` / `#14b8a6`), darkest = largest — when one bar or map has to separate composed parts.
+- **Do** reach for the four-step teal ramp — `var(--color-ramp-teal-deep/mid/DEFAULT/bright)` (`#134e4a` / `#0f766e` / `#0d9488` / `#14b8a6`), darkest = largest — when one bar or map has to separate composed parts (part-to-whole only; compare series use the chart-series slots).
 - **Do** pair touch and pointer heights on every control (`h-11 md:h-8`, `min-h-11 md:min-h-0`) and ship a `md:hidden` card rendering beside every `hidden md:table`.
 - **Do** write empty, idle and unavailable states as real copy that says what is true — "waiting for the first line — quiet is normal here", "no traffic in the window", "unattributed", "only 37 lines exist for this container". On a host this quiet, a healthy-but-idle stream must never render as "no data".
-- **Do** distinguish "measured zero" from "could not measure": dashed baseline for the former, hatched track and named reason for the latter.
+- **Do** distinguish "measured zero" from "could not measure": an idle series that keeps its slot's dash and `· flat` label for the former, hatched track and named reason for the latter.
 - **Do** gate every authored animation behind `prefers-reduced-motion` (either the CSS media query or `motion-reduce:transition-none`) and keep it to one moment per surface.
 - **Do** bend any external colour onto these tokens before it reaches the screen.
 

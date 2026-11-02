@@ -1,10 +1,11 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Sparkline } from "@/components/sparkline";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { cn } from "@/lib/utils";
+import { SERIES_SLOTS, assignSlots, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
 import { relativeTime } from "@/lib/format";
 
 export interface OverviewSegment {
@@ -174,13 +175,13 @@ const HISTORY_RANGES: readonly { value: HistoryRangeOption; label: string }[] = 
   { value: "7d", label: "7D" },
 ];
 
-/** accent (host) is applied by the caller; this is the order additional
- *  container series take — blue first, then two steps of the four-step teal
- *  ramp (DESIGN.md's ramp values, literal — the ramp is not a CSS token). */
-const CONTAINER_SERIES_COLORS = ["var(--color-blue)", "#0f766e", "#0d9488", "#14b8a6"];
-
-export function containerHistoryColor(index: number): string {
-  return CONTAINER_SERIES_COLORS[index % CONTAINER_SERIES_COLORS.length];
+/** 16x8 line swatch in the slot's colour and dash (a CSS border can't draw a 5 4 dash at this size). */
+export function SeriesSwatch({ slot }: { slot: SeriesSlot }) {
+  return (
+    <svg width={16} height={8} viewBox="0 0 16 8" className="shrink-0" aria-hidden>
+      <line x1={0} y1={4} x2={16} y2={4} stroke={slot.stroke} strokeWidth={2} strokeDasharray={slot.dash} />
+    </svg>
+  );
 }
 
 export function HistoryRangeControl({
@@ -210,11 +211,13 @@ export function ContainerHistoryPicker({
   options,
   selected,
   onToggle,
+  slots,
   max = 4,
 }: {
   options: string[];
   selected: string[];
   onToggle: (name: string) => void;
+  slots: ReadonlyMap<string, number>;
   max?: number;
 }) {
   const atCap = selected.length >= max;
@@ -232,7 +235,6 @@ export function ContainerHistoryPicker({
         const idx = selected.indexOf(name);
         const isSelected = idx !== -1;
         const disabled = !isSelected && atCap;
-        const color = isSelected ? containerHistoryColor(idx) : undefined;
         return (
           <button
             key={name}
@@ -248,7 +250,7 @@ export function ContainerHistoryPicker({
               disabled && "opacity-40 cursor-not-allowed pointer-events-none",
             )}
           >
-            {isSelected && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />}
+            {isSelected && <SeriesSwatch slot={SERIES_SLOTS[slots.get(name) ?? 1]} />}
             <span className="font-mono text-xs text-ink truncate max-w-[8rem]">{name}</span>
           </button>
         );
@@ -260,7 +262,7 @@ export function ContainerHistoryPicker({
 interface HistoryLineSeries {
   key: string;
   label: string;
-  color: string;
+  slot: SeriesSlot;
   points: (number | null)[];
 }
 
@@ -287,6 +289,24 @@ function buildSegments(points: (number | null)[], width: number, height: number,
   return segments;
 }
 
+const END_LABEL_GAP = 14;
+
+/** Direct end labels: one per series with data, at its last value's height, nudged apart so they don't overlap. */
+function endLabels(series: HistoryLineSeries[], H: number, yMax: number) {
+  const rows = series
+    .map((s) => {
+      const values = s.points.filter((v): v is number => v != null);
+      if (values.length === 0) return null;
+      const flat = values.every((v) => v === values[0]);
+      const last = values[values.length - 1];
+      return { s, flat, y: H - (Math.max(0, last) / yMax) * H };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => a.y - b.y);
+  const ys = layoutEndLabels(rows.map((r) => r.y), H, END_LABEL_GAP);
+  return rows.map((r, i) => ({ ...r, y: ys[i] }));
+}
+
 function HistoryChart({
   series,
   height = 140,
@@ -299,38 +319,46 @@ function HistoryChart({
   const allValues = series.flatMap((s) => s.points.filter((v): v is number => v != null));
   const hasData = allValues.length > 0;
   const yMax = Math.max(...allValues, 1e-6);
+  const labels = hasData ? endLabels(series, H, yMax) : [];
 
   return (
+    <div className="flex gap-2">
     <svg
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
       aria-hidden
-      className="w-full"
+      className="min-w-0 flex-1"
       style={{ height: H }}
     >
       <line x1={0} y1={H - 0.75} x2={W} y2={H - 0.75} stroke="var(--color-line-bright)" strokeWidth={1} vectorEffect="non-scaling-stroke" />
       {hasData &&
         series.map((s) => {
           const values = s.points.filter((v): v is number => v != null);
-          // A series with real samples but zero measured amplitude (idle, not
-          // absent) draws dashed rather than solid — "measured, nothing moved"
-          // must not read the same as "chart failed" or "no data" would.
-          const isIdleFlat = values.length > 0 && values.every((v) => v === values[0]);
           const segments = buildSegments(s.points, W, H, yMax);
           return segments.map((d, i) => (
             <path
               key={`${s.key}-${i}`}
               d={d}
               fill="none"
-              stroke={s.color}
+              stroke={s.slot.stroke}
               strokeWidth={1.5}
               strokeLinejoin="round"
-              strokeDasharray={isIdleFlat ? "4 3" : undefined}
+              strokeDasharray={s.slot.dash}
               vectorEffect="non-scaling-stroke"
             />
           ));
         })}
     </svg>
+    <div aria-hidden="true" className="relative w-28 shrink-0" style={{ height: H }}>
+      {labels.map(({ s, flat, y }) => (
+        <div key={s.key} className="absolute left-0 right-0 flex items-center gap-1 -translate-y-1/2 leading-[13px]" style={{ top: y }}>
+          <SeriesSwatch slot={s.slot} />
+          <span title={s.label} className="font-mono text-[0.65rem] text-ink-dim truncate">{s.label}</span>
+          {flat && <span className="font-mono text-[0.65rem] text-ink-faint whitespace-nowrap">· flat</span>}
+        </div>
+      ))}
+    </div>
+    </div>
   );
 }
 
@@ -339,7 +367,7 @@ function HistoryLegend({ series }: { series: HistoryLineSeries[] }) {
     <div className="flex flex-wrap gap-x-4 gap-y-1">
       {series.map((s) => (
         <div key={s.key} className="flex items-center gap-1.5 min-w-0">
-          <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: s.color }} />
+          <SeriesSwatch slot={s.slot} />
           <span className="microlabel truncate max-w-[9rem]">{s.label}</span>
         </div>
       ))}
@@ -385,13 +413,18 @@ export function MetricHistoryPanel({
   const isLive = range === "live";
   const isThin = recordingSince == null || Date.now() - recordingSince < THIN_HISTORY_MS;
 
+  // Slot 0 is the host; compares keep their slot until removed (colour follows the entity).
+  const heldSlots = useRef<ReadonlyMap<string, number>>(new Map());
+  const slots = assignSlots(selectedContainers, heldSlots.current, 1);
+  heldSlots.current = slots;
+
   const series: HistoryLineSeries[] = [];
-  if (hostPoints) series.push({ key: "host", label: "host", color: "var(--color-accent)", points: hostPoints });
-  selectedContainers.forEach((name, i) => {
+  if (hostPoints) series.push({ key: "host", label: "host", slot: SERIES_SLOTS[0], points: hostPoints });
+  selectedContainers.forEach((name) => {
     series.push({
       key: name,
       label: name,
-      color: containerHistoryColor(i),
+      slot: SERIES_SLOTS[slots.get(name) ?? 1],
       points: containerPoints[name] ?? bucketTimes.map(() => null),
     });
   });
@@ -409,7 +442,7 @@ export function MetricHistoryPanel({
 
       {!isLive && (
         <>
-          <ContainerHistoryPicker options={containerOptions} selected={selectedContainers} onToggle={onToggleContainer} />
+          <ContainerHistoryPicker options={containerOptions} selected={selectedContainers} onToggle={onToggleContainer} slots={slots} />
 
           {isThin ? (
             <div className="py-4 text-center">
