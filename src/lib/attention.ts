@@ -7,7 +7,7 @@ import { readBackupStatus } from "@/lib/backup-status-read";
 import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
 import { Memo } from "@/lib/cache";
 import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
-import { orchestraAttention } from "@/lib/orchestra-view";
+import { isLive, orchestraAttention } from "@/lib/orchestra-view";
 import type { OrchestratorDetail } from "@/lib/types/orchestra";
 import { blockDeviceName, classifyDeviceGone, classifyMountError, probeOne, type MountVerdict } from "@/lib/mount-probe";
 import fs, { promises as fsp } from "node:fs";
@@ -358,7 +358,7 @@ function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null 
 // --- (f) a stalled agent or an unanswering orchestra service ----------------
 
 const ORCHESTRA_RACE_MS = 3_000;
-/** In-flight agents at the last reachable reading; 0 until the first one. Process lifetime, like the memos. */
+/** Live in-flight agents (isLive) at the last good reading; 0 until the first one. Process lifetime, like the memos. */
 let orchestraLastInFlight = 0;
 
 /**
@@ -375,13 +375,14 @@ const orchestraMemo = new Memo<AttentionResult | null>({
     let status = snap.status;
     const details: OrchestratorDetail[] = [];
     if (status === "ok") {
-      orchestraLastInFlight = snap.orchestrators.reduce((n, o) => n + o.inFlightCount, 0);
       const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0);
       for (const r of await Promise.all(busy.map((o) => getOrchestraDetail(o.name)))) {
         if (r.status !== "ok") status = r.status;
         else if (r.orchestrator) details.push(r.orchestrator);
       }
     }
+    // No busy orchestrators means no details, so an ok reading with nothing in flight resets this to 0.
+    if (status === "ok") orchestraLastInFlight = details.flatMap((o) => o.inFlight).filter((e) => isLive(e.quietMin)).length;
     const item = orchestraAttention(status, details, orchestraLastInFlight);
     return item ? hit("warn", item.headline, item.detail) : null;
   },

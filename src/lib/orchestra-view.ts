@@ -98,6 +98,8 @@ export function checkpointView(raw: string | null): { text: string; cut: boolean
 }
 
 export const isStalled = (quietMin: number | null): boolean => quietMin !== null && quietMin >= STALL_MIN && quietMin <= STALL_MAX;
+/** The service's own live rule: a marker entry quiet past STALL_MAX is a dead session's leftover. */
+export const isLive = (quietMin: number | null): boolean => quietMin !== null && quietMin <= STALL_MAX;
 
 export function inFlightRows(list: OrchestratorInFlight[]): (OrchestratorInFlight & { stalled: boolean })[] {
   return list
@@ -127,7 +129,7 @@ export function orchestraAttention(
     const n = lastInFlight === 1 ? "1 agent was" : `${lastInFlight} agents were`;
     return { headline: "Orchestra stopped answering", detail: `${n} running; the PC may be off or asleep` };
   }
-  if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "Replace it in Settings, under Access" };
+  if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "replace it in Settings, under Access" };
   if (status !== "ok") return null;
   const stalled = details
     .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))

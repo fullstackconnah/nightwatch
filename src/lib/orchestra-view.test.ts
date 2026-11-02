@@ -6,6 +6,7 @@ import {
   checkpointView,
   formatQuiet,
   inFlightRows,
+  isLive,
   loadErrorCopy,
   okSentence,
   orchestraAttention,
@@ -108,6 +109,15 @@ describe("in-flight rows", () => {
   });
 });
 
+describe("isLive", () => {
+  it("counts an entry with a transcript up to STALL_MAX; a dead marker or no transcript is not live", () => {
+    assert.equal(isLive(0), true);
+    assert.equal(isLive(360), true);
+    assert.equal(isLive(361), false);
+    assert.equal(isLive(null), false);
+  });
+});
+
 describe("orchestraAttention", () => {
   const d = (name: string, quiet: (number | null)[], title: string | null = null) => ({
     name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q })),
@@ -154,12 +164,17 @@ describe("orchestraAttention", () => {
   it("flags a rejected token", () => {
     assert.deepEqual(orchestraAttention("unauthorized", [], 0), {
       headline: "Orchestra rejected the token",
-      detail: "Replace it in Settings, under Access",
+      detail: "replace it in Settings, under Access",
     });
   });
 
   it("follows isStalled at STALL_MAX: 360 min speaks, 361 is a dead marker", () => {
     assert.equal(orchestraAttention("ok", [d("dev", [360])])?.headline, "agent-dev-0 has gone quiet in dev");
     assert.equal(orchestraAttention("ok", [d("dev", [361])]), null);
+  });
+
+  it("follows isStalled at STALL_MIN: 19 min is still fine, 20 speaks", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [19])]), null);
+    assert.equal(orchestraAttention("ok", [d("dev", [20])])?.headline, "agent-dev-0 has gone quiet in dev");
   });
 });
