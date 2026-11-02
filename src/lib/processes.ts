@@ -2,6 +2,7 @@ import fsp from "node:fs/promises";
 import { HOST_PROC, HOST_SYS } from "@/lib/host-metrics";
 import { listContainers } from "@/lib/docker";
 import { Memo } from "@/lib/cache";
+import { processCpuShare } from "@/lib/cpu-share";
 import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
 
 /**
@@ -470,11 +471,9 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
       const span = sampleTs - base.ts;
       const deltaTicks = d.stat.utime + d.stat.stime - base.ticks;
       if (span > 0 && deltaTicks >= 0) {
-        // One busy core = 100 (Docker-style, matching TelemetryRow.cpuPct).
-        // Sanity check: CLK_TCK=100 means 1 tick = 10ms, so 100 ticks spent
-        // over a 1000ms window is a fully-busy core -> 100.
-        const msPerTick = 1000 / CLK_TCK;
-        cpuPct = ((deltaTicks * msPerTick) / span) * 100;
+        // Share of the whole box (0-100), matching the host gauge. Sanity check:
+        // CLK_TCK=100, so 100 ticks over 1000ms is one busy core = 100/cores.
+        cpuPct = processCpuShare(deltaTicks, CLK_TCK, span, cores);
       }
     }
 

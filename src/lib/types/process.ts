@@ -18,7 +18,7 @@ export interface ProcessRow {
   state: string; // single char: R S D Z T etc.
   ppid: number;
   threads: number;
-  /** One busy core = 100 (Docker-style, matching TelemetryRow.cpuPct).
+  /** 0-100, share of the WHOLE box (matching TelemetryRow.cpuPct).
    *  null = this process was not present in the previous sample, so no
    *  delta exists yet. NOT zero — an unmeasured process is not an idle one. */
   cpuPct: number | null;
