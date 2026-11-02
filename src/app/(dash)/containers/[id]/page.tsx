@@ -243,7 +243,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
             </span>
           </CardHeader>
           <CardContent>
-            <Sparkline data={history.map((s) => s.cpuPercent)} max={Math.max(100, ...history.map((s) => s.cpuPercent))} />
+            <Sparkline data={history.map((s) => s.cpuPercent)} max={100} />
           </CardContent>
         </Card>
         <Card>

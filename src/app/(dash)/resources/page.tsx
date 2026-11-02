@@ -197,10 +197,8 @@ function buildCpuOverview(
   // LIVE range of the new history panel below is exactly this ring, unmodified.
   const series = samples.map((s) => Math.max(0, finite(s.host?.cpuPct ?? 0)));
   const rows = containers ? Object.values(containers) : [];
-  // row.cpuPct is Docker-style (one busy core = 100, so a 16-core box can sum to 1600);
-  // host.cpuPct is already 0-100 for the whole box. Dividing by cores puts them in the
-  // same units — without it the bar is nonsense.
-  const containerPct = Math.max(0, finite(rows.reduce((a, r) => a + r.cpuPct, 0) / Math.max(1, host.cores)));
+  // row.cpuPct and host.cpuPct are both 0-100 of the whole box, so the sum needs no scaling.
+  const containerPct = Math.max(0, finite(rows.reduce((a, r) => a + r.cpuPct, 0)));
   const hostPct = Math.max(0, finite(host.cpuPct));
   const containersSeg = Math.max(0, Math.min(containerPct, hostPct));
   const otherSeg = Math.max(0, hostPct - containerPct);

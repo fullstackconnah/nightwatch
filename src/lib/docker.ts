@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
@@ -290,8 +291,7 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
     s.cpu_stats.cpu_usage.total_usage - (s.precpu_stats?.cpu_usage?.total_usage ?? 0);
   const sysDelta =
     (s.cpu_stats.system_cpu_usage ?? 0) - (s.precpu_stats?.system_cpu_usage ?? 0);
-  const cores = s.cpu_stats.online_cpus || 1;
-  const cpuPercent = sysDelta > 0 && cpuDelta > 0 ? (cpuDelta / sysDelta) * cores * 100 : 0;
+  const cpuPercent = containerCpuShare(cpuDelta, sysDelta); // share of the whole box, 0-100
 
   const rawUsage = s.memory_stats?.usage ?? 0;
   const cache =
