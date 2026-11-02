@@ -467,7 +467,7 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
   const processes: ProcessRow[] = details.map((d) => {
     const base = tickBaseline(d.pid, d.stat.starttime);
     let cpuPct: number | null = null;
-    if (base) {
+    if (base && cores > 0) {
       const span = sampleTs - base.ts;
       const deltaTicks = d.stat.utime + d.stat.stime - base.ticks;
       if (span > 0 && deltaTicks >= 0) {

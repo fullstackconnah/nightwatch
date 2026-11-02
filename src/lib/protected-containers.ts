@@ -24,6 +24,11 @@ export function isProtectedContainer(c: ProtectCandidate, selfHostname?: string)
   return [c.name, image, c.composeProject, c.composeService].some((v) => /dockge/i.test(v ?? ""));
 }
 
+/** Exact name first, so a hex-only name can't be shadowed by another container's id prefix. */
+export function findTarget<T extends { id: string; name: string }>(list: T[], id: string): T | undefined {
+  return list.find((c) => c.name === id) ?? list.find((c) => c.id.startsWith(id));
+}
+
 /** Actions the UI route refuses on a protected container (restart stays allowed). */
 export const UI_BLOCKED_ACTIONS: readonly string[] = ["stop", "pause"];
 

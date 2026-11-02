@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
 
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ ok: true, expiresAt });
-  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions());
+  try {
+    res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions());
+  } catch {
+    return NextResponse.json({ error: "SESSION_SECRET is not set — login disabled" }, { status: 503 });
+  }
   return res;
 }

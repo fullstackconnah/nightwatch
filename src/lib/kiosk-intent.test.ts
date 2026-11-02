@@ -239,5 +239,23 @@ describe("matchIntent", () => {
         say: "Turning on Office Desk.",
       });
     });
+    it("the office heater goes to the office AC even with a light named Bathroom Heater", () => {
+      const ctx: IntentContext = { entities: { ...house.entities!, lights: [light("light.bath_heater", "Bathroom Heater")] } };
+      assert.deepEqual(matchIntent("turn on the office heater", ctx), {
+        kind: "climate.power",
+        entityId: "climate.office_ac",
+        on: true,
+        say: "Turning on Office AC.",
+      });
+    });
+    it("a light whose own name holds a climate word is still a light", () => {
+      const ctx: IntentContext = { entities: { ...house.entities!, lights: [light("light.bath_heater", "Bathroom Heater")] } };
+      assert.deepEqual(matchIntent("turn on the bathroom heater", ctx), {
+        kind: "light",
+        entityId: "light.bath_heater",
+        action: "turn_on",
+        say: "Turning on Bathroom Heater.",
+      });
+    });
   });
 });
