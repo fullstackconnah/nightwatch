@@ -52,8 +52,10 @@ const over = (ground: number[], hex: string, a: number) => {
 
 const GLOW = "#ecf2fc";
 const STREAK = { dark: "#ecf2fc", light: "#283448" };
-// Droplets are the loudest thing on the glass, so they set the worst overlay.
-const WORST_ALPHA = { dark: 0.16, light: 0.12 };
+// The worst overlay is the loudest of the droplets (0.16 / 0.12) and the near streaks.
+const loudest = (mode: "dark" | "light", droplet: number) =>
+  Math.max(droplet, ...BANDS.map((b) => rainParams(b, 0, 1180, 820).alphaNear[mode]));
+const WORST_ALPHA = { dark: loudest("dark", 0.16), light: loudest("light", 0.12) };
 
 /** Every ground the sunroom can show: the six stops, then a sweep of the
  *  weathered ramp at full cloud and full rain. Mid-crossing states are skipped
@@ -98,6 +100,10 @@ describe("rainParams", () => {
     assert.deepEqual(counts, [70, 140, 240, 380]);
     for (const b of BANDS) assert.equal(rainParams(b, 0, 2732, 2048).count <= 400, true);
     assert.equal(rainParams("heavy", 0, 2732, 2048).count, 400);
+  });
+  it("day streaks are dark enough to read across a room (about 6% dip)", () => {
+    assert.deepEqual(BANDS.map((b) => rainParams(b, 0, 1180, 820).alphaNear.light), [0.11, 0.15, 0.17, 0.19]);
+    assert.deepEqual(BANDS.map((b) => rainParams(b, 0, 1180, 820).alphaNear.dark), [0.08, 0.11, 0.13, 0.14]);
   });
   it("base length covers one frame step", () => {
     for (const b of BANDS) {

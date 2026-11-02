@@ -51,10 +51,10 @@ const REF_AREA = 1180 * 820;
 export const MAX_RAIN_STREAKS = 400;
 // Drizzle's row is the MID band's values (it has no near band).
 const TABLE: Record<WetBand, { count: number; speed: number; dark: number; light: number }> = {
-  drizzle: { count: 70, speed: 420, dark: 0.08, light: 0.06 },
-  light: { count: 140, speed: 900, dark: 0.11, light: 0.08 },
-  moderate: { count: 240, speed: 1200, dark: 0.13, light: 0.09 },
-  heavy: { count: 380, speed: 1500, dark: 0.14, light: 0.1 },
+  drizzle: { count: 70, speed: 420, dark: 0.08, light: 0.11 },
+  light: { count: 140, speed: 900, dark: 0.11, light: 0.15 },
+  moderate: { count: 240, speed: 1200, dark: 0.13, light: 0.17 },
+  heavy: { count: 380, speed: 1500, dark: 0.14, light: 0.19 },
 };
 
 export function rainParams(band: WetBand, windKmh: number, w: number, h: number): RainParams {
