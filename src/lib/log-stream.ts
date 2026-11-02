@@ -1,5 +1,6 @@
 import { docker, listContainers } from "@/lib/docker";
 import { classifyLevel } from "@/lib/log-levels";
+import { readIdPrefix, UNKNOWN_CONTAINER } from "@/lib/log-reconnect";
 import type { LogLine, LogStream, LogTrackState } from "@/lib/types/log";
 
 /**
@@ -34,19 +35,22 @@ export function createLogDemuxer(
   container: string,
   onLine: OnLine,
   /**
-   * Which read this demuxer serves: `"s"` for the one-shot scrollback, `"l"` for
-   * the follow stream. It namespaces the ids, and that is load-bearing.
+   * Which read this demuxer serves: `"s"` for the one-shot scrollback, `"r"` for a
+   * resume replay, `"l"` for the follow stream. With readIdPrefix it makes the ids
+   * unique per read, and that is load-bearing.
    *
-   * Every container gets TWO demuxers per session and each closes over its own
-   * `seq` starting at 0, so without this the first live line's id was byte-equal
+   * Every container gets several demuxers per session (seed, each replay, each
+   * live feed after a reconnect) and each closes over its own `seq` starting at
+   * 0, so without a per-read prefix the first live line's id was byte-equal
    * to the first seeded line's. The console records seeded ids so scrollback does
    * not animate — which meant the first 200 live lines per container were treated
    * as already seen and never animated or announced, on top of React reconciling
    * duplicate keys. At this host's ~17 lines/min no sitting ever reached live
    * line 200, so the arrival moment was dead in practice.
    */
-  source: "s" | "l",
+  source: "s" | "r" | "l",
 ): LogDemuxer {
+  const prefix = readIdPrefix(source);
   // Annotated: Buffer.alloc infers the narrower Buffer<ArrayBuffer>, while
   // Buffer.concat below returns Buffer<ArrayBufferLike>, and the two do not
   // assign to each other under @types/node 22.
@@ -78,7 +82,7 @@ export function createLogDemuxer(
     if (ts === null) ts = Date.now();
 
     onLine({
-      id: `${container}:${source}${seq++}`,
+      id: `${container}:${prefix}${seq++}`,
       container,
       ts,
       stream,
@@ -152,7 +156,7 @@ export function createLogDemuxer(
 async function resolveContainerId(name: string): Promise<string> {
   const containers = await listContainers();
   const match = containers.find((c) => c.name === name);
-  if (!match) throw new Error("unknown container");
+  if (!match) throw new Error(UNKNOWN_CONTAINER);
   return match.id;
 }
 
@@ -179,7 +183,7 @@ export async function readContainerLogTail(
   })) as unknown as Buffer;
 
   const lines: LogLine[] = [];
-  const demuxer = createLogDemuxer(name, (line) => lines.push(line), "s");
+  const demuxer = createLogDemuxer(name, (line) => lines.push(line), sinceMs === undefined ? "s" : "r");
   demuxer.push(buf);
   demuxer.flush();
   lines.sort((a, b) => a.ts - b.ts);

@@ -1,4 +1,5 @@
 import { readContainerLogTail, subscribeContainerLogs } from "@/lib/log-stream";
+import { parseResume } from "@/lib/log-reconnect";
 import {
   LOG_TAIL_DEFAULT,
   MAX_TRACKS,
@@ -36,12 +37,7 @@ export async function GET(request: Request): Promise<Response> {
   const seedNames = names.filter((n) => seedRequested.has(n));
 
   // resume=name:lastTs,... marks a reconnect after a restart; only newer lines are replayed.
-  const resumeFrom = new Map<string, number>();
-  for (const part of splitNames(url.searchParams.get("resume"))) {
-    const i = part.lastIndexOf(":");
-    const ts = Number(part.slice(i + 1));
-    if (i > 0 && Number.isFinite(ts)) resumeFrom.set(part.slice(0, i), ts);
-  }
+  const resumeFrom = parseResume(url.searchParams.get("resume"), Date.now());
 
   const encoder = new TextEncoder();
   const unsubscribes: (() => void)[] = [];
@@ -105,18 +101,22 @@ export async function GET(request: Request): Promise<Response> {
         }
       }
 
-      // Resume replay goes out as plain `line` events, before going live.
-      for (const name of names) {
-        const since = resumeFrom.get(name);
-        if (closed) break;
-        if (since === undefined) continue;
-        try {
-          const { lines } = await readContainerLogTail(name, 0, since);
-          for (const line of lines) safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
-        } catch {
-          // Container briefly absent mid-recreate: the live subscribe below reports it.
-        }
-      }
+      // Resume replay goes out as plain `line` events, before going live. The
+      // live feed attaches (tail 0) only after these reads, so a line logged
+      // between a container's replay read and its attach can be lost; the reads
+      // run in parallel to keep that window short.
+      await Promise.all(
+        names.map(async (name) => {
+          const since = resumeFrom.get(name);
+          if (since === undefined) return;
+          try {
+            const { lines } = await readContainerLogTail(name, 0, since);
+            for (const line of lines) safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
+          } catch {
+            // Container briefly absent mid-recreate: the live subscribe below reports it.
+          }
+        }),
+      );
 
       if (closed) return;
 

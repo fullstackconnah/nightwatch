@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/types/log";
 import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/types/log";
-import { reconnectDelay, shouldRetry } from "@/lib/log-reconnect";
+import { reconnectDelay, shouldResetAttempts, shouldRetry } from "@/lib/log-reconnect";
 
 export type LogConnection = "idle" | "connecting" | "live" | "lost" | "unauthorized";
 
@@ -173,10 +173,15 @@ export function useLogStream(selection: string[]): LogStreamResult {
   const [version, bumpVersion] = useReducer((v: number) => v + 1, 0);
   // Re-subscribe after a container's stream ends (restart/recreate): bumping
   // retryTick re-runs the connect effect, which resumes each buffered
-  // container from its last line. Attempts reset on that container's next line.
+  // container from its last line (or from its seed time when it had none).
+  // Attempts reset on a fresh line once the track has stayed live a while.
   const [retryTick, bumpRetry] = useReducer((v: number) => v + 1, 0);
   const attemptsRef = useRef<Record<string, number>>({});
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // When each track went live on the current stream (absent = not live).
+  const liveAtRef = useRef<Record<string, number>>({});
+  // When each container's seed arrived: the resume point for an empty buffer.
+  const seededAtRef = useRef<Record<string, number>>({});
 
   const cancelPendingFrame = useCallback(() => {
     if (frameRef.current !== null) {
@@ -244,8 +249,14 @@ export function useLogStream(selection: string[]): LogStreamResult {
         delete storeRef.current.arrivals[name];
         delete storeRef.current.short[name];
         delete storeRef.current.seedCount[name];
+        delete seededAtRef.current[name];
       }
     }
+    for (const name of Object.keys(attemptsRef.current)) {
+      if (!selected.has(name)) delete attemptsRef.current[name];
+    }
+    // Nothing is live on the stream about to open.
+    liveAtRef.current = {};
 
     // Only containers with no buffer yet need seeding — re-seeding an already
     // buffered container would duplicate its scrollback on every selection change.
@@ -258,13 +269,16 @@ export function useLogStream(selection: string[]): LogStreamResult {
     params.set("c", containers.join(","));
     if (seed.length > 0) params.set("seed", seed.join(","));
     params.set("tail", String(LOG_TAIL_DEFAULT));
-    // Buffered containers resume after their newest line, so a reconnect
-    // neither loses nor repeats lines (the server filters on exact ms).
+    // Buffered containers resume after their newest line (an empty buffer from
+    // its seed time), so a reconnect repeats no line (the server filters on
+    // exact ms). Lines logged between the replay read and the live attach can
+    // still be lost; see the route.
     const resume = containers
       .filter((c) => !seed.includes(c))
       .flatMap((c) => {
         const buf = storeRef.current.lines[c];
-        return buf && buf.length > 0 ? [`${c}:${buf[buf.length - 1].ts}`] : [];
+        const since = buf && buf.length > 0 ? buf[buf.length - 1].ts : seededAtRef.current[c];
+        return since === undefined ? [] : [`${c}:${since}`];
       });
     if (resume.length > 0) params.set("resume", resume.join(","));
 
@@ -310,6 +324,7 @@ export function useLogStream(selection: string[]): LogStreamResult {
         storeRef.current.lines[parsed.container] = parsed.lines;
         storeRef.current.short[parsed.container] = parsed.short;
         storeRef.current.seedCount[parsed.container] = parsed.lines.length;
+        seededAtRef.current[parsed.container] = Date.now();
         // Deliberately NOT touching arrivals here — seeded scrollback is not a
         // live arrival, however recent it looks. See the LogStreamResult doc
         // comment on `arrivals` for why.
@@ -323,7 +338,10 @@ export function useLogStream(selection: string[]): LogStreamResult {
     es.addEventListener("line", (event: MessageEvent<string>) => {
       try {
         const parsed = JSON.parse(event.data) as LogLine;
-        attemptsRef.current[parsed.container] = 0;
+        const replayed = parsed.id.startsWith(`${parsed.container}:r`);
+        if (shouldResetAttempts(liveAtRef.current[parsed.container] ?? null, Date.now(), replayed)) {
+          attemptsRef.current[parsed.container] = 0;
+        }
         const existing = storeRef.current.lines[parsed.container] ?? [];
         const next = [...existing, parsed];
         storeRef.current.lines[parsed.container] =
@@ -341,7 +359,11 @@ export function useLogStream(selection: string[]): LogStreamResult {
       try {
         let parsed = JSON.parse(event.data) as LogTrackState;
         const attempts = attemptsRef.current[parsed.container] ?? 0;
-        if (shouldRetry(parsed.status, parsed.detail, attempts)) {
+        const now = Date.now();
+        const liveAt = liveAtRef.current[parsed.container];
+        if (parsed.status === "live") liveAtRef.current[parsed.container] = now;
+        else delete liveAtRef.current[parsed.container];
+        if (shouldRetry(parsed.status, parsed.detail, attempts, liveAt === undefined ? null : now - liveAt)) {
           attemptsRef.current[parsed.container] = attempts + 1;
           parsed = { container: parsed.container, status: "connecting", detail: "reconnecting…" };
           if (retryTimerRef.current === null) {
@@ -379,19 +401,14 @@ export function useLogStream(selection: string[]): LogStreamResult {
       cancelled = true;
       es.close();
       cancelPendingFrame();
-    };
-    // Reconnecting on a selection change loses at most a few hundred ms of
-    // lines (whatever arrives between the old EventSource closing and the new
-    // one's seed) — acceptable at ~17 lines/min across the fleet, so there's
-    // no gap-recovery/resume-cursor logic here.
-  }, [key, retryTick, scheduleRender, cancelPendingFrame]);
-
-  useEffect(
-    () => () => {
+      // A pending retry belongs to this stream; the next one re-arms its own.
       if (retryTimerRef.current !== null) clearTimeout(retryTimerRef.current);
-    },
-    [],
-  );
+      retryTimerRef.current = null;
+    };
+    // Buffered containers resume from their last line on a new stream, but a
+    // line logged in the window before the new live feed attaches can be lost:
+    // acceptable at ~17 lines/min across the fleet.
+  }, [key, retryTick, scheduleRender, cancelPendingFrame]);
 
   return useMemo<LogStreamResult>(
     () => ({
