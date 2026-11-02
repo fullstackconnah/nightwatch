@@ -4,6 +4,7 @@ import {
   KIOSK_ELEVATION_COOKIE,
   KIOSK_ELEVATION_TTL_SECONDS,
   createKioskElevationToken,
+  isMissingSecretError,
   kioskElevationCookieOptions,
 } from "@/lib/auth";
 import { systemSetting } from "@/lib/config";
@@ -63,7 +64,8 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true, expiresAt });
   try {
     res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions());
-  } catch {
+  } catch (e) {
+    if (!isMissingSecretError(e)) throw e;
     return NextResponse.json({ error: "SESSION_SECRET is not set — login disabled" }, { status: 503 });
   }
   return res;

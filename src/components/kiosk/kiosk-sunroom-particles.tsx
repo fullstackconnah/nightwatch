@@ -5,7 +5,7 @@
  * One WebGLRenderer scene: rain streaks (one mesh of quads), the puddle line
  * (rings on the wet floor, crowns on the forecast panel, a floor sheen: one
  * mesh), a lightning glow, fog banks (sprite planes) and gust line segments.
- * Droplets on the glass are not drawn in rain. At most 9 draw calls a frame.
+ * At most 9 draw calls a frame.
  * Runs with strict frame-budget gating (30fps in rain, ~24 otherwise),
  * automatic tab-visibility pausing, a single still frame under reduced motion
  * (the wet-floor sheen when it rains, plus fog), and complete GPU resource
@@ -61,7 +61,6 @@ import {
 const FRAME_BUDGET_MS = 1000 / 24;
 const RAIN_FRAME_BUDGET_MS = 1000 / 30 - 2;
 
-const MAX_DROPLETS = 40;
 const MAX_GUST_LINES = 32;
 const MIST_BLOBS = 5;
 
@@ -73,18 +72,10 @@ const MIST_BLOBS = 5;
  *  where the old dark fog narrowed it. */
 const MIST_PEAK_ALPHA = { dark: 0.055, light: 0.07 };
 
-/** Droplet peak opacity. The old 0.9 was about 15x louder than the streaks and
- *  drowned them. */
-const DROPLET_OPACITY = { dark: 0.16, light: 0.12 };
-
 /** Same argument for the gust streaks. These are 1px hairlines alive for under
  *  two seconds, not a full-viewport wash, so they need a higher number than the
  *  wash band to register at all; 0.04 was invisible. */
 const GUST_PEAK_ALPHA = 0.13;
-
-/* The puddle line draws no glass droplets in rain, so the Points system
-   below stays (its texture, geometry and material are disposed with the rest)
-   but its draw range is 0 and nothing simulates it. */
 
 interface MistState {
   baseY01: number;
@@ -103,37 +94,6 @@ interface GustState {
   born: number;
   durationMs: number;
 }
-
-/* Per-point size and alpha, which THREE.PointsMaterial cannot express: its
-   `size` is one uniform for the whole system. The droplet simulation has always
-   computed a per-droplet radius and an age-based shrink — under PointsMaterial
-   both were discarded every frame and all 40 droplets drew as identical 16px
-   dots that vanished the instant they aged out. These two shaders are the
-   smallest thing that actually applies them. */
-const DROPLET_VERT = /* glsl */ `
-  attribute float aSize;
-  attribute float aAlpha;
-  varying float vAlpha;
-  void main() {
-    vAlpha = aAlpha;
-    gl_PointSize = aSize;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-  }
-`;
-
-const DROPLET_FRAG = /* glsl */ `
-  uniform sampler2D uMap;
-  uniform vec3 uColor;
-  uniform float uOpacity;
-  varying float vAlpha;
-  void main() {
-    float a = texture2D( uMap, gl_PointCoord ).a * vAlpha * uOpacity;
-    // Fully-faded droplets still cost a blend without this.
-    if ( a < 0.003 ) discard;
-    gl_FragColor = vec4( uColor, a );
-    #include <colorspace_fragment>
-  }
-`;
 
 /* The puddle line: one ShaderMaterial for rings (kind 2 + sigma offset), crown
    blobs (kind 3) and the floor sheen (kind 4). The zone mask runs per fragment
@@ -195,21 +155,6 @@ const PUDDLE_FRAG = /* glsl */ `
     gl_FragColor.rgb *= a;
   }
 `;
-
-/** Generates a soft radial droplet sprite texture */
-function createDropletTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext("2d")!;
-  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  grad.addColorStop(0, "rgba(255, 255, 255, 0.9)");
-  grad.addColorStop(0.4, "rgba(255, 255, 255, 0.3)");
-  grad.addColorStop(1, "rgba(255, 255, 255, 0)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 64, 64);
-  return finishTexture(new THREE.CanvasTexture(canvas));
-}
 
 /** Generates a soft volumetric mist sprite texture */
 function createMistTexture(): THREE.CanvasTexture {
@@ -310,41 +255,7 @@ export function KioskSunroomParticles({
     container.appendChild(renderer.domElement);
 
     // --- 2. Shared Textures & Materials -------------------------------------
-    const dropletTexture = createDropletTexture();
     const mistTexture = createMistTexture();
-
-    // Droplets system (THREE.Points)
-    const dropletPositions = new Float32Array(MAX_DROPLETS * 3);
-    const dropletSizes = new Float32Array(MAX_DROPLETS);
-    const dropletAlphas = new Float32Array(MAX_DROPLETS);
-
-    const dropletGeo = new THREE.BufferGeometry();
-    const dropletPosAttr = new THREE.BufferAttribute(dropletPositions, 3).setUsage(THREE.DynamicDrawUsage);
-    const dropletSizeAttr = new THREE.BufferAttribute(dropletSizes, 1).setUsage(THREE.DynamicDrawUsage);
-    const dropletAlphaAttr = new THREE.BufferAttribute(dropletAlphas, 1).setUsage(THREE.DynamicDrawUsage);
-    dropletGeo.setAttribute("position", dropletPosAttr);
-    dropletGeo.setAttribute("aSize", dropletSizeAttr);
-    dropletGeo.setAttribute("aAlpha", dropletAlphaAttr);
-    dropletGeo.setDrawRange(0, 0);
-
-    const dropletMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uMap: { value: dropletTexture },
-        uColor: { value: new THREE.Color(0xecf2fc) },
-        uOpacity: { value: DROPLET_OPACITY.dark },
-      },
-      vertexShader: DROPLET_VERT,
-      fragmentShader: DROPLET_FRAG,
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-    });
-    const dropletPoints = new THREE.Points(dropletGeo, dropletMat);
-    // Every object here is authored directly in screen space and is on-screen
-    // by construction. Culling would need a bounding sphere recomputed from a
-    // buffer that changes every frame, for a test that can never fail.
-    dropletPoints.frustumCulled = false;
-    scene.add(dropletPoints);
 
     /* Rain streaks: one mesh of indexed quads, one draw call for up to 400.
        Quads, not LineSegments, because WebGL line width is pinned at 1px on
@@ -661,8 +572,6 @@ export function KioskSunroomParticles({
       if (isDark === lastDark) return;
       lastDark = isDark;
       const ink = isDark ? 0xecf2fc : 0x283448;
-      dropletMat.uniforms.uColor.value.setHex(ink);
-      dropletMat.uniforms.uOpacity.value = isDark ? DROPLET_OPACITY.dark : DROPLET_OPACITY.light;
       gustMat.color.setHex(ink);
       streakMat.color.setHex(ink);
       // Fog is always a lightening; see MIST_PEAK_ALPHA.
@@ -835,6 +744,7 @@ export function KioskSunroomParticles({
      *  fog at full strength, one frame. No rings, crowns, streaks or flash. */
     const renderStill = () => {
       const p = propsRef.current;
+      readRects(); // zones may have moved since mount; the still frame is never redrawn by the loop
       applyGround(p.isDark);
       gusts.length = 0;
       live = 0;
@@ -973,8 +883,6 @@ export function KioskSunroomParticles({
       flashMesh.visible = level > 0;
       flashMat.opacity = level * FLASH_PEAK_ALPHA[mode];
 
-      // --- C. Glass droplets: none in rain (the puddle line has none); the draw range stays 0. ---
-
       // --- D. Mist ---
       const mistAlpha = updateMist(now, dt, false);
 
@@ -1026,7 +934,7 @@ export function KioskSunroomParticles({
 
       /* Nothing to draw and nothing drawn last frame means the canvas already
          holds the correct (empty) image. The one frame after everything clears
-         still renders, so the last droplet is erased rather than frozen. */
+         still renders, so the last frame is erased rather than frozen. */
       const drawing =
         live > 0 || flashMesh.visible || puddleGeo.drawRange.count > 0 || mistAlpha > 0.001 || gustGeo.drawRange.count > 0;
       if (drawing || drewLastFrame) renderer.render(scene, camera);
@@ -1102,10 +1010,6 @@ export function KioskSunroomParticles({
       renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored);
 
       scene.clear();
-
-      dropletGeo.dispose();
-      dropletMat.dispose();
-      dropletTexture.dispose();
 
       streakGeo.dispose();
       streakMat.dispose();

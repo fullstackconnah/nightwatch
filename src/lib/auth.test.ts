@@ -5,6 +5,7 @@ import {
   createKioskElevationToken,
   createOidcFlowToken,
   createSessionToken,
+  isMissingSecretError,
   isRequestAuthenticated,
   kioskElevationCookieOptions,
   secretKey,
@@ -195,5 +196,24 @@ describe("auth", () => {
       process.env.SESSION_SECRET = "abc";
       assert.equal(decode(), "abc");
     });
+  });
+});
+
+describe("isMissingSecretError", () => {
+  it("accepts what secretKey throws in production with no secret, and nothing else", () => {
+    const saved = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
+    delete process.env.SESSION_SECRET;
+    delete process.env.ADMIN_PASSWORD_HASH;
+    env.NODE_ENV = "production";
+    try {
+      assert.throws(() => secretKey(), (e) => isMissingSecretError(e));
+    } finally {
+      for (const k of ENV_KEYS) {
+        if (saved[k] === undefined) delete process.env[k];
+        else env[k] = saved[k];
+      }
+    }
+    assert.equal(isMissingSecretError(new Error("disk full")), false);
+    assert.equal(isMissingSecretError("SESSION_SECRET"), false);
   });
 });
