@@ -2,6 +2,7 @@ import Docker from "dockerode";
 import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
+import { createSwr, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
@@ -23,17 +24,13 @@ function createClient(): Docker {
   });
 }
 
-interface DfCacheEntry {
-  data: DfSnapshot;
-  ts: number;
-}
 interface DockerRootCacheEntry {
   data: string | null;
   ts: number;
 }
 const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
-  __dfCache?: DfCacheEntry;
+  __dfSwr?: Swr<DfSnapshot>;
   __dockerRootCache?: DockerRootCacheEntry;
 };
 export const docker: Docker = globalForDocker.__docker ?? createClient();
@@ -405,12 +402,14 @@ export interface DfSnapshot {
 
 const DF_TTL_MS = 60_000;
 
-/** GET /system/df — expensive on the daemon, cached for a full minute. */
-export async function systemDf(): Promise<DfSnapshot> {
-  const now = Date.now();
-  if (globalForDocker.__dfCache && now - globalForDocker.__dfCache.ts < DF_TTL_MS) {
-    return globalForDocker.__dfCache.data;
-  }
+const DF_WAIT_MS = 2500;
+
+/** GET /system/df — 20-70 s on a big host. Single flight, stale-while-revalidate, 60 s TTL. */
+export function systemDf(): Promise<DfSnapshot> {
+  return dfSwr.get();
+}
+
+async function fetchDf(): Promise<DfSnapshot> {
   const raw = (await docker.df()) as {
     LayersSize?: number;
     BuildCacheUsage?: number;
@@ -441,10 +440,13 @@ export async function systemDf(): Promise<DfSnapshot> {
   } else {
     buildCacheBytes = null;
   }
-  const data: DfSnapshot = { containers, volumes, layersSize, buildCacheBytes };
-  globalForDocker.__dfCache = { data, ts: now };
-  return data;
+  return { containers, volumes, layersSize, buildCacheBytes };
 }
+
+const dfSwr = (globalForDocker.__dfSwr ??= createSwr(fetchDf, DF_TTL_MS));
+
+// Start one df at boot so the first Resources load usually finds a cache.
+if (process.env.NEXT_PHASE !== "phase-production-build") dfSwr.get().catch(() => {});
 
 export interface DanglingImage {
   id: string;
@@ -568,14 +570,14 @@ export interface PruneResult {
 export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult> {
   if (target === "images") {
     const result = await docker.pruneImages({ filters: { dangling: ["true"] } });
-    globalForDocker.__dfCache = undefined;
+    dfSwr.clear();
     const deleted = (result.ImagesDeleted ?? [])
       .map((d) => d.Deleted || d.Untagged)
       .filter((v): v is string => !!v);
     return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted };
   }
   const result = await docker.pruneVolumes({});
-  globalForDocker.__dfCache = undefined;
+  dfSwr.clear();
   return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted: result.VolumesDeleted ?? [] };
 }
 
@@ -598,7 +600,7 @@ export async function removeImage(id: string): Promise<ImageRemoveResult> {
   const result = (await docker.getImage(id).remove({})) as
     | { Untagged?: string; Deleted?: string }[]
     | undefined;
-  globalForDocker.__dfCache = undefined;
+  dfSwr.clear();
   const deleted = (result ?? [])
     .map((d) => d.Deleted || d.Untagged)
     .filter((v): v is string => !!v);
@@ -669,7 +671,8 @@ export async function getResourceSnapshot(force = false): Promise<ResourceSnapsh
   const [list, stats, df, host, dockerRootDir] = await Promise.all([
     listContainers(),
     allContainerStats(force),
-    systemDf().catch(() => null),
+    // Never let the slow df hold the page: after DF_WAIT_MS use the cache (or null); df keeps running.
+    withTimeout(systemDf(), DF_WAIT_MS, () => dfSwr.peek() ?? null).catch(() => null),
     getHostVitals().catch(() => null),
     getDockerRootDir(),
   ]);
