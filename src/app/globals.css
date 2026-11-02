@@ -1859,3 +1859,270 @@ body {
     transition: none;
   }
 }
+
+/* ── the watchlist (resources, CPU and MEM) ───────────────────────────────
+   Rows are absolutely placed in .wl-rows and move by translateY only (420ms),
+   and only when the committed order, the open row or a fold changes. Bars move
+   by scaleX (600ms). Nothing animates width, height, top or left. A row that
+   has just mounted (data-new) takes no transition. */
+.wl-panel {
+  --wl-row: 36px;
+  --wl-fold: 36px;
+  overflow: hidden;
+  transition: opacity 200ms var(--ease-calm);
+}
+.wl-panel[data-stale] {
+  opacity: 0.55;
+}
+@media (max-width: 767px) {
+  .wl-panel {
+    --wl-row: 56px;
+    --wl-fold: 48px;
+  }
+}
+.wl-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-line);
+}
+.wl-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+@media (max-width: 767px) {
+  .wl-head .wl-create {
+    order: 2;
+    margin-left: auto;
+  }
+  .wl-meta {
+    order: 3;
+    margin-left: 0;
+    width: 100%;
+  }
+}
+.wl-rows {
+  position: relative;
+}
+.wl-rows > .wl-item {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  transition: transform 420ms var(--ease-calm);
+}
+.wl-rows > .wl-item[data-new] {
+  transition: none;
+}
+.wl-rowbtn {
+  display: grid;
+  align-items: center;
+  column-gap: 0.75rem;
+  width: 100%;
+  height: var(--wl-row);
+  padding: 0 1rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 0 -1px 0 var(--color-line);
+  grid-template-columns: 8px minmax(0, 1fr) 16px 72px minmax(120px, 280px) 76px 16px;
+  grid-template-areas: "dot name cmp spark bar val chev";
+}
+.wl-rowbtn:hover,
+.wl-item[data-open] > .wl-rowbtn {
+  background: var(--color-panel-2);
+}
+.wl-rowbtn:focus-visible,
+.wl-fold:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+.wl-dot {
+  grid-area: dot;
+}
+.wl-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wl-cmp {
+  grid-area: cmp;
+  display: flex;
+  align-items: center;
+}
+.wl-spark {
+  grid-area: spark;
+  display: flex;
+}
+.wl-bar {
+  grid-area: bar;
+}
+.wl-val {
+  grid-area: val;
+  text-align: right;
+  white-space: nowrap;
+}
+.wl-chev {
+  grid-area: chev;
+  color: var(--color-ink-faint);
+  transition: transform 200ms var(--ease-calm);
+}
+.wl-item[data-open] .wl-chev {
+  transform: rotate(180deg);
+}
+/* 390: two lines. Line 1 dot, name, value, chevron; line 2 swatch, sparkline, bar (7.1). */
+@media (max-width: 767px) {
+  .wl-rowbtn {
+    row-gap: 0.25rem;
+    align-content: center;
+    grid-template-columns: 16px 72px minmax(0, 1fr) 76px 16px;
+    grid-template-areas:
+      "dot name name val chev"
+      "cmp spark bar bar .";
+  }
+}
+.wl-track {
+  display: block;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: var(--color-panel-2);
+  overflow: hidden;
+}
+.wl-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 9999px;
+  background: var(--color-accent-dim);
+  transform-origin: left;
+  transition: transform 600ms var(--ease-calm);
+}
+/* no data: the same hatch drive-health draws for "no telemetry" */
+.wl-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 4px,
+    color-mix(in srgb, var(--color-ink-faint) 30%, transparent) 4px 5px
+  );
+}
+.wl-fold {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: var(--wl-fold);
+  padding: 0 1rem;
+  border: 0;
+  background: var(--color-panel);
+  box-shadow: inset 0 -1px 0 var(--color-line);
+  color: var(--color-ink-dim);
+  font-size: 0.625rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.wl-fold:hover {
+  color: var(--color-ink);
+  background: var(--color-panel-2);
+}
+.wl-fold > .wl-fold-chev {
+  transform: rotate(-90deg);
+  transition: transform 200ms var(--ease-calm);
+}
+.wl-fold[aria-expanded="true"] > .wl-fold-chev {
+  transform: none;
+}
+.wl-note,
+.wl-skel {
+  display: flex;
+  align-items: center;
+  height: var(--wl-row);
+  padding: 0 1rem;
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+.wl-detail {
+  padding: 0.75rem 1rem 1rem 2.25rem;
+  background: var(--color-panel-2);
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+@media (max-width: 767px) {
+  .wl-detail {
+    padding: 0.75rem 1rem 1rem;
+  }
+}
+.wl-dgrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+@media (max-width: 767px) {
+  .wl-dgrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.wl-dval,
+.wl-dsub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Open-row actions (7.2): two fixed rows below 768, one flex row from 768. */
+.wl-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.wl-act1 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.wl-act1 > .wl-compare {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* a column per child, so Delete image… (PR5) joins as the first cell with no CSS change */
+.wl-act2 {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+.wl-act2 > * {
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .wl-actions {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+  .wl-act1,
+  .wl-act2 {
+    display: contents;
+  }
+  .wl-act1 > .wl-compare {
+    flex: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wl-panel,
+  .wl-rows > .wl-item,
+  .wl-fill,
+  .wl-chev,
+  .wl-fold > .wl-fold-chev {
+    transition: none;
+  }
+}

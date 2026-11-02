@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CPU_STEPS, MEM_STEPS, snapScale, cpuBand, memBand } from "./watchlist.ts";
+import {
+  CPU_STEPS,
+  MEM_STEPS,
+  snapScale,
+  cpuBand,
+  memBand,
+  createRanker,
+  splitWatch,
+  quietCap,
+  type WatchItem,
+} from "./watchlist.ts";
 
 test("snapScale rounds up to the next step and keeps a value equal to a step", () => {
   assert.equal(snapScale(0.3, CPU_STEPS), 1);
@@ -52,4 +62,75 @@ test("bands never go negative or NaN on bad input", () => {
   for (const b of [cpuBand(NaN, [NaN, 1]), memBand(NaN, 0, [NaN]), cpuBand(150, [])]) {
     for (const p of b.parts) assert.ok(Number.isFinite(p) && p >= 0);
   }
+});
+
+test("ranker: the first offer always commits, even while held", () => {
+  const r = createRanker();
+  assert.equal(r.offer(["a", "b"], 0, true), true);
+  assert.deepEqual(r.order, ["a", "b"]);
+  assert.equal(r.pending, false);
+});
+
+test("ranker: no commit within 4000 ms, then a commit at 4000", () => {
+  const r = createRanker();
+  r.offer(["a", "b"], 1000, false);
+  assert.equal(r.offer(["b", "a"], 4999, false), false);
+  assert.deepEqual(r.order, ["a", "b"]);
+  assert.equal(r.pending, true);
+  assert.equal(r.offer(["b", "a"], 5000, false), true);
+  assert.deepEqual(r.order, ["b", "a"]);
+  assert.equal(r.pending, false);
+});
+
+test("ranker: no commit while held, whatever the time, and pending is set", () => {
+  const r = createRanker();
+  r.offer(["a", "b"], 0, false);
+  assert.equal(r.offer(["b", "a"], 1e9, true), false);
+  assert.equal(r.pending, true);
+  assert.deepEqual(r.order, ["a", "b"]);
+  assert.equal(r.offer(["a", "b"], 1e9 + 1, true), false);
+  assert.equal(r.pending, false, "same order again clears pending");
+});
+
+const item = (id: string, value: number | null, running = true): WatchItem => ({ id, name: id, running, value });
+
+test("cpu split: 0.049 is quiet, 0.05 is watch", () => {
+  const s = splitWatch([item("a", 0.049), item("b", 0.05)], "cpu");
+  assert.deepEqual(s.watch, ["b"]);
+  assert.deepEqual(s.quiet, ["a"]);
+});
+
+test("cpu split: at most 10 in watch, busiest first, the rest fold into quiet by name", () => {
+  const items = Array.from({ length: 12 }, (_, i) => item(`c${String(i).padStart(2, "0")}`, 1 + i));
+  const s = splitWatch(items, "cpu");
+  assert.equal(s.watch.length, 10);
+  assert.equal(s.watch[0], "c11");
+  assert.deepEqual(s.quiet, ["c00", "c01"]);
+});
+
+test("mem split: watch is the top 10 by bytes, even tiny ones", () => {
+  const items = Array.from({ length: 11 }, (_, i) => item(`m${i}`, (i + 1) * 100));
+  const s = splitWatch(items, "mem");
+  assert.equal(s.watch.length, 10);
+  assert.equal(s.watch[0], "m10");
+  assert.deepEqual(s.quiet, ["m0"]);
+});
+
+test("split: stopped, or running with no telemetry row, goes to the stopped fold; measured zero is quiet", () => {
+  const s = splitWatch(
+    [item("z-stopped", 0, false), item("a-norow", null), item("zero", 0), item("busy", 3)],
+    "cpu",
+  );
+  assert.deepEqual(s.stopped, ["a-norow", "z-stopped"]);
+  assert.deepEqual(s.quiet, ["zero"]);
+  assert.deepEqual(s.watch, ["busy"]);
+});
+
+test("quietCap: the smallest step strictly above the quiet maximum", () => {
+  assert.equal(quietCap("cpu", 0.03), 0.05);
+  assert.equal(quietCap("cpu", 0.05), 0.1);
+  assert.equal(quietCap("cpu", 0.7), 1);
+  assert.equal(quietCap("mem", 0), 16 * 1024 ** 2);
+  assert.equal(quietCap("mem", 40 * 1024 ** 2), 64 * 1024 ** 2);
+  assert.equal(quietCap("mem", 5 * 1024 ** 3), 1024 ** 3, "clamps to the top step");
 });
