@@ -8,6 +8,7 @@ import {
   inFlightRows,
   loadErrorCopy,
   okSentence,
+  orchestraAttention,
   pageKind,
 } from "./orchestra-view.ts";
 import type { OrchestratorSummary } from "./types/orchestra.ts";
@@ -104,5 +105,52 @@ describe("in-flight rows", () => {
     assert.equal(formatQuiet(12), "quiet 12m");
     assert.equal(formatQuiet(125), "quiet 2h 5m");
     assert.equal(formatQuiet(null), "no transcript yet");
+  });
+});
+
+describe("orchestraAttention", () => {
+  const d = (name: string, quiet: (number | null)[], title: string | null = null) => ({
+    name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q })),
+  });
+
+  it("says nothing when orchestra is not configured, even with stalled agents", () => {
+    assert.equal(orchestraAttention("unconfigured", [d("dev", [42])]), null);
+  });
+
+  it("says nothing when every in-flight agent is fine", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [5, null]), d("odip", [])]), null);
+  });
+
+  it("names the orchestrator, the agent and the quiet time for one stalled agent", () => {
+    assert.deepEqual(orchestraAttention("ok", [d("dev", [3]), d("odip", [42], "ODIP")]), {
+      headline: "agent-odip-0 has gone quiet in ODIP",
+      detail: "quiet 42m; check it on the Orchestrators page",
+    });
+  });
+
+  it("counts several stalled agents and names the longest", () => {
+    assert.deepEqual(orchestraAttention("ok", [d("dev", [25]), d("odip", [5, 125])]), {
+      headline: "2 agents have gone quiet",
+      detail: "longest: agent-odip-1 in odip, quiet 2h 5m",
+    });
+  });
+
+  it("flags an unreachable service", () => {
+    assert.deepEqual(orchestraAttention("unreachable", []), {
+      headline: "Orchestra is not answering",
+      detail: "The PC is probably off or asleep",
+    });
+  });
+
+  it("flags a rejected token", () => {
+    assert.deepEqual(orchestraAttention("unauthorized", []), {
+      headline: "Orchestra rejected the token",
+      detail: "Replace it in Settings, under Access",
+    });
+  });
+
+  it("follows isStalled at STALL_MAX: 360 min speaks, 361 is a dead marker", () => {
+    assert.equal(orchestraAttention("ok", [d("dev", [360])])?.headline, "agent-dev-0 has gone quiet in dev");
+    assert.equal(orchestraAttention("ok", [d("dev", [361])]), null);
   });
 });

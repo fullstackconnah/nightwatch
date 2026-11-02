@@ -1,4 +1,11 @@
-import type { OrchestraSnapshot, OrchestratorInFlight, OrchestratorRunState, OrchestratorSummary } from "./types/orchestra.ts";
+import type {
+  OrchestraSnapshot,
+  OrchestraState,
+  OrchestratorDetail,
+  OrchestratorInFlight,
+  OrchestratorRunState,
+  OrchestratorSummary,
+} from "./types/orchestra.ts";
 
 /** Last ok snapshot, held in module memory so it survives client-side navigation but not a reload. */
 let lastOk: OrchestraSnapshot | null = null;
@@ -101,4 +108,27 @@ export function inFlightRows(list: OrchestratorInFlight[]): (OrchestratorInFligh
 export function formatQuiet(quietMin: number | null): string {
   if (quietMin === null) return "no transcript yet";
   return quietMin < 60 ? `quiet ${quietMin}m` : `quiet ${Math.floor(quietMin / 60)}h ${quietMin % 60}m`;
+}
+
+/**
+ * The attention-strip item for orchestra, or null. Always a warning (attention.ts), never critical. No
+ * number in the headline and no `since`: the kiosk keys an alert on headline + since, so a ticking value
+ * would re-raise the same alert every poll. The duration lives in the detail.
+ */
+export function orchestraAttention(
+  status: OrchestraState,
+  details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[],
+): { headline: string; detail: string } | null {
+  if (status === "unreachable") return { headline: "Orchestra is not answering", detail: "The PC is probably off or asleep" };
+  if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "Replace it in Settings, under Access" };
+  if (status !== "ok") return null;
+  const stalled = details
+    .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))
+    .sort((a, b) => (b.quietMin ?? 0) - (a.quietMin ?? 0));
+  const top = stalled[0];
+  if (!top) return null;
+  if (stalled.length === 1) {
+    return { headline: `${top.agent} has gone quiet in ${top.orch}`, detail: `${formatQuiet(top.quietMin)}; check it on the Orchestrators page` };
+  }
+  return { headline: `${stalled.length} agents have gone quiet`, detail: `longest: ${top.agent} in ${top.orch}, ${formatQuiet(top.quietMin)}` };
 }
