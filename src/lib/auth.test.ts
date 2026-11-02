@@ -16,7 +16,9 @@ import {
 
 // Fake value only; real secrets never appear in tests.
 const FAKE_SECRET = "test-only-session-secret-not-real";
-const ENV_KEYS = ["SESSION_SECRET", "ADMIN_PASSWORD_HASH"] as const;
+const ENV_KEYS = ["SESSION_SECRET", "ADMIN_PASSWORD_HASH", "NODE_ENV"] as const;
+// NODE_ENV is typed readonly; tests still need to flip it.
+const env = process.env as Record<string, string | undefined>;
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -40,8 +42,8 @@ describe("auth", () => {
 
   afterEach(() => {
     for (const k of ENV_KEYS) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
+      if (saved[k] === undefined) delete env[k];
+      else env[k] = saved[k];
     }
   });
 
@@ -170,10 +172,19 @@ describe("auth", () => {
       assert.equal(decode(), "fake-hash-not-real");
     });
 
-    // Pins the hard-coded fallback (auth.ts:16). See the report's Suspected bugs.
-    it("falls back to the built-in dev secret when both env vars are missing", () => {
+    it("falls back to the built-in dev secret outside production when both env vars are missing", () => {
       delete process.env.SESSION_SECRET;
+      env.NODE_ENV = "development";
       assert.equal(decode(), "homelab-dashboard-dev-secret");
+    });
+
+    it("throws in production when both env vars are missing (fails closed)", async () => {
+      delete process.env.SESSION_SECRET;
+      env.NODE_ENV = "production";
+      assert.throws(() => secretKey(), /SESSION_SECRET/);
+      await assert.rejects(createSessionToken(), /SESSION_SECRET/);
+      const forged = await sign({ sub: "admin", typ: "session" }, "homelab-dashboard-dev-secret");
+      assert.equal(await verifySessionToken(forged), false);
     });
 
     // No minimum length is enforced; a short secret is used as-is.

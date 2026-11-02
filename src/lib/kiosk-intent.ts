@@ -219,7 +219,9 @@ export function matchIntent(utterance: string, ctx: IntentContext): KioskIntent 
   const lightTarget = bestMatch(text, lights);
   const mentionsLight = /\b(light|lights|lamp)\b/.test(text) || wantsFloodlight;
 
-  if (verb && (mentionsLight || lightTarget.match || wantsFloodlight)) {
+  // A climate word with no light word is climate, even if a light shares a room word ("office ac" vs "Office Desk").
+  const climateOnly = mentionsClimate && !mentionsLight;
+  if (verb && !climateOnly && (mentionsLight || lightTarget.match)) {
     if (lightTarget.ambiguous) return { kind: "unresolved", say: "Which light did you mean?" };
     const target = soleOr(lights, lightTarget.match);
     if (target) {

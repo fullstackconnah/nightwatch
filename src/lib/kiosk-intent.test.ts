@@ -214,7 +214,7 @@ describe("matchIntent", () => {
     });
   });
 
-  describe("known defect", () => {
+  describe("light and climate sharing a room word", () => {
     // A room name that shares a word with a light makes the light branch win
     // over the climate branch: kiosk-intent.ts:222-230 runs before the
     // climate.power branch at :233, and fires on any light token match.
@@ -222,12 +222,21 @@ describe("matchIntent", () => {
       entities: { ...house.entities!, lights: [light("light.office_desk", "Office Desk")] },
     };
 
-    it("'turn on the office ac' is climate.power, not the office desk light", { todo: "light branch (kiosk-intent.ts:222) wins on shared token 'office' before climate.power (:233)" }, () => {
+    it("'turn on the office ac' is climate.power, not the office desk light", () => {
       assert.deepEqual(matchIntent("turn on the office ac", sharedWord), {
         kind: "climate.power",
         entityId: "climate.office_ac",
         on: true,
         say: "Turning on Office AC.",
+      });
+    });
+
+    it("'turn on the office light' stays a light when both share 'office'", () => {
+      assert.deepEqual(matchIntent("turn on the office light", sharedWord), {
+        kind: "light",
+        entityId: "light.office_desk",
+        action: "turn_on",
+        say: "Turning on Office Desk.",
       });
     });
   });
