@@ -171,7 +171,12 @@ export function KioskGlance({
            news, so these two lines are the most redundant thing on screen. */
         const dropsWhenShort = INFORMATIONAL_WIDGETS.has(id);
         return (
-          <div key={id} className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}>
+          <div
+            key={id}
+            // The sentence and the briefing share one rain-mask zone (the particle layer unions same-named rects).
+            data-rain-zone={dropsWhenShort ? "sentence" : undefined}
+            className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}
+          >
             {def.render(ctx)}
           </div>
         );
@@ -186,6 +191,7 @@ export function KioskGlance({
           One row, `max-w` capped at half the viewport so it can never grow
           under the Admin button in the opposite corner. */}
       <div
+        data-rain-zone="tiles"
         className="fixed flex max-w-[calc(50vw-2rem)] items-center gap-3"
         style={{
           bottom: "calc(1rem + env(safe-area-inset-bottom))",
@@ -206,6 +212,7 @@ export function KioskGlance({
       </div>
       <button
         type="button"
+        data-rain-zone="admin"
         /* Admin DOES opt out, and it has to — this is not a style choice.
            An earlier version let the press reach the root handler on the
            reasoning that promoting to full underneath the PIN pad is

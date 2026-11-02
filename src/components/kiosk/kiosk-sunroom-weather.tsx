@@ -22,8 +22,11 @@
  * so it paints above the theme's ground and BELOW every panel. Panels have
  * opaque backgrounds, so every word inside one is untouched by definition. The
  * only text sharing space with this layer is glance-mode copy on open ground,
- * and for that the peak alphas below are deliberately in the 0.03–0.06 band —
- * a few percent of a colour already close to the ground it sits on. The gates
+ * and for that the loud marks (rain rings, crowns, the dark floor sheen) are
+ * masked out of the glance text rects, and the streaks keep a floor over them
+ * (the zone-mask contract in kiosk-sunroom-particles.tsx); the CSS layers here
+ * stay at peak alphas of 0.03–0.06, a few percent of a colour already close to
+ * the ground it sits on. The gates
  * are `scripts/sunroom-contrast.mjs` (the palette stops) and the pure tests in
  * src/lib/kiosk-weather-fx.test.ts, which composite the peak lightning glow
  * and the loudest streak or droplet over every ground and check the ink stays
@@ -33,10 +36,11 @@
  * MOTION DISCIPLINE: everything CSS-animated here is `transform` or
  * `opacity` and nothing else, on a handful of composited layers, because this
  * tablet holds one screen for hours and a layout-triggering animation would
- * burn it down. Under reduced motion the rain and lightning are removed
- * outright (a frozen streak field reads as scratches on the glass, not as
- * rain), while the cloud layer and fog stay as static soft variation, which is
- * still true and still atmospheric.
+ * burn it down. Under reduced motion the rain and lightning are replaced by a
+ * still wet floor (one frame: a soft sheen along the bottom edge, no streaks
+ * or rings, because a frozen streak field reads as scratches on the glass, not
+ * as rain), while the cloud layer and fog stay as static soft variation, which
+ * is still true and still atmospheric.
  *
  * A THIRD MATERIAL, script-driven rather than CSS-driven: the rain itself,
  * storm lightning, droplets on the glass, fog banks and short wind-gust
@@ -61,7 +65,7 @@ import { WX_PRESETS, clamp01, effectiveMmHr, rainBand } from "@/lib/kiosk-weathe
  * kiosk/layout.tsx — which mounts on EVERY kiosk theme, not just sunroom. A
  * static import therefore put a WebGL renderer in the first-load graph of all
  * 16 themes, for a component that only ever renders on one of them, only in
- * rain/fog/wind, and under reduced motion only for fog (see `showParticles`).
+ * rain/fog/wind, and under reduced motion only for the wet floor and fog (see `showParticles`).
  * Verified against .next/app-build-manifest.json: /kiosk/layout used to list
  * both three chunks eagerly.
  *
@@ -141,8 +145,9 @@ export function KioskSunroomWeather() {
   // Rain already shows wind via the streak lean — a gust sweep on top of that
   // would be two signals for one fact, so gusts are rain-exclusive.
   const gust = windKmh >= 30 && band === "none";
-  // Fog mounts even under reduced motion: the layer draws it as one still frame.
-  const showParticles = (!reduced && (band !== "none" || gust)) || fog;
+  // Fog and rain mount even under reduced motion: the layer draws one still frame
+  // (the wet-floor sheen when it rains, plus the fog).
+  const showParticles = (!reduced && gust) || band !== "none" || fog;
 
   const cloudRgb = isDark ? "0, 2, 8" : "26, 34, 52";
   /* Cloud shadow strength rides cover, floored so a broken sky still shows

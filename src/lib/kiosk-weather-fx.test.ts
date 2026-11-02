@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   FLASH_PEAK_ALPHA,
+  PUDDLE,
   WX_PRESETS,
   applyWxPreview,
   effectiveMmHr,
@@ -9,10 +10,13 @@ import {
   flashPeakDeltaL,
   leanAt,
   PULSE2_OFFSET_MS,
+  puddleParams,
   rainBand,
   stepStrikes,
   rainParams,
   sampleStreak,
+  ringSpawnOk,
+  zoneMask,
   type RainBand,
   type WetBand,
 } from "./kiosk-weather-fx.ts";
@@ -47,26 +51,22 @@ const contrast = (a: number[], b: number[]) => {
 /** Alpha blend in sRGB space, which is what the framebuffer does. */
 const over = (ground: number[], hex: string, a: number) => {
   const c = rgb(hex);
-  return ground.map((g, i) => g * (1 - a) + c[i] * a);
+  return ground.map((g, i) => g * (1 - a) + c[i] * a) as [number, number, number];
 };
 
 const GLOW = "#ecf2fc";
 const STREAK = { dark: "#ecf2fc", light: "#283448" };
-// The worst overlay is the loudest of the droplets (0.16 / 0.12) and the near streaks.
-const loudest = (mode: "dark" | "light", droplet: number) =>
-  Math.max(droplet, ...BANDS.map((b) => rainParams(b, 0, 1180, 820).alphaNear[mode]));
-const WORST_ALPHA = { dark: loudest("dark", 0.16), light: loudest("light", 0.12) };
 
 /** Every ground the sunroom can show: the six stops, then a sweep of the
  *  weathered ramp at full cloud and full rain. Mid-crossing states are skipped
  *  because no ink clears AA there at all (sunroomStateAt documents the band). */
 function grounds() {
-  const out: Array<{ name: string; bg: string; ink: string; dark: boolean }> = [];
+  const out: Array<{ name: string; bg: string; ink: string; inkDim: string; dark: boolean }> = [];
   SUNROOM_STOPS.forEach((s, i) => {
-    out.push({ name: s.name, bg: s.palette.bg, ink: s.palette.ink, dark: !!s.dark });
+    out.push({ name: s.name, bg: s.palette.bg, ink: s.palette.ink, inkDim: s.palette.inkDim, dark: !!s.dark });
     for (const k of [0, 0.5]) {
       const st = sunroomStateAt(i + k, { cloud01: 1, rain01: 1 });
-      if (!st.crossing) out.push({ name: `${s.name}+${k}/wet`, bg: st.palette.bg, ink: st.palette.ink, dark: st.isDark });
+      if (!st.crossing) out.push({ name: `${s.name}+${k}/wet`, bg: st.palette.bg, ink: st.palette.ink, inkDim: st.palette.inkDim, dark: st.isDark });
     }
   });
   return out;
@@ -209,26 +209,105 @@ describe("photosensitivity and contrast", () => {
       assert.ok(d <= 0.05, `${g.name}: dL ${d.toFixed(4)}`);
     }
   });
-  it("ink keeps 4.5:1 under flash glow plus the loudest streak or droplet", () => {
+  it("ink and inkDim keep 4.5:1 under the stacked worst case, every band including storm", () => {
     let checked = 0;
     let worst = Infinity;
     for (const g of grounds()) {
       const mode = g.dark ? "dark" : "light";
-      const base = contrast(rgb(g.ink), rgb(g.bg));
-      let px = over(rgb(g.bg), GLOW, FLASH_PEAK_ALPHA[mode]);
-      px = over(px, STREAK[mode], WORST_ALPHA[mode]);
-      const c = contrast(rgb(g.ink), px);
-      // Only layers we add may fail; a ground that is already under AA is not ours.
-      if (base >= 4.5) {
-        assert.ok(c >= 4.5, `${g.name}: ${c.toFixed(2)} (base ${base.toFixed(2)})`);
-        checked++;
-        worst = Math.min(worst, c);
+      for (const inkName of ["ink", "inkDim"] as const) {
+        const base = contrast(rgb(g[inkName]), rgb(g.bg));
+        for (const band of [...BANDS, "storm"] as const) {
+          const storm = band === "storm";
+          const wet: WetBand = storm ? "heavy" : band;
+          const pp = puddleParams(wet, storm, g.dark, 1280, 800);
+          // Darkening marks go in at their maximum. The white day rings, sheen and flash only lighten, and
+          // these flat grounds have no y, so leaving them out is the strict reading. The dark sheen is 0 in the zones.
+          let px = rgb(g.bg);
+          if (storm && g.dark) px = over(px, GLOW, FLASH_PEAK_ALPHA.dark);
+          px = over(px, STREAK[mode], rainParams(wet, 0, 1280, 800).alphaNear[mode] * pp.streakFloor);
+          const c = contrast(rgb(g[inkName]), px);
+          // Only layers we add may fail; a ground that is already under AA is not ours.
+          if (base >= 4.5) {
+            assert.ok(c >= 4.5, `${g.name} ${inkName} ${band}: ${c.toFixed(2)} (base ${base.toFixed(2)})`);
+            checked++;
+            worst = Math.min(worst, c);
+          }
+        }
       }
     }
-    // Not vacuous: every one of the six dry stops clears AA on its own, so all
-    // of them (plus the wet grounds that do) must have been checked.
-    assert.ok(checked >= SUNROOM_STOPS.length, `only ${checked} grounds checked`);
-    if (process.env.WX_REPORT) console.log(`contrast: ${checked} grounds, worst ${worst.toFixed(2)}`);
+    // Not vacuous: every one of the six dry stops clears AA on its own, for both inks and all 5 bands.
+    assert.ok(checked >= SUNROOM_STOPS.length * 2 * 5, `only ${checked} cells checked`);
+    if (process.env.WX_REPORT) console.log(`contrast: ${checked} cells, worst ${worst.toFixed(2)}`);
+  });
+});
+
+/** The lab's glance rects at 1280 x 800: clock, sentence, light tiles, Admin. */
+const LAB_ZONES = new Float32Array([380, 96, 900, 286, 352, 492, 928, 596, 20, 724, 430, 788, 1150, 724, 1262, 788]);
+
+describe("puddle line", () => {
+  it("puddleParams returns the table values at 1280 x 800", () => {
+    const get = (b: WetBand, storm: boolean, dark: boolean) => puddleParams(b, storm, dark, 1280, 800);
+    assert.deepEqual(BANDS.map((b) => get(b, false, false).streakCount), [44, 89, 152, 240]);
+    assert.equal(get("heavy", true, false).streakCount, 240);
+    assert.deepEqual([...BANDS.map((b) => get(b, false, false).ringRate), get("heavy", true, false).ringRate], [6, 14, 26, 40, 48]);
+    assert.deepEqual([...BANDS.map((b) => get(b, false, true).ringRate), get("heavy", true, true).ringRate], [8, 16, 26, 40, 48]);
+    assert.deepEqual([...BANDS.map((b) => get(b, false, true).crownRate), get("heavy", true, true).crownRate], [2, 5, 9, 14, 18]);
+    assert.equal(get("heavy", false, false).ringLife, 0.9);
+    assert.equal(get("heavy", false, true).ringLife, 1.4);
+    assert.equal(get("heavy", true, true).streakFloor, 0.3);
+    assert.equal(get("heavy", true, false).streakFloor, 0.3);
+    assert.equal(get("heavy", false, true).streakFloor, 0.5);
+    assert.deepEqual([get("light", false, false).sheenAlpha, get("light", false, false).sheenFloor], [0.1, 1]);
+    assert.deepEqual([get("light", false, true).sheenAlpha, get("light", false, true).sheenFloor], [0.06, 0]);
+    assert.equal(get("heavy", true, true).ringKind, 2.2);
+  });
+  it("storm rings alive fit the pool", () => {
+    const p = puddleParams("heavy", true, true, 1280, 800);
+    assert.ok(p.ringRate * p.ringLife <= PUDDLE.poolRings);
+  });
+  it("zoneMask is 0 inside each rect, 1 at 40 px, and monotonic in between", () => {
+    for (let i = 0; i < 4; i++) {
+      const [x0, y0, x1, y1] = [...LAB_ZONES.slice(i * 4, i * 4 + 4)];
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      assert.equal(zoneMask(cx, cy, LAB_ZONES, 4), 0);
+      assert.equal(zoneMask(x0, cy, LAB_ZONES, 4), 0);
+      // Walk left out of the rect's mid-height edge: the other zones are far enough not to interfere there.
+      let prev = 0;
+      for (let d = 0; d <= 40; d += 2) {
+        const m = zoneMask(x0 - d, cy, LAB_ZONES, 4);
+        assert.ok(m >= prev - 1e-9, `zone ${i} d ${d}`);
+        prev = m;
+      }
+      assert.equal(zoneMask(x0 - 40, cy, LAB_ZONES, 4), 1);
+    }
+    assert.equal(zoneMask(640, 400, LAB_ZONES, 4), 1);
+  });
+  it("ringSpawnOk rejects every sampled ring that would reach a zone grown by 12 px", () => {
+    const rng = mulberry32(11);
+    let rejected = 0;
+    for (let k = 0; k < 10_000; k++) {
+      const x = rng() * 1280;
+      const y = 600 + rng() * 200;
+      const r = 6 + rng() * 38;
+      // Independent check: walk the grown ellipse's outline and its centre against every rect.
+      let reaches = false;
+      for (let a = 0; a < 64 && !reaches; a++) {
+        const px = x + (r + 12) * Math.cos((a / 64) * 2 * Math.PI);
+        const py = y + (0.3 * r + 13) * Math.sin((a / 64) * 2 * Math.PI);
+        for (let i = 0; i < 4; i++) {
+          const z = LAB_ZONES.subarray(i * 4, i * 4 + 4);
+          if (px >= z[0] && px <= z[2] && py >= z[1] && py <= z[3]) reaches = true;
+        }
+      }
+      const ok = ringSpawnOk(x, y, r, LAB_ZONES, 4);
+      if (reaches) {
+        assert.equal(ok, false, `ring at ${x.toFixed(0)},${y.toFixed(0)} r${r.toFixed(0)}`);
+        rejected++;
+      }
+    }
+    assert.ok(rejected > 500, `only ${rejected} sampled rings reached a zone`);
+    assert.equal(ringSpawnOk(640, 700, 30, LAB_ZONES, 4), true);
   });
 });
 
