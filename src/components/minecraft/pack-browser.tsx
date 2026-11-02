@@ -176,7 +176,7 @@ export function PackBrowser({
           {!debounced ? (
             <p className="text-xs text-ink-faint">Type to search modpacks.</p>
           ) : searchError ? (
-            <p className="text-xs text-bad">Search failed, try again.</p>
+            <p className="text-xs text-bad">Couldn&apos;t search — try again.</p>
           ) : !search ? (
             <p className="text-xs text-ink-faint">Searching…</p>
           ) : search?.results.length === 0 ? (

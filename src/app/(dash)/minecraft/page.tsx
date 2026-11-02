@@ -130,10 +130,10 @@ function Logs({ id, name }: { id: string; name: string }) {
       <CardContent>
         <div
           ref={boxRef}
-          className="logbox bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim"
+          className="logbox [word-break:normal]! [overflow-wrap:anywhere]! bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim"
         >
-          {error && data && <div className="text-bad">Couldn&apos;t refresh</div>}
-          {error && !data ? <span className="text-bad">Could not read logs.</span> : data?.logs || "no output"}
+          {error && data && <div className="text-bad">Couldn&apos;t refresh.</div>}
+          {error && !data ? <span className="text-bad">Couldn&apos;t read logs.</span> : data?.logs || "no output"}
         </div>
       </CardContent>
     </Card>

@@ -88,9 +88,9 @@ export function BackupsPanel({ containerState }: { containerState: string | unde
             {reason}
           </p>
         )}
-        {error && data && <p className="text-xs text-bad">Couldn&apos;t refresh</p>}
+        {error && data && <p className="text-xs text-bad">Couldn&apos;t refresh.</p>}
         {error && !data ? (
-          <p className="text-xs text-bad">Could not read backups.</p>
+          <p className="text-xs text-bad">Couldn&apos;t read backups.</p>
         ) : isLoading ? (
           <p className="text-xs text-ink-faint">Reading backups…</p>
         ) : backups.length === 0 ? (
