@@ -61,6 +61,9 @@
      promoted to a real token instead of repeated text-[0.7rem] literals. */
   --text-2xs: 0.7rem;
 
+  /* Calm motion (resources band): damping 1, no overshoot, nothing was flicked. */
+  --ease-calm: cubic-bezier(.2, .8, .2, 1);
+
   --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
@@ -1829,6 +1832,30 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .kiosk-reel-strip {
+    transition: none;
+  }
+}
+
+/* ── the box band (resources) ─────────────────────────────────────────────
+   Segments and gaps move by transform only (600ms), labels fade by opacity
+   (200ms); the stale dim is opacity. No width, left or top is ever animated. */
+.band {
+  transition: opacity 200ms var(--ease-calm);
+}
+.band-seg,
+.band-gap {
+  transition: transform 600ms var(--ease-calm);
+}
+.band-label {
+  transition:
+    transform 600ms var(--ease-calm),
+    opacity 200ms var(--ease-calm);
+}
+@media (prefers-reduced-motion: reduce) {
+  .band,
+  .band-seg,
+  .band-gap,
+  .band-label {
     transition: none;
   }
 }
