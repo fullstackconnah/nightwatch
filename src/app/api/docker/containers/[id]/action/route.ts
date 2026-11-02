@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { hostname } from "node:os";
+import { isProtectedContainer, PROTECTED_MESSAGE, UI_BLOCKED_ACTIONS } from "@/lib/protected-containers";
 import { isContainerId } from "@/lib/container-id";
 import {
   CONTAINER_ACTIONS,
+  listContainers,
   performContainerAction,
   type ContainerAction,
 } from "@/lib/docker";
@@ -44,6 +47,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       { error: `action must be one of ${CONTAINER_ACTIONS.join("|")}` },
       { status: 400 },
     );
+  }
+  if (UI_BLOCKED_ACTIONS.includes(action)) {
+    // id may be a short id or a name; a failed lookup falls through to Docker's own 404.
+    const target = await listContainers()
+      .then((all) => all.find((c) => c.id.startsWith(id) || c.name === id))
+      .catch(() => undefined);
+    if (target && isProtectedContainer(target, hostname())) {
+      return NextResponse.json({ error: PROTECTED_MESSAGE }, { status: 409 });
+    }
   }
   try {
     await performContainerAction(id, action);
