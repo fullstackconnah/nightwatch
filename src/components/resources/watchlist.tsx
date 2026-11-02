@@ -16,6 +16,7 @@ import { ChevronDown, ExternalLink, GitCompare, List, Plus, RotateCw } from "luc
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
+import { ImageInUseButton } from "@/components/resources/image-delete-action";
 import { CreateContainerDialog } from "@/components/resources/create-container";
 import { LifecycleActions, LifecycleError, useLifecycle } from "@/components/resources/container-controls";
 import { SeriesSwatch } from "@/components/resources/resource-overview";
@@ -229,8 +230,14 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
             <span className="truncate">{compared ? "Comparing" : "Compare"}</span>
           </Button>
         </div>
-        {/* Row 2: PR5 adds Delete image… here as the first cell. */}
         <div className="wl-act2">
+          <ImageInUseButton
+            label={c.name}
+            usedBy={[c.name]}
+            text="Delete image…"
+            describedBy={`${id}-img-hint`}
+            className={link}
+          />
           <Link href={`/resources?metric=all&q=${encodeURIComponent(c.name)}`} className={link}>
             <List size={12} aria-hidden />
             <span className="truncate">Processes</span>
@@ -241,6 +248,10 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
           </Link>
         </div>
       </div>
+      {/* Always disabled: the row's own container holds its image (the API 409s even when stopped). */}
+      <p id={`${id}-img-hint`} className="mt-2 text-[0.7rem] text-ink-dim">
+        Remove the container first
+      </p>
       <LifecycleError lifecycle={lifecycle} className="mt-2" />
     </div>
   );

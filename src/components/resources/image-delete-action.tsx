@@ -25,6 +25,37 @@ type Step = "idle" | "confirm" | "busy";
 
 const ICON_BUTTON = "h-11 w-11 md:h-7 md:w-7";
 
+/** The disabled "image is in use" button, shared by /images (icon-only) and the open watchlist row (`text` adds a visible label). */
+export function ImageInUseButton({
+  label,
+  usedBy,
+  text,
+  describedBy,
+  className,
+}: {
+  label: string;
+  usedBy: string[];
+  text?: string;
+  describedBy?: string;
+  className?: string;
+}) {
+  const owners = usedBy.length > 0 ? usedBy.join(", ") : "a container";
+  return (
+    <Button
+      size={text ? "sm" : "icon"}
+      variant={text ? "outline" : "ghost"}
+      disabled
+      title={`In use by ${owners} — remove ${usedBy.length === 1 ? "it" : "them"} first`}
+      aria-label={`Can't delete ${label} — in use by ${owners}`}
+      aria-describedby={describedBy}
+      className={text ? className : ICON_BUTTON}
+    >
+      <Trash2 size={text ? 12 : 13} aria-hidden />
+      {text && <span className="truncate">{text}</span>}
+    </Button>
+  );
+}
+
 export function ImageDeleteAction({
   imageId,
   label,
@@ -44,21 +75,7 @@ export function ImageDeleteAction({
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  if (inUse) {
-    const owners = usedBy.length > 0 ? usedBy.join(", ") : "a container";
-    return (
-      <Button
-        size="icon"
-        variant="ghost"
-        disabled
-        title={`In use by ${owners} — stop ${usedBy.length === 1 ? "it" : "them"} first`}
-        aria-label={`Can't delete ${label} — in use by ${owners}`}
-        className={ICON_BUTTON}
-      >
-        <Trash2 size={13} />
-      </Button>
-    );
-  }
+  if (inUse) return <ImageInUseButton label={label} usedBy={usedBy} />;
 
   async function handleConfirm() {
     setStep("busy");
