@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isProtectedContainer, UI_BLOCKED_ACTIONS } from "./protected-containers.ts";
+import { isProtectedContainer, UI_BLOCKED_ACTIONS, MCP_ALLOWED_ON_PROTECTED } from "./protected-containers.ts";
 
 const c = (o: Partial<Parameters<typeof isProtectedContainer>[0]>) => ({
   id: "a".repeat(64), name: "plex", image: "plexinc/pms-docker", composeProject: null, composeService: null, ...o,
@@ -33,4 +33,7 @@ test("ordinary and empty containers are not protected", () => {
 });
 test("ui blocks stop and pause, not restart", () => {
   assert.deepEqual([...UI_BLOCKED_ACTIONS], ["stop", "pause"]);
+});
+test("mcp may only start a protected container", () => {
+  assert.deepEqual([...MCP_ALLOWED_ON_PROTECTED], ["start"]);
 });

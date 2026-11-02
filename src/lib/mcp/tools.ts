@@ -1,5 +1,5 @@
 import { hostname } from "node:os";
-import { isProtectedContainer } from "@/lib/protected-containers";
+import { isProtectedContainer, MCP_ALLOWED_ON_PROTECTED } from "@/lib/protected-containers";
 import { listContainers, performContainerAction, type ContainerAction } from "@/lib/docker";
 
 /**
@@ -95,8 +95,8 @@ export async function callTool(name: string, args: unknown): Promise<McpToolResu
     if (!container) {
       return textResult(`No container named "${containerName}" found.`, true);
     }
-    if (isProtectedContainer(container, hostname())) {
-      return textResult(`Refused: "${containerName}" is part of nightwatch's own control plane (nightwatch, its socket proxy or Dockge), so no lifecycle action is allowed on it.`, true);
+    if (!MCP_ALLOWED_ON_PROTECTED.includes(action) && isProtectedContainer(container, hostname())) {
+      return textResult(`Refused: "${containerName}" is part of nightwatch's own control plane (nightwatch, its socket proxy or Dockge), so only start is allowed on it.`, true);
     }
     await performContainerAction(container.id, action);
     return textResult(`${action} succeeded for "${containerName}" (was ${container.state}).`);

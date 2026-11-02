@@ -29,3 +29,8 @@ export const UI_BLOCKED_ACTIONS: readonly string[] = ["stop", "pause"];
 
 export const PROTECTED_MESSAGE =
   "This container runs the dashboard itself (nightwatch, its Docker socket proxy or Dockge), so it can't be stopped from here.";
+
+/** The only action MCP may run on a protected container: start never takes anything down. */
+export const MCP_ALLOWED_ON_PROTECTED: readonly string[] = ["start"];
+
+export const LOOKUP_FAILED_MESSAGE = "Couldn't check whether this container is safe to stop. Try again.";
