@@ -358,6 +358,8 @@ function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null 
 // --- (f) a stalled agent or an unanswering orchestra service ----------------
 
 const ORCHESTRA_RACE_MS = 3_000;
+/** In-flight agents at the last reachable reading; 0 until the first one. Process lifetime, like the memos. */
+let orchestraLastInFlight = 0;
 
 /**
  * The list call carries counts only; quietMin lives on each orchestrator's
@@ -373,13 +375,14 @@ const orchestraMemo = new Memo<AttentionResult | null>({
     let status = snap.status;
     const details: OrchestratorDetail[] = [];
     if (status === "ok") {
+      orchestraLastInFlight = snap.orchestrators.reduce((n, o) => n + o.inFlightCount, 0);
       const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0);
       for (const r of await Promise.all(busy.map((o) => getOrchestraDetail(o.name)))) {
         if (r.status !== "ok") status = r.status;
         else if (r.orchestrator) details.push(r.orchestrator);
       }
     }
-    const item = orchestraAttention(status, details);
+    const item = orchestraAttention(status, details, orchestraLastInFlight);
     return item ? hit("warn", item.headline, item.detail) : null;
   },
 });
@@ -387,8 +390,8 @@ const orchestraMemo = new Memo<AttentionResult | null>({
 /**
  * The client waits up to 5s, and a PC that is off often hangs that long. On a
  * 3s timeout this returns the last decision instead; the losing load keeps
- * running and fills the memo, so "not answering" shows one cycle late rather
- * than never.
+ * running and fills the memo, so "stopped answering" shows one cycle late
+ * rather than never.
  */
 async function probeOrchestra(): Promise<AttentionResult | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;

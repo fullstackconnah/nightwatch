@@ -114,12 +114,19 @@ export function formatQuiet(quietMin: number | null): string {
  * The attention-strip item for orchestra, or null. Always a warning (attention.ts), never critical. No
  * number in the headline and no `since`: the kiosk keys an alert on headline + since, so a ticking value
  * would re-raise the same alert every poll. The duration lives in the detail.
+ * Unreachable speaks only when the last good reading had work in flight (`lastInFlight`, 0 before any good
+ * reading): a PC that sleeps after its work is done must not leave an item on the wall all night.
  */
 export function orchestraAttention(
   status: OrchestraState,
   details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[],
+  lastInFlight = 0,
 ): { headline: string; detail: string } | null {
-  if (status === "unreachable") return { headline: "Orchestra is not answering", detail: "The PC is probably off or asleep" };
+  if (status === "unreachable") {
+    if (lastInFlight <= 0) return null;
+    const n = lastInFlight === 1 ? "1 agent was" : `${lastInFlight} agents were`;
+    return { headline: "Orchestra stopped answering", detail: `${n} running; the PC may be off or asleep` };
+  }
   if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "Replace it in Settings, under Access" };
   if (status !== "ok") return null;
   const stalled = details

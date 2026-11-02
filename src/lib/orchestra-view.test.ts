@@ -135,15 +135,24 @@ describe("orchestraAttention", () => {
     });
   });
 
-  it("flags an unreachable service", () => {
-    assert.deepEqual(orchestraAttention("unreachable", []), {
-      headline: "Orchestra is not answering",
-      detail: "The PC is probably off or asleep",
+  it("stays quiet when unreachable and the last good reading had nothing in flight", () => {
+    assert.equal(orchestraAttention("unreachable", [], 0), null);
+  });
+
+  it("stays quiet when unreachable with no good reading since the server started", () => {
+    assert.equal(orchestraAttention("unreachable", []), null);
+  });
+
+  it("flags a service that stopped answering while agents were running", () => {
+    assert.deepEqual(orchestraAttention("unreachable", [], 2), {
+      headline: "Orchestra stopped answering",
+      detail: "2 agents were running; the PC may be off or asleep",
     });
+    assert.equal(orchestraAttention("unreachable", [], 1)?.detail, "1 agent was running; the PC may be off or asleep");
   });
 
   it("flags a rejected token", () => {
-    assert.deepEqual(orchestraAttention("unauthorized", []), {
+    assert.deepEqual(orchestraAttention("unauthorized", [], 0), {
       headline: "Orchestra rejected the token",
       detail: "Replace it in Settings, under Access",
     });
