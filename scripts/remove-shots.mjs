@@ -25,7 +25,8 @@ const INSPECT = {
   ports: [], mounts: [], env: [], cmd: "nginx -g 'daemon off;'",
 };
 const LIST = {
-  containers: [{ id: ID, name: NAME, image: "nginx:1.27", state: "exited", status: "Exited (0) 2 days ago", ports: [], composeProject: null, composeService: null }],
+  containers: [{ id: ID, name: NAME, image: "nginx:1.27", state: "exited", status: "Exited (0) 2 days ago", ports: [], composeProject: null, composeService: null, tile: { url: null } }],
+  groups: [], counts: { total: 1, running: 0, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
 };
 
 const VIEWPORTS = [
