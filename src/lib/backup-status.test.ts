@@ -78,11 +78,29 @@ describe("summarizeBackup", () => {
     assert.equal(s.items[0].state, "FAILED");
   });
 
-  it("a check older than 26 h turns its OK rows STALE but keeps FAILED", () => {
+  it("an old check alone no longer turns OK rows STALE, and FAILED stays", () => {
     const s = summary(file({ checkedAgo: 27 * HOUR, backup: { state: "FAILED" } }));
     assert.equal(s.checkStale, true);
     assert.equal(s.worst, "FAILED");
-    assert.deepEqual(s.items.map((i) => i.state), ["FAILED", "STALE"]);
+    assert.deepEqual(s.items.map((i) => i.state), ["FAILED", "OK"]);
+  });
+
+  it("a restore test passed 2 days ago with a 30 h old check stays OK", () => {
+    const s = summary(file({ checkedAgo: 30 * HOUR, backup: { at: iso(25 * HOUR) }, restore: { at: iso(48 * HOUR) } }));
+    assert.equal(s.checkStale, true);
+    assert.equal(s.worst, "OK");
+    assert.deepEqual(s.items.map((i) => i.state), ["OK", "OK"]);
+  });
+
+  it("a restore test past 7 d + 2 h is STALE, just under is not", () => {
+    assert.equal(summary(file({ restore: { at: iso(7 * 24 * HOUR + 2.1 * HOUR) } })).items[1].state, "STALE");
+    assert.equal(summary(file({ restore: { at: iso(7 * 24 * HOUR + 1.9 * HOUR) } })).items[1].state, "OK");
+  });
+
+  it("a daily backup 27 h old is STALE", () => {
+    const s = summary(file({ backup: { at: iso(27 * HOUR) } }));
+    assert.deepEqual(s.items.map((i) => i.state), ["STALE", "OK"]);
+    assert.equal(s.worst, "STALE");
   });
 
   it("a check just under 26 h is still fresh", () => {

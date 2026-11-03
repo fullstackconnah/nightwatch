@@ -26,6 +26,12 @@ export const BACKUP_TONE: Record<BackupState, { variant: "ok" | "warn" | "bad"; 
 /** The daily check runs every 24 h; 2 h of slack before its silence counts. */
 export const CHECK_STALE_MS = 26 * 60 * 60 * 1000;
 
+/** How old an item's last success may be before it is late: a daily backup 24 h + 2 h, the weekly restore test 7 d + 2 h. */
+export const ITEM_LIMIT_MS: Record<BackupKind, number> = {
+  backup: CHECK_STALE_MS,
+  "restore-test": (7 * 24 + 2) * 60 * 60 * 1000,
+};
+
 export interface BackupItem {
   kind: BackupKind;
   state: BackupState;
@@ -77,7 +83,7 @@ export function parseBackupStatus(raw: string | null): BackupStatus {
 }
 
 export interface BackupSummary {
-  /** The check itself has not run for over CHECK_STALE_MS. */
+  /** The check itself has not run for over CHECK_STALE_MS. Informational: it no longer turns items STALE. */
   checkStale: boolean;
   /** One row per BACKUP_KINDS entry, with its effective state. */
   items: BackupItem[];
@@ -89,8 +95,9 @@ export function summarizeBackup(s: Extract<BackupStatus, { status: "ok" }>, nowM
   const items = BACKUP_KINDS.map((kind): BackupItem => {
     const found = s.items.find((i) => i.kind === kind);
     if (!found) return { kind, state: "STALE", at: null };
-    // An OK read by a check that has stopped running is an old claim, not a current one.
-    return checkStale && found.state === "OK" ? { ...found, state: "STALE" } : found;
+    // An OK item is late only when its own last success is past its own limit; an old check alone does not make it so.
+    const late = found.state === "OK" && found.at !== null && nowMs - Date.parse(found.at) > ITEM_LIMIT_MS[kind];
+    return late ? { ...found, state: "STALE" } : found;
   });
   const worst = items.reduce<BackupState>((w, i) => (RANK[i.state] > RANK[w] ? i.state : w), "OK");
   return { checkStale, items, worst };
