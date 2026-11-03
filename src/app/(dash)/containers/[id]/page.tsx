@@ -172,8 +172,8 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   if (error) {
     return (
       <div className="space-y-4">
-        <Link href="/containers" className="text-xs text-ink-dim hover:text-accent flex items-center gap-1">
-          <ArrowLeft size={12} /> containers
+        <Link href="/docker?find=containers" className="text-xs text-ink-dim hover:text-accent flex items-center gap-1">
+          <ArrowLeft size={12} /> Docker
         </Link>
         <div className="panel p-6 text-bad text-sm">Container not found: {error.message}</div>
       </div>
@@ -182,8 +182,8 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-4">
-      <Link href="/containers" className="text-xs text-ink-dim hover:text-accent inline-flex items-center gap-1">
-        <ArrowLeft size={12} /> containers
+      <Link href="/docker?find=containers" className="text-xs text-ink-dim hover:text-accent inline-flex items-center gap-1">
+        <ArrowLeft size={12} /> Docker
       </Link>
 
       {/* header */}

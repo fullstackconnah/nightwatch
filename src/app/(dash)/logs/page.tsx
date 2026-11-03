@@ -90,10 +90,10 @@ export default async function LogsPage({
             Try again
           </a>
           <a
-            href="/containers"
+            href="/docker?find=containers"
             className="inline-flex items-center h-11 md:h-9 text-xs text-ink-faint hover:text-ink transition-colors"
           >
-            Container list
+            Docker
           </a>
         </div>
       </div>
