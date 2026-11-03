@@ -16,7 +16,16 @@ const SEV_DOT = { bad: "dot-dead", warn: "dot-unhealthy" } as const;
  * A cleared row keeps its slot, same height, in the resolved look until the tap. Only a tap, or a Ranker reorder
  * of the committed live rows (never while held), changes what is listed.
  */
-export function AttentionList({ report, error }: { report: AttentionReport | null; error: boolean }) {
+export function AttentionList({
+  report,
+  error,
+  onListed,
+}: {
+  report: AttentionReport | null;
+  error: boolean;
+  /** The subjects of every row listed, resolved ones included, so the changes list does not repeat them (R3). */
+  onListed?: (subjects: ReadonlySet<string>) => void;
+}) {
   const rows = useMemo(() => (report ? homeRows(report) : []), [report]);
   const live = useMemo(() => rows.map((r) => r.id), [rows]);
   const [shown, setShown] = useState<string[] | null>(null);
@@ -45,6 +54,11 @@ export function AttentionList({ report, error }: { report: AttentionReport | nul
   for (const id of liveShown) if (!ranked.includes(id)) ranked.push(id);
   const display = slotOrder(g.shown, new Set(g.fixed), ranked);
   const displayKey = display.join("|");
+  const subjectsKey = display.map((id) => cache.current.get(id)?.subject ?? "").join("|");
+  useEffect(() => {
+    onListed?.(new Set(subjectsKey.split("|").filter(Boolean)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subjectsKey]);
 
   /** Rects relative to the list, so scrolling cannot fake a move. getBoundingClientRect includes a running transform. */
   function snapshot() {

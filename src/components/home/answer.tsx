@@ -2,7 +2,7 @@
 
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { clock, type Tone } from "@/lib/home";
+import { ageText, clock, type Tone } from "@/lib/home";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -25,10 +25,6 @@ export function Answer({ tone, text }: { tone: Tone; text: string }) {
 
 const STALE_REPORT_MS = 30_000; // 2 refreshes of the 15 s report poll
 const STALE_CONTAINERS_MS = 10_000; // 2 refreshes of the 5 s container poll
-
-function ageText(ms: number): string {
-  return ms < 60_000 ? `${Math.round(ms / 1000)} s` : `${Math.round(ms / 60_000)} min`;
-}
 
 /**
  * One fixed 44 px slot (R1, OPEN-H3): the probe line, or the stale bar, or "Retry now".

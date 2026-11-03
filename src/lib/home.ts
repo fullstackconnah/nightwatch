@@ -5,7 +5,7 @@ import type { AttentionHit, AttentionReport, ProbeId } from "./attention-report.
 export type Tone = "ok" | "warn" | "bad" | "pending";
 const DAY = 86_400_000;
 const DOCKER_PROBES: readonly ProbeId[] = ["crashes", "restarts", "health"];
-export const FEED_CLOSED_SLOTS = 4;
+const FEED_CLOSED_SLOTS = 4;
 export const LAST_LOOKED_KEY = "home-last-looked";
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -113,6 +113,8 @@ export interface AnswerInput {
   running: number | null;
   /** Pre-formatted age ("9 h"), only when the backup status is ok. */
   backupAgo: string | null;
+  /** The containers fetch failed, so the app count is unknown. */
+  containersFailed?: boolean;
 }
 export function answerFor(i: AnswerInput): { tone: Tone; text: string } {
   const { report: r } = i;
@@ -144,7 +146,7 @@ export function answerFor(i: AnswerInput): { tone: Tone; text: string } {
   const out = r.probes.filter((p) => p.state === "pending").length;
   if (out > 0) return { tone: "pending", text: `Nothing wrong so far, ${plural(out, "check", "checks")} still out` };
   const apps = i.running === null ? "" : ` ${i.running} apps running${i.backupAgo ? `, backup ran ${i.backupAgo} ago` : ""}`;
-  return { tone: "ok", text: `All clear.${apps}` };
+  return { tone: "ok", text: `All clear.${apps}${i.containersFailed ? " App count unknown." : ""}` };
 }
 
 /** The status slot's probe line. */
@@ -174,6 +176,20 @@ export function calmLine(r: AttentionReport | null, waiting: number, at: string)
 export function feedSlots(events: readonly { id: string }[], open: boolean, openS: number) {
   const S = open ? Math.max(openS, FEED_CLOSED_SLOTS) : FEED_CLOSED_SLOTS;
   return { S, ids: events.slice(0, S).map((e) => e.id), overflow: Math.max(0, events.length - S) };
+}
+
+/** R3: an event whose subject is already listed in Needs you (resolved rows included) is not repeated here. */
+export function dropListed<E extends { subjects: readonly string[] }>(events: readonly E[], listed: ReadonlySet<string>): E[] {
+  return events.filter((e) => !e.subjects.some((s) => listed.has(s)));
+}
+
+/** Age for the answer line and the stale bar: "20 s", "40 min", "9 h", "3 d". */
+export function ageText(ms: number): string {
+  if (ms < 60_000) return `${Math.round(ms / 1000)} s`;
+  const min = Math.round(ms / 60_000);
+  if (min < 60) return `${min} min`;
+  const h = Math.round(min / 60);
+  return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`;
 }
 
 // ---- last looked (R6) ----

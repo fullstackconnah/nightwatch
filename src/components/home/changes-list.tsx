@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
-import { clock, feedSlots } from "@/lib/home";
+import { clock, dropListed, feedSlots } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
 
@@ -15,21 +15,24 @@ import { cn } from "@/lib/utils";
 export function ChangesList({
   changes,
   hiddenNames,
+  listed,
   sinceMs,
   fallbackLabel,
 }: {
   changes: AttentionReport["changes"] | null;
   /** Containers the owner hid from the launcher: their events are dropped here, where `tile.hidden` is known. */
   hiddenNames: ReadonlySet<string>;
+  /** Subjects already listed in Needs you (R3). */
+  listed: ReadonlySet<string>;
   sinceMs: number | null;
   fallbackLabel: boolean;
 }) {
   const events = useMemo(
     () =>
-      (changes?.events ?? []).filter(
+      dropListed(changes?.events ?? [], listed).filter(
         (e) => !(e.subjects.length > 0 && e.subjects.every((s) => hiddenNames.has(s.replace(/^container:/, "")))),
       ),
-    [changes, hiddenNames],
+    [changes, hiddenNames, listed],
   );
   const [open, setOpen] = useState(false);
   const [openS, setOpenS] = useState(0);

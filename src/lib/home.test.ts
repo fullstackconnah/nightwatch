@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   answerFor,
   calmLine,
+  ageText,
   clock,
+  dropListed,
   feedSlots,
   gate,
   homeRows,
@@ -218,4 +220,22 @@ test("homeRows: since falls back to firstSeen", () => {
 test("clock formats hh:mm in a given offset", () => {
   assert.equal(clock("2026-11-04T08:30:00.000Z", 0), "08:30");
   assert.equal(clock(Date.UTC(2026, 10, 4, 23, 5), 660), "10:05");
+});
+
+// --- fix round 1 ---
+test("dropListed: an event for a listed subject (a resolved row too) is not repeated", () => {
+  const events = [{ id: "e1", subjects: ["container:radarr"] }, { id: "e2", subjects: ["container:sonarr"] }, { id: "e3", subjects: [] }];
+  assert.deepEqual(dropListed(events, new Set(["container:radarr"])).map((e) => e.id), ["e2", "e3"]);
+  assert.equal(dropListed(events.slice(0, 1), new Set(["container:radarr"])).length, 0);
+});
+test("answerFor: a quiet report with the containers fetch failed says the app count is unknown", () => {
+  const a = answerFor({ ...base, report: report(), containersFailed: true, running: null });
+  assert.deepEqual(a, { tone: "ok", text: "All clear. App count unknown." });
+  assert.equal(answerFor({ ...base, report: report() }).text, "All clear. 48 apps running, backup ran 9 h ago");
+});
+test("ageText", () => {
+  assert.equal(ageText(20_000), "20 s");
+  assert.equal(ageText(40 * 60_000), "40 min");
+  assert.equal(ageText(9 * 3_600_000), "9 h");
+  assert.equal(ageText(72 * 3_600_000), "3 d");
 });

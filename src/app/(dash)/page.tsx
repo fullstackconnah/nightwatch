@@ -7,15 +7,7 @@ import { ChangesList } from "@/components/home/changes-list";
 import { Launcher, isSortKey, type SortKey } from "@/components/home/launcher";
 import { SidePanel } from "@/components/home/side-panel";
 import { useAttentionReport, useBackupStatus, useContainers, useWidgets } from "@/lib/client";
-import { LAST_LOOKED_KEY, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
-
-/** Age for the answer line: "40 min", "9 h", "3 d". */
-function ago(ms: number): string {
-  const min = Math.max(0, Math.round(ms / 60_000));
-  if (min < 60) return `${min} min`;
-  const h = Math.round(min / 60);
-  return h < 48 ? `${h} h` : `${Math.round(h / 24)} d`;
-}
+import { LAST_LOOKED_KEY, ageText, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
 
 /** When the last fetch succeeded. SWR keeps the same `data` object when a poll returns the same JSON, so watch `isValidating`. */
 function useFetchedAt(r: { data?: unknown; error?: unknown; isValidating: boolean }): number | null {
@@ -63,6 +55,7 @@ export default function HomePage() {
   const reportAt = useFetchedAt(report);
   const containersAt = useFetchedAt(containers);
 
+  const [listed, setListed] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("group");
   const filterRef = useRef<HTMLInputElement | null>(null);
@@ -107,7 +100,8 @@ export default function HomePage() {
     report: report.data ?? null,
     error: !!report.error,
     running: data?.counts.running ?? null,
-    backupAgo: nightly?.state === "OK" && nightly.at ? ago(Date.now() - Date.parse(nightly.at)) : null,
+    containersFailed: !!error && !data,
+    backupAgo: nightly?.state === "OK" && nightly.at ? ageText(Date.now() - Date.parse(nightly.at)) : null,
   });
   const line = probeLine(report.data ?? null, report.data ? clock(report.data.checkedAt) : "");
   const reconnect = useCallback(() => void Promise.all([report.mutate(), mutate()]), [report, mutate]);
@@ -125,11 +119,12 @@ export default function HomePage() {
           onRetry={() => void report.mutate()}
         />
       </header>
-      <AttentionList report={report.data ?? null} error={!!report.error} />
+      <AttentionList report={report.data ?? null} error={!!report.error} onListed={setListed} />
       <div className="hm-grid">
         <ChangesList
           changes={report.data?.changes ?? null}
           hiddenNames={hiddenNames}
+          listed={listed}
           sinceMs={looked?.since ?? null}
           fallbackLabel={looked?.label != null}
         />
