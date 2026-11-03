@@ -99,9 +99,16 @@ describe("summarizeBackup", () => {
 });
 
 describe("backupHeadline", () => {
-  it("names both items when both are bad, worst first", () => {
+  it("names both items when the states differ, failed first", () => {
     const s = summary(file({ backup: { state: "STALE" }, restore: { state: "FAILED" } }));
-    assert.equal(backupHeadline(s), "ODIP restore test failed, nightly backup stale");
+    assert.equal(backupHeadline(s), "ODIP restore test failed; nightly backup is late");
+  });
+  it("joins two failed or two stale items", () => {
+    assert.equal(backupHeadline(summary(file({ backup: { state: "FAILED" }, restore: { state: "FAILED" } }))), "ODIP nightly backup and restore test failed");
+    assert.equal(backupHeadline(summary(file({ backup: { state: "STALE" }, restore: { state: "STALE" } }))), "ODIP nightly backup and restore test are late");
+  });
+  it("says late for a single stale item", () => {
+    assert.equal(backupHeadline(summary(file({ backup: { state: "STALE" } }))), "ODIP nightly backup is late");
   });
   it("names one item when only one is bad", () => {
     assert.equal(backupHeadline(summary(file({ backup: { state: "FAILED" } }))), "ODIP nightly backup failed");

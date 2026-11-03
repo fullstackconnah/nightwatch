@@ -133,15 +133,17 @@ describe("orchestraAttention", () => {
 
   it("names the orchestrator, the agent and the quiet time for one stalled agent", () => {
     assert.deepEqual(orchestraAttention("ok", [d("dev", [3]), d("odip", [42], "ODIP")]), {
-      headline: "agent-odip-0 has gone quiet in ODIP",
-      detail: "quiet 42m; check it on the Orchestrators page",
+      headline: "agent-odip-0 has gone quiet",
+      detail: "In ODIP, quiet 42m. It may be stuck.",
+      action: "Check it on the Orchestrators page.",
     });
   });
 
   it("counts several stalled agents and names the longest", () => {
     assert.deepEqual(orchestraAttention("ok", [d("dev", [25]), d("odip", [5, 125])]), {
       headline: "2 agents have gone quiet",
-      detail: "longest: agent-odip-1 in odip, quiet 2h 5m",
+      detail: "Longest: agent-odip-1 in odip, quiet 2h 5m. They may be stuck.",
+      action: "Check them on the Orchestrators page.",
     });
   });
 
@@ -155,26 +157,28 @@ describe("orchestraAttention", () => {
 
   it("flags a service that stopped answering while agents were running", () => {
     assert.deepEqual(orchestraAttention("unreachable", [], 2), {
-      headline: "Orchestra stopped answering",
-      detail: "2 agents were running; the PC may be off or asleep",
+      headline: "The PC's agent service stopped answering",
+      detail: "2 agents were running. The PC may be off or asleep.",
+      action: "Wake the PC, or ignore this if you turned it off.",
     });
-    assert.equal(orchestraAttention("unreachable", [], 1)?.detail, "1 agent was running; the PC may be off or asleep");
+    assert.equal(orchestraAttention("unreachable", [], 1)?.detail, "1 agent was running. The PC may be off or asleep.");
   });
 
   it("flags a rejected token", () => {
     assert.deepEqual(orchestraAttention("unauthorized", [], 0), {
-      headline: "Orchestra rejected the token",
-      detail: "replace it in Settings, under Access",
+      headline: "The PC's agent service refused the key",
+      detail: "nightwatch's saved access token is wrong or out of date, so agents can't be checked.",
+      action: "Replace the token in Settings, under Access.",
     });
   });
 
   it("follows isStalled at STALL_MAX: 360 min speaks, 361 is a dead marker", () => {
-    assert.equal(orchestraAttention("ok", [d("dev", [360])])?.headline, "agent-dev-0 has gone quiet in dev");
+    assert.equal(orchestraAttention("ok", [d("dev", [360])])?.headline, "agent-dev-0 has gone quiet");
     assert.equal(orchestraAttention("ok", [d("dev", [361])]), null);
   });
 
   it("follows isStalled at STALL_MIN: 19 min is still fine, 20 speaks", () => {
     assert.equal(orchestraAttention("ok", [d("dev", [19])]), null);
-    assert.equal(orchestraAttention("ok", [d("dev", [20])])?.headline, "agent-dev-0 has gone quiet in dev");
+    assert.equal(orchestraAttention("ok", [d("dev", [20])])?.headline, "agent-dev-0 has gone quiet");
   });
 });

@@ -53,6 +53,8 @@ export interface KioskAlertEntry {
   severity: AttentionSeverity;
   headline: string;
   detail?: string;
+  /** The one next step; a cleared alert (KioskResolvedAlertEntry) has none. */
+  action?: string;
   since?: string;
   /** False until its one-time takeover has been shown+dismissed (or was
    *  seeded as already-active on the first poll — see useKioskAlerts). */
@@ -286,7 +288,7 @@ export function useKioskAlerts(): UseKioskAlertsResult {
       // new → takeover fires.
       const seen = !prev.seeded;
       const active: KioskAlertEntry[] = [
-        { id, severity: data.severity, headline: data.headline, detail: data.detail, since: data.since, seen },
+        { id, severity: data.severity, headline: data.headline, detail: data.detail, action: data.action, since: data.since, seen },
       ];
       // `dismissed` carried through whole, for the same reason as the quiet
       // branch above: it used to be filtered down to ids still being reported,
@@ -595,6 +597,7 @@ const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry; onDismiss:
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="text-sm font-medium text-ink">{entry.headline}</div>
         {entry.detail && <div className="text-xs text-ink-dim">{entry.detail}</div>}
+        {entry.action && <div className="text-xs font-medium text-ink">{entry.action}</div>}
       </div>
       {sinceLabel && (
         <span className="shrink-0 self-center rounded-md bg-panel-2 px-2 py-1 font-mono text-2xs text-ink-dim tabular-nums">
@@ -828,6 +831,7 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
           {alert.headline}
         </p>
         {alert.detail && <p className="max-w-2xl text-2xl text-ink-dim">{alert.detail}</p>}
+        {alert.action && <p className="max-w-2xl text-2xl font-medium text-ink">{alert.action}</p>}
         {sinceLabel && <p className="microlabel">standing for {sinceLabel}</p>}
         <p className="microlabel mt-4">tap, or wait — dismisses on its own</p>
       </div>

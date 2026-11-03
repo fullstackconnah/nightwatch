@@ -1,22 +1,25 @@
 /**
  * Pure logic for the "mount is unreadable / drive disconnected" attention probe.
- * Import-free so node:test can load it. Only the errors a dead or hung mount
+ * Imports only the leaf attention-copy.ts, so node:test can load it. Only the errors a dead or hung mount
  * produces count; ENOENT/EACCES etc. say nothing about drive health and stay
  * silent. EROFS is not listed: a mount that ext4 remounted read-only after
  * errors still answers a readdir, so it cannot be seen here.
  */
+import { place } from "./attention-copy.ts";
+
 export const MOUNT_DEAD_CODES = ["EIO", "ENOTCONN", "ESTALE", "ENODEV", "ENXIO", "TIMEOUT"] as const;
 
-export type MountVerdict = { headline: string; detail: string };
+export type MountVerdict = { headline: string; detail: string; action: string };
 
 export function classifyMountError(mount: string, code: string | undefined): MountVerdict | null {
   if (!code || !(MOUNT_DEAD_CODES as readonly string[]).includes(code)) return null;
   return {
-    headline: `Drive unreadable: ${mount}`,
+    headline: `Can't read files on ${place(mount)}`,
     detail:
       code === "TIMEOUT"
-        ? "It is not answering (timed out). It may have dropped off."
-        : `Reads from it are failing (${code}). It may have dropped off and need a remount or a restart.`,
+        ? "The drive isn't answering, so files there can't be opened. It may have dropped off."
+        : `Reads are failing (${code}), so files there can't be opened. The drive may have dropped off.`,
+    action: "Restart the server; if it happens again, check the drive's cable.",
   };
 }
 
@@ -47,8 +50,9 @@ export function classifyDeviceGone(
 ): MountVerdict | null {
   if (exists && (state === null || HEALTHY_DEVICE_STATES.includes(state.trim()))) return null;
   return {
-    headline: `Drive disconnected: ${mount}`,
-    detail: `Its drive (${name}) has dropped off, but the mount still points at it. It needs a remount or a restart.`,
+    headline: `Drive for ${place(mount)} disconnected`,
+    detail: `Its drive (${name}) dropped off, so files there can't be opened until it's back.`,
+    action: "Restart the server, then check the drive's cable.",
   };
 }
 

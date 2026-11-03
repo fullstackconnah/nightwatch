@@ -5,6 +5,20 @@ import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
 import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
+import {
+  backupCheckStopped,
+  backupDetail,
+  containerCrashed,
+  containerDown,
+  containerUnhealthy,
+  diskFull,
+  driveAlert,
+  driveUnreadable,
+  integrityAlert,
+  keepsRestarting,
+  stuckRestarting,
+  type AlertCopy,
+} from "@/lib/attention-copy";
 import { Memo } from "@/lib/cache";
 import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
 import { isLive, orchestraAttention } from "@/lib/orchestra-view";
@@ -35,18 +49,21 @@ export type AttentionResult =
   | {
       status: "attention";
       severity: AttentionSeverity;
-      /** Plain English, ≤90 chars. May name the container/drive — this is a
+      /** Plain English, ≤48 chars. May name the container/drive — this is a
        *  deliberately owner-facing surface (see the route's own comment). */
       headline: string;
       /** ≤140 chars. Supporting context, never required to make sense of the headline. */
       detail?: string;
+      /** ≤70 chars. The one next step, or what to ignore. */
+      action?: string;
       /** ISO timestamp of when the condition started, when known. */
       since?: string;
     };
 
 const CACHE_TTL_MS = 30_000;
-const HEADLINE_MAX = 90;
+const HEADLINE_MAX = 48;
 const DETAIL_MAX = 140;
+const ACTION_MAX = 70;
 /** Same floor disk-growth.tsx uses before it trusts a first-vs-last delta as a
  *  real trend rather than noise — a window under a day is too short to call
  *  honestly, so a projection is skipped (never faked) below that. */
@@ -63,12 +80,13 @@ function clip(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
-function hit(severity: AttentionSeverity, headline: string, detail?: string, since?: string): AttentionResult {
+function hit(severity: AttentionSeverity, copy: AlertCopy, since?: string): AttentionResult {
   return {
     status: "attention",
     severity,
-    headline: clip(headline, HEADLINE_MAX),
-    detail: detail ? clip(detail, DETAIL_MAX) : undefined,
+    headline: clip(copy.headline, HEADLINE_MAX),
+    detail: copy.detail ? clip(copy.detail, DETAIL_MAX) : undefined,
+    action: copy.action ? clip(copy.action, ACTION_MAX) : undefined,
     since,
   };
 }
@@ -96,8 +114,7 @@ function probeContainerDeath(containers: RuntimeContainer[]): AttentionResult | 
       dead.startedAt != null && dead.finishedAt != null ? (dead.finishedAt - dead.startedAt) / 1000 : null;
     return hit(
       "bad",
-      `${dead.name} has died`,
-      upSecs != null ? `was up ${formatUptime(upSecs)} before it went dead` : undefined,
+      containerDown(dead.name, upSecs != null ? formatUptime(upSecs) : null),
       dead.finishedAt != null ? new Date(dead.finishedAt).toISOString() : undefined,
     );
   }
@@ -108,8 +125,7 @@ function probeContainerDeath(containers: RuntimeContainer[]): AttentionResult | 
   if (crashed) {
     return hit(
       "bad",
-      `${crashed.name} exited unexpectedly (code ${crashed.exitCode})`,
-      undefined,
+      containerCrashed(crashed.name, crashed.exitCode!),
       crashed.finishedAt != null ? new Date(crashed.finishedAt).toISOString() : undefined,
     );
   }
@@ -135,17 +151,13 @@ function probeRestartLoop(containers: RuntimeContainer[]): AttentionResult | nul
   let result: AttentionResult | null = null;
   for (const c of containers) {
     if (!result && c.state === "restarting") {
-      result = hit("bad", `${c.name} is stuck restart-looping`, `restart count ${c.restartCount}`);
+      result = hit("bad", stuckRestarting(c.name, c.restartCount));
     }
     if (!result) {
       const prev = counts.get(c.id);
       if (prev != null && c.restartCount > prev) {
         const delta = c.restartCount - prev;
-        result = hit(
-          "bad",
-          `${c.name} keeps restarting`,
-          `${delta} restart${delta === 1 ? "" : "s"} since the last check, ${c.restartCount} total`,
-        );
+        result = hit("bad", keepsRestarting(c.name, delta, c.restartCount));
       }
     }
     // Advance the baseline every call, win or not — the whole point is a
@@ -176,7 +188,7 @@ async function probeSmart(): Promise<AttentionResult | null> {
   const snapshot = await getSmartSnapshot();
 
   if (snapshot.integrity.verdict === "bad") {
-    return hit("bad", `Storage array problem: ${snapshot.integrity.reasons[0] ?? "degraded"}`);
+    return hit("bad", integrityAlert(snapshot.integrity.reasons));
   }
 
   const verdicts = globalForAttention.__attentionDriveVerdicts ?? new Map<string, HealthVerdict>();
@@ -185,12 +197,12 @@ async function probeSmart(): Promise<AttentionResult | null> {
   let result: AttentionResult | null = null;
   for (const drive of snapshot.drives) {
     if (!result && drive.verdict === "bad") {
-      result = hit("bad", `${drive.device} SMART: ${drive.reasons[0] ?? "failing"}`);
+      result = hit("bad", driveAlert(drive.name, drive.reasons));
     }
     if (!result && drive.verdict === "unknown") {
       const prev = verdicts.get(drive.device);
       if (prev === "ok" || prev === "warn") {
-        result = hit("warn", `${drive.device} SMART status became UNKNOWN`, drive.unavailableReason ?? undefined);
+        result = hit("warn", driveUnreadable(drive.name));
       }
     }
     verdicts.set(drive.device, drive.verdict);
@@ -252,7 +264,7 @@ async function probeMountReadable(): Promise<AttentionResult | null> {
     }),
   );
   const verdict = verdicts.find((v) => v !== null);
-  return verdict ? hit("bad", verdict.headline, verdict.detail) : null;
+  return verdict ? hit("bad", verdict) : null;
 }
 
 // --- (d) disk / volume capacity ---------------------------------------------
@@ -312,11 +324,7 @@ async function probeDiskCapacity(): Promise<AttentionResult | null> {
     const trendingFull = daysToFull != null && daysToFull <= GROWTH_HORIZON_DAYS && percent >= 75;
     if (percent > DISK_WARN_PCT || trendingFull) {
       const days = daysToFull != null ? Math.max(1, Math.round(daysToFull)) : null;
-      const headline =
-        days != null
-          ? `${group.mount} ${percent}% — ~${days} ${days === 1 ? "day" : "days"} at current growth`
-          : `${group.mount} ${percent}% used`;
-      return hit("warn", headline);
+      return hit("warn", diskFull(group.mount, percent, days));
     }
   }
 
@@ -339,12 +347,10 @@ async function probeBackup(): Promise<AttentionResult | null> {
   if (summary.worst === "OK") return null;
 
   const item = summary.items.find((i) => i.state === summary.worst)!;
-  const age = item.at ? `last success ${relativeTime(item.at)}` : "no record in the status file";
-  if (summary.worst === "FAILED") return hit("bad", backupHeadline(summary), age, item.at ?? undefined);
-  if (summary.checkStale) {
-    return hit("warn", "ODIP backup check hasn't run", `last check ${relativeTime(status.checkedAt)}`, status.checkedAt);
-  }
-  return hit("warn", backupHeadline(summary), age, item.at ?? undefined);
+  const copy = { headline: backupHeadline(summary), ...backupDetail(summary.worst, item.at ? relativeTime(item.at) : null) };
+  if (summary.worst === "FAILED") return hit("bad", copy, item.at ?? undefined);
+  if (summary.checkStale) return hit("warn", backupCheckStopped(relativeTime(status.checkedAt)), status.checkedAt);
+  return hit("warn", copy, item.at ?? undefined);
 }
 
 // --- (e) failing healthcheck -------------------------------------------------
@@ -352,7 +358,7 @@ async function probeBackup(): Promise<AttentionResult | null> {
 function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null {
   const c = containers.find((c) => c.health === "unhealthy");
   if (!c) return null;
-  return hit("warn", `${c.name} is failing its healthcheck`);
+  return hit("warn", containerUnhealthy(c.name));
 }
 
 // --- (f) a stalled agent or an unanswering orchestra service ----------------
@@ -384,7 +390,7 @@ const orchestraMemo = new Memo<AttentionResult | null>({
     // No busy orchestrators means no details, so an ok reading with nothing in flight resets this to 0.
     if (status === "ok") orchestraLastInFlight = details.flatMap((o) => o.inFlight).filter((e) => isLive(e.quietMin)).length;
     const item = orchestraAttention(status, details, orchestraLastInFlight);
-    return item ? hit("warn", item.headline, item.detail) : null;
+    return item ? hit("warn", item) : null;
   },
 });
 

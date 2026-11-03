@@ -6,10 +6,18 @@ for (const code of ["EIO", "ENOTCONN", "ESTALE", "ENODEV", "ENXIO", "TIMEOUT"]) 
   test(`${code} is a dead mount`, () => {
     const v = classifyMountError("/mnt/media", code);
     assert.ok(v);
-    assert.equal(v.headline, "Drive unreadable: /mnt/media");
-    assert.ok(v.detail.length <= 140);
+    assert.equal(v.headline, "Can't read files on /mnt/media");
+    assert.equal(v.action, "Restart the server; if it happens again, check the drive's cable.");
+    assert.ok(v.detail.length <= 100);
   });
 }
+test("TIMEOUT detail and the root disk name", () => {
+  assert.equal(
+    classifyMountError("/mnt/media", "TIMEOUT")!.detail,
+    "The drive isn't answering, so files there can't be opened. It may have dropped off.",
+  );
+  assert.equal(classifyMountError("/", "EIO")!.headline, "Can't read files on the system disk");
+});
 test("EIO detail names the code", () => {
   assert.match(classifyMountError("/mnt/media", "EIO")!.detail, /EIO/);
 });
@@ -23,13 +31,13 @@ for (const code of ["ENOENT", "EACCES", "EROFS", undefined, ""]) {
 test("block device gone from sysfs is disconnected", () => {
   const v = classifyDeviceGone("/mnt/media", "sdb1", false, null);
   assert.ok(v);
-  assert.equal(v.headline, "Drive disconnected: /mnt/media");
-  assert.match(v.detail, /sdb1/);
-  assert.match(v.detail, /still points at it/);
-  assert.ok(v.detail.length <= 140);
+  assert.equal(v.headline, "Drive for /mnt/media disconnected");
+  assert.equal(v.detail, "Its drive (sdb1) dropped off, so files there can't be opened until it's back.");
+  assert.equal(v.action, "Restart the server, then check the drive's cable.");
+  assert.equal(classifyDeviceGone("/", "sda1", false, null)!.headline, "Drive for the system disk disconnected");
 });
 test("parent disk state offline is disconnected", () => {
-  assert.equal(classifyDeviceGone("/mnt/media", "sdb1", true, "offline\n")!.headline, "Drive disconnected: /mnt/media");
+  assert.equal(classifyDeviceGone("/mnt/media", "sdb1", true, "offline\n")!.headline, "Drive for /mnt/media disconnected");
 });
 for (const state of ["running\n", "running", "live\n", null]) {
   test(`device present with state ${JSON.stringify(state)} stays silent`, () => {
