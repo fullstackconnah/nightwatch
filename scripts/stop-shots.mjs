@@ -38,6 +38,7 @@ const RESOURCES = {
 };
 // A running container's detail page polls /stats and reads every field, so {} crashes it.
 const STATS = { cpuPercent: 40, memUsage: 2e9, memLimit: 4e9, memPercent: 50, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 20, ts: Date.now() };
+const TELEMETRY = { ts: Date.now(), containers: { [ID]: { cpuPct: 40, memBytes: 2e9, memLimit: 4e9, rxRate: 0, txRate: 0, blkReadRate: 0, blkWriteRate: 0, pids: 20 } } };
 const MC_STATUS = { manager: "ok", instances: [], active: null, players: { online: 0, max: 10, players: [] }, rcon: "ok" };
 
 const CALLERS = [
@@ -83,6 +84,9 @@ try {
       return json(route, 200, {});
     });
     await page.route("**/api/resources", (route) => json(route, 200, RESOURCES));
+    // The watchlist ranks rows from the SSE ring, not /api/resources: no sample, no .wl-rowbtn (watchlist.tsx:485, 491).
+    await page.route("**/api/telemetry/stream", (route) =>
+      route.fulfill({ status: 200, contentType: "text/event-stream", body: `retry: 600000\nevent: history\ndata: ${JSON.stringify([TELEMETRY])}\n\n` }));
     await page.route("**/api/minecraft/status", (route) => json(route, 200, MC_STATUS));
     await page.route("**/api/minecraft/backups", (route) => json(route, 200, { backups: [] }));
 
@@ -90,18 +94,19 @@ try {
       const tag = `${caller.id} ${vp}`;
       posts = 0;
       await page.goto(`${BASE_URL}${caller.path}`, { waitUntil: "domcontentloaded" });
+      let rowBtn = null;
       if (caller.id === "resources") {
         // The row's actions live in its opened detail, so open it as a person would.
-        const row = page.locator(".wl-rowbtn", { hasText: NAME }).first();
-        await row.waitFor({ timeout: 30_000 }).catch(() => {});
-        await row.click().catch(() => {});
+        rowBtn = page.locator(".wl-rowbtn", { hasText: NAME }).first();
+        await rowBtn.waitFor({ timeout: 30_000 }).catch(() => {});
+        await rowBtn.click().catch(() => {});
       }
       const stop = page.getByRole("button", { name: new RegExp(`^Stop( ${NAME})?$`) }).first();
       const errsBefore = errors.length;
       try {
         await stop.waitFor({ timeout: 30_000 });
       } catch {
-        check(`${tag}: Stop button reachable`, false, (await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "")).replace(/s+/g, " ") + (errors.length > errsBefore ? ` | pageerror: ${errors.slice(errsBefore).join("; ").slice(0, 300)}` : ""));
+        check(`${tag}: Stop button reachable`, false, (await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "")).replace(/\s+/g, " ") + (errors.length > errsBefore ? ` | pageerror: ${errors.slice(errsBefore).join("; ").slice(0, 300)}` : ""));
         continue;
       }
       await stop.scrollIntoViewIfNeeded();
@@ -119,9 +124,15 @@ try {
       check(`${tag} rest: Stop has no danger colour`, [colours.color, colours.background, colours.border].every((c) => c !== colours.bad), JSON.stringify(colours));
       await shot("rest");
 
+      const rowTop = () => rowBtn.evaluate((el) => el.getBoundingClientRect().top);
+      const topBefore = rowBtn ? await rowTop() : null;
       await stop.click({ force: true });
       const yes = page.getByRole("button", { name: `Yes, stop ${NAME}` });
       await yes.waitFor({ timeout: 5_000 }).catch(() => {});
+      if (rowBtn) {
+        const moved = Math.abs((await rowTop()) - topBefore);
+        check(`${tag} confirm: C2 row does not move`, moved < 0.5, `moved=${moved}px`);
+      }
       check(`${tag} confirm: Yes named "Yes, stop ${NAME}"`, (await yes.count()) === 1);
       check(`${tag} confirm: frame text names the container`, await page.getByText(`Stop ${NAME}?`).isVisible().catch(() => false));
       check(`${tag} confirm: 0 stop POSTs before Yes`, posts === 0, `posts=${posts}`);
