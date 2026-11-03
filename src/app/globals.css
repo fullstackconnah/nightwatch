@@ -3245,6 +3245,7 @@ body {
 }
 .hm-app {
   display: grid;
+  align-content: start;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: "main acts" "fields fields";
   gap: 0 0.5rem;

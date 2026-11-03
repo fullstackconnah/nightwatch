@@ -7,6 +7,7 @@ import { ChangesList } from "@/components/home/changes-list";
 import { Launcher, isSortKey, type SortKey } from "@/components/home/launcher";
 import { SidePanel } from "@/components/home/side-panel";
 import { useAttentionReport, useBackupStatus, useContainers, useWidgets } from "@/lib/client";
+import { nightlyAt } from "@/lib/backup-status";
 import { LAST_LOOKED_KEY, ageText, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
 
 /** When the last fetch succeeded. SWR keeps the same `data` object when a poll returns the same JSON, so watch `isValidating`. */
@@ -95,13 +96,13 @@ export default function HomePage() {
     return visible.filter((c) => c.name.toLowerCase().includes(q) || c.image.toLowerCase().includes(q));
   }, [visible, query]);
 
-  const nightly = backup?.status === "ok" ? backup.items.find((i) => i.kind === "backup") : undefined;
+  const nightly = nightlyAt(backup, Date.now());
   const answer = answerFor({
     report: report.data ?? null,
     error: !!report.error,
     running: data?.counts.running ?? null,
     containersFailed: !!error && !data,
-    backupAgo: nightly?.state === "OK" && nightly.at ? ageText(Date.now() - Date.parse(nightly.at)) : null,
+    backupAgo: nightly ? ageText(Date.now() - Date.parse(nightly)) : null,
   });
   const line = probeLine(report.data ?? null, report.data ? clock(report.data.checkedAt) : "");
   const reconnect = useCallback(() => void Promise.all([report.mutate(), mutate()]), [report, mutate]);
@@ -127,6 +128,7 @@ export default function HomePage() {
           listed={listed}
           sinceMs={looked?.since ?? null}
           fallbackLabel={looked?.label != null}
+          error={!!report.error}
         />
         <SidePanel />
       </div>

@@ -104,3 +104,10 @@ export function backupHeadline(s: BackupSummary): string {
   if (bad.length === 2 && bad[0].state === bad[1].state) return `ODIP ${name(bad[0])} and ${name(bad[1])} ${verb(bad[0], true)}`;
   return "ODIP " + bad.map((i) => `${name(i)} ${verb(i, false)}`).join("; ");
 }
+
+/** ISO time of the last nightly backup, only while the tile would show it OK (same stale test as BackupTile); else null. */
+export function nightlyAt(s: BackupStatus | undefined, nowMs: number): string | null {
+  if (s?.status !== "ok") return null;
+  const n = summarizeBackup(s, nowMs).items.find((i) => i.kind === "backup");
+  return n?.state === "OK" ? n.at : null;
+}

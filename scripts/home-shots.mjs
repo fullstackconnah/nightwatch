@@ -317,6 +317,7 @@ for (const reduced of [false, true]) {
       infinite: anims.filter((x) => x.effect?.getComputedTiming().iterations === Infinity).length,
     };
   });
+  await page.waitForTimeout(700); // 420 ms slide + 240 ms fade + margin: shoot and measure settled
   const after = await page.evaluate(rows);
   const moved = Object.keys(before).filter((k) => k in after && Math.abs(after[k] - before[k]) > 0.5).length;
   if (!reduced) {

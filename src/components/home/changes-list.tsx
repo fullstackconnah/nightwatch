@@ -18,6 +18,7 @@ export function ChangesList({
   listed,
   sinceMs,
   fallbackLabel,
+  error,
 }: {
   changes: AttentionReport["changes"] | null;
   /** Containers the owner hid from the launcher: their events are dropped here, where `tile.hidden` is known. */
@@ -26,6 +27,8 @@ export function ChangesList({
   listed: ReadonlySet<string>;
   sinceMs: number | null;
   fallbackLabel: boolean;
+  /** The attention report fetch failed: never show a loading sentence after that. */
+  error: boolean;
 }) {
   const events = useMemo(
     () =>
@@ -43,7 +46,7 @@ export function ChangesList({
   const idsKey = slots.ids.join("|");
 
   useEffect(() => {
-    if (rankerRef.current.offer(slots.ids, Date.now(), held)) setCommitted(rankerRef.current.order!.slice());
+    if (rankerRef.current.offer(slots.ids, Date.now(), held, true)) setCommitted(rankerRef.current.order!.slice());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsKey, held]);
 
@@ -105,9 +108,9 @@ export function ChangesList({
             </Link>
           </li>
         ))}
-        {rows.length === 0 && (
+        {events.length === 0 && (
           <li className="hm-chg-empty text-xs text-ink-dim">
-            {changes ? `Nothing changed since ${when || "the last look"}.` : "Looking for changes…"}
+            {changes ? `Nothing changed since ${when || "the last look"}.` : error ? "Unknown." : "Looking for changes…"}
           </li>
         )}
       </ul>

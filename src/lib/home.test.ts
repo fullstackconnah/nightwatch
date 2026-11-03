@@ -16,6 +16,7 @@ import {
   slotOrder,
 } from "./home.ts";
 import { createRanker } from "./watchlist.ts";
+import { nightlyAt } from "./backup-status.ts";
 import type { AttentionHit, AttentionReport, ProbeId, ProbeStatus } from "./attention-report.ts";
 
 const IDS: ProbeId[] = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "orchestra"];
@@ -238,4 +239,23 @@ test("ageText", () => {
   assert.equal(ageText(40 * 60_000), "40 min");
   assert.equal(ageText(9 * 3_600_000), "9 h");
   assert.equal(ageText(72 * 3_600_000), "3 d");
+});
+
+// --- fix round 2 ---
+test("ranker fill: an empty box takes the next offer inside the gap, a full one still waits", () => {
+  const r = createRanker();
+  r.offer([], 0, false);
+  assert.equal(r.offer(feedSlots(ev(6), false, 0).ids, 1_000, false, true), true);
+  assert.equal(r.order!.length, 4);
+  assert.equal(r.offer(["x", "e0", "e1", "e2"], 1_500, false, true), false);
+  const held = createRanker();
+  held.offer([], 0, false);
+  assert.equal(held.offer(["a"], 1_000, false), false);
+});
+test("nightlyAt: a stale check gives no backup clause", () => {
+  const ok = { status: "ok" as const, checkedAt: "2026-11-04T08:00:00.000Z", items: [{ kind: "backup" as const, state: "OK" as const, at: "2026-11-04T03:00:00.000Z" }] };
+  assert.equal(nightlyAt(ok, Date.parse("2026-11-04T09:00:00.000Z")), "2026-11-04T03:00:00.000Z");
+  assert.equal(nightlyAt(ok, Date.parse("2026-11-24T09:00:00.000Z")), null);
+  assert.equal(nightlyAt({ status: "missing" }, 0), null);
+  assert.equal(answerFor({ ...base, backupAgo: null, report: report() }).text, "All clear. 48 apps running");
 });
