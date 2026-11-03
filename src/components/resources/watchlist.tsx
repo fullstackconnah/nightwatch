@@ -21,7 +21,7 @@ import { CreateContainerDialog } from "@/components/resources/create-container";
 import { LifecycleActions, LifecycleError, useLifecycle } from "@/components/resources/container-controls";
 import { SeriesSwatch, type HistoryRangeOption } from "@/components/resources/resource-overview";
 import { SERIES_SLOTS, type SeriesSlot } from "@/lib/chart-series";
-import { RANGE_SHORT, RANGE_WORD, holdNearTies, rangeAvgs } from "@/lib/timeline";
+import { RANGE_SHORT, RANGE_WORD, holdNearTies, rangeAvgs, sparkMode } from "@/lib/timeline";
 import { ApiError, seriesFor, type ResourceSnapshot, type TelemetryRow, type TelemetrySample } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -60,7 +60,7 @@ export function telemetryRowEqual(a: TelemetryRow | undefined, b: TelemetryRow |
 const sparkEqual = (a: number[] | null, b: number[] | null) =>
   a === b || (!!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]));
 
-/** OPEN-T3 default. Timeline's quiet strips draw on quietCap of the AVERAGES, with a 2 px warn tick where a
+/** OPEN-T3 default. Timeline's quiet strips draw on quietCap of the AVERAGES, with a 2 px ink-faint tick where a
  *  spike is clamped. "peak" scales them to the quiet peak instead (honest, but reads oddly under "averaged under"). */
 const QUIET_SPARK_SCALE: "avg" | "peak" = "avg";
 
@@ -327,6 +327,10 @@ const TimelineStrip = memo(function TimelineStrip(p: StripProps) {
   const running = c.state === "running";
   const isNew = running && !!row && !stat;
   const spark = stat ? sparkOf(stat) : ring;
+  const mode = stat ? sparkMode(stat.spark) : "line";
+  const dotI = stat ? stat.spark.findIndex((v) => v != null) : -1;
+  const dotV = dotI >= 0 ? stat!.spark[dotI] : null;
+  const dotAt = stat && stat.spark.length > 1 ? Math.min(158.5, Math.max(1.5, (dotI / (stat.spark.length - 1)) * 160)) : 158.5;
   const peak = stat?.peak ?? (ring && ring.length ? Math.max(...ring) : 0);
   const clamped = scale > 0 && peak > scale;
   const ref = useCallback((el: HTMLDivElement | null) => register(c.id, el), [register, c.id]);
@@ -357,7 +361,12 @@ const TimelineStrip = memo(function TimelineStrip(p: StripProps) {
           <span className={cn("dot wl-dot", running ? "dot-running" : "dot-stopped")} />
           <span className={cn("wl-name font-mono text-[0.8rem]", now == null && "text-ink-faint")}>{c.name}</span>
           <span className="tl-spark" style={slot ? { color: slot.stroke } : undefined}>
-            {spark && spark.length > 0 && (
+            {mode === "dot" && stat && (
+              <svg className={cn("w-full", !slot && "text-ink-dim")} width={160} height={20} viewBox="0 0 160 20" preserveAspectRatio="none" aria-hidden>
+                <circle cx={dotAt} cy={19 - Math.min(1, scale > 0 ? (dotV ?? 0) / scale : 0) * 17} r={1.5} fill="currentColor" />
+              </svg>
+            )}
+            {mode !== "dot" && spark && spark.length > 0 && (
               <Sparkline values={spark} max={scale} width={160} height={20} className={cn("w-full", !slot && "text-ink-dim")} />
             )}
             {clamped && <span className="tl-clip" aria-hidden />}
@@ -770,7 +779,7 @@ export function Watchlist(p: WatchlistProps) {
           <span className="text-2xs text-ink-dim truncate">{countText}</span>
         </div>
         <div className="wl-meta">
-          <span className={cn("microlabel !text-warn order-2 md:order-none", !showHeld && "invisible")}>order held</span>
+          <span className={cn("microlabel !text-warn order-2 md:order-none", !showHeld && (tl ? "max-md:hidden md:invisible" : "invisible"))}>order held</span>
           {tl && <span className="microlabel order-1 md:order-none">{`sorted by ${RANGE_SHORT[range]} average`}</span>}
           <span className="microlabel order-1 md:order-none">{scaleText}</span>
         </div>

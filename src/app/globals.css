@@ -2217,7 +2217,7 @@ body {
   right: 0;
   width: 2px;
   height: 5px;
-  background: var(--color-warn);
+  background: var(--color-ink-faint);
 }
 .tl-avg,
 .tl-now {

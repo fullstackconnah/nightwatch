@@ -133,3 +133,9 @@ export function rangeAvgs(
   for (const name of current) if (summary[name]) out.set(name, summary[name].avg);
   return out;
 }
+
+/** How a strip draws its spark: under 2 real readings is a dot, so a new container never draws a line across the width. */
+export function sparkMode(spark: readonly (number | null)[]): "dot" | "line" | "empty" {
+  const n = spark.filter((v) => v != null).length;
+  return n === 0 ? "empty" : n === 1 ? "dot" : "line";
+}

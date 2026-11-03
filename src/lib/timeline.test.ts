@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseView, stackLayers, holdNearTies, adoptPick, ringTail, rangeAvgs } from "./timeline.ts";
+import { parseView, stackLayers, holdNearTies, adoptPick, ringTail, rangeAvgs, sparkMode } from "./timeline.ts";
 const topIds = (ids: string[], n: number) => ids.slice(0, n);
 
 test("parseView accepts only the two values", () => {
@@ -94,4 +94,12 @@ test("rangeAvgs keeps only containers in the current list: a gone name with the 
   const avgs = rangeAvgs(summary, ["a", "b", "new"]);
   assert.deepEqual([...avgs.keys()], ["a", "b"]);
   assert.deepEqual(topIds(holdNearTies([], avgs), 4), ["a", "b"]);
+});
+
+test("sparkMode: under 2 readings is a dot (or empty), never a line across the width", () => {
+  assert.equal(sparkMode([]), "empty");
+  assert.equal(sparkMode([null, null]), "empty");
+  assert.equal(sparkMode([null, null, 0.4]), "dot");
+  assert.equal(sparkMode([0.2, null, 0.4]), "line");
+  assert.equal(sparkMode([0, 0]), "line");
 });

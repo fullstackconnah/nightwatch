@@ -294,7 +294,7 @@ export function TimelineChart(p: TimelineChartProps) {
     <div className="tl-hero space-y-3" data-stale={stale || undefined}>
       <p className="tl-sub font-mono text-2xs text-ink-dim m-0">
         {sub}
-        {at && <span className="md:hidden">{` · at ${at} UTC`}</span>}
+        {at && <span className="md:hidden">{` · at ${at} UTC`}</span>}
       </p>
       <div className="tl-chart">
         <div aria-hidden className="tl-axis">
@@ -364,7 +364,7 @@ export function TimelineChart(p: TimelineChartProps) {
           </div>
         </div>
         <div aria-hidden className="tl-ends">
-          {at && <span className="tl-bucket">{`at ${at} UTC`}</span>}
+          {at && <span className="tl-bucket">{`at ${at} UTC`}</span>}
           <svg className="tl-leaders" width={14} height={H} viewBox={`0 0 14 ${H}`}>
             {items.map((it, i) => (
               <path key={it.key} d={`M0 ${y0[i].toFixed(1)}L8 ${yL[i].toFixed(1)}L12 ${yL[i].toFixed(1)}`} className="tl-leader" />
