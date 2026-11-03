@@ -234,7 +234,7 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
           <ImageInUseButton
             label={c.name}
             usedBy={[c.name]}
-            text="Delete image…"
+            text="Delete image"
             describedBy={`${id}-img-hint`}
             className={link}
           />
@@ -249,7 +249,7 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
         </div>
       </div>
       {/* Always disabled: the row's own container holds its image (the API 409s even when stopped). */}
-      <p id={`${id}-img-hint`} className="mt-2 text-[0.7rem] text-ink-dim">
+      <p id={`${id}-img-hint`} className="mt-2 text-2xs text-ink-dim">
         Remove the container first
       </p>
       <LifecycleError lifecycle={lifecycle} className="mt-2" />

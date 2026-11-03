@@ -2096,7 +2096,7 @@ body {
   flex: 1 1 0;
   min-width: 0;
 }
-/* a column per child, so Delete image… (PR5) joins as the first cell with no CSS change */
+/* a column per child, so Delete image (PR5) joins as the first cell with no CSS change */
 .wl-act2 {
   display: grid;
   grid-auto-flow: column;

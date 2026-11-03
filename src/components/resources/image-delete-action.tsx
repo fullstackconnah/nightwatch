@@ -45,12 +45,12 @@ export function ImageInUseButton({
       size={text ? "sm" : "icon"}
       variant={text ? "outline" : "ghost"}
       disabled
-      title={`In use by ${owners} — remove ${usedBy.length === 1 ? "it" : "them"} first`}
-      aria-label={`Can't delete ${label} — in use by ${owners}`}
+      title={`In use by ${owners} — remove ${usedBy.length > 1 ? "them" : "it"} first`}
+      aria-label={text ? `${text}, unavailable: in use by ${owners}` : `Can't delete ${label} — in use by ${owners}`}
       aria-describedby={describedBy}
       className={text ? className : ICON_BUTTON}
     >
-      <Trash2 size={text ? 12 : 13} aria-hidden />
+      <Trash2 size={text ? 12 : 13} aria-hidden className={text ? "hidden md:block" : undefined} />
       {text && <span className="truncate">{text}</span>}
     </Button>
   );
