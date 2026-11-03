@@ -52,6 +52,10 @@ describe("parseBackupStatus", () => {
 });
 
 describe("summarizeBackup", () => {
+  it("an OK item with no timestamp is STALE", () => {
+    const s = summary(file({ backup: { at: null } }));
+    assert.equal(s.items[0].state, "STALE");
+  });
   it("all OK", () => {
     const s = summary(file());
     assert.equal(s.worst, "OK");

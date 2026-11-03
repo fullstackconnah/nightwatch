@@ -96,7 +96,7 @@ export function summarizeBackup(s: Extract<BackupStatus, { status: "ok" }>, nowM
     const found = s.items.find((i) => i.kind === kind);
     if (!found) return { kind, state: "STALE", at: null };
     // An OK item is late only when its own last success is past its own limit; an old check alone does not make it so.
-    const late = found.state === "OK" && found.at !== null && nowMs - Date.parse(found.at) > ITEM_LIMIT_MS[kind];
+    const late = found.state === "OK" && (found.at === null || nowMs - Date.parse(found.at) > ITEM_LIMIT_MS[kind]);
     return late ? { ...found, state: "STALE" } : found;
   });
   const worst = items.reduce<BackupState>((w, i) => (RANK[i.state] > RANK[w] ? i.state : w), "OK");
