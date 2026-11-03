@@ -151,6 +151,7 @@ export function Chores(p: ChoresProps) {
   }
 
   if (!input) {
+    if (p.down) return null; // nothing was ever loaded and Docker is down: the band says so, no endless skeleton
     return (
       <ol className="panel dk-chore-list" aria-busy>
         {Array.from({ length: 5 }, (_, i) => (

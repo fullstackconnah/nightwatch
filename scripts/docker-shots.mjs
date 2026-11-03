@@ -30,11 +30,11 @@ const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass: !!pass, detail });
 
 async function mock(page, scenario, state = {}) {
-  const kind = scenario === "partial" || scenario === "down" ? "full" : scenario;
+  const kind = ["partial", "down", "down-cold"].includes(scenario) ? "full" : scenario;
   await page.route("**/api/docker/**", (route) => {
     const req = route.request();
     const { pathname } = new URL(req.url());
-    if (scenario === "down") return json(route, 503, { error: "Docker is not reachable" });
+    if (scenario === "down-cold" || (scenario === "down" && state.failing)) return json(route, 503, { error: "Docker is not reachable" });
     if (req.method() !== "GET") return json(route, 200, { ok: true, count: 0, bytes: 0, reclaimedBytes: 0 });
     if (pathname.endsWith("/api/docker/containers")) {
       const body = containersFor(kind);
@@ -64,6 +64,8 @@ const smallTargets = (page) =>
     [...document.querySelectorAll("button, a[href]")]
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       .filter(({ r }) => r.width > 0 && r.height > 0)
+      // Skip a visually hidden control (clipped to 1x1, e.g. "Skip to content") until it is focused.
+      .filter(({ el, r }) => document.activeElement === el || r.width > 1 || r.height > 1)
       .filter(({ r }) => r.width < 43.5 || r.height < 43.5)
       .map(({ el, r }) => `${(el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 30)} ${Math.round(r.width)}x${Math.round(r.height)}`),
   );
@@ -81,7 +83,11 @@ try {
       await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
       await page.waitForTimeout(900); // count-down settles
       const order = await page.$$eval("[data-chore]", (els) => els.map((e) => e.getAttribute("data-chore")));
-      check(`${name} full: chore order`, order.join() === "dangling,orphans,stopped,unused,cache", order.join());
+      // R2: the two prunes biggest bytes first (both > 0 in this fixture), then unused images, stopped containers, cache last.
+      const fx = diskFor("full");
+      const prunes = fx.volumes.orphanBytes > fx.images.danglingBytes ? ["orphans", "dangling"] : ["dangling", "orphans"];
+      const expected = [...prunes, "unused", "stopped", "cache"].join();
+      check(`${name} full: chore order`, order.join() === expected, `${order.join()} vs ${expected}`);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
       check(`${name} full: no horizontal overflow`, !overflow);
       const prune = page.locator("[data-feature=prune-images]");
@@ -139,10 +145,24 @@ try {
     }
 
     // Partial sizes, empty, long, down.
-    for (const scenario of ["partial", "empty", "long", "down"]) {
-      const { context, page, errors } = await openPage(browser, opts, scenario);
+    for (const scenario of ["partial", "empty", "long", "down", "down-cold"]) {
+      const state = {};
+      const { context, page, errors } = await openPage(browser, opts, scenario, state);
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(2500);
+      if (scenario === "down") {
+        // A good list is on screen first; then every read fails and a focus event revalidates all four hooks at once.
+        await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
+        state.failing = true;
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await page.locator('.dk-slot[data-state="error"]').waitFor({ timeout: 15_000 });
+      }
+      if (scenario === "down-cold") {
+        const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
+        check(`${name} down-cold: band has no "last list" clause`, /^Docker unreachable: /.test(band) && !/last list/i.test(band), band);
+        check(`${name} down-cold: no skeleton rows in the chores area`, (await page.locator(".dk-chores .dk-skel").count()) === 0);
+        check(`${name} down-cold: subtitle is not "Reading Docker…"`, !(await page.locator(".dk-counts").innerText()).includes("Reading Docker"));
+      }
       if (scenario === "long") {
         await page.locator("[data-chore=stopped] .dk-disclose").click();
         const rows = await page.locator("#dk-body-stopped li").count();
@@ -150,6 +170,8 @@ try {
         check(`${name} long: Show all is offered`, (await page.getByRole("button", { name: /^Show all/ }).count()) > 0);
       }
       if (scenario === "down") {
+        const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
+        check(`${name} down: band names the last list`, /Showing the last list from/.test(band), band);
         const disabled = await page.evaluate(() => document.querySelector("fieldset.dk-fieldset")?.disabled === true);
         check(`${name} down: write controls are disabled`, disabled);
         check(`${name} down: the slot says why`, (await page.locator(".dk-slot[data-state]").count()) > 0);

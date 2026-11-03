@@ -79,7 +79,7 @@ function DockerPage() {
         <div>
           <h1>Docker</h1>
           <p className="dk-counts">
-            {ctr.data ? `${containers.length} containers · ${images.length} images · ${volumes.length} volumes` : "Reading Docker…"}
+            {ctr.data ? `${containers.length} containers · ${images.length} images · ${volumes.length} volumes` : ctr.error ? "Docker unreachable" : "Reading Docker…"}
           </p>
         </div>
         <Button data-feature="create" disabled={down} onClick={() => setShowCreate(true)}>

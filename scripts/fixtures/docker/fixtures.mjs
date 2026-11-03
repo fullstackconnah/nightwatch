@@ -15,7 +15,9 @@ export function containersFor(kind = "full") {
   const running = Array.from({ length: 6 }, (_, i) => ctr(i + 1, `web-${i + 1}`, "running", { stack: i % 2 ? "media" : "apps" }));
   const stopped = Array.from({ length: kind === "ten" ? 10 : 8 }, (_, i) => ctr(100 + i, `old-${i + 1}`, "exited", { stack: i % 3 ? "apps" : null, age: 10 + i }));
   const runners = kind === "long" ? Array.from({ length: 321 }, (_, i) => ctr(1000 + i, `odiptest-run${i}`, "exited", { age: 3 })) : [];
-  const all = kind === "empty" ? running : [...running, ...stopped, ...runners];
+  // No hyphen, so no prefix group: these 24 stay loose rows and push the list past the fold at 12.
+  const loose = kind === "long" ? Array.from({ length: 24 }, (_, i) => ctr(2000 + i, `batch${i}`, "exited", { age: 2 })) : [];
+  const all = kind === "empty" ? running : [...running, ...stopped, ...runners, ...loose];
   const stoppedN = all.filter((c) => c.state !== "running").length;
   return {
     containers: all, groups: [],

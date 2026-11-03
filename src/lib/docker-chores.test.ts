@@ -107,6 +107,11 @@ test("C12: slot priority error, stale, sizes, cache, with exact copy", () => {
   const s = slotItem(sources({ containers: down, images: down, volumes: down, staleMs: 120_000, sizesPending: true }));
   assert.equal(s.kind, "error");
   assert.equal(s.text, "Docker unreachable: ECONNREFUSED. Showing the last list from 2 min ago; nothing here can change until it is back.");
+  const cold = { error: "ECONNREFUSED", loaded: false };
+  assert.equal(
+    slotItem(sources({ containers: cold, images: cold, volumes: cold, agoText: "earlier" })).text,
+    "Docker unreachable: ECONNREFUSED. Nothing here can change until it is back.",
+  );
   assert.equal(slotItem(sources({ disk: { error: "HTTP 502", loaded: true } })).kind, "error");
   const stale = slotItem(sources({ staleMs: 3 * 60_000, sizesPending: true }));
   assert.equal(stale.kind, "stale");
