@@ -96,8 +96,11 @@ export function summarizeBackup(s: Extract<BackupStatus, { status: "ok" }>, nowM
   return { checkStale, items, worst };
 }
 
-/** Attention headline naming every item that is not OK, worst first. */
+/** Attention headline naming every item that is not OK, failed ones first: "ODIP restore test failed; nightly backup is late". */
 export function backupHeadline(s: BackupSummary): string {
   const bad = s.items.filter((i) => i.state !== "OK").sort((a, b) => RANK[b.state] - RANK[a.state]);
-  return "ODIP " + bad.map((i) => `${BACKUP_KIND_LABEL[i.kind].toLowerCase()} ${i.state.toLowerCase()}`).join(", ");
+  const verb = (i: BackupItem, plural: boolean) => (i.state === "FAILED" ? "failed" : plural ? "are late" : "is late");
+  const name = (i: BackupItem) => BACKUP_KIND_LABEL[i.kind].toLowerCase();
+  if (bad.length === 2 && bad[0].state === bad[1].state) return `ODIP ${name(bad[0])} and ${name(bad[1])} ${verb(bad[0], true)}`;
+  return "ODIP " + bad.map((i) => `${name(i)} ${verb(i, false)}`).join("; ");
 }

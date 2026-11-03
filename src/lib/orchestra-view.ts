@@ -6,6 +6,7 @@ import type {
   OrchestratorRunState,
   OrchestratorSummary,
 } from "./types/orchestra.ts";
+import { id } from "./attention-copy.ts";
 
 /** Last ok snapshot, held in module memory so it survives client-side navigation but not a reload. */
 let lastOk: OrchestraSnapshot | null = null;
@@ -123,13 +124,23 @@ export function orchestraAttention(
   status: OrchestraState,
   details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[],
   lastInFlight = 0,
-): { headline: string; detail: string } | null {
+): { headline: string; detail: string; action: string } | null {
   if (status === "unreachable") {
     if (lastInFlight <= 0) return null;
     const n = lastInFlight === 1 ? "1 agent was" : `${lastInFlight} agents were`;
-    return { headline: "Orchestra stopped answering", detail: `${n} running; the PC may be off or asleep` };
+    return {
+      headline: "The PC's agent service stopped answering",
+      detail: `${n} running. The PC may be off or asleep.`,
+      action: "Wake the PC, or ignore this if you turned it off.",
+    };
   }
-  if (status === "unauthorized") return { headline: "Orchestra rejected the token", detail: "replace it in Settings, under Access" };
+  if (status === "unauthorized") {
+    return {
+      headline: "The PC's agent service refused the key",
+      detail: "nightwatch's saved access token is wrong or out of date, so agents can't be checked.",
+      action: "Replace the token in Settings, under Access.",
+    };
+  }
   if (status !== "ok") return null;
   const stalled = details
     .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))
@@ -137,7 +148,15 @@ export function orchestraAttention(
   const top = stalled[0];
   if (!top) return null;
   if (stalled.length === 1) {
-    return { headline: `${top.agent} has gone quiet in ${top.orch}`, detail: `${formatQuiet(top.quietMin)}; check it on the Orchestrators page` };
+    return {
+      headline: `${id(top.agent)} has gone quiet`,
+      detail: `In ${id(top.orch)}, ${formatQuiet(top.quietMin)}. It may be stuck.`,
+      action: "Check it on the Orchestrators page.",
+    };
   }
-  return { headline: `${stalled.length} agents have gone quiet`, detail: `longest: ${top.agent} in ${top.orch}, ${formatQuiet(top.quietMin)}` };
+  return {
+    headline: `${stalled.length} agents have gone quiet`,
+    detail: `Longest: ${id(top.agent)} in ${id(top.orch)}, ${formatQuiet(top.quietMin)}. They may be stuck.`,
+    action: "Check them on the Orchestrators page.",
+  };
 }
