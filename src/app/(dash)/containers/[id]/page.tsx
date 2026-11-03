@@ -196,7 +196,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
         )}
         {info?.state.oomKilled && <Badge variant="bad">OOM killed</Badge>}
         <div className="flex-1" />
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 max-md:flex-wrap">
           <Link href={processesHref(info?.name ?? id)}>
             <Button variant="ghost">
               <Activity size={13} /> Processes
