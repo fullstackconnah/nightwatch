@@ -48,8 +48,21 @@ async function mock(page, scenario, state = {}) {
   });
 }
 
+// One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next scenario runs.
+const open = [];
+async function guard(label, fn) {
+  try {
+    await fn();
+  } catch (e) {
+    check(`${label}: scenario completed`, false, String(e?.message ?? e).split(/\r?\n/)[0]);
+  } finally {
+    await Promise.all(open.splice(0).map((c) => c.close().catch(() => {})));
+  }
+}
+
 async function openPage(browser, opts, scenario, state) {
   const context = await browser.newContext({ ...opts, ...CTX });
+  open.push(context);
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -77,7 +90,7 @@ try {
     const shot = (page, s) => page.screenshot({ path: join(OUT_DIR, `docker-${s}-${name}.png`), fullPage: true });
 
     // Full: order, calm buttons, targets, overflow, confirm step.
-    {
+    await guard(`${name} full`, async () => {
       const { context, page, errors } = await openPage(browser, opts, "full");
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
       await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
@@ -119,10 +132,10 @@ try {
       await shot(page, "confirm");
       check(`${name} full: 0 page errors`, errors.length === 0, errors.join("; "));
       await context.close();
-    }
+    });
 
     // Held rows: open Stopped, the poll adds a container, rows stay and the pill appears.
-    {
+    await guard(`${name} held`, async () => {
       const state = {};
       const { context, page, errors } = await openPage(browser, opts, "full", state);
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
@@ -142,19 +155,21 @@ try {
       check(`${name} held: tapping the pill adds the row`, (await page.locator("#dk-body-stopped li").count()) === before + 1);
       check(`${name} held: 0 page errors`, errors.length === 0, errors.join("; "));
       await context.close();
-    }
+    });
 
     // Partial sizes, empty, long, down.
-    for (const scenario of ["partial", "empty", "long", "down", "down-cold"]) {
+    for (const scenario of ["partial", "empty", "long", "down", "down-cold"])
+      await guard(`${name} ${scenario}`, async () => {
       const state = {};
       const { context, page, errors } = await openPage(browser, opts, scenario, state);
+      if (scenario === "down") await page.clock.install(); // time is driven below; a focus event does not revalidate SWR
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(2500);
       if (scenario === "down") {
-        // A good list is on screen first; then every read fails and a focus event revalidates all four hooks at once.
+        // A good list is on screen first; then every read fails and the fake clock runs past the longest poll (30 s) so all four hooks refetch.
         await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
         state.failing = true;
-        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await page.clock.runFor(35_000);
         await page.locator('.dk-slot[data-state="error"]').waitFor({ timeout: 15_000 });
       }
       if (scenario === "down-cold") {
@@ -181,10 +196,10 @@ try {
       await shot(page, scenario);
       check(`${name} ${scenario}: 0 page errors`, errors.length === 0, errors.join("; "));
       await context.close();
-    }
+      });
 
     // Reduced motion: no transform animation on a list change.
-    {
+    await guard(`${name} reduced motion`, async () => {
       const { context, page } = await openPage(browser, { ...opts }, "full");
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
@@ -192,7 +207,7 @@ try {
       const anims = await page.evaluate(() => document.getAnimations().filter((a) => /transform/.test(JSON.stringify(a.effect?.getKeyframes?.() ?? []))).length);
       check(`${name} reduced motion: no transform animations`, anims === 0, String(anims));
       await context.close();
-    }
+    });
   }
 
   // R6: the old routes redirect with a 307 to /docker?find=.

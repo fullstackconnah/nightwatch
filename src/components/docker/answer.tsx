@@ -11,7 +11,7 @@ export interface AnswerProps {
   diskError: boolean;
   bytes: number;
   plus: boolean;
-  segments: { dangling: number; orphans: number; unused: number; cache: number };
+  segments: { dangling: number; orphans: number; unused: number; cache: number | null };
   sizesPending: boolean;
   slot: { kind: SlotKind; text: string } | null;
 }
@@ -26,7 +26,8 @@ const LEGEND: { key: keyof AnswerProps["segments"]; label: string }[] = [
 export function Answer(p: AnswerProps) {
   const counted = useCountTo(p.bytes);
   const hero = heroLine({ loading: p.loading, diskError: p.diskError, bytes: counted, plus: p.plus });
-  const total = LEGEND.reduce((a, l) => a + p.segments[l.key], 0) || 1;
+  const seg = (k: keyof AnswerProps["segments"]) => p.segments[k];
+  const total = LEGEND.reduce((a, l) => a + (seg(l.key) ?? 0), 0) || 1; // null counts as 0 only here
   const showBar = !p.loading && !p.diskError;
   return (
     <section className="panel dk-answer" aria-labelledby="dk-hero">
@@ -38,10 +39,10 @@ export function Answer(p: AnswerProps) {
         <div
           className="dk-bar"
           role="img"
-          aria-label={LEGEND.map((l) => `${l.label} ${formatBytes(p.segments[l.key], 1)}`).join(", ")}
+          aria-label={LEGEND.map((l) => `${l.label} ${seg(l.key) == null ? "…" : formatBytes(seg(l.key) ?? 0, 1)}`).join(", ")}
         >
-          {LEGEND.filter((l) => p.segments[l.key] > 0).map((l) => (
-            <span key={l.key} className="dk-seg" data-seg={l.key} style={{ flexGrow: p.segments[l.key] / total }} />
+          {LEGEND.filter((l) => (seg(l.key) ?? 0) > 0).map((l) => (
+            <span key={l.key} className="dk-seg" data-seg={l.key} style={{ flexGrow: (seg(l.key) ?? 0) / total }} />
           ))}
         </div>
       ) : (
@@ -53,7 +54,7 @@ export function Answer(p: AnswerProps) {
             <span className="dk-sw" aria-hidden />
             <span>{l.label}</span>
             <span className="dk-leg-n font-mono">
-              {!showBar || (l.key === "orphans" && p.sizesPending) ? "…" : formatBytes(p.segments[l.key], 1)}
+              {!showBar || (l.key === "orphans" && p.sizesPending) ? "…" : seg(l.key) == null ? "…" : formatBytes(seg(l.key) ?? 0, 1)}
             </span>
           </li>
         ))}

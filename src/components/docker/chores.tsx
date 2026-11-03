@@ -13,6 +13,7 @@ import {
   buildChores,
   choreOrder,
   heldMembers,
+  snapAfterWrite,
   pillText,
   type Chore,
   type ChoreId,
@@ -63,6 +64,7 @@ export function Chores(p: ChoresProps) {
   const rk = useRef(createRanker()).current;
   const listRef = useRef<HTMLOListElement>(null);
   const seen = useRef(new Map<string, Entry>());
+  const latest = useRef<Partial<Record<ChoreId, string[]>>>({}); // newest member ids per chore, filled in render
 
   const chores = p.input ? buildChores(p.input) : [];
   const base = choreOrder(chores);
@@ -123,21 +125,20 @@ export function Chores(p: ChoresProps) {
           n.delete(rowId);
           return n;
         });
-        setSnaps((s) => ({ ...s, [chore]: null }));
-        void p.refresh().finally(() =>
+        void p.refresh().finally(() => {
+          setSnaps((s) => snapAfterWrite(s, chore, latest.current[chore]));
           setOwnerGone((s) => {
             const n = new Set(s);
             n.delete(rowId);
             return n;
-          }),
-        );
+          });
+        });
       }, 240);
     };
   }
   const imageDeleted = (chore: ChoreId, id: string, _r: ImageDeleteResult) => ownerWrite(chore, id)();
   const pruned = (chore: ChoreId, _r: PruneResult) => {
-    setSnaps((s) => ({ ...s, [chore]: null }));
-    void p.refresh();
+    void p.refresh().finally(() => setSnaps((s) => snapAfterWrite(s, chore, latest.current[chore])));
   };
 
   function toggle(c: Chore) {
@@ -180,6 +181,7 @@ export function Chores(p: ChoresProps) {
       <ol ref={listRef} className="panel dk-chore-list" onPointerLeave={bump} onBlur={bump}>
         {order.map((c) => {
           const isOpen = open.has(c.id) && c.count > 0;
+          latest.current[c.id] = c.memberIds;
           const live = c.memberIds.filter((id) => !ownerGone.has(`${c.id}-${id}`));
           const snap = snaps[c.id] ?? null;
           const m = heldMembers(snap, live);
@@ -225,7 +227,7 @@ export function Chores(p: ChoresProps) {
                       target={prune.target}
                       itemLabel={prune.label}
                       count={c.count}
-                      bytes={prune.target === "images" ? input.reclaim.images.danglingBytes : input.reclaim.volumes.orphanBytes}
+                      bytes={c.bytes}
                       onPruned={(r) => pruned(c.id, r)}
                     />
                   )}

@@ -173,6 +173,11 @@ export function heldMembers(
   return { rows: g.shown, newIds: g.waiting, goneIds: g.fixed };
 }
 
+/** R4: the owner's own write takes a fresh snapshot of the chore's members (never null, which would release the hold). */
+export function snapAfterWrite<S extends Partial<Record<string, string[] | null>>>(snaps: S, chore: string, latest: readonly string[] | undefined): S {
+  return { ...snaps, [chore]: [...(latest ?? [])] };
+}
+
 export function pillText(newCount: number, goneCount: number): string {
   if (newCount > 0) return `${newCount} new · show`;
   return goneCount > 0 ? "Update list" : "";

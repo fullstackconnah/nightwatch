@@ -97,7 +97,7 @@ function DockerPage() {
           dangling: reclaim?.images.danglingBytes ?? 0,
           orphans: sizesPending ? 0 : (reclaim?.volumes.orphanBytes ?? 0),
           unused: unusedTaggedBytes(images),
-          cache: reclaim?.buildCacheBytes ?? 0,
+          cache: reclaim?.buildCacheBytes ?? null,
         }}
         slot={slot}
       />

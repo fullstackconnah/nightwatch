@@ -7,6 +7,7 @@ import {
   fold,
   foldGroups,
   heldMembers,
+  snapAfterWrite,
   heroBytes,
   heroLine,
   pillText,
@@ -63,6 +64,25 @@ test("C2: one prune at zero drops to tier 2, after the review chores", () => {
 test("C2: null orphan sizes sort last inside tier 0", () => {
   const order = choreOrder(buildChores(withPrunes(GiB, 1, null, 4))).map((c) => c.id);
   assert.deepEqual(order.slice(0, 2), ["dangling", "orphans"]);
+});
+
+test("C2: null orphan sizes sort after a prune with bytes even when their count is higher", () => {
+  const order = choreOrder(buildChores(withPrunes(0, 2, null, 9))).map((c) => c.id);
+  assert.deepEqual(order.slice(0, 2), ["dangling", "orphans"]);
+});
+
+test("C2: equal bytes are broken by the higher count", () => {
+  const order = choreOrder(buildChores(withPrunes(GiB, 2, GiB, 5))).map((c) => c.id);
+  assert.deepEqual(order.slice(0, 2), ["orphans", "dangling"]);
+});
+
+test("C4: after the owner's write the hold is a fresh snapshot: the next tick neither adds nor drops", () => {
+  const held = snapAfterWrite({ stopped: ["a", "b"] }, "stopped", ["b", "c"]);
+  assert.deepEqual(held.stopped, ["b", "c"]);
+  const tick = heldMembers(held.stopped ?? null, ["b", "d"]); // c left, d joined
+  assert.deepEqual(tick.rows, ["b", "c"]);
+  assert.deepEqual([tick.newIds, tick.goneIds], [["d"], ["c"]]);
+  assert.deepEqual(snapAfterWrite<Record<string, string[] | null>>({}, "stopped", undefined).stopped, []);
 });
 
 test("C2: all empty keeps the fixed order with cache last; a prune leads whenever prunable > 0", () => {
