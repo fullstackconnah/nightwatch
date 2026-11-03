@@ -31,11 +31,13 @@ const LIST = {
   groups: [], counts: { total: 1, running: 1, paused: 0, stopped: 0, restarting: 0, unhealthy: 0 },
 };
 const RESOURCES = {
-  updatedAt: 1760000000000,
+  updatedAt: Date.now(),
   containers: [{ id: ID, name: NAME, state: "running", image: "itzg/minecraft-server", cpuPct: 40, memBytes: 2e9, memLimit: 4e9, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 20, sizeRw: null, sizeRootFs: null }],
   volumes: null, hostDisks: null, dockerRootDir: null,
   totals: { cpuPct: 40, memBytes: 2e9, memTotal: 8e9, containerDisk: 0, volumeDisk: 0, layersSize: 0, buildCacheBytes: 0, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0 },
 };
+// A running container's detail page polls /stats and reads every field, so {} crashes it.
+const STATS = { cpuPercent: 40, memUsage: 2e9, memLimit: 4e9, memPercent: 50, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 20, ts: Date.now() };
 const MC_STATUS = { manager: "ok", instances: [], active: null, players: { online: 0, max: 10, players: [] }, rcon: "ok" };
 
 const CALLERS = [
@@ -76,6 +78,7 @@ try {
       }
       if (pathname.endsWith("/api/docker/containers")) return json(route, 200, LIST);
       if (pathname.endsWith(`/containers/${ID}`)) return json(route, 200, INSPECT);
+      if (pathname.endsWith("/stats")) return json(route, 200, { ...STATS, ts: Date.now() });
       if (pathname.endsWith("/logs")) return json(route, 200, { logs: "" });
       return json(route, 200, {});
     });
@@ -87,11 +90,18 @@ try {
       const tag = `${caller.id} ${vp}`;
       posts = 0;
       await page.goto(`${BASE_URL}${caller.path}`, { waitUntil: "domcontentloaded" });
+      if (caller.id === "resources") {
+        // The row's actions live in its opened detail, so open it as a person would.
+        const row = page.locator(".wl-rowbtn", { hasText: NAME }).first();
+        await row.waitFor({ timeout: 30_000 }).catch(() => {});
+        await row.click().catch(() => {});
+      }
       const stop = page.getByRole("button", { name: new RegExp(`^Stop( ${NAME})?$`) }).first();
+      const errsBefore = errors.length;
       try {
         await stop.waitFor({ timeout: 30_000 });
       } catch {
-        check(`${tag}: Stop button reachable`, false, (await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "")).replace(/s+/g, " "));
+        check(`${tag}: Stop button reachable`, false, (await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "")).replace(/s+/g, " ") + (errors.length > errsBefore ? ` | pageerror: ${errors.slice(errsBefore).join("; ").slice(0, 300)}` : ""));
         continue;
       }
       await stop.scrollIntoViewIfNeeded();
