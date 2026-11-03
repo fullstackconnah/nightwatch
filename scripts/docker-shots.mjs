@@ -283,6 +283,10 @@ try {
       if (scenario === "down-cold") {
         const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
         check(`${name} down-cold: band has no "last list" clause`, /^Docker (unreachable: |is not reachable)/.test(band) && !/last list/i.test(band), band);
+        if (name === "390") {
+          const hh = await page.evaluate(() => { const e = document.querySelector(".dk-hero"); return e ? [e.getBoundingClientRect().height, parseFloat(getComputedStyle(e).lineHeight)] : [999, 0]; });
+          check("390 down-cold: hero headline is one line", hh[0] <= hh[1] + 1, hh.join(" vs "));
+        }
         check(`${name} down-cold: no chores heading`, (await page.locator("#dk-chores-h").count()) === 0);
         const segn = await page.$$eval(".dk-segn", (els) => els.map((e) => e.textContent.trim()));
         check(`${name} down-cold: no segment count reads 0`, segn.length === 3 && !segn.includes("0"), segn.join());
@@ -365,6 +369,9 @@ try {
       await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
       await page.locator("[data-chore=stopped] .dk-disclose").click();
       await page.waitForTimeout(600);
+      // The stopped rows sit in a folded prefix group (old-*); open every fold so Start and Remove render.
+      await page.evaluate(() => document.querySelectorAll(".dk-group-head[aria-expanded=false]").forEach((b) => b.click()));
+      await page.waitForTimeout(400);
       const n = (f) => page.locator(`[data-feature="${f}"]`).count();
       const found = {};
       for (const f of ["prune-images", "prune-volumes", "create", "details", "start", "remove"]) found[f] = await n(f);

@@ -113,7 +113,7 @@ export function choreOrder(chores: readonly Chore[]): Chore[] {
 
 export function heroLine(s: { loading: boolean; diskError: boolean; bytes: number; plus: boolean }): { lead: string; label: string } {
   if (s.loading) return { lead: "Reading Docker…", label: "" };
-  if (s.diskError) return { lead: "Can't size the clean-up right now", label: "" };
+  if (s.diskError) return { lead: "Can't size it right now", label: "" };
   if (s.bytes === 0 && !s.plus) return { lead: "Nothing can go right now", label: "" };
   return { lead: `${formatBytes(s.bytes, 1)}${s.plus ? "+" : ""}`, label: "can go now" };
 }

@@ -3402,7 +3402,7 @@ body {
 @media (max-width: 767px) {
   .dk-head { align-items: center; margin-bottom: 0.75rem; min-height: 2.75rem; }
   .dk-counts { display: none; }
-  .dk-answer { padding: 0.875rem 1rem; }
+  .dk-answer { padding: 0.5rem 1rem 0.875rem; }
   .dk-num { font-size: 1.75rem; }
   .dk-slot { height: 4.5rem; }
   .dk-chore-head { grid-template-columns: minmax(0, 1fr) auto; padding: 0.875rem; }

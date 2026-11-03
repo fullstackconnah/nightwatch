@@ -115,7 +115,7 @@ const sources = (o: Partial<Sources> = {}): Sources => ({
 
 test("C12: hero copy per state; a df failure never reads Nothing", () => {
   assert.equal(heroLine({ loading: true, diskError: false, bytes: 0, plus: false }).lead, "Reading Docker…");
-  assert.equal(heroLine({ loading: false, diskError: true, bytes: 0, plus: false }).lead, "Can't size the clean-up right now");
+  assert.equal(heroLine({ loading: false, diskError: true, bytes: 0, plus: false }).lead, "Can't size it right now");
   assert.equal(heroLine({ loading: false, diskError: false, bytes: 0, plus: false }).lead, "Nothing can go right now");
   const full = heroLine({ loading: false, diskError: false, bytes: 41.4 * GiB, plus: false });
   assert.deepEqual([full.lead, full.label], ["41.4 GiB", "can go now"]);
