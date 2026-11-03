@@ -250,11 +250,14 @@ for (const width of WIDTHS) {
   const { context, page, state } = await open({ fixture: "c1Before" });
   const readBelow = () => {
     const att = document.querySelector(".hm-att");
+    const chg = document.querySelector(".hm-chg");
+    // The changes box is fixed-size and fills slots in place: its rows may change, so its descendants are not counted (the box itself is).
     const below = [...document.querySelectorAll(".hm *")].filter(
-      (el) => !att.contains(el) && att.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
+      (el) => !att.contains(el) && !(chg && chg !== el && chg.contains(el)) && att.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING,
     );
     return {
       height: att.getBoundingClientRect().height,
+      chgHeight: chg?.getBoundingClientRect().height ?? null,
       tops: below.map((el) => Math.round((el.getBoundingClientRect().top + window.scrollY) * 100) / 100),
       pill: document.querySelector(".hm-pill")?.textContent.trim() ?? "",
       answer: document.querySelector(".hm-answer").textContent.trim(),
@@ -269,8 +272,8 @@ for (const width of WIDTHS) {
   const dTop = before.tops.length === after.tops.length ? Math.max(0, ...before.tops.map((t, i) => Math.abs(t - after.tops[i]))) : Infinity;
   record(
     "C1",
-    after.height === before.height && dTop === 0 && /^2 new/.test(after.pill) && after.answer !== before.answer,
-    `d height ${after.height - before.height} px, max d top ${dTop} px over ${before.tops.length} elements, pill "${after.pill}", answer "${before.answer}" -> "${after.answer}"`,
+    after.height === before.height && after.chgHeight === before.chgHeight && dTop === 0 && /^2 new/.test(after.pill) && after.answer !== before.answer,
+    `d height ${after.height - before.height} px, d changes height ${after.chgHeight - before.chgHeight} px, max d top ${dTop} px over ${before.tops.length} elements, pill "${after.pill}", answer "${before.answer}" -> "${after.answer}"`,
   );
   await context.close();
 }
