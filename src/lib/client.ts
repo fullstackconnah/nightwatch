@@ -13,6 +13,7 @@ import type { TranscodeSnapshot } from "@/lib/types/transcode";
 import type { ProcessSnapshot, ProcessRow } from "@/lib/types/process";
 import type { SmartSnapshot, DriveHealth, AtaAttribute, ArrayIntegrity, HealthVerdict } from "@/lib/types/smart";
 import type { BackupStatus } from "@/lib/backup-status";
+import type { AttentionReport } from "@/lib/attention-report";
 import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, InterfaceRole } from "@/lib/types/network";
 import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
@@ -104,6 +105,15 @@ export function useSmart(refreshMs = 30000) {
 // 60s: the status file is rewritten once a day; this only needs to notice that day's write.
 export function useBackupStatus(refreshMs = 60000) {
   return useSWR<BackupStatus>("/api/backup", fetcher, { refreshInterval: refreshMs, keepPreviousData: true });
+}
+
+// 15s: Home's attention report. The key stays null until `since` (the stored last-looked time) resolves, so
+// the first request already carries it; keepPreviousData holds the last report through a failed poll.
+export function useAttentionReport(since: number | null, refreshMs = 15000) {
+  return useSWR<AttentionReport>(since === null ? null : `/api/attention?since=${since}`, fetcher, {
+    refreshInterval: refreshMs,
+    keepPreviousData: true,
+  });
 }
 
 // 15s: interface inventory/sockets change slowly (link flaps, new listeners) —
