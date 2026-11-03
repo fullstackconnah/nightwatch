@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select } from "@/components/ui/input";
 import { Sparkline } from "@/components/charts";
 import {
+  ConfirmStop,
   LIFECYCLE_META,
   LifecycleError,
   actionsFor,
@@ -145,6 +146,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   const { data: widgetData } = useWidgets(20000);
   const lifecycle = useLifecycle(id, () => void mutate());
   const [showEnv, setShowEnv] = useState(false);
+  const [confirmingStop, setConfirmingStop] = useState(false);
 
   const history = useStatsHistory(id, info?.state.running ?? false);
   const latest = history[history.length - 1];
@@ -209,8 +211,20 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
               </Button>
             </a>
           )}
+          {info && confirmingStop && actionsFor(status).includes("stop") && (
+            <ConfirmStop
+              name={info.name}
+              busy={busy}
+              className="max-md:basis-full"
+              onCancel={() => setConfirmingStop(false)}
+              onYes={() => {
+                setConfirmingStop(false);
+                void lifecycle.run("stop");
+              }}
+            />
+          )}
           {info &&
-            actionsFor(status).map((action) => {
+            actionsFor(status).filter((a) => !(confirmingStop && a === "stop")).map((action) => {
               const { label, Icon, variant } = LIFECYCLE_META[action];
               const isPending = lifecycle.pending === action;
               return (
@@ -219,7 +233,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                   variant={variant}
                   disabled={busy}
                   aria-busy={isPending}
-                  onClick={() => void lifecycle.run(action)}
+                  onClick={() => (action === "stop" ? setConfirmingStop(true) : void lifecycle.run(action))}
                 >
                   <Icon
                     size={13}

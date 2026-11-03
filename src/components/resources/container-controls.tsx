@@ -22,26 +22,27 @@ export type LifecycleAction = "start" | "stop" | "restart" | "pause" | "unpause"
  */
 export const LIFECYCLE_META: Record<
   LifecycleAction,
-  { label: string; Icon: typeof Play; variant: "default" | "outline" | "danger" }
+  { label: string; Icon: typeof Play; variant: "default" | "outline" }
 > = {
   start: { label: "Start", Icon: Play, variant: "default" },
   unpause: { label: "Resume", Icon: Play, variant: "default" },
   restart: { label: "Restart", Icon: RotateCw, variant: "outline" },
   pause: { label: "Pause", Icon: Pause, variant: "outline" },
-  stop: { label: "Stop", Icon: Square, variant: "danger" },
+  stop: { label: "Stop", Icon: Square, variant: "outline" },
 };
 
 /**
  * Resting colour is uniform ink-dim for all five — a row of pre-tinted verbs
  * reads as a warning before anyone has decided to do anything. Intent shows up
- * on hover and focus, where it is about to matter.
+ * on hover and focus, where it is about to matter. Stop stays neutral even
+ * there: its danger lives in the ConfirmStop step, not in the verb.
  */
 const ACTION_TONE: Record<LifecycleAction, string> = {
   start: "hover:text-ok focus-visible:text-ok",
   unpause: "hover:text-ok focus-visible:text-ok",
   restart: "hover:text-accent focus-visible:text-accent",
   pause: "hover:text-warn focus-visible:text-warn",
-  stop: "hover:text-bad focus-visible:text-bad",
+  stop: "hover:text-ink focus-visible:text-ink",
 };
 
 /**
@@ -137,8 +138,24 @@ export function LifecycleActions({
   touch?: boolean;
   className?: string;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const actions = actionsFor(state);
   if (actions.length === 0) return null;
+  if (confirming && actions.includes("stop")) {
+    return (
+      <ConfirmStop
+        name={name}
+        touch={touch}
+        busy={lifecycle.pending !== null}
+        className={className}
+        onCancel={() => setConfirming(false)}
+        onYes={() => {
+          setConfirming(false);
+          void lifecycle.run("stop");
+        }}
+      />
+    );
+  }
   return (
     <div className={cn("flex items-center gap-0.5", className)}>
       {actions.map((action) => {
@@ -157,7 +174,7 @@ export function LifecycleActions({
             aria-busy={isPending}
             aria-label={`${label} ${name}`}
             title={label}
-            onClick={() => void lifecycle.run(action)}
+            onClick={() => (action === "stop" ? setConfirming(true) : void lifecycle.run(action))}
           >
             <Icon
               size={13}
@@ -168,6 +185,53 @@ export function LifecycleActions({
           </Button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The inline two-step for Stop (the same shape as RemoveContainerAction and
+ * hermes-actions): a short sentence, Cancel, then "Yes, stop {name}" as the only
+ * danger-coloured control. Stopping drops live connections, so it is asked once.
+ * Escape cancels; Yes takes focus on open.
+ */
+export function ConfirmStop({
+  name,
+  onYes,
+  onCancel,
+  busy,
+  touch,
+  className,
+}: {
+  name: string;
+  onYes: () => void;
+  onCancel: () => void;
+  busy?: boolean;
+  /** Kiosk wall surfaces: 56px high buttons. */
+  touch?: boolean;
+  className?: string;
+}) {
+  const size = touch ? "h-14 px-4" : undefined;
+  return (
+    <div
+      className={cn("flex items-center gap-2 flex-wrap", className)}
+      onKeyDown={(e) => e.key === "Escape" && onCancel()}
+    >
+      <span className="text-xs text-ink-dim">Stop {name}?</span>
+      <Button size="sm" variant="ghost" className={size} disabled={busy} onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button
+        autoFocus
+        size="sm"
+        variant="danger"
+        className={size}
+        disabled={busy}
+        aria-label={`Yes, stop ${name}`}
+        onClick={onYes}
+      >
+        Yes, stop
+      </Button>
     </div>
   );
 }
