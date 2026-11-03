@@ -244,7 +244,12 @@ function RowDetail({
       )}
       <div className="wl-actions">
         <div className="wl-act1">
-          <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
+          <LifecycleActions
+            state={c.state}
+            name={c.name}
+            lifecycle={lifecycle}
+            confirmClassName="max-md:basis-full"
+          />
           <Button
             size="sm"
             variant={compared ? "default" : "outline"}

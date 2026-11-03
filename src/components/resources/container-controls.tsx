@@ -126,10 +126,13 @@ export function LifecycleActions({
   lifecycle,
   touch,
   className,
+  confirmClassName,
 }: {
   state: string;
   name: string;
   lifecycle: Lifecycle;
+  /** Extra classes for the confirm step only (the watchlist gives it its own row at max-md). */
+  confirmClassName?: string;
   /**
    * Kiosk wall surfaces opt into the 56px `touch` button size explicitly
    * (see ui/button.tsx) instead of the shared `icon` variant's desktop `md:`
@@ -139,6 +142,15 @@ export function LifecycleActions({
   className?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
+  // Cancel remounts the Stop button, so focus would drop to body; put it back (not after Yes).
+  const stopRef = useRef<HTMLButtonElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (!confirming && refocus.current) {
+      refocus.current = false;
+      stopRef.current?.focus();
+    }
+  }, [confirming]);
   const actions = actionsFor(state);
   if (actions.length === 0) return null;
   if (confirming && actions.includes("stop")) {
@@ -147,8 +159,11 @@ export function LifecycleActions({
         name={name}
         touch={touch}
         busy={lifecycle.pending !== null}
-        className={className}
-        onCancel={() => setConfirming(false)}
+        className={cn(className, confirmClassName)}
+        onCancel={() => {
+          refocus.current = true;
+          setConfirming(false);
+        }}
         onYes={() => {
           setConfirming(false);
           void lifecycle.run("stop");
@@ -164,6 +179,7 @@ export function LifecycleActions({
         return (
           <Button
             key={action}
+            ref={action === "stop" ? stopRef : undefined}
             size={touch ? "touch" : "icon"}
             variant="ghost"
             className={ACTION_TONE[action]}
@@ -215,7 +231,12 @@ export function ConfirmStop({
   return (
     <div
       className={cn("flex items-center gap-2 flex-wrap", className)}
-      onKeyDown={(e) => e.key === "Escape" && onCancel()}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
+      }}
     >
       <span className="text-xs text-ink-dim">Stop {name}?</span>
       <Button size="sm" variant="ghost" className={size} disabled={busy} onClick={onCancel}>

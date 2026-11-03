@@ -85,8 +85,23 @@ try {
     });
     await page.route("**/api/resources", (route) => json(route, 200, RESOURCES));
     // The watchlist ranks rows from the SSE ring, not /api/resources: no sample, no .wl-rowbtn (watchlist.tsx:485, 491).
-    await page.route("**/api/telemetry/stream", (route) =>
-      route.fulfill({ status: 200, contentType: "text/event-stream", body: `retry: 600000\nevent: history\ndata: ${JSON.stringify([TELEMETRY])}\n\n` }));
+    // A route.fulfill body ends the stream, so the page flips to "connection lost" and dims the panels. Stand in for
+    // EventSource instead: it opens, delivers one history frame and stays open, which is the connected state.
+    await page.addInitScript((frame) => {
+      const Real = window.EventSource;
+      window.EventSource = class extends Real {
+        constructor(url, init) {
+          if (!String(url).includes("/api/telemetry/stream")) return super(url, init);
+          const target = new EventTarget();
+          target.close = () => {};
+          setTimeout(() => {
+            target.dispatchEvent(new Event("open"));
+            target.dispatchEvent(new MessageEvent("history", { data: JSON.stringify([frame]) }));
+          }, 50);
+          return target;
+        }
+      };
+    }, TELEMETRY);
     await page.route("**/api/minecraft/status", (route) => json(route, 200, MC_STATUS));
     await page.route("**/api/minecraft/backups", (route) => json(route, 200, { backups: [] }));
 
@@ -111,6 +126,10 @@ try {
       }
       await stop.scrollIntoViewIfNeeded();
       const shot = (state) => page.screenshot({ path: join(OUT_DIR, `stop-${state}-${caller.id}-${vp}.png`) });
+
+      if (caller.id === "resources") {
+        check(`${tag}: stream looks connected (no "reconnecting" text)`, !(await page.getByText(/reconnecting/i).count()));
+      }
 
       const colours = await stop.evaluate((el) => {
         const probe = document.createElement("span");
@@ -139,10 +158,21 @@ try {
       await shot("confirm");
 
       await page.keyboard.press("Escape");
+      if (caller.id === "resources" && vp === "390") {
+        const compare = page.getByRole("button", { name: /^Compar/ }).first();
+        check("resources 390 confirm: Compare is not clipped", await compare.evaluate((el) => el.scrollWidth <= el.clientWidth).catch(() => false));
+      }
+      const focusOnStop = () => page.evaluate((n) => {
+        const a = document.activeElement;
+        const name = a?.getAttribute("aria-label") ?? a?.textContent?.trim();
+        return name === "Stop" || name === `Stop ${n}`;
+      }, NAME);
+      await page.keyboard.press("Escape");
       check(`${tag}: Escape closes the confirm`, (await yes.count()) === 0);
       await stop.click({ force: true });
       await page.getByRole("button", { name: "Cancel", exact: true }).click();
       check(`${tag}: Cancel closes the confirm`, (await yes.count()) === 0);
+      check(`${tag}: focus returns to Stop after Cancel`, await focusOnStop());
       check(`${tag}: still 0 POSTs after Escape and Cancel`, posts === 0, `posts=${posts}`);
 
       await stop.click({ force: true });

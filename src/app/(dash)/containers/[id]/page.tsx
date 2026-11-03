@@ -147,6 +147,15 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   const lifecycle = useLifecycle(id, () => void mutate());
   const [showEnv, setShowEnv] = useState(false);
   const [confirmingStop, setConfirmingStop] = useState(false);
+  // Cancel remounts the Stop button; return focus to it (not after Yes).
+  const stopRef = useRef<HTMLButtonElement>(null);
+  const refocusStop = useRef(false);
+  useEffect(() => {
+    if (!confirmingStop && refocusStop.current) {
+      refocusStop.current = false;
+      stopRef.current?.focus();
+    }
+  }, [confirmingStop]);
 
   const history = useStatsHistory(id, info?.state.running ?? false);
   const latest = history[history.length - 1];
@@ -216,7 +225,10 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
               name={info.name}
               busy={busy}
               className="max-md:basis-full"
-              onCancel={() => setConfirmingStop(false)}
+              onCancel={() => {
+                refocusStop.current = true;
+                setConfirmingStop(false);
+              }}
               onYes={() => {
                 setConfirmingStop(false);
                 void lifecycle.run("stop");
@@ -230,6 +242,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
               return (
                 <Button
                   key={action}
+                  ref={action === "stop" ? stopRef : undefined}
                   variant={variant}
                   disabled={busy}
                   aria-busy={isPending}
