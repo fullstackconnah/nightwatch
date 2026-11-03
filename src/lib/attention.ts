@@ -4,7 +4,21 @@ import { getHostVitals, HOST_ROOTFS, HOST_SYS, readHostMounts } from "@/lib/host
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
-import { backupHeadline, summarizeBackup } from "@/lib/backup-status";
+import { backupHeadline, summarizeBackup, type BackupStatus } from "@/lib/backup-status";
+import {
+  firstHit,
+  PENDING,
+  parseSince,
+  runProbes,
+  sortHits,
+  toHits,
+  deriveChanges,
+  clipError,
+  type AttentionHit,
+  type AttentionReport,
+  type ProbeDef,
+  type RawHit,
+} from "@/lib/attention-report";
 import {
   backupCheckStopped,
   backupDetail,
@@ -34,10 +48,11 @@ import type { HealthVerdict } from "@/lib/types/smart";
  * Silence is the feature: a healthy homelab shows nothing here, so the bar to
  * speak is high. getAttention() checks a short list of REAL deviations in
  * priority order and returns the first one it finds — never a summary of
- * everything that's slightly off. Every probe below is independently
- * try/caught by the caller: a broken probe (a Docker hiccup, a missing
- * smart.json, an unreadable history file) must degrade to "this probe found
- * nothing" and never to a fabricated alert or a 500. Reuses the same
+ * everything that's slightly off. Every probe below is run by runProbes
+ * (attention-report.ts): a broken probe (a Docker hiccup, a missing
+ * smart.json, an unreadable history file) is reported as a failed probe,
+ * never as "found nothing", and never as a fabricated alert or a 500. The
+ * kiosk still gets only the first hit; Home gets the whole report. Reuses the same
  * server-side libs the rest of the dashboard already reads from — no
  * shelling out, no re-implemented fetching.
  */
@@ -80,9 +95,9 @@ function clip(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
-function hit(severity: AttentionSeverity, copy: AlertCopy, since?: string): AttentionResult {
+function hit(subject: string, severity: AttentionSeverity, copy: AlertCopy, since?: string): RawHit {
   return {
-    status: "attention",
+    subject,
     severity,
     headline: clip(copy.headline, HEADLINE_MAX),
     detail: copy.detail ? clip(copy.detail, DETAIL_MAX) : undefined,
@@ -107,30 +122,31 @@ function hit(severity: AttentionSeverity, copy: AlertCopy, since?: string): Atte
  * app's own stop action grants (see containerAction() in docker.ts) and got
  * SIGKILLed into a non-zero exit code.
  */
-function probeContainerDeath(containers: RuntimeContainer[]): AttentionResult | null {
-  const dead = containers.find((c) => c.state === "dead");
-  if (dead) {
-    const upSecs =
-      dead.startedAt != null && dead.finishedAt != null ? (dead.finishedAt - dead.startedAt) / 1000 : null;
-    return hit(
-      "bad",
-      containerDown(dead.name, upSecs != null ? formatUptime(upSecs) : null),
-      dead.finishedAt != null ? new Date(dead.finishedAt).toISOString() : undefined,
-    );
-  }
+function probeContainerDeath(containers: RuntimeContainer[]): RawHit[] {
+  const dead = containers
+    .filter((c) => c.state === "dead")
+    .map((c) => {
+      const upSecs = c.startedAt != null && c.finishedAt != null ? (c.finishedAt - c.startedAt) / 1000 : null;
+      return hit(
+        `container:${c.name}`,
+        "bad",
+        containerDown(c.name, upSecs != null ? formatUptime(upSecs) : null),
+        c.finishedAt != null ? new Date(c.finishedAt).toISOString() : undefined,
+      );
+    });
 
-  const crashed = containers.find(
-    (c) => c.state === "exited" && c.startedAt != null && c.exitCode != null && c.exitCode !== 0,
-  );
-  if (crashed) {
-    return hit(
-      "bad",
-      containerCrashed(crashed.name, crashed.exitCode!),
-      crashed.finishedAt != null ? new Date(crashed.finishedAt).toISOString() : undefined,
+  const crashed = containers
+    .filter((c) => c.state === "exited" && c.startedAt != null && c.exitCode != null && c.exitCode !== 0)
+    .map((c) =>
+      hit(
+        `container:${c.name}`,
+        "bad",
+        containerCrashed(c.name, c.exitCode!),
+        c.finishedAt != null ? new Date(c.finishedAt).toISOString() : undefined,
+      ),
     );
-  }
 
-  return null;
+  return [...dead, ...crashed];
 }
 
 // --- (b) restart-looping ----------------------------------------------------
@@ -144,27 +160,23 @@ function probeContainerDeath(containers: RuntimeContainer[]): AttentionResult | 
  * within one or two probe cycles, since the baseline advances every call.
  * The live `restarting` state is trusted directly and needs no history at all.
  */
-function probeRestartLoop(containers: RuntimeContainer[]): AttentionResult | null {
+function probeRestartLoop(containers: RuntimeContainer[]): RawHit[] {
   const counts = globalForAttention.__attentionRestartCounts ?? new Map<string, number>();
   globalForAttention.__attentionRestartCounts = counts;
 
-  let result: AttentionResult | null = null;
+  const hits: RawHit[] = [];
   for (const c of containers) {
-    if (!result && c.state === "restarting") {
-      result = hit("bad", stuckRestarting(c.name, c.restartCount));
-    }
-    if (!result) {
-      const prev = counts.get(c.id);
-      if (prev != null && c.restartCount > prev) {
-        const delta = c.restartCount - prev;
-        result = hit("bad", keepsRestarting(c.name, delta, c.restartCount));
-      }
+    const prev = counts.get(c.id);
+    if (c.state === "restarting") {
+      hits.push(hit(`container:${c.name}`, "bad", stuckRestarting(c.name, c.restartCount)));
+    } else if (prev != null && c.restartCount > prev) {
+      hits.push(hit(`container:${c.name}`, "bad", keepsRestarting(c.name, c.restartCount - prev, c.restartCount)));
     }
     // Advance the baseline every call, win or not — the whole point is a
     // rolling "since last check" delta, not a fixed reference point.
     counts.set(c.id, c.restartCount);
   }
-  return result;
+  return hits;
 }
 
 // --- (c) SMART / array integrity --------------------------------------------
@@ -184,30 +196,27 @@ function probeRestartLoop(containers: RuntimeContainer[]): AttentionResult | nul
  * card depends on to mean something. RAID/pool/filesystem integrity failures
  * ride the same probe since they come off the same getSmartSnapshot() call.
  */
-async function probeSmart(): Promise<AttentionResult | null> {
+async function probeSmart(): Promise<RawHit[]> {
   const snapshot = await getSmartSnapshot();
 
+  const hits: RawHit[] = [];
   if (snapshot.integrity.verdict === "bad") {
-    return hit("bad", integrityAlert(snapshot.integrity.reasons));
+    hits.push(hit("array", "bad", integrityAlert(snapshot.integrity.reasons)));
   }
 
   const verdicts = globalForAttention.__attentionDriveVerdicts ?? new Map<string, HealthVerdict>();
   globalForAttention.__attentionDriveVerdicts = verdicts;
 
-  let result: AttentionResult | null = null;
   for (const drive of snapshot.drives) {
-    if (!result && drive.verdict === "bad") {
-      result = hit("bad", driveAlert(drive.name, drive.reasons));
-    }
-    if (!result && drive.verdict === "unknown") {
+    if (drive.verdict === "bad") {
+      hits.push(hit(`drive:${drive.device}`, "bad", driveAlert(drive.name, drive.reasons)));
+    } else if (drive.verdict === "unknown") {
       const prev = verdicts.get(drive.device);
-      if (prev === "ok" || prev === "warn") {
-        result = hit("warn", driveUnreadable(drive.name));
-      }
+      if (prev === "ok" || prev === "warn") hits.push(hit(`drive:${drive.device}`, "warn", driveUnreadable(drive.name)));
     }
     verdicts.set(drive.device, drive.verdict);
   }
-  return result;
+  return hits;
 }
 
 // --- (c2) a mount that cannot be read ---------------------------------------
@@ -251,7 +260,7 @@ function deviceGone(mount: string, device: string | undefined): MountVerdict | n
  * drive that left the bus. probeOne never starts a second readdir on a mount
  * whose first is still stuck.
  */
-async function probeMountReadable(): Promise<AttentionResult | null> {
+async function probeMountReadable(): Promise<RawHit[]> {
   const vitals = await getHostVitals();
   const mounts = [...new Set(vitals.disk.flatMap((g) => g.mounts ?? [g.mount]))];
   const devices = new Map((readHostMounts() ?? []).map((m) => [m.mountpoint, m.device]));
@@ -263,8 +272,7 @@ async function probeMountReadable(): Promise<AttentionResult | null> {
       return classifyMountError(mount, await probeOne(target, () => fsp.readdir(target), MOUNT_READ_TIMEOUT_MS));
     }),
   );
-  const verdict = verdicts.find((v) => v !== null);
-  return verdict ? hit("bad", verdict) : null;
+  return verdicts.flatMap((v, i) => (v ? [hit(`mount:${mounts[i]}`, "bad", v)] : []));
 }
 
 // --- (d) disk / volume capacity ---------------------------------------------
@@ -302,8 +310,9 @@ async function estimateDaysToFull(mount: string, remainingBytes: number): Promis
  * context even on the >85% branch — same combined shape the design brief's
  * own example uses ("docker pool 87% — ~24 days at current growth").
  */
-async function probeDiskCapacity(): Promise<AttentionResult | null> {
+async function probeDiskCapacity(): Promise<RawHit[]> {
   const vitals = await getHostVitals();
+  const hits: RawHit[] = [];
 
   for (const group of vitals.disk) {
     const percent = Math.round(group.percent);
@@ -324,11 +333,11 @@ async function probeDiskCapacity(): Promise<AttentionResult | null> {
     const trendingFull = daysToFull != null && daysToFull <= GROWTH_HORIZON_DAYS && percent >= 75;
     if (percent > DISK_WARN_PCT || trendingFull) {
       const days = daysToFull != null ? Math.max(1, Math.round(daysToFull)) : null;
-      return hit("warn", diskFull(group.mount, percent, days));
+      hits.push(hit(`disk:${group.mount}`, "warn", diskFull(group.mount, percent, days)));
     }
   }
 
-  return null;
+  return hits;
 }
 
 // --- (d2) ODIP backup ---------------------------------------------------------
@@ -336,29 +345,30 @@ async function probeDiskCapacity(): Promise<AttentionResult | null> {
 /**
  * Same rules as the Overview tile (summarizeBackup): a FAILED item is "bad", a
  * STALE item, a missing kind or a check that has stopped running is "warn". A
- * missing or unreadable status file says nothing here — the tile already shows
- * that, and a probe that cannot read its input must never fabricate an alert.
+ * missing or unreadable status file throws, so the report shows the backup
+ * probe as failed rather than quiet; the kiosk still says nothing for it.
  */
-async function probeBackup(): Promise<AttentionResult | null> {
-  const status = await readBackupStatus();
-  if (status.status !== "ok") return null;
+function probeBackup(status: BackupStatus | null, readError: unknown): RawHit[] {
+  if (!status) throw readError;
+  if (status.status === "missing") throw new Error("the backup status file is missing");
+  if (status.status === "unreadable") throw new Error(`the backup status file is unreadable: ${status.reason}`);
 
   const summary = summarizeBackup(status, Date.now());
-  if (summary.worst === "OK") return null;
+  if (summary.worst === "OK") return [];
 
   const item = summary.items.find((i) => i.state === summary.worst)!;
   const copy = { headline: backupHeadline(summary), ...backupDetail(summary.worst, item.at ? relativeTime(item.at) : null) };
-  if (summary.worst === "FAILED") return hit("bad", copy, item.at ?? undefined);
-  if (summary.checkStale) return hit("warn", backupCheckStopped(relativeTime(status.checkedAt)), status.checkedAt);
-  return hit("warn", copy, item.at ?? undefined);
+  if (summary.worst === "FAILED") return [hit("backup", "bad", copy, item.at ?? undefined)];
+  if (summary.checkStale) return [hit("backup", "warn", backupCheckStopped(relativeTime(status.checkedAt)), status.checkedAt)];
+  return [hit("backup", "warn", copy, item.at ?? undefined)];
 }
 
 // --- (e) failing healthcheck -------------------------------------------------
 
-function probeUnhealthy(containers: RuntimeContainer[]): AttentionResult | null {
-  const c = containers.find((c) => c.health === "unhealthy");
-  if (!c) return null;
-  return hit("warn", containerUnhealthy(c.name));
+function probeUnhealthy(containers: RuntimeContainer[]): RawHit[] {
+  return containers
+    .filter((c) => c.health === "unhealthy")
+    .map((c) => hit(`container:${c.name}`, "warn", containerUnhealthy(c.name)));
 }
 
 // --- (f) a stalled agent or an unanswering orchestra service ----------------
@@ -373,7 +383,7 @@ let orchestraLastInFlight = 0;
  * isStalled (orchestra-view.ts) decides, not the service's own stalledCount.
  * A detail that comes back unreachable/unauthorized counts as that status.
  */
-const orchestraMemo = new Memo<AttentionResult | null>({
+const orchestraMemo = new Memo<{ hits: RawHit[] }>({
   key: "attention.orchestra",
   ttlMs: CACHE_TTL_MS,
   load: async () => {
@@ -390,7 +400,7 @@ const orchestraMemo = new Memo<AttentionResult | null>({
     // No busy orchestrators means no details, so an ok reading with nothing in flight resets this to 0.
     if (status === "ok") orchestraLastInFlight = details.flatMap((o) => o.inFlight).filter((e) => isLive(e.quietMin)).length;
     const item = orchestraAttention(status, details, orchestraLastInFlight);
-    return item ? hit("warn", item) : null;
+    return { hits: item ? [hit("orchestra", "warn", item)] : [] };
   },
 });
 
@@ -400,13 +410,15 @@ const orchestraMemo = new Memo<AttentionResult | null>({
  * running and fills the memo, so "stopped answering" shows one cycle late
  * rather than never.
  */
-async function probeOrchestra(): Promise<AttentionResult | null> {
+async function probeOrchestra(): Promise<RawHit[] | typeof PENDING> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<AttentionResult | null>((resolve) => {
+  const timeout = new Promise<{ hits: RawHit[] } | null>((resolve) => {
     timer = setTimeout(() => resolve(orchestraMemo.peek()), ORCHESTRA_RACE_MS);
   });
   try {
-    return await Promise.race([orchestraMemo.get(), timeout]);
+    // A null peek means the memo has never settled: pending, not "no hit".
+    const last = await Promise.race([orchestraMemo.get(), timeout]);
+    return last ? last.hits : PENDING;
   } finally {
     clearTimeout(timer);
   }
@@ -414,53 +426,98 @@ async function probeOrchestra(): Promise<AttentionResult | null> {
 
 // --- orchestration -----------------------------------------------------------
 
-async function computeAttention(): Promise<AttentionResult> {
-  // Fetched once and shared by every container-based probe below. If Docker
-  // itself is unreachable this simply leaves those probes with nothing to
-  // find — never an error surfaced as an alert.
-  let containers: RuntimeContainer[] = [];
-  try {
-    containers = await listContainersWithRuntime();
-  } catch {
-    containers = [];
-  }
+/** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
+const PROBE_DEADLINE_MS = ORCHESTRA_RACE_MS + 250;
 
-  const probes: (() => AttentionResult | null | Promise<AttentionResult | null>)[] = [
-    () => probeContainerDeath(containers),
-    () => probeRestartLoop(containers),
-    () => probeSmart(),
-    () => probeMountReadable(),
-    // After hardware: a dead drive outranks a late backup; before disk capacity,
-    // because an unrecoverable database is worse than a filling one.
-    () => probeBackup(),
-    () => probeDiskCapacity(),
-    () => probeUnhealthy(containers),
-    // Last: a quiet agent is never a household outage.
-    () => probeOrchestra(),
-  ];
+const globalForSeen = globalThis as unknown as { __attentionFirstSeen?: Map<string, string> };
 
-  for (const probe of probes) {
-    try {
-      const found = await probe();
-      if (found) return found;
-    } catch {
-      // Errors in any probe = skip that probe silently — a broken probe must
-      // never fabricate an alert (or fail the whole evaluation).
-    }
-  }
-
-  return { status: "quiet" };
+interface Computed {
+  /** Everything but `changes`, which depends on the request's `since`. */
+  report: Omit<AttentionReport, "changes">;
+  /** Hits in probe order: the kiosk's firstHit reads this, report.hits is sorted. */
+  ordered: AttentionHit[];
+  containers: RuntimeContainer[];
+  backup: BackupStatus | null;
+  dockerError: string | null;
 }
 
-/** Module-level 30s cache — the kiosk polls this every 30s anyway, so there's
- *  no reason to re-run six probes (one of which does file IO across two
- *  history reads) more often than the UI could show a change. */
-const attentionMemo = new Memo<AttentionResult>({
-  key: "attention.result",
+async function computeReport(): Promise<Computed> {
+  // Fetched once and shared by every container-based probe below. If Docker
+  // is unreachable those probes fail with its error, so a dead socket is
+  // never read as "no crashes".
+  let containers: RuntimeContainer[] = [];
+  let dockerFailure: unknown = null;
+  try {
+    containers = await listContainersWithRuntime();
+  } catch (e) {
+    dockerFailure = e;
+  }
+  const needDocker = () => {
+    if (dockerFailure) throw dockerFailure;
+  };
+
+  let backup: BackupStatus | null = null;
+  let backupFailure: unknown = null;
+  try {
+    backup = await readBackupStatus();
+  } catch (e) {
+    backupFailure = e;
+  }
+
+  const defs: ProbeDef[] = [
+    { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(containers)) },
+    { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(containers)) },
+    { id: "smart", label: "Drive health", run: () => probeSmart() },
+    { id: "mounts", label: "Mounts", run: () => probeMountReadable() },
+    // After hardware: a dead drive outranks a late backup; before disk capacity,
+    // because an unrecoverable database is worse than a filling one.
+    { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure) },
+    { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
+    { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
+    // Last: a quiet agent is never a household outage.
+    { id: "orchestra", label: "Orchestrators", run: () => probeOrchestra() },
+  ];
+  const outcomes = await runProbes(defs, PROBE_DEADLINE_MS);
+
+  const seen = globalForSeen.__attentionFirstSeen ?? new Map<string, string>();
+  globalForSeen.__attentionFirstSeen = seen;
+  const now = new Date().toISOString();
+  const ordered = toHits(outcomes, (id) => {
+    if (!seen.has(id)) seen.set(id, now);
+    return seen.get(id)!;
+  });
+  // shortcut: resets on restart, fine while the process is long-lived. Ids of probes that did not answer are kept.
+  const current = new Set(ordered.map((h) => h.id));
+  const answered = new Set(outcomes.filter((o) => o.status.state === "answered").map((o) => o.status.id));
+  for (const id of seen.keys()) if (answered.has(id.split(":")[0] as never) && !current.has(id)) seen.delete(id);
+
+  return {
+    report: { checkedAt: now, probes: outcomes.map((o) => o.status), hits: sortHits(ordered) },
+    ordered,
+    containers,
+    backup,
+    dockerError: dockerFailure ? clipError(dockerFailure) : null,
+  };
+}
+
+/** Module-level 30s cache shared by the kiosk and Home: the restart and drive
+ *  baselines advance on every compute, so both surfaces must read one run. */
+const reportMemo = new Memo<Computed>({
+  key: "attention.report",
   ttlMs: CACHE_TTL_MS,
-  load: computeAttention,
+  load: computeReport,
 });
 
-export function getAttention(): Promise<AttentionResult> {
-  return attentionMemo.get();
+export async function getAttentionReport(sinceRaw: string | null): Promise<AttentionReport> {
+  const c = await reportMemo.get();
+  const sinceMs = parseSince(sinceRaw, Date.now());
+  const events = deriveChanges(c.containers, c.backup, sinceMs, c.ordered.map((h) => h.subject));
+  const changes = c.dockerError
+    ? { since: new Date(sinceMs).toISOString(), status: "failed" as const, error: c.dockerError, events }
+    : { since: new Date(sinceMs).toISOString(), status: "answered" as const, events };
+  return { ...c.report, changes };
+}
+
+export async function getAttention(): Promise<AttentionResult> {
+  return firstHit((await reportMemo.get()).ordered);
 }
