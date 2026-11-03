@@ -87,7 +87,12 @@ mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
   for (const { name, ...opts } of VIEWPORTS) {
-    const shot = (page, s) => page.screenshot({ path: join(OUT_DIR, `docker-${s}-${name}.png`), fullPage: true });
+    // The fixed mobile nav and the Next dev badge would cut a full-page shot; hide them for the capture only.
+    const shot = async (page, s) => {
+      const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
+      await page.screenshot({ path: join(OUT_DIR, `docker-${s}-${name}.png`), fullPage: true });
+      await tag.evaluate((el) => el.remove());
+    };
 
     // Full: order, calm buttons, targets, overflow, confirm step.
     await guard(`${name} full`, async () => {
@@ -116,6 +121,25 @@ try {
       check(`${name} full: prune is not danger-coloured at rest`, rest.at);
       await shot(page, "full");
       if (name === "390") check("390 full: every button and link >= 44x44", (await smallTargets(page)).length === 0, (await smallTargets(page)).join("; "));
+      const find = page.locator(".dk-find input");
+      const fits = await find.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const probe = document.createElement("span");
+        probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${cs.font};letter-spacing:${cs.letterSpacing}`;
+        probe.textContent = el.placeholder;
+        document.body.appendChild(probe);
+        const w = probe.getBoundingClientRect().width;
+        probe.remove();
+        return { w, box: el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), text: el.placeholder };
+      });
+      check(`${name} full: search placeholder fits its box`, fits.w <= fits.box + 0.5, `"${fits.text}" ${Math.round(fits.w)} vs ${Math.round(fits.box)}`);
+      if (name === "390") {
+        const h = await page.evaluate(() => {
+          const row = [...document.querySelectorAll('.dk-all-list [data-row-id^="all-containers-"]')].find((r) => r.querySelector(".dk-row-acts")?.children.length === 1);
+          return row ? Math.round(row.getBoundingClientRect().height) : -1;
+        });
+        check("390 full: a one-action container row is <= 64px", h > 0 && h <= 64, String(h));
+      }
       await prune.click();
       const yes = page.getByRole("button", { name: /^Yes, prune/ });
       await yes.waitFor();
@@ -129,6 +153,15 @@ try {
         return s.color === bad || s.backgroundColor === bad;
       });
       check(`${name} full: only the Yes step is danger-coloured`, danger);
+      if (name === "390") {
+        await yes.scrollIntoViewIfNeeded();
+        const vis = await page.evaluate(() => {
+          const inView = (el) => { const r = el?.getBoundingClientRect(); return !!r && r.top >= 0 && r.bottom <= innerHeight; };
+          const btn = (t) => [...document.querySelectorAll("button")].find((b) => t.test(b.textContent || ""));
+          return inView(btn(/^Yes, prune/)) && inView(btn(/^Cancel/));
+        });
+        check("confirm 390: Yes and Cancel are visible in the viewport after scrollIntoView", vis);
+      }
       await shot(page, "confirm");
       check(`${name} full: 0 page errors`, errors.length === 0, errors.join("; "));
       await context.close();
@@ -174,7 +207,12 @@ try {
       }
       if (scenario === "down-cold") {
         const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
-        check(`${name} down-cold: band has no "last list" clause`, /^Docker unreachable: /.test(band) && !/last list/i.test(band), band);
+        check(`${name} down-cold: band has no "last list" clause`, /^Docker (unreachable: |is not reachable)/.test(band) && !/last list/i.test(band), band);
+        check(`${name} down-cold: no chores heading`, (await page.locator("#dk-chores-h").count()) === 0);
+        const segn = await page.$eval(".dk-segn", (els) => els.map((e) => e.textContent.trim()));
+        check(`${name} down-cold: no segment count reads 0`, segn.length === 3 && !segn.includes("0"), segn.join());
+        check(`${name} down-cold: search is disabled`, await page.locator(".dk-find input").isDisabled());
+        check(`${name} down-cold: no repeated "unreachable" in the band`, !/unreachable.*not reachable|not reachable.*unreachable/i.test(band), band);
         check(`${name} down-cold: no skeleton rows in the chores area`, (await page.locator(".dk-chores .dk-skel").count()) === 0);
         check(`${name} down-cold: subtitle is not "Reading Docker…"`, !(await page.locator(".dk-counts").innerText()).includes("Reading Docker"));
       }

@@ -3410,8 +3410,9 @@ body {
   .dk-chore-title .dk-note { min-height: 2lh; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dk-segs { width: 100%; }
   .dk-segs > button { flex: 1; }
-  .dk-row { flex-wrap: wrap; }
-  .dk-row-acts { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  /* One action stays on the name line (as at 1440); several wrap to a second line. */
+  .dk-row:has(.dk-row-acts > :nth-child(2)) { flex-wrap: wrap; }
+  .dk-row-acts:has(> :nth-child(2)) { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
   .dk-name { white-space: normal; overflow-wrap: anywhere; }
   .dk-link { min-height: 2.75rem; }
   .dk-disclose { min-height: 2.75rem; }

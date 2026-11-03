@@ -2,7 +2,7 @@
    inside it and commits on leave (or on the owner's own write), so a row never moves under the pointer. */
 "use client";
 
-import { forwardRef, useReducer, useRef, useState } from "react";
+import { forwardRef, useEffect, useReducer, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
@@ -18,6 +18,8 @@ export interface EverythingProps {
   volumes: VolumeItem[];
   errors: { containers: string | null; images: string | null; volumes: string | null };
   refresh: () => Promise<unknown>;
+  /** Docker is down and nothing was ever loaded: the search has nothing to search. */
+  cold?: boolean;
 }
 
 const SEGMENTS: { k: FindKind; label: string }[] = [
@@ -34,6 +36,14 @@ interface Item {
 
 export const Everything = forwardRef<HTMLElement, EverythingProps>(function Everything(p, ref) {
   const [q, setQ] = useState("");
+  const [narrow, setNarrow] = useState(false); // below md the full placeholder clips
+  useEffect(() => {
+    const m = window.matchMedia("(max-width: 767px)");
+    const on = () => setNarrow(m.matches);
+    on();
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
   const [, bump] = useReducer((n: number) => n + 1, 0);
   const listRef = useRef<HTMLDivElement>(null);
   const committed = useRef<{ key: string; ids: string[] }>({ key: "", ids: [] });
@@ -87,7 +97,7 @@ export const Everything = forwardRef<HTMLElement, EverythingProps>(function Ever
         <div className="dk-segs" role="group" aria-label="Kind">
           {SEGMENTS.map(({ k, label }) => (
             <SegmentButton key={k} active={p.kind === k} onClick={() => p.onKind(k)}>
-              {label} <span className="dk-segn font-mono">{counts[k]}</span>
+              {label} <span className="dk-segn font-mono">{p.errors[k] && !counts[k] ? "–" : counts[k]}</span>
             </SegmentButton>
           ))}
         </div>
@@ -97,7 +107,8 @@ export const Everything = forwardRef<HTMLElement, EverythingProps>(function Ever
         <Input
           type="search"
           aria-label="Find a container, image or volume"
-          placeholder="Find a container, image or volume"
+          placeholder={narrow ? "Find a container, image…" : "Find a container, image or volume"}
+          disabled={p.cold}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />

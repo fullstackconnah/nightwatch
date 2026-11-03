@@ -143,7 +143,7 @@ export function slotItem(s: Sources): { kind: SlotKind; text: string } {
   if (down) {
     return {
       kind: "error",
-      text: `Docker unreachable: ${s.containers.error}. ${s.containers.loaded ? `Showing the last list from ${s.agoText}; nothing` : "Nothing"} here can change until it is back.`,
+      text: `${/not reachable|unreachable/i.test(s.containers.error ?? "") ? s.containers.error : `Docker unreachable: ${s.containers.error}`}. ${s.containers.loaded ? `Showing the last list from ${s.agoText}; nothing` : "Nothing"} here can change until it is back.`,
     };
   }
   if (s.disk.error) return { kind: "error", text: `Couldn't size the clean-up: ${s.disk.error}` };

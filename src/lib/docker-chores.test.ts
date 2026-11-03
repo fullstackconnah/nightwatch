@@ -132,6 +132,12 @@ test("C12: slot priority error, stale, sizes, cache, with exact copy", () => {
     slotItem(sources({ containers: cold, images: cold, volumes: cold, agoText: "earlier" })).text,
     "Docker unreachable: ECONNREFUSED. Nothing here can change until it is back.",
   );
+  // N2: a message that already says "not reachable" is not prefixed again.
+  const notReach = { error: "Docker is not reachable", loaded: false };
+  assert.equal(
+    slotItem(sources({ containers: notReach, images: notReach, volumes: notReach })).text,
+    "Docker is not reachable. Nothing here can change until it is back.",
+  );
   assert.equal(slotItem(sources({ disk: { error: "HTTP 502", loaded: true } })).kind, "error");
   const stale = slotItem(sources({ staleMs: 3 * 60_000, sizesPending: true }));
   assert.equal(stale.kind, "stale");

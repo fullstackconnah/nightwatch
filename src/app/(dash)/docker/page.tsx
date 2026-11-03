@@ -45,7 +45,8 @@ function DockerPage() {
   const reclaim = disk.data ?? null;
   const errors = { containers: ctr.error?.message ?? null, images: img.error?.message ?? null, volumes: vol.error?.message ?? null };
   const down = !!(errors.containers && errors.images && errors.volumes);
-  const orphans = reclaim?.volumes.orphans ?? [];
+  const cold = down && !ctr.data && !img.data && !vol.data; // every read failed and nothing was ever loaded
+  const orphans =reclaim?.volumes.orphans ?? [];
   const sizesPending = orphans.some((o) => o.size == null);
   const loading = !reclaim && !disk.error;
   const hero = reclaim ? heroBytes(reclaim, sizesPending) : { bytes: 0, plus: false };
@@ -102,7 +103,7 @@ function DockerPage() {
         slot={slot}
       />
 
-      <section className="dk-chores" aria-labelledby="dk-chores-h">
+      {!cold && <section className="dk-chores" aria-labelledby="dk-chores-h">
         <div className="dk-section-head">
           <h2 id="dk-chores-h">To clear, biggest first</h2>
         </div>
@@ -115,9 +116,10 @@ function DockerPage() {
           down={down}
           refresh={refresh}
         />
-      </section>
+      </section>}
 
       <Everything
+        cold={cold}
         ref={everythingRef}
         kind={kind}
         onKind={setKind}
