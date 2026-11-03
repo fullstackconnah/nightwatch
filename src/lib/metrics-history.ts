@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { listContainers } from "@/lib/docker";
+import { attachSummary, type SummaryMetric, type SummaryResult } from "@/lib/history-summary";
 
 /**
  * Long-range metrics history: a sampler piggybacked on the existing 1Hz telemetry
@@ -55,6 +56,9 @@ export interface HistoryQueryResult {
   host: HistoryBucket[];
   containers: Record<string, HistoryBucket[]>;
 }
+
+/** Present only when the caller asked for `summary` (Timeline view). */
+export type HistoryQueryWithSummary = HistoryQueryResult & Partial<SummaryResult>;
 
 const RANGE_MS: Record<HistoryRange, number> = {
   "1h": 60 * 60 * 1000,
@@ -341,7 +345,7 @@ function emitBuckets(
  * regardless of the requested range so the UI can render an honest "recording
  * since" caption even when the range asked for is wider than what exists.
  */
-export async function queryMetricsHistory(range: HistoryRange, containerNames: string[]): Promise<HistoryQueryResult> {
+export async function queryMetricsHistory(range: HistoryRange, containerNames: string[], summary?: SummaryMetric): Promise<HistoryQueryWithSummary> {
   const now = Date.now();
   const rangeMs = RANGE_MS[range];
   const startTs = now - rangeMs;
@@ -368,7 +372,7 @@ export async function queryMetricsHistory(range: HistoryRange, containerNames: s
     containers[name] = downsampleContainer(allSamples, name, startTs, now, widthMs);
   }
 
-  return { recordingSince: since, host, containers };
+  return attachSummary({ recordingSince: since, host, containers }, allSamples, startTs, now, widthMs, summary);
 }
 
 /* -----------------------------------------------------------------------

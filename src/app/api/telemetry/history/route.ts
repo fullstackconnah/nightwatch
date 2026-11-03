@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { queryMetricsHistory, type HistoryRange } from "@/lib/metrics-history";
+import { parseSummary } from "@/lib/history-summary";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     .slice(0, 4); // hard cap — matches the picker's own limit
 
   try {
-    const result = await queryMetricsHistory(range, containers);
+    const result = await queryMetricsHistory(range, containers, parseSummary(searchParams.get("summary")));
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(
