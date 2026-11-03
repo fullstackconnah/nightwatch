@@ -2,6 +2,10 @@
 
 export type ResourcesView = "watch" | "timeline";
 
+type Range = "live" | "1h" | "24h" | "7d";
+export const RANGE_SHORT: Record<Range, string> = { live: "60 s", "1h": "1H", "24h": "24H", "7d": "7D" };
+export const RANGE_WORD: Record<Range, string> = { live: "last 60 s", "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days" };
+
 export function parseView(v: unknown): ResourcesView {
   return v === "timeline" ? "timeline" : "watch";
 }
@@ -116,4 +120,22 @@ export function ringTail(
     if (n) out[i] = sum / n;
   }
   return out;
+}
+
+/** Range averages for strip order and the auto top 4: only containers in the CURRENT list.
+ *  The 7D summary holds hundreds of gone (runner) names; those live on in the chart only
+ *  through containersTotal (the rest layer). Names with no summary entry are left out. */
+export function rangeAvgs(
+  summary: Readonly<Record<string, { avg: number }>>,
+  current: readonly string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const name of current) if (summary[name]) out.set(name, summary[name].avg);
+  return out;
+}
+
+/** How a strip draws its spark: under 2 real readings is a dot, so a new container never draws a line across the width. */
+export function sparkMode(spark: readonly (number | null)[]): "dot" | "line" | "empty" {
+  const n = spark.filter((v) => v != null).length;
+  return n === 0 ? "empty" : n === 1 ? "dot" : "line";
 }

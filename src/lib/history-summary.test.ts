@@ -58,3 +58,24 @@ test("parseSummary accepts cpu and mem, ignores anything else", () => {
   assert.equal(parseSummary("mem"), "mem");
   for (const v of [null, "", "disk", "CPU", "cpu,mem"]) assert.equal(parseSummary(v), undefined);
 });
+
+test("no samples: containersTotal is all null and summary is empty", () => {
+  const r = summarizeContainers([], 0, 180_000, W, "cpu", 48);
+  assert.deepEqual(r.containersTotal, [null, null, null, null]);
+  assert.deepEqual(r.summary, {});
+});
+
+test("one sample: avg equals peak and only its spark bin is filled", () => {
+  const r = summarizeContainers([S[0]], 0, 180_000, W, "cpu", 48);
+  assert.equal(r.summary.a.avg, 2);
+  assert.equal(r.summary.a.peak, 2);
+  assert.equal(r.summary.a.spark.filter((v) => v != null).length, 1);
+});
+
+test("startTs === endTs: no NaN spark index, a sample at that instant lands in bin 0", () => {
+  const one: SummarySample[] = [{ t: 5000, cpu: 1, memUsed: 1, containers: { a: [3, 9, 0, 0] } }];
+  const r = summarizeContainers(one, 5000, 5000, W, "cpu", 48);
+  assert.equal(r.summary.a.spark[0], 3);
+  assert.equal(r.summary.a.spark.filter((v) => v != null).length, 1);
+  assert.deepEqual(r.containersTotal, [3]);
+});

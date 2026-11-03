@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Sparkline } from "@/components/sparkline";
 import {
   HistoryRangeControl,
@@ -47,6 +47,7 @@ export function BoxBand({
   onRangeChange,
   stale,
   history,
+  chart,
 }: {
   kind: "cpu" | "mem";
   host: TelemetrySample["host"];
@@ -56,6 +57,8 @@ export function BoxBand({
   onRangeChange: (r: HistoryRangeOption) => void;
   stale: boolean;
   history: BandHistory;
+  /** Timeline view: replaces the history panel (compare picker, chart, legend, hint). */
+  chart?: ReactNode;
 }) {
   const isCpu = kind === "cpu";
   const trackRef = useRef<HTMLDivElement>(null);
@@ -178,13 +181,15 @@ export function BoxBand({
         </div>
       </div>
 
-      <MetricHistoryPanel
-        range={range}
-        {...history}
-        formatValue={fmt}
-        formatAxis={isCpu ? compactPct : compactBytes}
-        steps={isCpu ? CPU_STEPS : MEM_STEPS}
-      />
+      {chart ?? (
+        <MetricHistoryPanel
+          range={range}
+          {...history}
+          formatValue={fmt}
+          formatAxis={isCpu ? compactPct : compactBytes}
+          steps={isCpu ? CPU_STEPS : MEM_STEPS}
+        />
+      )}
     </section>
   );
 }
