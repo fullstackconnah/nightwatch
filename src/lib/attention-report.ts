@@ -51,7 +51,8 @@ export const PENDING = Symbol("pending");
 export interface ProbeDef {
   id: ProbeId;
   label: string;
-  run: () => RawHit[] | typeof PENDING | Promise<RawHit[] | typeof PENDING>;
+  /** `isLate()` is true once this probe's deadline fired: skip any state write, the result is dropped. */
+  run: (isLate: () => boolean) => RawHit[] | typeof PENDING | Promise<RawHit[] | typeof PENDING>;
 }
 export interface ProbeOutcome {
   status: ProbeStatus;
@@ -74,11 +75,12 @@ export function runProbes(defs: ProbeDef[], deadlineMs: number): Promise<ProbeOu
   return Promise.all(
     defs.map(async ({ id, label, run }): Promise<ProbeOutcome> => {
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<typeof PENDING>((resolve) => {
-        timer = setTimeout(() => resolve(PENDING), deadlineMs);
+      let late = false;
+      const deadline = new Promise<typeof PENDING>((resolve) => {
+        timer = setTimeout(() => ((late = true), resolve(PENDING)), deadlineMs);
       });
       try {
-        const found = await Promise.race([Promise.resolve().then(run), late]);
+        const found = await Promise.race([Promise.resolve().then(() => run(() => late)), deadline]);
         if (found === PENDING) return { status: { id, label, state: "pending" }, hits: [] };
         return { status: { id, label, state: "answered", hits: found.length }, hits: found };
       } catch (e) {

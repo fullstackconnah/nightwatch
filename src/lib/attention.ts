@@ -196,7 +196,7 @@ function probeRestartLoop(containers: RuntimeContainer[]): RawHit[] {
  * card depends on to mean something. RAID/pool/filesystem integrity failures
  * ride the same probe since they come off the same getSmartSnapshot() call.
  */
-async function probeSmart(): Promise<RawHit[]> {
+async function probeSmart(isLate: () => boolean): Promise<RawHit[]> {
   const snapshot = await getSmartSnapshot();
 
   const hits: RawHit[] = [];
@@ -214,8 +214,9 @@ async function probeSmart(): Promise<RawHit[]> {
       const prev = verdicts.get(drive.device);
       if (prev === "ok" || prev === "warn") hits.push(hit(`drive:${drive.device}`, "warn", driveUnreadable(drive.name)));
     }
-    verdicts.set(drive.device, drive.verdict);
   }
+  // A late probe is dropped by the report, so its baseline must not advance or the hit is lost for good.
+  if (!isLate()) for (const drive of snapshot.drives) verdicts.set(drive.device, drive.verdict);
   return hits;
 }
 
@@ -467,7 +468,7 @@ async function computeReport(): Promise<Computed> {
   const defs: ProbeDef[] = [
     { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(containers)) },
     { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(containers)) },
-    { id: "smart", label: "Drive health", run: () => probeSmart() },
+    { id: "smart", label: "Drive health", run: (isLate) => probeSmart(isLate) },
     { id: "mounts", label: "Mounts", run: () => probeMountReadable() },
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.

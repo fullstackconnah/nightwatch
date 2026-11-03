@@ -41,6 +41,16 @@ test("a probe that resolves after the deadline is pending and its late hits are 
   assert.equal(o.hits.length, 0);
 });
 
+test("isLate is true once the deadline timer has fired, false before", async () => {
+  const seen: Record<string, boolean> = {};
+  const probe = (id: ProbeDef["id"], ms: number): ProbeDef =>
+    def(id, (isLate) => new Promise<RawHit[]>((r) => setTimeout(() => ((seen[id] = isLate()), r([])), ms)));
+  const out = await runProbes([probe("smart", 120), probe("mounts", 0)], 40);
+  assert.deepEqual(out.map((o) => o.status.state), ["pending", "answered"]);
+  await new Promise((r) => setTimeout(r, 150)); // let the late probe finish
+  assert.deepEqual(seen, { mounts: false, smart: true });
+});
+
 test("a probe that returns PENDING is pending", async () => {
   const [o] = await runProbes([def("orchestra", () => PENDING)], 50);
   assert.equal(o.status.state, "pending");
