@@ -117,3 +117,15 @@ export function ringTail(
   }
   return out;
 }
+
+/** Range averages for strip order and the auto top 4: only containers in the CURRENT list.
+ *  The 7D summary holds hundreds of gone (runner) names; those live on in the chart only
+ *  through containersTotal (the rest layer). Names with no summary entry are left out. */
+export function rangeAvgs(
+  summary: Readonly<Record<string, { avg: number }>>,
+  current: readonly string[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const name of current) if (summary[name]) out.set(name, summary[name].avg);
+  return out;
+}

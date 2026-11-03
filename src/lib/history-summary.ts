@@ -56,7 +56,7 @@ export function summarizeContainers(
   for (const s of samples) {
     if (s.t < startTs || s.t > endTs) continue;
     const bi = Math.floor(s.t / widthMs) - firstKey;
-    const si = Math.min(points - 1, Math.floor((s.t - startTs) / binW));
+    const si = binW > 0 ? Math.min(points - 1, Math.floor((s.t - startTs) / binW)) : 0; // binW 0 when start === end
     totN[bi]++;
     for (const name in s.containers) {
       const v = s.containers[name][idx];

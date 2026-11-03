@@ -10,7 +10,7 @@
  * (memo equality) and never reads layout.
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown, ExternalLink, GitCompare, List, Plus, RotateCw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,8 +19,9 @@ import { Sparkline } from "@/components/sparkline";
 import { ImageInUseButton } from "@/components/resources/image-delete-action";
 import { CreateContainerDialog } from "@/components/resources/create-container";
 import { LifecycleActions, LifecycleError, useLifecycle } from "@/components/resources/container-controls";
-import { SeriesSwatch } from "@/components/resources/resource-overview";
+import { SeriesSwatch, type HistoryRangeOption } from "@/components/resources/resource-overview";
 import { SERIES_SLOTS, type SeriesSlot } from "@/lib/chart-series";
+import { holdNearTies, rangeAvgs } from "@/lib/timeline";
 import { ApiError, seriesFor, type ResourceSnapshot, type TelemetryRow, type TelemetrySample } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -58,6 +59,19 @@ export function telemetryRowEqual(a: TelemetryRow | undefined, b: TelemetryRow |
 
 const sparkEqual = (a: number[] | null, b: number[] | null) =>
   a === b || (!!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]));
+
+/** OPEN-T3 default. Timeline's quiet strips draw on quietCap of the AVERAGES, with a 2 px warn tick where a
+ *  spike is clamped. "peak" scales them to the quiet peak instead (honest, but reads oddly under "averaged under"). */
+const QUIET_SPARK_SCALE: "avg" | "peak" = "avg";
+
+export interface RangeStat {
+  avg: number;
+  peak: number;
+  spark: (number | null)[];
+}
+const RANGE_SHORT: Record<HistoryRangeOption, string> = { live: "60 s", "1h": "1H", "24h": "24H", "7d": "7D" };
+const RANGE_WORD: Record<HistoryRangeOption, string> = { live: "last 60 s", "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days" };
+const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 /** Start / stop / restart (+ pause) with its inline error, for rows outside the watchlist (DISK, NET). */
 export function LifecycleGroup({ c, onDone }: { c: ResourceContainer; onDone: () => void }) {
@@ -150,7 +164,7 @@ const WatchRow = memo(function WatchRow(p: RowProps) {
   );
 }, rowEqual);
 
-function Cell({ label, value, sub, dim, children }: { label: string; value: string; sub?: string; dim?: boolean; children?: React.ReactNode }) {
+export function Cell({ label, value, sub, dim, children }: { label: string; value: string; sub?: string; dim?: boolean; children?: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <div className="microlabel mb-1">{label}</div>
@@ -162,14 +176,28 @@ function Cell({ label, value, sub, dim, children }: { label: string; value: stri
 }
 
 /** The open row (2.4): detail fields, image, integration fields, then the actions (s6, 7.2). */
-function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare, onChanged }: RowProps & { id: string }) {
+export function RowDetail({
+  id,
+  c,
+  row,
+  widgetFields,
+  compared,
+  compareFull,
+  onCompare,
+  onChanged,
+  extraCells,
+}: Pick<RowProps, "c" | "row" | "widgetFields" | "compared" | "compareFull" | "onCompare" | "onChanged"> & {
+  id: string;
+  /** Timeline adds one more cell to the detail grid (the range average and peak). */
+  extraCells?: ReactNode;
+}) {
   const lifecycle = useLifecycle(c.id, onChanged);
   const memPct = row && row.memLimit > 0 ? (row.memBytes / row.memLimit) * 100 : null;
   const sizesLate = c.sizeRootFs == null || c.sizeRw == null;
   const link = cn(buttonVariants({ variant: "outline", size: "sm" }), "md:h-8");
   return (
     <div id={id} className="wl-detail">
-      <div className="wl-dgrid">
+      <div className={cn("wl-dgrid", extraCells && "tl-dgrid")}>
         <Cell label="CPU" value={row ? formatPercent(row.cpuPct, 2) : "no data"} sub={row ? "of the whole box" : ""} />
         <Cell
           label="Memory"
@@ -188,6 +216,7 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
         />
         <Cell label="pids" value={row ? String(row.pids) : "no data"} />
         <Cell label="Net rx / tx" value={row ? `${formatRate(row.rxRate)} / ${formatRate(row.txRate)}` : "no data"} />
+        {extraCells}
       </div>
       <div className="flex items-baseline gap-2 min-w-0 my-3">
         <span className="microlabel shrink-0">image</span>
@@ -257,11 +286,114 @@ function RowDetail({ id, c, row, widgetFields, compared, compareFull, onCompare,
   );
 }
 
+const sparkOf = (s: RangeStat) => s.spark.map((v) => v ?? 0);
+
+interface StripProps extends Omit<RowProps, "spark" | "scale"> {
+  scale: number;
+  /** The range figures; null = no history in this range (a new container, or history unavailable). */
+  stat: RangeStat | null;
+  /** The 60 s ring, shown when there is no stat. */
+  ring: number[] | null;
+  rangeLabel: string;
+  tickOff: boolean;
+}
+
+function stripEqual(p: StripProps, n: StripProps): boolean {
+  return (
+    p.c === n.c &&
+    p.kind === n.kind &&
+    p.group === n.group &&
+    p.rank === n.rank &&
+    p.scale === n.scale &&
+    p.open === n.open &&
+    p.slot === n.slot &&
+    p.compared === n.compared &&
+    p.compareFull === n.compareFull &&
+    p.tickOff === n.tickOff &&
+    p.rangeLabel === n.rangeLabel &&
+    p.widgetFields === n.widgetFields &&
+    telemetryRowEqual(p.row, n.row) &&
+    p.stat?.avg === n.stat?.avg &&
+    p.stat?.peak === n.stat?.peak &&
+    sparkEqual(p.stat ? sparkOf(p.stat) : p.ring, n.stat ? sparkOf(n.stat) : n.ring)
+  );
+}
+
+/** One Timeline strip: a tick to chart it, then A's row (dot, name, range sparkline, avg, now). */
+const TimelineStrip = memo(function TimelineStrip(p: StripProps) {
+  const { c, kind, row, scale, stat, ring, open, slot, register } = p;
+  const isCpu = kind === "cpu";
+  const fmt = (v: number) => (isCpu ? formatPercent(v, v < 0.1 ? 2 : 1) : formatBytes(v));
+  const now = row ? (isCpu ? row.cpuPct : row.memBytes) : null;
+  const running = c.state === "running";
+  const isNew = running && !!row && !stat;
+  const spark = stat ? sparkOf(stat) : ring;
+  const peak = stat?.peak ?? (ring && ring.length ? Math.max(...ring) : 0);
+  const clamped = scale > 0 && peak > scale;
+  const ref = useCallback((el: HTMLDivElement | null) => register(c.id, el), [register, c.id]);
+  const detailId = `wl-det-${c.id.slice(0, 12)}`;
+  const avgText = stat ? fmt(stat.avg) : isNew ? "new" : "—";
+  return (
+    <div ref={ref} role="listitem" className="wl-item" data-row-id={c.id} data-rank={p.rank} data-open={open || undefined}>
+      <div className="tl-strip">
+        <button
+          type="button"
+          className="tl-tick"
+          aria-pressed={p.compared}
+          aria-label={`Chart ${c.name}`}
+          disabled={p.tickOff}
+          title={p.tickOff ? "4 is the most a chart stays readable" : undefined}
+          onClick={() => p.onCompare(c.name)}
+        >
+          {slot ? <SeriesSwatch slot={slot} /> : <span className="tl-tickbox" aria-hidden />}
+        </button>
+        <button
+          type="button"
+          className="wl-rowbtn tl-rowbtn"
+          aria-expanded={open}
+          aria-controls={open ? detailId : undefined}
+          onClick={() => p.onToggle(c.id)}
+          title={`${c.name}: ${avgText} ${p.rangeLabel} average`}
+        >
+          <span className={cn("dot wl-dot", running ? "dot-running" : "dot-stopped")} />
+          <span className={cn("wl-name font-mono text-[0.8rem]", now == null && "text-ink-faint")}>{c.name}</span>
+          <span className="tl-spark" style={slot ? { color: slot.stroke } : undefined}>
+            {spark && spark.length > 0 && (
+              <Sparkline values={spark} max={scale} width={160} height={20} className={cn("w-full", !slot && "text-ink-dim")} />
+            )}
+            {clamped && <span className="tl-clip" aria-hidden />}
+          </span>
+          <span
+            className={cn("tl-avg font-mono text-[0.75rem]", stat ? "text-ink" : "text-ink-faint")}
+            title={isNew ? "no history in this range yet" : undefined}
+          >
+            {avgText}
+          </span>
+          <span className={cn("tl-now font-mono text-[0.75rem]", now == null ? "text-ink-faint" : "text-ink")}>
+            {now == null ? "no data" : fmt(now)}
+          </span>
+          <ChevronDown size={13} className="wl-chev" aria-hidden />
+        </button>
+      </div>
+      {open && (
+        <RowDetail
+          id={detailId}
+          {...p}
+          extraCells={<Cell label={`${p.rangeLabel} avg · peak`} value={avgText} sub={stat ? `peak ${fmt(stat.peak)}` : ""} />}
+        />
+      )}
+    </div>
+  );
+}, stripEqual);
+
 interface Committed {
   split: WatchSplit;
   scale: number;
+  /** Timeline quiet strips' spark scale (QUIET_SPARK_SCALE). */
+  qscale: number;
   cap: number;
 }
+
 
 export interface WatchlistProps {
   kind: "cpu" | "mem";
@@ -278,6 +410,15 @@ export interface WatchlistProps {
   widgetFieldsOf: (name: string) => WidgetField[] | undefined;
   /** Refetch /api/resources (after a lifecycle call, a create, or Retry now). */
   onChanged: () => void;
+  /** "timeline": strips ordered by range average. "watch" (default) is the A watchlist, unchanged. */
+  variant?: "watch" | "timeline";
+  range?: HistoryRangeOption;
+  /** Timeline, non-live: the history summary by container name. Absent = no history (strips read "new"). */
+  rangeStats?: Readonly<Record<string, RangeStat>>;
+  /** Timeline: the committed top 4 names, at most once per commit. */
+  onCommit?: (names: string[]) => void;
+  /** Timeline: the picks already hold 4. */
+  tickFull?: boolean;
 }
 
 const COMPARE_MAX = 4;
@@ -310,22 +451,53 @@ export function Watchlist(p: WatchlistProps) {
 
   const loading = !p.error && (!p.hasData || !latest);
   const rows = latest?.containers;
+  const tl = p.variant === "timeline";
+  const range = p.range ?? "live";
+  const nameOf = new Map(containers.map((c) => [c.id, c.name]));
+  // Timeline ranks the range average of the containers in the CURRENT list only (rangeAvgs): the 7D
+  // summary also holds hundreds of gone runner names that must never be picked or listed.
+  const avgs = tl && range !== "live" ? rangeAvgs(p.rangeStats ?? {}, containers.map((c) => c.name)) : null;
+  const ringOf = (id: string) => seriesFor(samples, id, kind);
+  const statCache = new Map<string, RangeStat | null>();
+  const statOf = (id: string): RangeStat | null => {
+    if (!tl) return null;
+    let st = statCache.get(id);
+    if (st === undefined) {
+      if (range !== "live") st = p.rangeStats?.[nameOf.get(id) ?? ""] ?? null;
+      else {
+        const r = ringOf(id);
+        st = { avg: mean(r), peak: Math.max(0, ...r), spark: r };
+      }
+      statCache.set(id, st);
+    }
+    return st;
+  };
   const valueOf = (id: string) => {
     const r = rows?.[id];
-    return r ? (isCpu ? r.cpuPct : r.memBytes) : null;
+    if (!r) return null;
+    if (!tl) return isCpu ? r.cpuPct : r.memBytes;
+    return avgs?.get(nameOf.get(id) ?? "") ?? mean(ringOf(id)); // no history: rank by the ring mean
   };
 
   // Offer the order only once real data exists, so the first offer commits the real ranking.
   if (!p.error && p.hasData && latest) {
-    const split = splitWatch(
+    let split = splitWatch(
       containers.map((c) => ({ id: c.id, name: c.name, running: c.state === "running", value: valueOf(c.id) })),
       kind,
     );
+    // Timeline: near-ties keep the committed order (a strip passes its neighbour only by more than 5%).
+    if (tl && committed.current) {
+      split = { ...split, watch: holdNearTies(committed.current.split.watch, new Map(split.watch.map((id) => [id, valueOf(id) ?? 0]))) };
+    }
     const ids = [...split.watch, "\0quiet", ...split.quiet, "\0stopped", ...split.stopped];
     if (ranker.offer(ids, Date.now(), held) || !committed.current) {
-      const top = Math.max(0, ...split.watch.map((id) => valueOf(id) ?? 0));
+      const steps = isCpu ? CPU_STEPS : MEM_STEPS;
+      const peakOf = (id: string) => (tl ? (statOf(id)?.peak ?? valueOf(id) ?? 0) : (valueOf(id) ?? 0));
+      const top = Math.max(0, ...split.watch.map(peakOf));
       const quietMax = Math.max(0, ...split.quiet.map((id) => valueOf(id) ?? 0));
-      committed.current = { split, scale: snapScale(top, isCpu ? CPU_STEPS : MEM_STEPS), cap: quietCap(kind, quietMax) };
+      const cap = quietCap(kind, quietMax);
+      const qscale = tl && QUIET_SPARK_SCALE === "peak" ? snapScale(Math.max(0, ...split.quiet.map(peakOf)), steps) : cap;
+      committed.current = { split, scale: snapScale(top, steps), qscale, cap };
     }
   }
 
@@ -335,6 +507,17 @@ export function Watchlist(p: WatchlistProps) {
   const watch = C ? shown(C.split.watch) : [];
   const quiet = C ? shown(C.split.quiet) : [];
   const stopped = C ? shown(C.split.stopped) : [];
+
+  // Timeline: tell the page the committed top 4 (its auto picks), once per commit.
+  const autoKey = watch
+    .slice(0, 4)
+    .map((id) => byId.get(id)?.name ?? "")
+    .join("\n");
+  const onCommit = p.onCommit;
+  useEffect(() => {
+    if (tl) onCommit?.(autoKey ? autoKey.split("\n") : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onCommit is a stable setter wrapper in the page; only a commit should re-announce.
+  }, [tl, autoKey]);
 
   // The visible items in DOM (and rank) order; folds hold their rows only while open.
   const items: { key: string; fold?: "quiet" | "stopped"; group?: Group }[] = [
@@ -397,7 +580,7 @@ export function Watchlist(p: WatchlistProps) {
   }, [openId]);
 
   const toggle = useCallback((id: string) => setOpenId((cur) => (cur === id ? null : id)), []);
-  const compareFull = compare.length >= COMPARE_MAX;
+  const compareFull = tl ? !!p.tickFull : compare.length >= COMPARE_MAX;
   const runningCount = watch.length + quiet.length;
   const scale = C?.scale ?? 1;
   const showHeld = held && ranker.pending;
@@ -417,7 +600,7 @@ export function Watchlist(p: WatchlistProps) {
 
   const quietLabel = C
     ? isCpu && C.cap <= QUIET_CPU
-      ? `Quiet · ${quiet.length} running under ${QUIET_CPU}%`
+      ? `Quiet · ${quiet.length} ${tl ? "averaged" : "running"} under ${QUIET_CPU}%`
       : `The other ${quiet.length} · each under ${isCpu ? `${C.cap}%` : formatBytes(C.cap, 0)}`
     : "";
 
@@ -472,8 +655,20 @@ export function Watchlist(p: WatchlistProps) {
       <>
         {isCpu && watch.length === 0 && (
           <p className="wl-note text-xs text-ink-dim m-0">
-            Nothing is above {QUIET_CPU}% of the box right now. Quiet is normal here.
+            {tl
+              ? `Nothing averaged above ${QUIET_CPU}% of the box over the ${RANGE_WORD[range]}.`
+              : `Nothing is above ${QUIET_CPU}% of the box right now. Quiet is normal here.`}
           </p>
+        )}
+        {tl && (
+          <div className="tl-colhead microlabel" aria-hidden>
+            <span />
+            <span>container</span>
+            <span>{RANGE_SHORT[range]}</span>
+            <span>avg</span>
+            <span>now</span>
+            <span />
+          </div>
         )}
         <div ref={boxRef} className="wl-rows" role="list">
           {items.map((it, i) => {
@@ -503,6 +698,33 @@ export function Watchlist(p: WatchlistProps) {
             const c = byId.get(it.key) as ResourceContainer;
             const row = rows?.[c.id];
             const ci = compare.indexOf(c.name);
+            if (tl) {
+              const st = statOf(c.id);
+              return (
+                <TimelineStrip
+                  key={c.id}
+                  c={c}
+                  kind={kind}
+                  group={it.group as Group}
+                  rank={i + 1}
+                  row={row}
+                  scale={it.group === "quiet" ? (C?.qscale ?? 1) : scale}
+                  stat={st}
+                  ring={row && !st ? ringOf(c.id) : null}
+                  rangeLabel={RANGE_SHORT[range]}
+                  tickOff={compareFull && ci < 0}
+                  open={openId === c.id}
+                  slot={ci >= 0 ? SERIES_SLOTS[slots.get(c.name) ?? 1] : null}
+                  compared={ci >= 0}
+                  compareFull={compareFull}
+                  widgetFields={p.widgetFieldsOf(c.name)}
+                  onToggle={toggle}
+                  onCompare={p.onToggleCompare}
+                  onChanged={p.onChanged}
+                  register={register}
+                />
+              );
+            }
             return (
               <WatchRow
                 key={c.id}
@@ -533,8 +755,8 @@ export function Watchlist(p: WatchlistProps) {
   return (
     <>
     <section
-      className="panel wl-panel"
-      aria-label={isCpu ? "Busiest containers by CPU" : "Containers by memory"}
+      className={cn("panel wl-panel", tl && "tl-panel")}
+      aria-label={tl ? "Containers by range average" : isCpu ? "Busiest containers by CPU" : "Containers by memory"}
       data-stale={stale || undefined}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
@@ -545,11 +767,12 @@ export function Watchlist(p: WatchlistProps) {
     >
       <div className="wl-head">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-sm font-semibold tracking-tight m-0">{isCpu ? "Busiest" : "Heaviest"}</h2>
+          <h2 className="text-sm font-semibold tracking-tight m-0">{tl ? "Containers" : isCpu ? "Busiest" : "Heaviest"}</h2>
           <span className="text-2xs text-ink-dim truncate">{countText}</span>
         </div>
         <div className="wl-meta">
           <span className={cn("microlabel !text-warn order-2 md:order-none", !showHeld && "invisible")}>order held</span>
+          {tl && <span className="microlabel order-1 md:order-none">{`sorted by ${RANGE_SHORT[range]} average`}</span>}
           <span className="microlabel order-1 md:order-none">{scaleText}</span>
         </div>
         {create}

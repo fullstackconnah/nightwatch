@@ -6,7 +6,7 @@
    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md */
 "use client";
 
-import { Suspense, memo, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
@@ -17,6 +17,7 @@ import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/resources/treemap";
 import { BoxBand } from "@/components/resources/box-band";
+import { TimelineChart } from "@/components/resources/timeline-chart";
 import { LifecycleGroup, Watchlist, telemetryRowEqual } from "@/components/resources/watchlist";
 import {
   ResourceOverview,
@@ -28,7 +29,9 @@ import { DiskContentsPanel } from "@/components/resources/disk-contents";
 
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
+import { adoptPick, parseView, type ResourcesView } from "@/lib/timeline";
 import {
+  ApiError,
   fetcher,
   useResources,
   useTelemetryStream,
@@ -83,7 +86,13 @@ interface HistoryApiResponse {
   recordingSince: number | null;
   host: HistoryBucketDto[];
   containers: Record<string, HistoryBucketDto[]>;
+  /** Only with `&summary=cpu|mem` (the Timeline view). */
+  containersTotal?: (number | null)[];
+  summary?: Record<string, { avg: number; peak: number; spark: (number | null)[] }>;
 }
+
+/** Watchlist | Timeline preference, one for CPU and MEM (the kiosk's layout key style). */
+const VIEW_STORAGE_KEY = "resources-view";
 
 type Metric = "all" | "cpu" | "mem" | "disk" | "net" | "gpu" | "blkio";
 
@@ -510,6 +519,34 @@ function ResourcesPageInner() {
     if (isMetric(requested)) setMetric(requested);
   }, [searchParams]);
 
+  // Watchlist | Timeline (CPU and MEM): ?view= first, then storage, then the watchlist. Storage may throw
+  // (private mode, blocked): the view then lives in memory and ?view= still works.
+  const [view, setView] = useState<ResourcesView>("watch");
+  useEffect(() => {
+    const q = searchParams.get("view");
+    if (q === "timeline" || q === "watchlist") {
+      setView(parseView(q));
+      return;
+    }
+    try {
+      setView(parseView(window.localStorage.getItem(VIEW_STORAGE_KEY)));
+    } catch {
+      /* keep the in-memory view */
+    }
+  }, [searchParams]);
+  const selectView = (v: ResourcesView) => {
+    setView(v);
+    const name = v === "timeline" ? "timeline" : "watchlist";
+    try {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, name);
+    } catch {
+      /* the choice just does not persist */
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", name);
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+  };
+
   // ?q= deep link into the ALL tab's process/container filter (ProcessTable
   // takes an initialQuery prop; this is the other half).
   const [initialQuery, setInitialQuery] = useState<string | undefined>(undefined);
@@ -579,6 +616,19 @@ function ResourcesPageInner() {
   // flipping between the two tabs keeps whatever the owner was just comparing.
   const [historyRange, setHistoryRange] = useState<HistoryRangeOption>("live");
   const [historyContainers, setHistoryContainers] = useState<string[]>([]);
+  // Timeline: no picks = the committed top 4 (autoTop4) is charted, so colour follows the container across the switch.
+  const timelineActive = !!historyMetric && view === "timeline";
+  const [autoTop4, setAutoTop4] = useState<string[]>([]);
+  const onCommit = useCallback(
+    (names: string[]) => setAutoTop4((prev) => (prev.length === names.length && prev.every((n, i) => n === names[i]) ? prev : names)),
+    [],
+  );
+  const chartIds = timelineActive && historyContainers.length === 0 ? autoTop4 : historyContainers;
+  // Entering Timeline at LIVE moves the shared range to 1H; leaving never touches it.
+  useEffect(() => {
+    if (timelineActive) setHistoryRange((r) => (r === "live" ? "1h" : r));
+  }, [timelineActive]);
+  const tickContainer = (name: string) => setHistoryContainers((prev) => adoptPick(autoTop4, prev, name));
   function toggleHistoryContainer(name: string) {
     setHistoryContainers((prev) => {
       if (prev.includes(name)) return prev.filter((n) => n !== name);
@@ -588,14 +638,29 @@ function ResourcesPageInner() {
   }
   const historyKey =
     historyMetric && historyRange !== "live"
-      ? `/api/telemetry/history?range=${historyRange}&containers=${encodeURIComponent(historyContainers.join(","))}`
+      ? `/api/telemetry/history?range=${historyRange}&containers=${encodeURIComponent(chartIds.join(","))}`
       : null;
   // ~30s cadence, and only while a history range is actually selected — LIVE mode
   // (the default) polls nothing extra beyond the existing 1Hz SSE stream.
-  const { data: historyData, isLoading: historyLoading } = useSWR<HistoryApiResponse>(historyKey, fetcher, {
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyError,
+    mutate: mutateHistory,
+  } = useSWR<HistoryApiResponse>(historyKey, fetcher, {
     refreshInterval: 30000,
     keepPreviousData: true,
   });
+  // Timeline's range summary: keyed on range + metric only, so a new auto top 4 never reruns the 7D pass.
+  const summaryKey =
+    timelineActive && historyRange !== "live" ? `/api/telemetry/history?range=${historyRange}&containers=&summary=${historyMetric}` : null;
+  const {
+    data: summaryData,
+    isLoading: summaryLoading,
+    error: summaryError,
+    mutate: mutateSummary,
+  } = useSWR<HistoryApiResponse>(summaryKey, fetcher, { refreshInterval: 30000, keepPreviousData: true });
+  const timelineError = (historyError ?? summaryError) as unknown;
   const historyBucketTimes = useMemo(() => historyData?.host.map((b) => b.t) ?? [], [historyData]);
   const historyHostPoints = useMemo(() => {
     if (!historyData || !historyMetric) return undefined;
@@ -606,7 +671,7 @@ function ResourcesPageInner() {
     if (!historyMetric || historyRange !== "live") return null;
     const cpu = historyMetric === "cpu";
     const per: Record<string, (number | null)[]> = {};
-    for (const name of historyContainers) {
+    for (const name of chartIds) {
       const id = containers.find((c) => c.name === name)?.id;
       per[name] = samples.map((s) => {
         const row = id ? s.containers[id] : undefined;
@@ -618,7 +683,7 @@ function ResourcesPageInner() {
       host: samples.map((s) => (s.host ? (cpu ? s.host.cpuPct : s.host.memUsed) : null)),
       per,
     };
-  }, [historyMetric, historyRange, historyContainers, samples, containers]);
+  }, [historyMetric, historyRange, chartIds, samples, containers]);
   const historyContainerPoints = useMemo(() => {
     if (!historyData || !historyMetric) return {};
     const out: Record<string, (number | null)[]> = {};
@@ -627,7 +692,7 @@ function ResourcesPageInner() {
     }
     return out;
   }, [historyData, historyMetric]);
-  const compareSlots = useCompareSlots(historyContainers);
+  const compareSlots = useCompareSlots(chartIds);
 
   // `active` above is now only a fresh reference when valueSignature actually
   // changed, so keying off `active` here (instead of `latest` directly) gets
@@ -787,6 +852,21 @@ function ResourcesPageInner() {
         )}
       </div>
 
+      {/* Watchlist | Timeline: the same list, a different lens (CPU and MEM only) */}
+      {historyMetric && (
+        <div className="space-y-1.5">
+          <div className="microlabel">view</div>
+          <div className="panel p-1 flex gap-1 w-fit" role="group" aria-label="List view">
+            <SegmentButton active={view === "watch"} onClick={() => selectView("watch")}>
+              WATCHLIST
+            </SegmentButton>
+            <SegmentButton active={view === "timeline"} onClick={() => selectView("timeline")}>
+              TIMELINE
+            </SegmentButton>
+          </div>
+        </div>
+      )}
+
       {/* disk sub-view toggle: storage (bytes on disk) vs i/o (throughput rate) — same tab, different lens */}
       {diskActive && (
         <div className="space-y-1.5">
@@ -831,7 +911,7 @@ function ResourcesPageInner() {
           onRangeChange={setHistoryRange}
           stale={status === "lost"}
           history={{
-            selectedContainers: historyContainers,
+            selectedContainers: chartIds,
             slots: compareSlots,
             hostPoints: livePoints ? livePoints.host : historyHostPoints,
             containerPoints: livePoints ? livePoints.per : historyContainerPoints,
@@ -839,12 +919,35 @@ function ResourcesPageInner() {
             recordingSince: historyData?.recordingSince ?? null,
             isLoading: historyLoading,
           }}
+          chart={
+            timelineActive ? (
+              <TimelineChart
+                kind={historyMetric}
+                range={historyRange}
+                samples={samples}
+                containers={containers}
+                chartIds={chartIds}
+                slots={compareSlots}
+                series={historyData}
+                summary={summaryData}
+                loading={historyLoading || summaryLoading}
+                error={
+                  timelineError ? `${timelineError instanceof ApiError ? timelineError.status : "no response"}` : null
+                }
+                onRetry={() => void Promise.all([mutateHistory(), mutateSummary()])}
+                stale={status === "lost"}
+                memTotal={latest?.host?.memTotal}
+                picked={historyContainers.length > 0}
+                onTop4={() => setHistoryContainers([])}
+              />
+            ) : undefined
+          }
         />
       )}
 
       {historyMetric && (
         <Watchlist
-          key={`watch-${historyMetric}`}
+          key={`watch-${historyMetric}-${view}`}
           kind={historyMetric}
           containers={containers}
           hasData={!!data}
@@ -852,9 +955,14 @@ function ResourcesPageInner() {
           latest={latest}
           samples={samples}
           stale={status === "lost"}
-          compare={historyContainers}
+          compare={chartIds}
           slots={compareSlots}
-          onToggleCompare={toggleHistoryContainer}
+          onToggleCompare={timelineActive ? tickContainer : toggleHistoryContainer}
+          variant={timelineActive ? "timeline" : "watch"}
+          range={historyRange}
+          rangeStats={summaryData?.summary}
+          onCommit={onCommit}
+          tickFull={historyContainers.length >= 4}
           widgetFieldsOf={(name) => widgetData?.widgets[name]?.fields}
           onChanged={() => void mutate()}
         />

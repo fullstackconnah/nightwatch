@@ -2130,6 +2130,425 @@ body {
   }
 }
 
+/* ── Timeline view (resources CPU / MEM, PR7) ─────────────────────────────
+   The same watchlist, ranked by the range average, with one stack chart in
+   the box band. Tokens only. Calm: the plot is measured on mount and resize;
+   per tick only the SVG paths, the slide group (translateX, 1000ms linear),
+   the end labels (translateY, 600ms) and the tooltip text change.
+   OPEN-T2: the 390 key is a 2-column grid (.tl-key); one column of 7 is the alternative. */
+.tl-panel {
+  --wl-row: 40px;
+}
+@media (max-width: 767px) {
+  .tl-panel {
+    --wl-row: 56px;
+  }
+  .tl-panel .wl-meta {
+    flex-wrap: wrap;
+  }
+}
+.tl-strip {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  align-items: stretch;
+  height: var(--wl-row);
+  box-shadow: inset 0 -1px 0 var(--color-line);
+}
+.tl-strip > .wl-rowbtn {
+  box-shadow: none;
+  padding-left: 0;
+}
+.tl-tick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.tl-tick:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.tl-tick:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+.tl-tickbox {
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--color-line-bright);
+  border-radius: 3px;
+}
+.tl-tick:hover:not(:disabled) .tl-tickbox {
+  border-color: var(--color-ink-dim);
+}
+@media (min-width: 768px) {
+  .tl-strip {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .tl-tick {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}
+.tl-rowbtn {
+  grid-template-columns: 8px minmax(140px, 220px) minmax(0, 1fr) 72px 72px 16px;
+  grid-template-areas: none;
+}
+.tl-rowbtn > .wl-dot {
+  grid-area: auto;
+}
+.tl-spark {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.tl-clip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2px;
+  height: 5px;
+  background: var(--color-warn);
+}
+.tl-avg,
+.tl-now {
+  text-align: right;
+  white-space: nowrap;
+}
+.tl-strip > .wl-rowbtn:hover,
+.wl-item[data-open] .tl-rowbtn {
+  background: var(--color-panel-2);
+}
+@media (max-width: 767px) {
+  .tl-rowbtn {
+    row-gap: 0.25rem;
+    align-content: center;
+    grid-template-columns: 8px minmax(0, 1fr) 64px 64px 16px;
+    grid-template-areas:
+      "dot name avg now chev"
+      ". spark spark spark .";
+  }
+  .tl-rowbtn > .wl-dot {
+    grid-area: dot;
+  }
+  .tl-rowbtn > .wl-name {
+    grid-area: name;
+  }
+  .tl-rowbtn > .tl-spark {
+    grid-area: spark;
+  }
+  .tl-rowbtn > .tl-avg {
+    grid-area: avg;
+  }
+  .tl-rowbtn > .tl-now {
+    grid-area: now;
+  }
+  .tl-rowbtn > .wl-chev {
+    grid-area: chev;
+  }
+}
+.tl-colhead {
+  display: none;
+}
+@media (min-width: 768px) {
+  .tl-colhead {
+    display: grid;
+    grid-template-columns: 48px minmax(140px, 220px) minmax(0, 1fr) 72px 72px 16px;
+    column-gap: 0.75rem;
+    padding: 0.375rem 1rem 0.375rem 0;
+    box-shadow: inset 0 -1px 0 var(--color-line);
+  }
+  .tl-colhead > span:nth-child(n + 4) {
+    text-align: right;
+  }
+}
+.tl-dgrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .tl-dgrid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+/* the chart */
+.tl-chart {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  column-gap: 0.5rem;
+}
+@media (min-width: 768px) {
+  .tl-chart {
+    grid-template-columns: 52px minmax(0, 1fr) 168px;
+  }
+}
+.tl-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 200px;
+  font: 0.6875rem/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--color-ink-faint);
+  text-align: right;
+}
+.tl-plot {
+  position: relative;
+  height: 200px;
+  overflow: hidden;
+  touch-action: pan-y;
+  background: var(--color-panel);
+  border-radius: 4px;
+}
+@media (min-width: 768px) {
+  .tl-axis,
+  .tl-plot {
+    height: 240px;
+  }
+}
+.tl-plot-skel {
+  background: var(--color-panel-2);
+}
+.tl-plot > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.tl-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.25rem;
+  font: 0.6875rem/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--color-ink-faint);
+}
+.tl-grid {
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+.tl-base {
+  stroke: var(--color-line-bright);
+  stroke-width: 1;
+}
+.tl-hatchline {
+  fill: var(--color-line-bright);
+}
+.tl-slide {
+  transition: transform 1000ms linear;
+}
+.tl-noslide {
+  transition: none;
+}
+.tl-area-other {
+  fill: var(--color-ink-faint);
+  fill-opacity: 0.16;
+}
+.tl-area-rest {
+  fill: var(--color-ink-dim);
+  fill-opacity: 0.22;
+}
+.tl-area-pick {
+  fill-opacity: 0.26;
+}
+.tl-edge-rest {
+  fill: none;
+  stroke: var(--color-ink-dim);
+  stroke-width: 1;
+}
+.tl-edge-pick {
+  fill: none;
+  stroke-width: 1.5;
+}
+.tl-box {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+.tl-dot {
+  fill: var(--color-accent);
+  stroke: var(--color-panel);
+  stroke-width: 2;
+}
+.tl-halo {
+  fill: var(--color-accent);
+  opacity: 0.25;
+  animation: tl-pulse 2000ms var(--ease-calm) infinite;
+}
+.tl-hero[data-stale] .tl-halo {
+  animation: none;
+  opacity: 0;
+}
+@keyframes tl-pulse {
+  0%,
+  100% {
+    opacity: 0.1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.tl-err {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem;
+  text-align: center;
+  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
+}
+.tl-cross {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 1px;
+  background: var(--color-ink-dim);
+  pointer-events: none;
+}
+.tl-tip {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--color-line-bright);
+  border-radius: 4px;
+  background: var(--color-panel-2);
+  font-size: 0.6875rem;
+  pointer-events: none;
+}
+.tl-tiphead {
+  margin-bottom: 0.25rem;
+  color: var(--color-ink-dim);
+}
+.tl-tiprow {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.125rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.tl-tiprow > span:last-child {
+  margin-left: auto;
+  color: var(--color-ink);
+}
+.tl-tipname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink-dim);
+}
+.tl-chip {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: none;
+}
+.tl-chip-rest {
+  background: color-mix(in srgb, var(--color-ink-dim) 22%, transparent);
+  border: 1px solid var(--color-ink-dim);
+}
+.tl-chip-other {
+  background: color-mix(in srgb, var(--color-ink-faint) 16%, transparent);
+  border: 1px solid var(--color-ink-faint);
+}
+.tl-ends {
+  display: none;
+  position: relative;
+  height: 240px;
+}
+@media (min-width: 768px) {
+  .tl-ends {
+    display: block;
+  }
+}
+.tl-leaders {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.tl-leader {
+  fill: none;
+  stroke: var(--color-line-bright);
+  stroke-width: 1;
+}
+.tl-end {
+  position: absolute;
+  top: 0;
+  left: 16px;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 14px;
+  transition: transform 600ms var(--ease-calm);
+}
+.tl-endname {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.6875rem;
+  color: var(--color-ink-dim);
+}
+.tl-endval {
+  flex: none;
+  font: 0.6875rem/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--color-ink);
+}
+/* seven reserved slots (box, host & other, rest, 4 picks): fixed height, so a pick never moves the page */
+.tl-key {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem 0.75rem;
+}
+.tl-keyitem {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.25rem;
+}
+@media (min-width: 768px) {
+  .tl-key {
+    display: none;
+  }
+}
+.tl-modeline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+}
+@media (min-width: 768px) {
+  .tl-modeline {
+    min-height: 2rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tl-slide,
+  .tl-end,
+  .tl-tick,
+  .tl-halo {
+    transition: none;
+    animation: none;
+  }
+  .tl-halo {
+    opacity: 0.25;
+  }
+}
+
 /* ── the ALL tab (resources, grouped processes) ───────────────────────────
    Same row-move contract as the watchlist: absolute rows, translateY only
    (rules shared above). Group rows 36px (56 at 390), process rows 32px

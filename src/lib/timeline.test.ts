@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseView, stackLayers, holdNearTies, adoptPick, ringTail } from "./timeline.ts";
+import { parseView, stackLayers, holdNearTies, adoptPick, ringTail, rangeAvgs } from "./timeline.ts";
+const topIds = (ids: string[], n: number) => ids.slice(0, n);
 
 test("parseView accepts only the two values", () => {
   assert.equal(parseView("timeline"), "timeline");
@@ -82,4 +83,15 @@ test("ringTail never touches 24h or 7d", () => {
 
 test("ringTail with an empty ring returns the values unchanged", () => {
   assert.deepEqual(ringTail(old, ts, [], W, "1h"), old);
+});
+
+test("adoptPick: auto mode with fewer than 4 auto ids appends the ticked id", () => {
+  assert.deepEqual(adoptPick(["a", "b"], [], "x"), ["a", "b", "x"]);
+});
+
+test("rangeAvgs keeps only containers in the current list: a gone name with the top avg is never ranked", () => {
+  const summary = { gone: { avg: 90 }, a: { avg: 5 }, b: { avg: 2 } };
+  const avgs = rangeAvgs(summary, ["a", "b", "new"]);
+  assert.deepEqual([...avgs.keys()], ["a", "b"]);
+  assert.deepEqual(topIds(holdNearTies([], avgs), 4), ["a", "b"]);
 });
