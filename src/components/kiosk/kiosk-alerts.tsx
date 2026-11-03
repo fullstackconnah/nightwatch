@@ -595,9 +595,9 @@ const AlertRow = forwardRef<HTMLDivElement, { entry: KioskAlertEntry; onDismiss:
         aria-hidden
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="text-sm font-medium text-ink">{entry.headline}</div>
+        <div className="text-balance text-sm font-medium text-ink">{entry.headline}</div>
         {entry.detail && <div className="text-xs text-ink-dim">{entry.detail}</div>}
-        {entry.action && <div className="text-xs font-medium text-ink">{entry.action}</div>}
+        {entry.action && <div className="mt-1 text-xs font-medium text-ink">{entry.action}</div>}
       </div>
       {sinceLabel && (
         <span className="shrink-0 self-center rounded-md bg-panel-2 px-2 py-1 font-mono text-2xs text-ink-dim tabular-nums">
@@ -614,7 +614,9 @@ function clearedWallClock(clearedAt: number): string {
   return `${time} ${period}`;
 }
 
-/** A retired alert's row — same content shape as AlertRow, deliberately
+/** A retired alert's row — headline plus "cleared h:mm" only. The detail is
+ *  dropped on purpose: it is written in the present tense ("is 91% full") and
+ *  beside a cleared time it reads as still true. Deliberately
  *  de-emphasised: text-ink-dim throughout (no severity-tinted text or icon),
  *  no background tint at all, and its own timestamp reads "cleared h:mm am/pm"
  *  rather than reusing AlertRow's "for <uptime>" tag — that tag means "still
@@ -628,8 +630,7 @@ function ResolvedAlertRow({ entry, onDismiss }: { entry: KioskResolvedAlertEntry
     <div className="flex items-start gap-3 rounded-md px-2 py-2 text-ink-dim">
       <AlertTriangle size={14} className="mt-0.5 shrink-0 opacity-60" aria-hidden />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="text-sm">{entry.headline}</div>
-        {entry.detail && <div className="text-xs opacity-80">{entry.detail}</div>}
+        <div className="text-balance text-sm">{entry.headline}</div>
       </div>
       <span className="shrink-0 self-center font-mono text-2xs tabular-nums">
         cleared {clearedWallClock(entry.clearedAt)}
@@ -831,7 +832,7 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
           {alert.headline}
         </p>
         {alert.detail && <p className="max-w-2xl text-2xl text-ink-dim">{alert.detail}</p>}
-        {alert.action && <p className="max-w-2xl text-2xl font-medium text-ink">{alert.action}</p>}
+        {alert.action && <p className="max-w-2xl text-balance text-2xl font-medium text-ink">{alert.action}</p>}
         {sinceLabel && <p className="microlabel">standing for {sinceLabel}</p>}
         <p className="microlabel mt-4">tap, or wait — dismisses on its own</p>
       </div>
