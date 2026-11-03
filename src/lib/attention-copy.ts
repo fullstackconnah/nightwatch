@@ -73,6 +73,18 @@ export function containerUnhealthy(name: string): AlertCopy {
 const REPLACE_NOW = "Copy anything important off it now, then replace it.";
 const REPLACE_SOON = "Plan to replace it, and keep its data backed up.";
 
+// Plain words for the SMART attributes smart.ts can flag as critical (ids 5, 187, 188, 197, 198), keyed by lowercased name with spaces.
+const SMART_WORDS: Record<string, string> = {
+  "reallocated sector ct": "worn-out sectors it has replaced",
+  "reported uncorrect": "read errors it could not fix",
+  "command timeout": "commands that timed out",
+  "current pending sector": "sectors waiting to be checked",
+  "offline uncorrectable": "sectors it could not read",
+  "udma crc error count": "cable or connection errors",
+  "raw read error rate": "read errors",
+};
+const smartWords = (raw: string) => SMART_WORDS[raw.toLowerCase().replace(/_/g, " ")];
+
 type DriveRule = { re: RegExp; bad: boolean; build: (n: string, m: RegExpMatchArray) => AlertCopy };
 const drv = (headline: string, detail: string, action: string): AlertCopy => ({ headline, detail, action });
 
@@ -83,11 +95,11 @@ const DRIVE_RULES: DriveRule[] = [
   { re: /^NVMe critical warning bitfield (0x\w+)/, bad: true, build: (n, m) => drv(`Drive ${n} has a fault`, `It raised a critical warning (${m[1]}). Data on it is at risk.`, REPLACE_NOW) },
   { re: /^(\d+) media errors?$/, bad: true, build: (n, m) => drv(`Drive ${n} is failing`, `It couldn't read or write some data (${m[1]} errors). More usually follow.`, REPLACE_NOW) },
   { re: /^available spare (\d+)% below threshold/, bad: true, build: (n, m) => drv(`Drive ${n} is worn out`, `Its spare capacity is used up (${m[1]}% left). It may fail soon.`, REPLACE_NOW) },
-  { re: /^(.+) failing now \(pre-fail/, bad: true, build: (n, m) => drv(`Drive ${n} is failing`, `A key health reading (${m[1]}) has crossed its failure line.`, REPLACE_NOW) },
+  { re: /^(.+) failing now \(pre-fail/, bad: true, build: (n, m) => drv(`Drive ${n} is failing`, `A key health reading${smartWords(m[1]) ? ` (${smartWords(m[1])})` : ""} has crossed its failure line.`, REPLACE_NOW) },
   { re: /^.+ at (\d+) °C, at\/above critical$/, bad: true, build: (n, m) => drv(`Drive ${n} is overheating`, `It's at ${m[1]} °C, at or above its safe limit.`, "Check the server's fans and airflow now.") },
   { re: /^available spare (\d+)% approaching threshold/, bad: false, build: (n, m) => drv(`Drive ${n} is wearing out`, `Its spare capacity is running low (${m[1]}% left).`, REPLACE_SOON) },
-  { re: /^(.+) failed its threshold previously$/, bad: false, build: (n, m) => drv(`Drive ${n} had a past fault`, `A health reading (${m[1]}) failed once before.`, "Keep its data backed up and watch it.") },
-  { re: /^(\d+) ([a-z0-9 ]+)$/, bad: false, build: (n, m) => drv(`Drive ${n} is showing errors`, `It has logged ${m[1]} ${m[2]}, an early sign of wear.`, REPLACE_SOON) },
+  { re: /^(.+) failed its threshold previously$/, bad: false, build: (n, m) => drv(`Drive ${n} had a past fault`, `A health reading${smartWords(m[1]) ? ` (${smartWords(m[1])})` : ""} failed once before.`, "Keep its data backed up and watch it.") },
+  { re: /^(\d+) ([a-z0-9 ]+)$/, bad: false, build: (n, m) => drv(`Drive ${n} is showing errors`, `It has logged ${m[1]} ${smartWords(m[2]) ?? "errors"}, an early sign of wear.`, REPLACE_SOON) },
   { re: /^.+ (\d+) °C, \d+ °C from critical$/, bad: false, build: (n, m) => drv(`Drive ${n} is running hot`, `It's at ${m[1]} °C, close to its safe limit.`, "Check the server's fans and airflow.") },
   { re: /^wear at (\d+)%$/, bad: false, build: (n, m) => drv(`Drive ${n} is wearing out`, `It has used ${m[1]}% of its rated life.`, REPLACE_SOON) },
 ];
@@ -116,6 +128,8 @@ export function driveUnreadable(name: string): AlertCopy {
 
 // --- array and integrity (smart.ts integrity reasons) ---------------------------------
 
+const POOL_STATE: Record<string, string> = { DEGRADED: "A disk has dropped out", FAULTED: "It has stopped working", UNAVAIL: "It has stopped working" };
+
 export function integrityAlert(reasons: string[]): AlertCopy {
   const r = reasons[0] ?? "";
   let m = r.match(/^(.+): (\d+) filesystem errors?$/);
@@ -139,7 +153,7 @@ export function integrityAlert(reasons: string[]): AlertCopy {
   if (m) {
     return {
       headline: `Storage pool ${id(m[1])} at risk`,
-      detail: `It reports ${m[2]} and is running without full protection.`,
+      detail: `${POOL_STATE[m[2]] ?? "It reports a fault"} and is running without full protection.`,
       action: "Check its drives on the Resources page.",
     };
   }

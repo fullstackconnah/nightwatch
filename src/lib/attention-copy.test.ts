@@ -77,17 +77,43 @@ test("A1-A11 map their producer strings", () => {
     ["NVMe critical warning bitfield 0x4", "Drive sda has a fault", "It raised a critical warning (0x4). Data on it is at risk.", A_FAIL],
     ["3 media errors", "Drive sda is failing", "It couldn't read or write some data (3 errors). More usually follow.", A_FAIL],
     ["available spare 5% below threshold 10%", "Drive sda is worn out", "Its spare capacity is used up (5% left). It may fail soon.", A_FAIL],
-    ["Reallocated_Sector_Ct failing now (pre-fail attribute at/below threshold)", "Drive sda is failing", "A key health reading (Reallocated_Sector_Ct) has crossed its failure line.", A_FAIL],
+    ["Reallocated_Sector_Ct failing now (pre-fail attribute at/below threshold)", "Drive sda is failing", "A key health reading (worn-out sectors it has replaced) has crossed its failure line.", A_FAIL],
     ["Composite at 80 °C, at/above critical", "Drive sda is overheating", "It's at 80 °C, at or above its safe limit.", "Check the server's fans and airflow now."],
     ["available spare 15% approaching threshold 10%", "Drive sda is wearing out", "Its spare capacity is running low (15% left).", "Plan to replace it, and keep its data backed up."],
-    ["Reallocated_Sector_Ct failed its threshold previously", "Drive sda had a past fault", "A health reading (Reallocated_Sector_Ct) failed once before.", "Keep its data backed up and watch it."],
-    ["12 reallocated sector ct", "Drive sda is showing errors", "It has logged 12 reallocated sector ct, an early sign of wear.", "Plan to replace it, and keep its data backed up."],
+    ["Reallocated_Sector_Ct failed its threshold previously", "Drive sda had a past fault", "A health reading (worn-out sectors it has replaced) failed once before.", "Keep its data backed up and watch it."],
+    ["12 reallocated sector ct", "Drive sda is showing errors", "It has logged 12 worn-out sectors it has replaced, an early sign of wear.", "Plan to replace it, and keep its data backed up."],
     ["Temperature 70 °C, 5 °C from critical", "Drive sda is running hot", "It's at 70 °C, close to its safe limit.", "Check the server's fans and airflow."],
     ["wear at 85%", "Drive sda is wearing out", "It has used 85% of its rated life.", "Plan to replace it, and keep its data backed up."],
   ];
   for (const [reason, headline, detail, action] of fx) {
     assert.deepEqual(drive([reason]), { headline, detail, action }, reason);
   }
+});
+const SMART_PLAIN: [string, string][] = [
+  ["Reallocated_Sector_Ct", "worn-out sectors it has replaced"],
+  ["Reported_Uncorrect", "read errors it could not fix"],
+  ["Command_Timeout", "commands that timed out"],
+  ["Current_Pending_Sector", "sectors waiting to be checked"],
+  ["Offline_Uncorrectable", "sectors it could not read"],
+  ["UDMA_CRC_Error_Count", "cable or connection errors"],
+  ["Raw_Read_Error_Rate", "read errors"],
+];
+test("SMART attributes read in plain words in every rule form", () => {
+  for (const [raw, plain] of SMART_PLAIN) {
+    const low = raw.toLowerCase().replace(/_/g, " ");
+    const forms = [`${raw} failing now (pre-fail attribute at/below threshold)`, `${raw} failed its threshold previously`, `7 ${low}`];
+    for (const r of forms) {
+      const a = drive([r]) as { headline: string; detail: string };
+      assert.ok(a.detail.includes(plain), r);
+      assert.ok(!a.detail.includes(raw) && !a.detail.includes(low), r);
+      assert.ok(a.detail.length <= 100 && a.headline.length <= 100, r);
+    }
+  }
+});
+test("unknown SMART attribute drops the name", () => {
+  assert.equal(drive(["Mystery_Attr failing now (pre-fail attribute at/below threshold)"]).detail, "A key health reading has crossed its failure line.");
+  assert.equal(drive(["Mystery_Attr failed its threshold previously"]).detail, "A health reading failed once before.");
+  assert.equal(drive(["4 mystery attr"]).detail, "It has logged 4 errors, an early sign of wear.");
 });
 test("drive selection prefers a bad-class reason over an earlier warn-class one", () => {
   assert.equal(drive(["wear at 85%", "3 media errors"]).headline, "Drive sda is failing");
@@ -124,9 +150,13 @@ test("I1-I3 and I0", () => {
   );
   assert.deepEqual(integrityAlert(["pool tank DEGRADED"]), {
     headline: "Storage pool tank at risk",
-    detail: "It reports DEGRADED and is running without full protection.",
+    detail: "A disk has dropped out and is running without full protection.",
     action: "Check its drives on the Resources page.",
   });
+  const pool = (st: string) => integrityAlert([`pool tank ${st}`]).detail;
+  assert.equal(pool("FAULTED"), "It has stopped working and is running without full protection.");
+  assert.equal(pool("UNAVAIL"), "It has stopped working and is running without full protection.");
+  assert.equal(pool("OFFLINE"), "It reports a fault and is running without full protection.");
   const i0 = { headline: "The storage array has a problem", detail: "It reported a fault.", action: "Check it on the Resources page." };
   assert.deepEqual(integrityAlert(["mystery"]), i0);
   assert.deepEqual(integrityAlert([]), i0);
