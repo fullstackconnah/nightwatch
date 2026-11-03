@@ -6,7 +6,7 @@ const topIds = (ids: string[], n: number) => ids.slice(0, n);
 test("parseView accepts only the two values", () => {
   assert.equal(parseView("timeline"), "timeline");
   assert.equal(parseView("watch"), "watch");
-  for (const v of [null, undefined, "", "Timeline", "all", 3]) assert.equal(parseView(v), "watch");
+  for (const v of [null, undefined, "", "Timeline", "all", "watchlist", 3]) assert.equal(parseView(v), "watch");
 });
 
 test("stackLayers: picks in slot order, then rest, then host & other, summing to the host", () => {

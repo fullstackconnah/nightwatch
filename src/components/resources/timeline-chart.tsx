@@ -15,8 +15,9 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SeriesSwatch, type HistoryRangeOption } from "@/components/resources/resource-overview";
+import { CPU_STEPS, snapScale } from "@/lib/watchlist";
 import { SERIES_SLOTS, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
-import { ringTail, stackLayers } from "@/lib/timeline";
+import { RANGE_SHORT, RANGE_WORD, ringTail, stackLayers } from "@/lib/timeline";
 import { formatBytes, formatPercent } from "@/lib/format";
 import type { TelemetrySample } from "@/lib/client";
 
@@ -35,8 +36,6 @@ export interface TimelineHistory {
 }
 
 const WINDOW_MS: Record<HistoryRangeOption, number> = { live: 60_000, "1h": 3_600_000, "24h": 86_400_000, "7d": 604_800_000 };
-const RANGE_WORD: Record<HistoryRangeOption, string> = { live: "last 60 s", "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days" };
-const RANGE_SHORT: Record<HistoryRangeOption, string> = { live: "60 s", "1h": "1H", "24h": "24H", "7d": "7D" };
 const TICKS: Record<HistoryRangeOption, [string, string]> = {
   live: ["−60 s", "−30 s"],
   "1h": ["−60 min", "−30 min"],
@@ -138,8 +137,6 @@ export function TimelineChart(p: TimelineChartProps) {
   const { kind, range, stale } = p;
   const cpu = kind === "cpu";
   const fmt = (v: number) => (cpu ? formatPercent(v, v < 0.1 ? 2 : 1) : formatBytes(v));
-  // OPEN-T1 default: a fixed axis, 0-100% of the box (CPU) or 0-memTotal (MEM).
-  const axisMax = cpu ? 100 : Math.max(1, p.memTotal ?? 1);
   const uid = useId().replace(/:/g, "");
 
   const plotRef = useRef<HTMLDivElement>(null);
@@ -165,6 +162,11 @@ export function TimelineChart(p: TimelineChartProps) {
     () => stackLayers({ host: model.host, containersTotal: model.total, picks: model.picks.map((x) => x.points) }),
     [model],
   );
+
+  // OPEN-T1 (owner delegated): the CPU axis snaps to the house step above the window's box peak, from 0;
+  // MEM keeps 0-memTotal.
+  const boxPeak = st.top.reduce((m, v, i) => (st.gap[i] ? m : Math.max(m, v)), 0);
+  const axisMax = cpu ? snapScale(boxPeak, CPU_STEPS) : Math.max(1, p.memTotal ?? 1);
 
   const n = model.times.length;
   const winMs = WINDOW_MS[range];
@@ -281,6 +283,7 @@ export function TimelineChart(p: TimelineChartProps) {
   }
 
   const showPlot = n > 0 && !p.error;
+  const at = li >= 0 && range !== "live" ? utc(model.times[li]).slice(11) : null; // the end labels read this bucket, the band reads the live sample
   const aria = li >= 0 ? `box ${fmt(hostNow)} now, ${fmt(hostAvg)} on average over the ${RANGE_WORD[range]}` : "Box history, no readings yet";
   const sub = li >= 0 ? `containers ${fmt(size1(st.rest) + st.picks.reduce((a, b) => a + (b[li][1] - b[li][0]), 0))} of it · ${RANGE_SHORT[range]} avg ${fmt(hostAvg)}` : "reading host…";
   const mode = p.picked
@@ -289,11 +292,14 @@ export function TimelineChart(p: TimelineChartProps) {
 
   return (
     <div className="tl-hero space-y-3" data-stale={stale || undefined}>
-      <p className="tl-sub font-mono text-2xs text-ink-dim m-0">{sub}</p>
+      <p className="tl-sub font-mono text-2xs text-ink-dim m-0">
+        {sub}
+        {at && <span className="md:hidden">{` · at ${at} UTC`}</span>}
+      </p>
       <div className="tl-chart">
         <div aria-hidden className="tl-axis">
-          <span>{cpu ? "100%" : compactBytes(axisMax)}</span>
-          <span>{cpu ? "50%" : compactBytes(axisMax / 2)}</span>
+          <span>{cpu ? formatPercent(axisMax, 0) : compactBytes(axisMax)}</span>
+          <span>{cpu ? formatPercent(axisMax / 2, Number.isInteger(axisMax / 2) ? 0 : 1) : compactBytes(axisMax / 2)}</span>
           <span>{cpu ? "0%" : "0"}</span>
         </div>
         <div className="tl-plotcol">
@@ -358,6 +364,7 @@ export function TimelineChart(p: TimelineChartProps) {
           </div>
         </div>
         <div aria-hidden className="tl-ends">
+          {at && <span className="tl-bucket">{`at ${at} UTC`}</span>}
           <svg className="tl-leaders" width={14} height={H} viewBox={`0 0 14 ${H}`}>
             {items.map((it, i) => (
               <path key={it.key} d={`M0 ${y0[i].toFixed(1)}L8 ${yL[i].toFixed(1)}L12 ${yL[i].toFixed(1)}`} className="tl-leader" />

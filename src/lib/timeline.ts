@@ -2,6 +2,10 @@
 
 export type ResourcesView = "watch" | "timeline";
 
+type Range = "live" | "1h" | "24h" | "7d";
+export const RANGE_SHORT: Record<Range, string> = { live: "60 s", "1h": "1H", "24h": "24H", "7d": "7D" };
+export const RANGE_WORD: Record<Range, string> = { live: "last 60 s", "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days" };
+
 export function parseView(v: unknown): ResourcesView {
   return v === "timeline" ? "timeline" : "watch";
 }

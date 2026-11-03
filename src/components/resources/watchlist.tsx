@@ -21,7 +21,7 @@ import { CreateContainerDialog } from "@/components/resources/create-container";
 import { LifecycleActions, LifecycleError, useLifecycle } from "@/components/resources/container-controls";
 import { SeriesSwatch, type HistoryRangeOption } from "@/components/resources/resource-overview";
 import { SERIES_SLOTS, type SeriesSlot } from "@/lib/chart-series";
-import { holdNearTies, rangeAvgs } from "@/lib/timeline";
+import { RANGE_SHORT, RANGE_WORD, holdNearTies, rangeAvgs } from "@/lib/timeline";
 import { ApiError, seriesFor, type ResourceSnapshot, type TelemetryRow, type TelemetrySample } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -69,8 +69,6 @@ export interface RangeStat {
   peak: number;
   spark: (number | null)[];
 }
-const RANGE_SHORT: Record<HistoryRangeOption, string> = { live: "60 s", "1h": "1H", "24h": "24H", "7d": "7D" };
-const RANGE_WORD: Record<HistoryRangeOption, string> = { live: "last 60 s", "1h": "last hour", "24h": "last 24 hours", "7d": "last 7 days" };
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 /** Start / stop / restart (+ pause) with its inline error, for rows outside the watchlist (DISK, NET). */
@@ -117,6 +115,7 @@ function rowEqual(p: RowProps, n: RowProps): boolean {
     p.open === n.open &&
     p.slot === n.slot &&
     p.compared === n.compared &&
+    p.onCompare === n.onCompare &&
     p.compareFull === n.compareFull &&
     p.widgetFields === n.widgetFields &&
     telemetryRowEqual(p.row, n.row) &&
@@ -164,7 +163,7 @@ const WatchRow = memo(function WatchRow(p: RowProps) {
   );
 }, rowEqual);
 
-export function Cell({ label, value, sub, dim, children }: { label: string; value: string; sub?: string; dim?: boolean; children?: React.ReactNode }) {
+function Cell({ label, value, sub, dim, children }: { label: string; value: string; sub?: string; dim?: boolean; children?: React.ReactNode }) {
   return (
     <div className="min-w-0">
       <div className="microlabel mb-1">{label}</div>
@@ -176,7 +175,7 @@ export function Cell({ label, value, sub, dim, children }: { label: string; valu
 }
 
 /** The open row (2.4): detail fields, image, integration fields, then the actions (s6, 7.2). */
-export function RowDetail({
+function RowDetail({
   id,
   c,
   row,

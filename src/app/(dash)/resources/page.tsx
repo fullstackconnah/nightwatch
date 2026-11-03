@@ -524,7 +524,7 @@ function ResourcesPageInner() {
   const [view, setView] = useState<ResourcesView>("watch");
   useEffect(() => {
     const q = searchParams.get("view");
-    if (q === "timeline" || q === "watchlist") {
+    if (q !== null) {
       setView(parseView(q));
       return;
     }
@@ -628,7 +628,7 @@ function ResourcesPageInner() {
   useEffect(() => {
     if (timelineActive) setHistoryRange((r) => (r === "live" ? "1h" : r));
   }, [timelineActive]);
-  const tickContainer = (name: string) => setHistoryContainers((prev) => adoptPick(autoTop4, prev, name));
+  const tickContainer = useCallback((name: string) => setHistoryContainers((prev) => adoptPick(autoTop4, prev, name)), [autoTop4]);
   function toggleHistoryContainer(name: string) {
     setHistoryContainers((prev) => {
       if (prev.includes(name)) return prev.filter((n) => n !== name);

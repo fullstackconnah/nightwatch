@@ -2200,8 +2200,10 @@ body {
   grid-template-columns: 8px minmax(140px, 220px) minmax(0, 1fr) 72px 72px 16px;
   grid-template-areas: none;
 }
-.tl-rowbtn > .wl-dot {
-  grid-area: auto;
+.tl-rowbtn > .wl-dot,
+.tl-rowbtn > .wl-name,
+.tl-rowbtn > .wl-chev {
+  grid-area: auto; /* base .wl-name / .wl-chev name areas that do not exist here */
 }
 .tl-spark {
   position: relative;
@@ -2232,8 +2234,8 @@ body {
     align-content: center;
     grid-template-columns: 8px minmax(0, 1fr) 64px 64px 16px;
     grid-template-areas:
-      "dot name avg now chev"
-      ". spark spark spark .";
+      "dot name name name chev"
+      ". spark avg now .";
   }
   .tl-rowbtn > .wl-dot {
     grid-area: dot;
@@ -2256,10 +2258,14 @@ body {
 }
 .tl-colhead {
   display: none;
+  height: 0;
+  margin: 0;
+  padding: 0;
 }
 @media (min-width: 768px) {
   .tl-colhead {
     display: grid;
+    height: auto;
     grid-template-columns: 48px minmax(140px, 220px) minmax(0, 1fr) 72px 72px 16px;
     column-gap: 0.75rem;
     padding: 0.375rem 1rem 0.375rem 0;
@@ -2286,7 +2292,7 @@ body {
 }
 @media (min-width: 768px) {
   .tl-chart {
-    grid-template-columns: 52px minmax(0, 1fr) 168px;
+    grid-template-columns: 52px minmax(0, 1fr) 208px;
   }
 }
 .tl-axis {
@@ -2471,6 +2477,14 @@ body {
   .tl-ends {
     display: block;
   }
+}
+.tl-bucket {
+  position: absolute;
+  top: 100%;
+  left: 16px;
+  margin-top: 0.25rem;
+  font: 0.6875rem/1 var(--font-mono, ui-monospace, monospace);
+  color: var(--color-ink-dim);
 }
 .tl-leaders {
   position: absolute;
