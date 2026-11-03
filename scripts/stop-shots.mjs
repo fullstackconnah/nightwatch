@@ -30,6 +30,12 @@ const LIST = {
   containers: [{ id: ID, name: NAME, image: "itzg/minecraft-server", state: "running", status: "Up 2 days", ports: [], composeProject: null, composeService: null, tile: { url: null } }],
   groups: [], counts: { total: 1, running: 1, paused: 0, stopped: 0, restarting: 0, unhealthy: 0 },
 };
+const RESOURCES = {
+  updatedAt: 1760000000000,
+  containers: [{ id: ID, name: NAME, state: "running", image: "itzg/minecraft-server", cpuPct: 40, memBytes: 2e9, memLimit: 4e9, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 20, sizeRw: null, sizeRootFs: null }],
+  volumes: null, hostDisks: null, dockerRootDir: null,
+  totals: { cpuPct: 40, memBytes: 2e9, memTotal: 8e9, containerDisk: 0, volumeDisk: 0, layersSize: 0, buildCacheBytes: 0, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0 },
+};
 const MC_STATUS = { manager: "ok", instances: [], active: null, players: { online: 0, max: 10, players: [] }, rcon: "ok" };
 
 const CALLERS = [
@@ -60,20 +66,22 @@ try {
     if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
 
     let posts = 0;
-    await page.route("**/api/**", (route) => {
+    // Only what the callers need is mocked (as remove-shots.mjs does); every other API reaches the real stack.
+    await page.route("**/api/docker/containers**", (route) => {
       const req = route.request();
       const { pathname } = new URL(req.url());
       if (pathname.endsWith("/action")) {
         if (req.method() === "POST") posts += 1;
         return json(route, 200, { ok: true });
       }
-      if (pathname === "/api/auth/login") return route.continue();
-      if (pathname === "/api/docker/containers") return json(route, 200, LIST);
+      if (pathname.endsWith("/api/docker/containers")) return json(route, 200, LIST);
       if (pathname.endsWith(`/containers/${ID}`)) return json(route, 200, INSPECT);
-      if (pathname === "/api/minecraft/status") return json(route, 200, MC_STATUS);
-      if (pathname === "/api/minecraft/backups") return json(route, 200, { backups: [] });
+      if (pathname.endsWith("/logs")) return json(route, 200, { logs: "" });
       return json(route, 200, {});
     });
+    await page.route("**/api/resources", (route) => json(route, 200, RESOURCES));
+    await page.route("**/api/minecraft/status", (route) => json(route, 200, MC_STATUS));
+    await page.route("**/api/minecraft/backups", (route) => json(route, 200, { backups: [] }));
 
     for (const caller of CALLERS) {
       const tag = `${caller.id} ${vp}`;
@@ -83,7 +91,7 @@ try {
       try {
         await stop.waitFor({ timeout: 30_000 });
       } catch {
-        check(`${tag}: Stop button reachable`, false, "not found; the mock may not reach this caller");
+        check(`${tag}: Stop button reachable`, false, (await page.evaluate(() => document.body.innerText.slice(0, 300)).catch(() => "")).replace(/s+/g, " "));
         continue;
       }
       await stop.scrollIntoViewIfNeeded();
