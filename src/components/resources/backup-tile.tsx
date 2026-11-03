@@ -23,7 +23,7 @@ function Notice({ dot, title, children }: { dot: string; title: string; children
 }
 
 /** ODIP's nightly backup and weekly restore test, read from the host's daily status file. */
-export function BackupTile() {
+export function BackupTile({ stacked = false }: { stacked?: boolean }) {
   const { data, error } = useBackupStatus();
   // No timer: the Overview's own polls re-render this tile, and an hour-scale
   // age doesn't need a 1 Hz clock.
@@ -53,7 +53,8 @@ export function BackupTile() {
     );
   } else if (summary) {
     body = (
-      <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2">
+      // `stacked` keeps one column inside Home's narrow side panel, where the viewport says wide but the box is not.
+      <ul className={cn("grid grid-cols-1 gap-x-8 gap-y-2", !stacked && "sm:grid-cols-2")}>
         {summary.items.map((item) => {
           const tone = BACKUP_TONE[item.state];
           return (

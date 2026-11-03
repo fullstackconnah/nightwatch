@@ -40,8 +40,8 @@ export function SegmentButton({
         // px-1 on the narrowest phones, px-3 from sm up: six tabs at px-3 overflow a
         // 360px viewport, and a horizontal scroll strip would hide tabs behind a
         // gesture nobody discovers.
-        "h-11 md:h-8 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border",
-        fill && "flex-1 min-w-0 truncate",
+        "h-11 md:h-8 min-w-11 md:min-w-0 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border",
+        fill && "flex-1 truncate",
         active
           ? "bg-accent/10 text-accent border-accent/30"
           : "text-ink-dim border-transparent hover:text-ink hover:bg-panel-2",

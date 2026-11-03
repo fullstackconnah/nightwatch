@@ -61,11 +61,14 @@ export class Ranker {
   get pending(): boolean {
     return this.waiting;
   }
-  /** True when `ids` became the committed order. The first offer always commits. */
-  offer(ids: readonly string[], now: number, held: boolean): boolean {
+  /**
+   * True when `ids` became the committed order. The first offer always commits. With `fill`, so does any offer while
+   * the order has fewer ids than offered: filling an empty slot moves nothing already on screen.
+   */
+  offer(ids: readonly string[], now: number, held: boolean, fill = false): boolean {
     const cur = this.current;
     const same = cur !== null && cur.length === ids.length && cur.every((x, i) => x === ids[i]);
-    if (cur === null || (!same && !held && now - this.last >= this.gap)) {
+    if (cur === null || (fill && cur.length < ids.length) || (!same && !held && now - this.last >= this.gap)) {
       this.current = ids.slice();
       this.last = now;
       this.waiting = false;

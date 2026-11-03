@@ -460,6 +460,16 @@ Each watched container owns a full-width band: a hairline-divided header carryin
 
 The companion rail is the other half of the metaphor: selecting a container does not remove its chip, it *hollows* it — the chip becomes a dashed `line-bright` outline reading "on the floor" while its socket keeps its place, so 26 chips never reflow and a glance tells you what you are watching. Chips are grouped by compose stack under microlabel headings, scrolling horizontally with snap on a phone and wrapping from `md`.
 
+### Home (the answer page, signature)
+Home opens with the answer, then what needs the owner, what changed, the box, and every app. Nothing on it moves under a resting pointer.
+- **Answer line:** one sentence in a `600 1.125rem` h1 with a state dot. It says "All clear" only when all 8 checks answered and found nothing; a pending, failed or unreachable source is never a calm answer. Its dot is a transparent ring while the answer is pending.
+- **Status slot:** one fixed 44px slot under the answer. It holds the probe line, or the stale bar, or the report-error text with "Retry now"; they replace each other and never stack.
+- **Needs you:** rows for attention hits, bad first, then oldest. After first paint a new row never enters by itself: it waits behind a `N new · show` pill whose slot is reserved with `visibility`. A fixed item keeps its slot in a resolved look (ok dot, dimmed text, no opacity) until the owner taps.
+- **Since you last looked:** a fixed box of S slots (4, or the count at the "Show N more" tap) sized from tokens, never from its content. New events fill slots in place through the house `Ranker`, and none commit while the pointer or focus is inside. The feed never repeats an attention item.
+- **Owner links:** every row names the page that owns the fix. Home reports and routes; Resources, Containers, Logs and Orchestrators do the work.
+- **Calm and motion:** no pulse on Home (the `.hm` scope turns the house dot pulses off). Rows slide with a 420ms WAAPI FLIP only after a tap, and not at all under `prefers-reduced-motion`.
+- **Named rule, the Resting-Pointer Rule:** an element the owner is not touching never changes its height or its top while they read. Live numbers sit in fixed-width cells; things that appear or disappear keep their slot (`visibility`, not `display`).
+
 ## Do's and Don'ts
 
 ### Do:

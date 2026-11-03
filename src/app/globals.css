@@ -2878,3 +2878,445 @@ body {
     transition: none;
   }
 }
+
+/* ---- Home (hm-): direction A, "The Answer" ----
+   The answer, what needs you, what changed, the box, every app. Nothing below the attention list moves unless the
+   owner taps (R1, R2): slots are fixed height, the pill and "Show N more" keep their place with `visibility`.
+   Tokens only. Unlayered like the other page blocks, so no hm- rule sets a property a Tailwind utility on the same
+   element also sets. */
+.hm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+/* No dot pulses on Home: the amber and blue dots already differ by hue and glow. */
+.hm .dot-unhealthy,
+.hm .dot-restarting {
+  animation: none;
+}
+.hm-dot-pending {
+  background: transparent;
+  border: 1px solid var(--color-ink-faint);
+}
+.hm-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.hm-answer {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  margin: 0;
+  font: 600 1.125rem/1.3 var(--font-sans);
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+  min-height: 1.3em;
+  color: var(--color-ink);
+}
+.hm-answer .dot {
+  transform: translateY(-0.1em);
+}
+.hm-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 2.75rem;
+  overflow: hidden;
+}
+.hm-status[data-stale] {
+  padding: 0 0.375rem 0 0.75rem;
+  border: 1px solid var(--color-line-bright);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--color-warn) 8%, var(--color-panel));
+}
+.hm-status-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.75rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+@media (max-width: 767px) {
+  .hm-answer {
+    min-height: 2.6em;
+  }
+  .hm-answer > span:last-child {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .hm-status-text {
+    -webkit-line-clamp: 2;
+  }
+}
+.hm-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+}
+.hm-sec-head h2,
+.hm-sec-head h3 {
+  margin: 0;
+}
+.hm-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.hm-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hm-link:focus-visible,
+.hm-lanes:focus-visible,
+.hm-app-name:focus-visible {
+  outline: 1px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-panel);
+}
+.hm-pill {
+  color: var(--color-accent);
+}
+.hm-more {
+  margin-top: 0.375rem;
+}
+
+/* Needs you */
+.hm-att-list,
+.hm-chg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+.hm-att-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 0.25rem 0.875rem;
+  align-items: start;
+  padding: 0.875rem 1rem;
+  border-top: 1px solid var(--color-line);
+}
+.hm-att-row:first-child {
+  border-top: 0;
+}
+.hm-att-row > .dot {
+  margin-top: 0.4rem;
+}
+.hm-att-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.625rem;
+}
+.hm-att-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.hm-att-since {
+  font-size: var(--text-2xs);
+  color: var(--color-ink-dim);
+}
+.hm-att-detail {
+  margin: 0.125rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-ink-dim);
+}
+.hm-att-action {
+  margin: 0.375rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-ink);
+}
+.hm-att-owner {
+  align-self: center;
+}
+/* The resolved look keeps the row's height: text colours only, never opacity, so contrast holds. */
+.hm-att-row[data-resolved] .hm-att-title {
+  color: var(--color-ink-dim);
+}
+.hm-att-row[data-resolved] .hm-att-detail,
+.hm-att-row[data-resolved] .hm-att-action {
+  color: var(--color-ink-faint);
+}
+.hm-att-calm {
+  margin: 0;
+  padding: 0.875rem 1rem;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-panel);
+  font-size: 0.75rem;
+  color: var(--color-ink-dim);
+}
+@media (max-width: 767px) {
+  .hm-att-row {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+  .hm-att-owner {
+    grid-column: 2;
+    justify-self: start;
+    margin-top: 0.375rem;
+  }
+}
+
+/* Since you last looked: a fixed box of S rows (--hm-chg-rows), never taller than its slots. */
+.hm-chg {
+  --hm-chg-row: 3.25rem;
+}
+.hm-chg-list {
+  height: calc(var(--hm-chg-rows, 4) * var(--hm-chg-row) + 2px);
+}
+.hm-chg-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  height: var(--hm-chg-row);
+  padding: 0.25rem 0.5rem 0.25rem 1rem;
+  border-top: 1px solid var(--color-line);
+}
+.hm-chg-row:first-child {
+  border-top: 0;
+}
+.hm-chg-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: var(--color-ink-dim);
+}
+.hm-chg-row[data-kind="handled"] .hm-chg-text {
+  color: var(--color-ink);
+}
+.hm-chg-empty {
+  display: flex;
+  align-items: center;
+  height: var(--hm-chg-row);
+  padding: 0 1rem;
+}
+@media (max-width: 767px) {
+  .hm-chg {
+    --hm-chg-row: 4.75rem;
+  }
+  .hm-chg-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "at at" "text owner";
+    align-content: center;
+    gap: 0.125rem 0.5rem;
+    padding: 0.25rem 0.25rem 0.25rem 1rem;
+  }
+  .hm-chg-at {
+    grid-area: at;
+  }
+  .hm-chg-text {
+    grid-area: text;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .hm-chg-owner {
+    grid-area: owner;
+  }
+}
+
+/* Changes | side panel */
+.hm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+@media (max-width: 1023px) {
+  .hm-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.hm-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.25rem 1rem 0.75rem;
+}
+.hm-side > * + * {
+  border-top: 1px solid var(--color-line);
+  padding-top: 0.5rem;
+}
+/* BackupTile is a panel with its own padding; inside the side panel it is just a section. */
+.hm-bk .panel {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+.hm-bk .panel > div {
+  padding-inline: 0;
+}
+.hm-dg-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1.5rem;
+}
+.hm-dg-cell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+.hm-dg-l {
+  font-size: var(--text-2xs);
+  color: var(--color-ink-faint);
+}
+.hm-dg-v {
+  display: inline-block;
+  font-size: 0.75rem;
+}
+.hm-lanes {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2.75rem;
+  text-decoration: none;
+}
+.hm-lanes:hover {
+  background: var(--color-panel-2);
+}
+
+/* Launcher */
+.hm-apps {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-line);
+}
+.hm-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.hm-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.hm-search-icon {
+  position: absolute;
+  left: 0.625rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-ink-faint);
+  pointer-events: none;
+}
+.hm-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.875rem;
+}
+.hm-note {
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.75rem;
+  color: var(--color-ink-faint);
+}
+.hm-app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17.5rem, 1fr));
+  gap: 0.5rem;
+}
+@media (max-width: 767px) {
+  .hm-app-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.hm-app {
+  display: grid;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "main acts" "fields fields";
+  gap: 0 0.5rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.75rem;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-panel);
+  min-width: 0;
+}
+.hm-app-main {
+  grid-area: main;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.hm-app-name {
+  flex: 0 1 auto;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+.hm-app-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hm-app:has(.dot-stopped) .hm-app-name {
+  color: var(--color-ink-dim);
+}
+/* The status gives way before the name does. */
+.hm-app-st {
+  flex: 0 100 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Two lines plus padding, fixed, so live widget values never reflow the card. */
+.hm-app-fields {
+  grid-area: fields;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 0 0.75rem;
+  height: 2.45rem;
+  overflow: hidden;
+  padding-bottom: 0.25rem;
+  font-size: var(--text-2xs);
+  line-height: 1.1rem;
+}
+.hm-app-acts {
+  grid-area: acts;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.hm-act {
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hm * {
+    transition: none;
+    animation: none;
+  }
+}
