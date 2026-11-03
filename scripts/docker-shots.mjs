@@ -284,7 +284,7 @@ try {
         const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
         check(`${name} down-cold: band has no "last list" clause`, /^Docker (unreachable: |is not reachable)/.test(band) && !/last list/i.test(band), band);
         if (name === "390") {
-          const hh = await page.evaluate(() => { const e = document.querySelector(".dk-hero"); return e ? [e.getBoundingClientRect().height, parseFloat(getComputedStyle(e).lineHeight)] : [999, 0]; });
+          const hh = await page.evaluate(() => { const e = document.querySelector(".dk-num"); if (!e) return [999, 0]; const cs = getComputedStyle(e); /* the h2 box, not the inline span's content area */ return [e.parentElement.getBoundingClientRect().height, parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.3]; });
           check("390 down-cold: hero headline is one line", hh[0] <= hh[1] + 1, hh.join(" vs "));
         }
         check(`${name} down-cold: no chores heading`, (await page.locator("#dk-chores-h").count()) === 0);
