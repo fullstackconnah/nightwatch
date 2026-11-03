@@ -47,7 +47,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     if (owners.length > 0) {
       return NextResponse.json(
         {
-          error: `In use by ${owners.join(", ")} — stop ${owners.length === 1 ? "it" : "them"} first.`,
+          error: `In use by ${owners.join(", ")} — remove ${owners.length === 1 ? "it" : "them"} first.`,
         },
         { status: 409 },
       );
