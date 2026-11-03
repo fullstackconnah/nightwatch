@@ -66,10 +66,15 @@ async function openPage(browser, opts, scenario, state) {
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
+  const off = [];
+  page.on("request", (r) => {
+    const u = r.url();
+    if (!/^(data|blob|about):/.test(u) && new URL(u).origin !== new URL(BASE_URL).origin) off.push(u);
+  });
   const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
   if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
   await mock(page, scenario, state);
-  return { context, page, errors };
+  return { context, page, errors, off };
 }
 
 const smallTargets = (page) =>
@@ -82,6 +87,66 @@ const smallTargets = (page) =>
       .filter(({ r }) => r.width < 43.5 || r.height < 43.5)
       .map(({ el, r }) => `${(el.textContent || el.getAttribute("aria-label") || el.tagName).trim().slice(0, 30)} ${Math.round(r.width)}x${Math.round(r.height)}`),
   );
+
+// C7/C8: hero bottom from the viewport top at scroll 0, and the slot height, per state.
+const heroAt = {};
+async function heroCheck(page, name, scenario) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const m = await page.evaluate(() => {
+    const r = (q) => document.querySelector(q)?.getBoundingClientRect();
+    const num = r(".dk-num") ?? r(".dk-hero");
+    return { num: num ? Math.round(num.bottom) : -1, hero: Math.round(r(".dk-hero")?.bottom ?? -1), slot: Math.round(r(".dk-slot")?.height ?? -1) };
+  });
+  heroAt[`${name}|${scenario}`] = m;
+  const max = name === "390" ? 169 : 180;
+  check(`C7 ${name} ${scenario}: hero bottom <= ${max}px`, m.num > 0 && m.num <= max, String(m.num));
+}
+
+// C10: lowest text contrast under `scope` (enabled controls only). shortcut: ignores gradients and ancestor opacity, upgrade if a surface uses either.
+const contrastLow = (page, scope) =>
+  page.evaluate((scope) => {
+    const g = Object.assign(document.createElement("canvas"), { width: 1, height: 1 }).getContext("2d", { willReadFrequently: true });
+    const num = (t, i) => (t.endsWith("%") ? parseFloat(t) / 100 : parseFloat(t)) * (i < 3 ? 1 : 1);
+    const parse = (css) => {
+      let m = css.match(/^rgba?\(([^)]+)\)/);
+      if (m) { const p = m[1].split(/[ ,/]+/).filter(Boolean); return [num(p[0], 0), num(p[1], 1), num(p[2], 2), p[3] ? num(p[3], 3) : 1]; }
+      m = css.match(/^color\(srgb ([^)]+)\)/);
+      if (m) { const p = m[1].split(/[ /]+/).filter(Boolean); return [num(p[0], 0) * 255, num(p[1], 1) * 255, num(p[2], 2) * 255, p[3] ? num(p[3], 3) : 1]; }
+      g.clearRect(0, 0, 1, 1); g.fillStyle = css; g.fillRect(0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data;
+      return [d[0], d[1], d[2], d[3] / 255];
+    };
+    const over = (fg, bg) => [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3])).concat(1);
+    const lum = (c) => { const l = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2]; };
+    const bgOf = (el) => {
+      const chain = []; for (let e = el; e; e = e.parentElement) chain.unshift(e);
+      return chain.reduce((bg, e) => over(parse(getComputedStyle(e).backgroundColor), bg), [255, 255, 255, 1]);
+    };
+    const root = document.querySelector(scope);
+    let low = { ratio: 99, who: "" };
+    for (const el of [root, ...root.querySelectorAll("*")]) {
+      if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height || el.closest(":disabled") || getComputedStyle(el).visibility === "hidden") continue;
+      const bg = bgOf(el);
+      const fg = over(parse(getComputedStyle(el).color), bg);
+      const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+      const ratio = (a + 0.05) / (b + 0.05);
+      if (ratio < low.ratio) low = { ratio, who: `${el.tagName.toLowerCase()}.${el.className} "${el.textContent.trim().slice(0, 24)}"` };
+    }
+    return low;
+  }, scope);
+async function contrastCheck(page, name, scenario) {
+  const low = await contrastLow(page, ".dk-page");
+  check(`C10 ${name} ${scenario}: lowest text contrast >= 4.5`, low.ratio >= 4.5, `${low.ratio.toFixed(2)} ${low.who}`);
+}
+
+const dupRowIds = (page) =>
+  page.evaluate(() => {
+    const seen = new Set(), dup = [];
+    for (const el of document.querySelectorAll("[data-row-id]")) { const id = el.getAttribute("data-row-id"); if (seen.has(id)) dup.push(id); seen.add(id); }
+    return dup;
+  });
 
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch({ headless: true });
@@ -96,7 +161,7 @@ try {
 
     // Full: order, calm buttons, targets, overflow, confirm step.
     await guard(`${name} full`, async () => {
-      const { context, page, errors } = await openPage(browser, opts, "full");
+      const { context, page, errors, off } = await openPage(browser, opts, "full");
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
       await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
       await page.waitForTimeout(900); // count-down settles
@@ -108,6 +173,15 @@ try {
       check(`${name} full: chore order`, order.join() === expected, `${order.join()} vs ${expected}`);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
       check(`${name} full: no horizontal overflow`, !overflow);
+      await heroCheck(page, name, "full");
+      await contrastCheck(page, name, "full");
+      const seg = page.locator(".dk-segs > button:last-child");
+      await seg.hover();
+      const hov = await contrastLow(page, ".dk-segs > button:last-child");
+      check(`C10 ${name} full: hovered segment contrast >= 4.5`, hov.ratio >= 4.5, hov.ratio.toFixed(2));
+      await page.mouse.move(0, 0);
+      const dups = await dupRowIds(page);
+      check(`C11 ${name} full: data-row-id unique`, dups.length === 0, dups.slice(0, 5).join(","));
       const prune = page.locator("[data-feature=prune-images]");
       const rest = await prune.evaluate((el) => {
         const probe = document.createElement("span");
@@ -163,7 +237,8 @@ try {
         check("confirm 390: Yes and Cancel are visible in the viewport after scrollIntoView", vis);
       }
       await shot(page, "confirm");
-      check(`${name} full: 0 page errors`, errors.length === 0, errors.join("; "));
+      check(`C16 ${name} full: 0 page errors`, errors.length === 0, errors.join("; "));
+      check(`C16 ${name} full: 0 requests off origin`, off.length === 0, off.slice(0, 3).join(" "));
       await context.close();
     });
 
@@ -194,7 +269,7 @@ try {
     for (const scenario of ["partial", "empty", "long", "down", "down-cold"])
       await guard(`${name} ${scenario}`, async () => {
       const state = {};
-      const { context, page, errors } = await openPage(browser, opts, scenario, state);
+      const { context, page, errors, off } = await openPage(browser, opts, scenario, state);
       if (scenario === "down") await page.clock.install(); // time is driven below; a focus event does not revalidate SWR
       await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(2500);
@@ -209,7 +284,7 @@ try {
         const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
         check(`${name} down-cold: band has no "last list" clause`, /^Docker (unreachable: |is not reachable)/.test(band) && !/last list/i.test(band), band);
         check(`${name} down-cold: no chores heading`, (await page.locator("#dk-chores-h").count()) === 0);
-        const segn = await page.$eval(".dk-segn", (els) => els.map((e) => e.textContent.trim()));
+        const segn = await page.$$eval(".dk-segn", (els) => els.map((e) => e.textContent.trim()));
         check(`${name} down-cold: no segment count reads 0`, segn.length === 3 && !segn.includes("0"), segn.join());
         check(`${name} down-cold: search is disabled`, await page.locator(".dk-find input").isDisabled());
         check(`${name} down-cold: no repeated "unreachable" in the band`, !/unreachable.*not reachable|not reachable.*unreachable/i.test(band), band);
@@ -229,10 +304,17 @@ try {
         check(`${name} down: write controls are disabled`, disabled);
         check(`${name} down: the slot says why`, (await page.locator(".dk-slot[data-state]").count()) > 0);
       }
+      await heroCheck(page, name, scenario);
+      await contrastCheck(page, name, scenario);
+      if (scenario === "long") {
+        const dups = await dupRowIds(page);
+        check(`C11 ${name} long: data-row-id unique`, dups.length === 0, dups.slice(0, 5).join(","));
+      }
       check(`${name} ${scenario}: no horizontal overflow`, !(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth)));
       if (name === "390") check(`390 ${scenario}: every button and link >= 44x44`, (await smallTargets(page)).length === 0, (await smallTargets(page)).join("; "));
       await shot(page, scenario);
-      check(`${name} ${scenario}: 0 page errors`, errors.length === 0, errors.join("; "));
+      check(`C16 ${name} ${scenario}: 0 page errors`, errors.length === 0, errors.join("; "));
+      check(`C16 ${name} ${scenario}: 0 requests off origin`, off.length === 0, off.slice(0, 3).join(" "));
       await context.close();
       });
 
@@ -246,17 +328,70 @@ try {
       check(`${name} reduced motion: no transform animations`, anims === 0, String(anims));
       await context.close();
     });
+
+    // C8: status slot height and hero bottom are the same in every state.
+    {
+      const states = ["full", "partial", "down", "down-cold"].map((sc) => heroAt[`${name}|${sc}`]);
+      const have = states.filter(Boolean);
+      const spread = (k) => Math.max(...have.map((m) => m[k])) - Math.min(...have.map((m) => m[k]));
+      check(`C8 ${name}: all four states measured`, have.length === 4, String(have.length));
+      check(`C8 ${name}: slot height delta 0`, have.length > 0 && spread("slot") === 0, JSON.stringify(have.map((m) => m.slot)));
+      check(`C8 ${name}: hero bottom delta 0`, have.length > 0 && spread("hero") === 0, JSON.stringify(have.map((m) => m.hero)));
+    }
+
+    // C13: the stopped head is the same height with 8 stopped containers as with 10 (390 only).
+    if (name === "390")
+      await guard("390 C13", async () => {
+        const base = containersFor("full").containers;
+        const stopped0 = base.filter((c) => ["exited", "created"].includes(c.state)).length;
+        const h = [];
+        for (const target of [8, 10]) {
+          const extra = Array.from({ length: Math.max(0, target - stopped0) }, (_, i) => ({ ...base[7], id: String(i).padStart(2, "a").repeat(32), name: `c13-${target}-${i}`, state: "exited" }));
+          const { context, page } = await openPage(browser, opts, "full", { extra });
+          await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
+          const head = page.locator("[data-chore=stopped] .dk-chore-head");
+          await head.waitFor({ timeout: 30_000 });
+          await page.waitForTimeout(900);
+          h.push(Math.round((await head.boundingBox()).height));
+          await context.close();
+        }
+        check("C13 390: stopped head height with 8 vs 10 stopped, delta 0", h[0] === h[1], `${h.join(" vs ")} (fixture has ${stopped0} stopped)`);
+      });
+
+    // C15: the seven data-feature hooks exist, and every container row links to its details.
+    await guard(`${name} C15`, async () => {
+      const { context, page } = await openPage(browser, opts, "full");
+      await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
+      await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
+      await page.locator("[data-chore=stopped] .dk-disclose").click();
+      await page.waitForTimeout(600);
+      const n = (f) => page.locator(`[data-feature="${f}"]`).count();
+      const found = {};
+      for (const f of ["prune-images", "prune-volumes", "create", "details", "start", "remove"]) found[f] = await n(f);
+      await page.locator(".dk-segs > button:nth-child(2)").click();
+      await page.waitForTimeout(600);
+      found["delete-image"] = await n("delete-image");
+      const missing = Object.entries(found).filter(([, c]) => c === 0).map(([k]) => k);
+      check(`C15 ${name}: 7 of 7 data-feature hooks present`, missing.length === 0, `missing: ${missing.join(",")}`);
+      await page.locator(".dk-segs > button:nth-child(1)").click();
+      await page.waitForTimeout(600);
+      const noDetails = await page.evaluate(() => [...document.querySelectorAll(".dk-all-list li.dk-row, #dk-body-stopped li.dk-row")].filter((li) => !li.querySelector("[data-feature=details]")).length);
+      check(`C15 ${name}: details reachable from every container row`, noDetails === 0, String(noDetails));
+      await context.close();
+    });
   }
 
   // R6: the old routes redirect with a 307 to /docker?find=.
-  const ctx = await browser.newContext();
-  const login = await ctx.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
-  if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
-  for (const k of ["containers", "images", "volumes"]) {
-    const res = await ctx.request.get(`${BASE_URL}/${k}`, { maxRedirects: 0 });
-    check(`/${k} redirects 307 to /docker?find=${k}`, res.status() === 307 && (res.headers().location ?? "").includes(`/docker?find=${k}`), `${res.status()} ${res.headers().location ?? ""}`);
-  }
-  await ctx.close();
+  await guard("C6s", async () => {
+    const ctx = await browser.newContext();
+    open.push(ctx);
+    const login = await ctx.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
+    if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
+    for (const k of ["containers", "images", "volumes"]) {
+      const res = await ctx.request.get(`${BASE_URL}/${k}`, { maxRedirects: 0 });
+      check(`C6s /${k} redirects 307 to /docker?find=${k}`, res.status() === 307 && (res.headers().location ?? "").includes(`/docker?find=${k}`), `${res.status()} ${res.headers().location ?? ""}`);
+    }
+  });
 } finally {
   await browser.close();
 }
