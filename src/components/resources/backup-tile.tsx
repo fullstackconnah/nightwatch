@@ -84,13 +84,8 @@ export function BackupTile({ stacked = false }: { stacked?: boolean }) {
           <DatabaseBackup size={11} aria-hidden /> ODIP backup
         </CardTitle>
         {summary && data?.status === "ok" && (
-          <span
-            className={cn("microlabel", summary.checkStale && "!text-warn")}
-            title={new Date(data.checkedAt).toLocaleString()}
-          >
-            {summary.checkStale
-              ? `check last ran ${relativeTime(data.checkedAt)}`
-              : `checked ${relativeTime(data.checkedAt)}`}
+          <span className="microlabel" title={new Date(data.checkedAt).toLocaleString()}>
+            Checked {relativeTime(data.checkedAt)}
           </span>
         )}
       </CardHeader>
