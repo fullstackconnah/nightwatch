@@ -2,6 +2,7 @@ import Docker from "dockerode";
 import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
+import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { createSwr, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
@@ -122,8 +123,8 @@ const containersMemo = new Memo<ContainerSummary[]>({
   load: collectContainers,
 });
 
-export function listContainers(): Promise<ContainerSummary[]> {
-  return containersMemo.get();
+export function listContainers(force = false): Promise<ContainerSummary[]> {
+  return containersMemo.get({ force });
 }
 
 /**
@@ -791,6 +792,17 @@ export async function performContainerAction(id: string, action: ContainerAction
     await containerAction(id, action);
   } finally {
     runtimesMemo.invalidate();
+  }
+}
+
+/** Deletes a stopped container. The caller has already run removeDecision; the three caches that mention it are dropped even on failure. */
+export async function removeContainer(id: string): Promise<void> {
+  try {
+    await docker.getContainer(id).remove(REMOVE_OPTIONS);
+  } finally {
+    containersMemo.invalidate();
+    runtimesMemo.invalidate();
+    dfSwr.clear();
   }
 }
 

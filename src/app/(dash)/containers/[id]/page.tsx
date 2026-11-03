@@ -15,10 +15,13 @@ import {
   actionsFor,
   useLifecycle,
 } from "@/components/resources/container-controls";
+import { RemoveContainerAction } from "@/components/resources/remove-container-action";
 import { WidgetActionRow } from "@/components/widget-actions";
 import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
 import { processesHref } from "@/lib/container-rank";
+import { REMOVABLE_STATES } from "@/lib/container-remove";
+import { isProtectedContainer } from "@/lib/protected-containers";
 import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -228,6 +231,16 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                 </Button>
               );
             })}
+          {/* The server also checks the self-hostname, which the browser can't; its 403 shows as the error copy. */}
+          {info &&
+            REMOVABLE_STATES.includes(status) &&
+            !isProtectedContainer({
+              id: info.id,
+              name: info.name,
+              image: info.image,
+              composeProject: info.composeProject,
+              composeService: info.composeService,
+            }) && <RemoveContainerAction id={info.id} name={info.name} />}
         </div>
       </header>
 
