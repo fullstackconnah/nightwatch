@@ -5,6 +5,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,12 +17,15 @@ export function RemoveContainerAction({ id, name }: { id: string; name: string }
   const router = useRouter();
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
+  const [gone, setGone] = useState(false);
 
   async function remove() {
     setStep("busy");
+    setGone(false);
     try {
       const res = await fetch(`/api/docker/containers/${encodeURIComponent(id)}`, { method: "DELETE" });
       const body = await res.json().catch(() => ({}));
+      if (res.status === 404) setGone(true);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
       router.push("/containers");
     } catch (e) {
@@ -48,9 +52,15 @@ export function RemoveContainerAction({ id, name }: { id: string; name: string }
     return (
       <div role="alert" className="flex items-center gap-2 flex-wrap">
         <span className="text-xs text-ink">{error}</span>
-        <Button size="sm" variant="outline" onClick={() => void remove()}>
-          Retry
-        </Button>
+        {gone ? (
+          <Link href="/containers" className="inline-flex h-11 items-center px-3 text-xs text-ink underline underline-offset-2 md:h-7">
+            Back to containers
+          </Link>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => void remove()}>
+            Retry
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel
         </Button>

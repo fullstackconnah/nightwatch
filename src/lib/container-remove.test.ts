@@ -82,3 +82,16 @@ test("error copy per failure, the two 403s differ", () => {
   assert.equal(removeErrorCopy(409, "web"), "web is running again, so it wasn't removed. Stop it in Resources first.");
   assert.equal(removeErrorCopy("ECONN", "web", "boom"), "Docker unreachable: boom");
 });
+
+test("an id prefix shared by two containers is a 404, not the first match", () => {
+  const list = [c({ id: "ab1" + "0".repeat(61), name: "one" }), c({ id: "ab2" + "0".repeat(61), name: "two" })];
+  const r = decide(list, "ab");
+  assert.ok("status" in r && r.status === 404);
+  assert.ok("ok" in decide(list, "ab1"), "a unique prefix still resolves");
+  assert.ok("ok" in decide(list, "two"), "an exact name still resolves");
+});
+
+test("protection beats state: running dockge is 403, not 409", () => {
+  const r = decide([c({ name: "dockge", state: "running" })], "dockge");
+  assert.ok("status" in r && r.status === 403);
+});
