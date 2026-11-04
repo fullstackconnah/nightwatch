@@ -34,3 +34,32 @@ export const QUIET = { status: "unconfigured" };
 /** The pinned instant for the main states: Sydney, 10:30, so the clock and any time text are stable. */
 export const PINNED_ISO = "2026-06-15T10:30:00+10:00";
 export const ZONE = "Australia/Sydney";
+
+/** /kiosk/api/ha/states in the full HaStatesResponse shape (src/lib/types/ha.ts): a partial body throws in render.
+ *  Two climates (heating, and unavailable) cover the working glow and the unavailable state; the lights, switches and
+ *  scene cover Chip on, off and the sun catch. */
+export const HA_STATES = {
+  status: "ok",
+  entities: {
+    lights: [{ entityId: "light.lamp", name: "Lamp", on: true, brightnessPct: 60, available: true }],
+    switches: [
+      { entityId: "switch.fan", name: "Fan", on: false, available: true },
+      { entityId: "switch.heater", name: "Heater", on: true, available: true },
+    ],
+    climates: [
+      {
+        entityId: "climate.living", name: "Living", hvacMode: "heat", hvacModes: ["off", "heat", "cool", "auto", "fan_only"],
+        currentTemp: 19.5, targetTemp: 22, targetTempLow: null, targetTempHigh: null, unit: "°C", available: true,
+        fanMode: "auto", fanModes: ["auto", "low", "medium", "high"], minTemp: 16, maxTemp: 30, targetTempStep: 0.5,
+      },
+      {
+        entityId: "climate.study", name: "Study", hvacMode: "off", hvacModes: ["off", "heat", "cool"],
+        currentTemp: null, targetTemp: null, targetTempLow: null, targetTempHigh: null, unit: "°C", available: false,
+      },
+    ],
+    locks: [],
+    sensors: [],
+    scenes: [{ entityId: "scene.evening", name: "Evening", available: true }],
+    mediaPlayers: [],
+  },
+};

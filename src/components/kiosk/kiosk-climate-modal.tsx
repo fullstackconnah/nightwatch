@@ -10,6 +10,7 @@ import { X } from "lucide-react";
 import type { HaClimate } from "@/lib/types/ha";
 import { cn } from "@/lib/utils";
 import { KioskDigitReel } from "@/components/kiosk/kiosk-digits";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import {
   KIOSK_POP_MS,
   KIOSK_EASE_OUT,
@@ -80,16 +81,25 @@ function ModeChipGroup({
   className?: string;
   focused?: boolean;
 }) {
+  const sunroom = useKioskTheme() === "sunroom";
   if (options.length === 0) return null;
+  // One row of up to 5 options is the DS Segmented: a slab slides under the chosen one. More than that wraps as before, each chosen option filled.
+  const slabAt = sunroom && options.length <= 5 ? options.indexOf(current ?? "") : -1;
   return (
     <div className={cn("mt-6", className)} role="group" aria-label={groupLabel} data-kiosk-focused={focused ? "true" : undefined}>
       <GroupHeading title={title} value={current ? displayLabel(current) : undefined} />
-      <div className="flex flex-wrap justify-center gap-2">
+      <div
+        className="sr-seg flex flex-wrap justify-center gap-2"
+        data-slab={slabAt >= 0 ? "" : undefined}
+        style={slabAt >= 0 ? ({ "--n": options.length, "--i": slabAt } as React.CSSProperties) : undefined}
+      >
+        {slabAt >= 0 && <span className="sr-seg-slab" aria-hidden />}
         {options.map((mode) => (
           <button
             key={mode}
             type="button"
             aria-pressed={current === mode}
+            data-label={displayLabel(mode)}
             aria-label={ariaLabel(mode)}
             disabled={pending}
             onClick={() => onSelect(mode)}
@@ -97,13 +107,13 @@ function ModeChipGroup({
               // kiosk-press replaces the bare active:scale-[0.98] this chip
               // used to carry — see NUDGE_BUTTON's comment above for why
               // leaving both would fight over one `transform`.
-              "h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40",
+              "sr-seg-opt h-14 min-w-[4.5rem] rounded-md border px-3 text-xs font-medium outline-none transition focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40",
               current === mode
                 ? "border-accent/30 bg-accent/10 text-accent"
                 : "border-line text-ink-dim hover:bg-panel hover:text-ink",
             )}
           >
-            {displayLabel(mode)}
+            <span>{displayLabel(mode)}</span>
           </button>
         ))}
       </div>
@@ -248,7 +258,7 @@ function FanSpeedSlider({
         // `.kiosk-range` (globals.css) carries the track/thumb chrome — a
         // range input's thumb can only be reached through vendor
         // pseudo-elements, which utility classes cannot express.
-        className="kiosk-range w-full"
+        className="sr-ladder kiosk-range w-full"
         // Chromium paints no filled portion of its own — the track's gradient
         // reads this (see globals.css). Percent of the way along the ladder,
         // not of the value, so Auto at the far end is a full bar.
@@ -555,7 +565,7 @@ export function KioskClimateModal({
         >
           <div className="text-center">
             <div className="microlabel">Current</div>
-            <div className="mt-1 font-mono text-4xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
+            <div className="mt-1 font-mono text-4xl text-ink" data-sr-live>{formatTemp(climate.currentTemp, climate.unit)}</div>
           </div>
           <div className="text-center">
             <div className="microlabel">Target</div>
@@ -590,7 +600,7 @@ export function KioskClimateModal({
               aria-label={`Lower target temperature for ${climate.name}`}
               disabled={pending || (!dualSetpoint && targetControl.lowerDisabled)}
               onClick={() => (dualSetpoint ? onNudge(-NUDGE_STEP) : targetControl.bump(-1))}
-              className="kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
+              className="sr-btn sr-btn-nudge sr-btn-lg kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
             >
               −
             </button>
@@ -599,7 +609,7 @@ export function KioskClimateModal({
               aria-label={`Raise target temperature for ${climate.name}`}
               disabled={pending || (!dualSetpoint && targetControl.raiseDisabled)}
               onClick={() => (dualSetpoint ? onNudge(NUDGE_STEP) : targetControl.bump(1))}
-              className="kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
+              className="sr-btn sr-btn-nudge sr-btn-lg kiosk-press flex h-[72px] w-[72px] items-center justify-center rounded-tile font-mono text-2xl text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40"
             >
               +
             </button>
@@ -676,7 +686,7 @@ export function KioskClimateModal({
         />
 
         {error && (
-          <div role="alert" className="mt-4 text-center text-2xs text-bad">
+          <div role="alert" className="mt-4 text-center text-2xs text-bad" data-sr-tone="bad">
             {error}
           </div>
         )}

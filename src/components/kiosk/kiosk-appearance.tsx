@@ -41,6 +41,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { aimCatch, SunCatch } from "@/components/kiosk/kiosk-sun-catch";
 import {
   KIOSK_THEME_GROUPS,
   KIOSK_THEME_LABELS,
@@ -266,14 +267,17 @@ function ThemeChip({ theme, active }: { theme: KioskTheme; active: boolean }) {
     <button
       type="button"
       onClick={() => setKioskTheme(theme)}
+      onPointerDown={aimCatch}
       aria-pressed={active}
       className={cn(
+        "sr-chip sr-chip-sm",
         "flex h-11 items-center gap-2 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent",
         active
           ? "border-accent bg-accent/10 text-ink ring-1 ring-accent"
           : "border-line text-ink-dim hover:border-line-bright hover:text-ink",
       )}
     >
+      <SunCatch />
       {/* The chip's one job: show the identity before it's applied. Ground
           disc with the accent as a setting-sun dot; hairline keeps light
           swatches visible on the dark panel. */}
@@ -310,14 +314,17 @@ function FontChip({
     <button
       type="button"
       onClick={onSelect}
+      onPointerDown={aimCatch}
       aria-pressed={active}
       className={cn(
+        "sr-chip sr-chip-sm",
         "flex h-11 items-center gap-2 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent",
         active
           ? "border-accent bg-accent/10 text-ink ring-1 ring-accent"
           : "border-line text-ink-dim hover:border-line-bright hover:text-ink",
       )}
     >
+      <SunCatch />
       <span style={{ fontFamily: option.cssVar }}>{option.label}</span>
       {isDefault && <span className="text-ink-dim">· default</span>}
     </button>

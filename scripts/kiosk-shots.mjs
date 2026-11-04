@@ -10,12 +10,14 @@
  * 1024x768 with a fixed clock and a pinned time zone; the six-stop pass is ?theme=sunroom&wx=off with the weather
  * mocked per stop. JSON keys: n16PageErrors, n16ForeignRequests, n17RunningAnimations, n19BackdropFilter,
  * n20PaneInPane, sixStop.<stop>, crossing.{cloneSeen,ariaHidden,inert,strayClones,scopeIntact}.
+ * PR 2 (controls): controls.<size>.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord}, controls.reduced.<size>.n14Running,
+ * controls.seen (the climate tile and chips rendered). States: rest, modal (climate), sheet (auto-off).
  */
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { PINNED_ISO, QUIET, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { HA_STATES, PINNED_ISO, QUIET, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -53,7 +55,7 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   const page = await context.newPage();
@@ -70,7 +72,8 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   });
   await page.route("**/kiosk/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    return route.fulfill({ json: path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : QUIET });
+    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : QUIET;
+    return route.fulfill({ json });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await seen(page, '[data-kiosk-theme="sunroom"]');
@@ -138,6 +141,59 @@ await guarded("crossing", async () => {
   results.crossing.scopeIntact = await page.evaluate(() => document.querySelector('[data-kiosk-theme="sunroom"]') !== null);
   await context.close();
 });
+
+// ---- controls (PR 2): N11 targets, N12 live transitions, N18 tone words, N14 reduced motion; rest + open states ----
+const CONTROLS = () => {
+  const small = [...document.querySelectorAll("button, [role=button], input, a")]
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => r.width > 0 && r.height > 0 && (r.width < 44 || r.height < 44))
+    .map(({ el, r }) => `${el.getAttribute("aria-label") ?? el.className}:${Math.round(r.width)}x${Math.round(r.height)}`);
+  const live = [...document.querySelectorAll("[data-sr-live]")]
+    .filter((el) => getComputedStyle(el).transitionDuration.split(",").some((d) => parseFloat(d) > 0) && !el.closest("[data-sr-vitals-fill]"))
+    .map((el) => el.className || el.tagName);
+  const tone = [...document.querySelectorAll("[data-sr-tone]")].filter((el) => !(el.textContent ?? "").trim()).map((el) => el.className || el.tagName);
+  return { n11Small: small, n12LiveTransitions: live, n18ToneWithoutWord: tone };
+};
+results.controls = { seen: {}, reduced: {} };
+for (const size of SIZES) {
+  await guarded(`controls ${size.name}`, async () => {
+    const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    const seenTile = await seen(page, ".sr-climate", 15_000);
+    results.controls.seen[size.name] = { tile: seenTile, chip: await page.locator("button.sr-chip").count(), switchTrack: await page.locator(".sr-switch-track").count() };
+    const out = (results.controls[size.name] = {});
+    await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
+    out.rest = await page.evaluate(CONTROLS);
+    // a chip press: the sun catch should light (data-lit) and the word flips
+    const chip = page.locator("button.sr-chip").first();
+    if (await chip.count()) {
+      await chip.click();
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: join(OUT_DIR, `controls-chip-${size.name}.png`) });
+      out.chipAfterClick = await chip.evaluate((el) => ({ lit: el.getAttribute("data-lit") ?? el.getAttribute("aria-checked"), word: el.querySelector(".sr-state")?.textContent ?? "" }));
+    }
+    const expand = page.getByRole("button", { name: /Advanced controls for Living/ });
+    if (await expand.count()) {
+      await expand.click();
+      await seen(page, [role=dialog], 5000);
+      await page.waitForTimeout(800);
+      await page.screenshot({ path: join(OUT_DIR, `controls-modal-${size.name}.png`) });
+      out.modal = await page.evaluate(CONTROLS);
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(400);
+    }
+    await context.close();
+  });
+  await guarded(`controls reduced ${size.name}`, async () => {
+    const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, reduced: true, ha: true });
+    await seen(page, ".sr-climate", 15_000);
+    const chip = page.locator("button.sr-chip").first();
+    if (await chip.count()) await chip.click();
+    await page.waitForTimeout(300);
+    const running = (await page.evaluate(SCAN)).running;
+    results.controls.reduced[size.name] = { n14Running: running };
+    await context.close();
+  });
+}
 
 results.n16PageErrors = pageErrors;
 results.n16PageErrorMessages = pageErrorMessages;
