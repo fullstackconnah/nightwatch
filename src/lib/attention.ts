@@ -379,10 +379,11 @@ const ORCHESTRA_RACE_MS = 3_000;
 let orchestraLastInFlight = 0;
 
 /**
- * The list call carries counts only; quietMin lives on each orchestrator's
- * detail, so every orchestrator with work in flight is fetched in parallel and
- * isStalled (orchestra-view.ts) decides, not the service's own stalledCount.
- * A detail that comes back unreachable/unauthorized counts as that status.
+ * The list carries each lane's in-flight rows (quietMin, waiting), so isStalled
+ * and the waiting check (orchestra-view.ts) decide from it, as the lanes page does.
+ * Only a busy lane whose list row has none (count > 0, rows empty) is fetched in
+ * parallel for its detail. A detail that comes back unreachable/unauthorized
+ * counts as that status.
  */
 const orchestraMemo = new Memo<{ hits: RawHit[] }>({
   key: "attention.orchestra",
@@ -390,9 +391,10 @@ const orchestraMemo = new Memo<{ hits: RawHit[] }>({
   load: async () => {
     const snap = await getOrchestraSnapshot();
     let status = snap.status;
-    const details: OrchestratorDetail[] = [];
+    const details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[] = [];
     if (status === "ok") {
-      const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0);
+      details.push(...snap.orchestrators);
+      const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0 && o.inFlight.length === 0);
       for (const r of await Promise.all(busy.map((o) => getOrchestraDetail(o.name)))) {
         if (r.status !== "ok") status = r.status;
         else if (r.orchestrator) details.push(r.orchestrator);

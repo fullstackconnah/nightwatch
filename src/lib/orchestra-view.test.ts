@@ -8,6 +8,7 @@ import {
   formatQuiet,
   holdMembers,
   holdPillText,
+  homeLanesText,
   inFlightRows,
   isLive,
   laneAttention,
@@ -310,5 +311,34 @@ describe("orchestraAttention", () => {
   it("follows isStalled at STALL_MIN: 19 min is still fine, 20 speaks", () => {
     assert.equal(orchestraAttention("ok", [d("dev", [19])]), null);
     assert.equal(orchestraAttention("ok", [d("dev", [20])])?.headline, "agent-dev-0 has gone quiet");
+  });
+});
+
+describe("waiting agents on Home (O2)", () => {
+  const w = (name: string, tool: string, sinceMin: number, title: string | null = null) => ({
+    name: `lane-${name}`, title, inFlight: [{ name: `agent-${name}`, quietMin: 1, waiting: { tool, sinceMin } }],
+  });
+  const stalled = { name: "odip", title: null, inFlight: [{ name: "agent-odip", quietMin: 90, waiting: null }] };
+
+  it("raises an item for a waiting agent, with the lanes page's wording", () => {
+    assert.deepEqual(orchestraAttention("ok", [w("dev", "Bash", 6, "Dev")]), {
+      headline: "Dev is waiting for you",
+      detail: "agent-dev has a Bash call waiting 6m, usually a permission prompt.",
+      action: "Answer it on the PC.",
+    });
+  });
+  it("ranks a waiting agent above a stalled one", () => {
+    assert.equal(orchestraAttention("ok", [stalled, w("dev", "Bash", 2)])?.headline, "lane-dev is waiting for you");
+  });
+  it("counts several waiting agents and names the longest", () => {
+    const r = orchestraAttention("ok", [w("a", "Bash", 2), w("b", "Edit", 9)]);
+    assert.equal(r?.headline, "2 agents are waiting for you");
+    assert.equal(r?.detail, "Longest: agent-b has a Edit call waiting 9m, usually a permission prompt.");
+  });
+  it("Home's lane text counts a lane with a waiting agent as stuck, and leaves out the agent count", () => {
+    const list = [o("running", 0, [ag("a", 1, wait("Bash", 3))], "one"), o("running", 0, [ag("b", 1)], "two"), o("stopped", 0, [], "three")];
+    assert.equal(homeLanesText(list), "1 stuck, 1 running, 1 stopped");
+    assert.equal(homeLanesText([o("running", 0, [ag("a", 1, wait("Bash", 3))])]), "1 stuck");
+    assert.equal(homeLanesText([]), "no lanes");
   });
 });
