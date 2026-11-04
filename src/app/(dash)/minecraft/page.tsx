@@ -52,6 +52,7 @@ export default function MinecraftPage() {
 
   const [tail, setTail] = useState(200);
   const [paused, setPaused] = useState(false);
+  const [serverBusy, setServerBusy] = useState(false);
   const log = useMinecraftLog(container?.id, tail, paused);
   const lastLine = lastLogLine(log.data?.logs);
 
@@ -82,8 +83,8 @@ export default function MinecraftPage() {
 
   const parts: Record<StripId, Pick<StripSpec, "slot" | "body" | "mono">> = {
     server: {
-      slot: <ServerSlot model={model} container={target} online={online} crashed={crashed} />,
-      body: <ServerDetail model={model} status={status} container={target} online={online} installFailed={crashed} />,
+      slot: <ServerSlot model={model} container={target} online={online} crashed={crashed} busy={serverBusy} onPending={setServerBusy} refresh={refresh} />,
+      body: <ServerDetail model={model} status={status} container={target} online={online} installFailed={crashed} busy={serverBusy} onPending={setServerBusy} refresh={refresh} />,
     },
     players: { body: <PlayersDetail names={status?.players?.players ?? []} stopped={container?.state !== "running"} /> },
     pack: {

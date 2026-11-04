@@ -17,8 +17,9 @@ interface Target {
   name: string;
 }
 
-const act = (c: Target, action: "stop" | "start" | "restart") => async () => {
+const act = (c: Target, action: "stop" | "start" | "restart" | "pause" | "unpause", refresh?: () => Promise<unknown> | void) => async () => {
   await postJson(`/api/docker/containers/${c.id.slice(0, 12)}/action`, { action });
+  await refresh?.();
 };
 
 const players = (n: number) => `${n} player${n === 1 ? "" : "s"}`;
@@ -32,32 +33,57 @@ export function ServerSlot({
   container,
   online,
   crashed,
+  busy,
   onPending,
+  refresh,
 }: {
   model: Model;
   container: Target | undefined;
   online: number;
   crashed: boolean;
+  /** Another Server write is in flight: the daemon rejects concurrent lifecycle calls. */
+  busy?: boolean;
   onPending?: (p: boolean) => void;
+  refresh?: () => Promise<unknown> | void;
 }) {
   if (!container) return null;
   const stop = writeOf(model, "stop");
   const start = writeOf(model, "start");
+  const resume = writeOf(model, "resume");
   if (stop?.enabled) {
     const say =
       online > 0
         ? `Stops the server and disconnects ${players(online)}. Start it again from here.`
         : "Stops the server. Nobody is online. Start it again from here.";
-    return (
+    const stopAction = (
       <WriteAction
         label="Stop"
         ariaLabel={`Stop ${container.name}`}
         flight="Stopping…"
         failure="Couldn’t stop the server"
-        run={act(container, "stop")}
+        disabled={busy}
+        run={act(container, "stop", refresh)}
         onPending={onPending}
         renderAsk={({ onYes, onCancel }) => <ConfirmStop name={container.name} say={say} onYes={onYes} onCancel={onCancel} />}
       />
+    );
+    // Paused: Resume (harmless, no question) sits beside Stop.
+    return resume?.enabled ? (
+      <div className="st-row">
+        <WriteAction
+          label="Resume"
+          ariaLabel={`Resume ${container.name}`}
+          confirm={false}
+          flight="Resuming…"
+          failure="Couldn’t resume the server"
+          disabled={busy}
+          run={act(container, "unpause", refresh)}
+          onPending={onPending}
+        />
+        {stopAction}
+      </div>
+    ) : (
+      stopAction
     );
   }
   if (start?.enabled) {
@@ -68,7 +94,8 @@ export function ServerSlot({
         confirm={false}
         flight="Starting… first boot can take several minutes."
         failure="Couldn’t start the server"
-        run={act(container, "start")}
+        disabled={busy}
+        run={act(container, "start", refresh)}
         onPending={onPending}
       />
     );
@@ -82,17 +109,22 @@ export function ServerDetail({
   container,
   online,
   installFailed,
+  busy,
   onPending,
+  refresh,
 }: {
   model: Model;
   status: MinecraftStatusResponse | undefined;
   container: Target | undefined;
   online: number;
   installFailed: boolean;
+  busy?: boolean;
   onPending?: (p: boolean) => void;
+  refresh?: () => Promise<unknown> | void;
 }) {
   const active = status?.instances.find((i) => i.slug === status.active);
   const restart = writeOf(model, "restart");
+  const pause = writeOf(model, "pause");
   const lead = leadFor(model, "server");
   return (
     <div className="st-stack">
@@ -109,7 +141,7 @@ export function ServerDetail({
       )}
       {installFailed && <p className="st-note">Some files need manual download. Open the Log strip to see which.</p>}
       {container && restart?.enabled && (
-        <div>
+        <div className="st-row">
           <WriteAction
             label="Restart"
             say={
@@ -120,9 +152,21 @@ export function ServerDetail({
             yes="Yes, restart"
             flight="Restarting…"
             failure="Couldn’t restart the server"
-            run={act(container, "restart")}
+            disabled={busy}
+            run={act(container, "restart", refresh)}
             onPending={onPending}
           />
+          {pause?.enabled && (
+            <WriteAction
+              label="Pause"
+              confirm={false}
+              flight="Pausing…"
+              failure="Couldn’t pause the server"
+              disabled={busy}
+              run={act(container, "pause", refresh)}
+              onPending={onPending}
+            />
+          )}
         </div>
       )}
     </div>

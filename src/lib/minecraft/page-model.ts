@@ -4,11 +4,12 @@
 import type { MinecraftStatusResponse } from "../client.ts";
 import { formatUptime } from "../format.ts";
 import { ageText } from "../home.ts";
+import { canRestore } from "../mc-backup-reason.ts";
 import type { McBackup } from "./manager.ts";
 
 export type StripId = "server" | "players" | "pack" | "backups" | "console" | "log";
 export type WriteId =
-  | "stop" | "start" | "restart" | "switch" | "delete" | "install" | "upload"
+  | "stop" | "start" | "restart" | "pause" | "resume" | "switch" | "delete" | "install" | "upload"
   | "console-send" | "backup-run" | "restore" | "log-pause";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 
@@ -61,7 +62,7 @@ const ORDER = {
   crashed: ["server", "log", "pack", "backups", "players", "console"],
   noPack: ["pack", "server", "backups", "players", "console", "log"],
 } as const satisfies Record<string, readonly StripId[]>;
-const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
+const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "pause", "resume", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
 /** The full answer leads the strip the answer names, and only that one (R3). */
 export const leadFor = (m: Pick<Model, "autoTarget" | "detailLead">, id: StripId): string | null => (m.autoTarget === id ? m.detailLead : null);
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -189,19 +190,20 @@ export function minecraftModel(i: ModelInput): Model {
     if (c) {
       if (["running", "restarting", "paused"].includes(c.state)) on.stop = null;
       else on.start = null;
-      if (running) on.restart = null;
+      if (running) on.restart = on.pause = null;
+      if (c.state === "paused") on.resume = null;
     }
     if (managerOk) {
       for (const id of ["switch", "delete", "install", "upload"] as const) on[id] = null;
       if (status.rcon === "ok") on["console-send"] = null;
       if (running) on["backup-run"] = null;
-      else if (c) on.restore = null;
+      else if (c && canRestore(c.state)) on.restore = null;
     }
   }
   if (c) on["log-pause"] = null;
   const why = (id: WriteId): string | null => {
     if (stale) return "Controls are paused while the page shows old data.";
-    if (!managerOk && id !== "stop" && id !== "start" && id !== "restart" && id !== "log-pause") return "mc-manager isn’t answering.";
+    if (!managerOk && id !== "stop" && id !== "start" && id !== "restart" && id !== "pause" && id !== "resume" && id !== "log-pause") return "mc-manager isn’t answering.";
     if (id === "console-send") return `Unavailable: ${consoleLine}.`;
     if (id === "backup-run") return "Start the server to back up.";
     if (id === "restore") return "Stop the server to restore.";

@@ -17,6 +17,8 @@ test("OPEN-P2: restore is refused only while the server runs", () => {
   assert.equal(restoreRefusal("running"), "Stop the server before restoring a backup.");
   assert.equal(restoreRefusal("exited"), null);
   assert.equal(restoreRefusal(undefined), null);
+  for (const st of ["paused", "restarting", "removing", "weird"]) assert.equal(restoreRefusal(st), "Stop the server before restoring a backup.", st);
+  for (const st of ["created", "dead"]) assert.equal(restoreRefusal(st), null, st);
 });
 
 test("OPEN-P2: the route answers 409 before it calls restoreBackup, and backup-run stays unguarded", () => {

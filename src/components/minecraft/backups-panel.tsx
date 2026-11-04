@@ -7,7 +7,7 @@
 
 import { WriteAction } from "@/components/strips/write-action";
 import { postJson } from "@/lib/client";
-import { backupReason } from "@/lib/mc-backup-reason";
+import { backupReason, canRestore } from "@/lib/mc-backup-reason";
 import { relativeTime } from "@/lib/format";
 import type { McBackup } from "@/lib/minecraft/manager";
 import { useState } from "react";
@@ -56,7 +56,7 @@ export function BackupsDetail({
   onChanged: () => Promise<unknown> | void;
 }) {
   const [busy, setBusy] = useState(false);
-  const running = containerState === "running";
+  const blocked = !canRestore(containerState);
   const reason = backupReason(containerState);
   return (
     <div className="st-stack">
@@ -90,8 +90,8 @@ export function BackupsDetail({
                 danger
                 flight="Restoring…"
                 failure="Couldn’t restore"
-                disabled={running || writesOff || busy}
-                describedBy={running ? "mc-backup-reason" : undefined}
+                disabled={blocked || writesOff || busy}
+                describedBy={blocked ? "mc-backup-reason" : undefined}
                 onPending={setBusy}
                 run={async () => {
                   await postJson("/api/minecraft/backups", { action: "restore", instance: b.instance, file: b.file });

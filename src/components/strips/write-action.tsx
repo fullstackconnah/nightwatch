@@ -59,6 +59,11 @@ export function WriteAction({
     }
   }, [phase]);
 
+  // An open question or failure must not outlive the write being turned off (the state changed under it).
+  useEffect(() => {
+    if (disabled) setPhase((p) => (p === "asking" || p === "failed" ? "idle" : p));
+  }, [disabled]);
+
   async function go() {
     setPhase("flight");
     onPending?.(true);

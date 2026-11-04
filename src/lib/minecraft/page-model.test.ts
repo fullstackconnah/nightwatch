@@ -59,7 +59,7 @@ test("token rejected: warn, Server opens, only Start/Stop/Restart work", () => {
   assert.equal(m.answer, "mc-manager rejected the token. Check it in Settings → Integrations.");
   assert.deepEqual(m.link, { href: "/settings#integrations", label: "Open Settings" });
   assert.equal(m.autoTarget, "server");
-  assert.deepEqual(enabled(m), ["restart", "stop"]);
+  assert.deepEqual(enabled(m), ["pause", "restart", "stop"]);
 });
 
 test("down: warn, Server opens, why-line notice, Docker verbs still work", () => {
@@ -68,7 +68,7 @@ test("down: warn, Server opens, why-line notice, Docker verbs still work", () =>
   assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.");
   assert.equal(m.notice, "Start, stop and restart still work through Docker.");
   assert.equal(m.autoTarget, "server");
-  assert.deepEqual(enabled(m), ["restart", "stop"]);
+  assert.deepEqual(enabled(m), ["pause", "restart", "stop"]);
 });
 
 test("crashed: bad, Server opens, order puts the Log second, Start and Restore work", () => {
@@ -113,7 +113,7 @@ test("running, calm: default order, nothing opens, every write per section 6", (
     "Running for 3h 0m", "2 of 10 online", "ATM10 · modrinth", "Last 6 h ago · 5 kept", "Ready", "[10:00:00] Done (41.2s)!",
   ]);
   assert.ok(m.strips.every((s) => s.tone === null), "0 bad or warn tones on a healthy page");
-  assert.deepEqual(enabled(m), ["backup-run", "console-send", "delete", "install", "restart", "stop", "switch", "upload"]);
+  assert.deepEqual(enabled(m), ["backup-run", "console-send", "delete", "install", "pause", "restart", "stop", "switch", "upload"]);
   assert.equal(w(m, "restore").reason, "Stop the server to restore.");
 });
 
@@ -189,4 +189,19 @@ test("the full answer leads only the strip the answer names (R3)", () => {
   const crashed = minecraftModel(input({ container: crashedC }));
   assert.equal(leadFor(crashed, "server"), crashed.answer);
   assert.equal(leadFor(crashed, "pack"), null);
+});
+
+test("restore follows the stopped-state allow-list; paused offers Resume", () => {
+  for (const state of ["paused", "restarting", "running", "removing"]) {
+    const m = minecraftModel(input({ container: { state, exitCode: null, startedAt: null } }));
+    assert.equal(w(m, "restore").enabled, false, state);
+  }
+  for (const state of ["exited", "created", "dead"]) {
+    const m = minecraftModel(input({ container: { state, exitCode: 0, startedAt: null } }));
+    assert.equal(w(m, "restore").enabled, true, state);
+  }
+  const p = minecraftModel(input({ container: { state: "paused", exitCode: null, startedAt: null } }));
+  assert.equal(w(p, "resume").enabled, true);
+  assert.equal(w(p, "stop").enabled, true);
+  assert.equal(w(p, "pause").enabled, false);
 });
