@@ -6,7 +6,7 @@
    copy, real API failure text over a generic "action failed". */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { MoreHorizontal, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { postJson } from "@/lib/client";
@@ -91,7 +91,11 @@ export function WidgetActionRow({
           const busy = pendingId === action.id;
           if (confirming) {
             return (
-              <span key={action.id} className="inline-flex items-center gap-1.5 flex-wrap">
+              <span
+                key={`${action.id}-confirm`}
+                className="nw-confirm inline-flex items-center gap-1.5 flex-wrap"
+                style={{ "--nw-confirm-origin": "left center" } as CSSProperties}
+              >
                 <span className="text-[0.7rem] text-ink-dim">{action.confirm}</span>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>
                   Cancel
@@ -181,14 +185,14 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
         <div
           role="menu"
           aria-label={`${container} app actions`}
-          className="panel absolute right-0 top-full mt-1 w-60 !p-1.5 z-20 space-y-0.5"
+          className="nw-pop panel absolute right-0 top-full mt-1 w-60 !p-1.5 z-20 space-y-0.5"
         >
           {actions.map((action) => {
             const confirming = confirmId === action.id;
             const busy = pendingId === action.id;
             if (confirming) {
               return (
-                <div key={action.id} className="space-y-1 px-1.5 py-1">
+                <div key={`${action.id}-confirm`} className="nw-confirm space-y-1 px-1.5 py-1">
                   <p className="text-[0.7rem] text-ink-dim">{action.confirm}</p>
                   <div className="flex justify-end gap-1.5">
                     <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>

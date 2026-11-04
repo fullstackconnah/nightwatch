@@ -92,10 +92,8 @@ export function ResourceOverview({
       <div
         id={contentId}
         aria-hidden={!expanded}
-        className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
-          expanded ? "grid-rows-[1fr] opacity-100 mt-3" : "grid-rows-[0fr] opacity-0 pointer-events-none",
-        )}
+        // Instant: the chevron turn is the feedback, and a height tween would reflow every panel below it.
+        className={expanded ? "mt-3" : "hidden"}
       >
         <div className="overflow-hidden">
           <div className="space-y-3">

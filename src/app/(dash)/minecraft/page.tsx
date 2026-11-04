@@ -24,7 +24,7 @@ function PlayersDetail({ names, stopped }: { names: string[]; stopped: boolean }
     <div>
       <div className="st-listhead">
         <span>{names.length} online</span>
-        <button type="button" className="st-pill" style={{ visibility: h.pill ? "visible" : "hidden" }} tabIndex={h.pill ? 0 : -1} onClick={h.show}>
+        <button type="button" className="st-pill" data-on={h.pill ? "" : undefined} tabIndex={h.pill ? 0 : -1} onClick={h.show}>
           {h.pill || "0 new · show"}
         </button>
       </div>

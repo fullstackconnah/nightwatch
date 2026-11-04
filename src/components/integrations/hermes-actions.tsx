@@ -8,7 +8,7 @@
    mono elapsed timer, honest 409 copy passed straight through. */
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { AlertTriangle, Loader2, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useHermesRun } from "@/lib/use-hermes";
@@ -65,7 +65,11 @@ export function HermesActionsRow() {
       </p>
 
       {confirmStep === "confirm" ? (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div
+          key="confirm"
+          className="nw-confirm flex items-center gap-2 flex-wrap"
+          style={{ "--nw-confirm-origin": "left center" } as CSSProperties}
+        >
           <AlertTriangle size={13} className="text-warn shrink-0" aria-hidden />
           <span className="text-[0.7rem] text-ink-dim">
             This sends a real test alert down the configured Discord webhook. Send it now?
@@ -80,7 +84,7 @@ export function HermesActionsRow() {
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-2 flex-wrap">
+        <div key="idle" className="flex items-center gap-2 flex-wrap">
           <Button size="sm" variant="ghost" disabled={busy} onClick={() => void startDigest()}>
             <PlayCircle size={13} /> Run digest now
           </Button>

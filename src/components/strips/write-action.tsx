@@ -101,7 +101,9 @@ export function WriteAction({
   if (phase === "asking") {
     return (
       <div
-        className="st-frame"
+        key="confirm"
+        // ConfirmStop (renderAsk) already grows in; both would compound the .97 scale.
+        className={renderAsk ? "st-frame" : "st-frame nw-confirm"}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             e.stopPropagation();
@@ -137,7 +139,7 @@ export function WriteAction({
     );
   }
   return (
-    <div className="st-frame">
+    <div key="error" data-kind="error" className="st-frame nw-confirm">
       <p className="st-say" role="alert">
         {failure}: {reason}.
       </p>

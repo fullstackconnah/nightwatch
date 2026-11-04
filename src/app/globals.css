@@ -721,21 +721,34 @@ body {
    Reduced motion drops the animation for a static ring at the same colour —
    "recording" must still be legible, just not moving. */
 .voice-mic-recording {
+  position: relative;
+}
+.voice-mic-recording::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 45%, transparent);
+  pointer-events: none;
   animation: voice-mic-pulse var(--kiosk-pulse-ms) ease-in-out infinite;
 }
 @keyframes voice-mic-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 45%, transparent);
+  from {
+    transform: scale(1);
+    opacity: 0.45;
   }
-  50% {
-    box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-accent) 0%, transparent);
+  to {
+    transform: scale(1.6);
+    opacity: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .voice-mic-recording {
-    animation: none;
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 30%, transparent);
+  }
+  .voice-mic-recording::after {
+    animation: none;
+    display: none;
   }
 }
 
@@ -3570,4 +3583,43 @@ body {
 .st-log { height: 16rem; overflow: auto; }
 @media (prefers-reduced-motion: reduce) {
   .st-chev { transition: none; }
+}
+
+/* nw motion */
+/* Unlayered and last on purpose: the Home reduced rule (`.hm *`, transition none) is unlayered too and would beat an earlier rule, which
+   would kill the Home menu's reduced opacity fade. Curve is --ease-calm; exits stay instant (unmount). */
+.nw-confirm {
+  transform-origin: var(--nw-confirm-origin, right center);
+  transition: opacity 180ms var(--ease-calm), transform 180ms var(--ease-calm);
+}
+.nw-pop {
+  transform-origin: top right;
+  transition: opacity 150ms var(--ease-calm), transform 150ms var(--ease-calm);
+}
+@starting-style {
+  .nw-confirm { opacity: 0; transform: scale(.97); }
+  .nw-pop { opacity: 0; transform: scale(.97); }
+  .nw-confirm[data-kind="error"] { opacity: 0; transform: none; }
+}
+
+/* the pills: their slots are reserved from first paint; visibility never transitions, so a tap hides at once */
+.hm-pill, .st-pill { visibility: hidden; opacity: 0; }
+.hm-pill[data-on], .st-pill[data-on] { visibility: visible; opacity: 1; }
+.dk-new[data-visible="0"] { opacity: 0; }
+.hm-pill, .dk-new {
+  transition: opacity 240ms var(--ease-calm), color 150ms ease, background-color 150ms ease,
+    border-color 150ms ease, scale 150ms ease;
+}
+.st-pill { transition: opacity 240ms var(--ease-calm); }
+
+/* the "saved" badge: in 180, out 240 */
+.nw-fade { visibility: hidden; opacity: 0; transition: opacity 240ms ease, visibility 0s 240ms; }
+.nw-fade[data-on] { visibility: visible; opacity: 1; transition: opacity 180ms ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nw-confirm, .nw-pop { transition: opacity 120ms ease; }
+  @starting-style {
+    .nw-confirm, .nw-pop { transform: none; }
+  }
+  .hm-pill, .dk-new, .st-pill { transition-duration: 1ms; }
 }

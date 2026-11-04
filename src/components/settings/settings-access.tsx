@@ -88,7 +88,7 @@ function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }
     <Card>
       <CardHeader>
         <CardTitle>Change password</CardTitle>
-        {saved && <Badge variant="ok">saved</Badge>}
+        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
       </CardHeader>
       <CardContent className="space-y-3">
         {configured ? (
@@ -376,7 +376,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
           )}
           <div className="flex items-center gap-2">
             {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            {saved && <Badge variant="ok">saved</Badge>}
+            <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
             <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
               <Save size={13} /> Save
             </Button>

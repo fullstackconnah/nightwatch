@@ -114,7 +114,7 @@ export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLo
             disabled={checking}
             className="h-11 px-3.5 rounded-md border border-line text-ink-dim hover:text-ink hover:border-line-bright text-xs flex items-center gap-1.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-60"
           >
-            <RefreshCw size={13} className={cn(checking && "animate-spin")} />
+            <RefreshCw size={13} className={cn(checking && "animate-spin motion-reduce:animate-none")} />
             {update.state.kind === "result" ? update.state.label : "Check for updates"}
           </button>
           <button

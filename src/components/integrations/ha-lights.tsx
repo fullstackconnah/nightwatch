@@ -83,8 +83,8 @@ function HaLightRow({ light, ha, entities }: { light: HaLight; ha: UseHaResult; 
         {light.on && light.brightnessPct != null && (
           <div className="hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-panel-2 sm:block">
             <div
-              className="h-full rounded-full bg-accent-dim transition-[width] duration-500 ease-out motion-reduce:transition-none"
-              style={{ width: `${light.brightnessPct}%` }}
+              className="h-full w-full origin-left rounded-full bg-accent-dim transition-transform duration-500 ease-out motion-reduce:transition-none"
+              style={{ transform: `scaleX(${light.brightnessPct / 100})` }}
             />
           </div>
         )}

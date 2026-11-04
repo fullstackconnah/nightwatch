@@ -195,7 +195,7 @@ export function LifecycleActions({
             <Icon
               size={13}
               className={cn(
-                isPending && (action === "restart" ? "animate-spin" : "animate-pulse"),
+                isPending && (action === "restart" ? "animate-spin motion-reduce:animate-none" : "animate-pulse motion-reduce:animate-none"),
               )}
             />
           </Button>
@@ -233,7 +233,8 @@ export function ConfirmStop({
   const size = touch ? "h-14 px-4" : undefined;
   return (
     <div
-      className={cn("flex items-center gap-2 flex-wrap", className)}
+      key="confirm"
+      className={cn("nw-confirm flex items-center gap-2 flex-wrap", className)}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();

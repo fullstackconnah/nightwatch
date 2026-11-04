@@ -99,7 +99,7 @@ export function ImageDeleteAction({
 
   if (step === "confirm") {
     return (
-      <div className="flex items-center gap-2 justify-end flex-wrap">
+      <div key="confirm" className="nw-confirm flex items-center gap-2 justify-end flex-wrap">
         <span className="text-[0.7rem] text-ink-dim">
           Delete {label}, free ~<span className="font-mono">{formatBytes(size, 1)}</span>? Can&apos;t be undone.
         </span>
@@ -133,7 +133,7 @@ export function ImageDeleteAction({
         {text && (step === "busy" ? "Deleting…" : text)}
       </Button>
       {error && (
-        <span className="dk-failed">
+        <span key="error" data-kind="error" className="nw-confirm dk-failed">
           {error}
           <Button size="sm" variant="outline" onClick={() => void handleConfirm()}>
             Retry
