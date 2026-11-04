@@ -16,14 +16,25 @@ export function hiddenIdsFromRegistry(entries: unknown): Set<string> {
   return out;
 }
 
+/** Only these lists are controls; sensors (HA marks battery levels diagnostic) must stay visible. */
+const CONTROL_KEYS = ["switches", "lights"];
+
 export function withoutSettingsEntities<T extends Record<string, { entityId: string }[]>>(
   entities: T,
   hidden: ReadonlySet<string>,
 ): T {
   if (hidden.size === 0) return entities;
-  const out = {} as Record<string, { entityId: string }[]>;
-  for (const [k, list] of Object.entries(entities)) out[k] = list.filter((x) => !hidden.has(x.entityId));
+  const out = { ...entities } as Record<string, { entityId: string }[]>;
+  for (const k of CONTROL_KEYS) if (out[k]) out[k] = out[k].filter((x) => !hidden.has(x.entityId));
   return out as T;
+}
+
+/** The kiosk route body: locks emptied (physical-security boundary), settings switches and lights hidden. */
+export function kioskEntities<T extends { locks: { entityId: string }[] }>(
+  entities: T,
+  hidden: ReadonlySet<string>,
+): T {
+  return withoutSettingsEntities({ ...entities, locks: [] } as T & Record<string, { entityId: string }[]>, hidden);
 }
 
 /** Any failure shows everything, as before this filter existed. */

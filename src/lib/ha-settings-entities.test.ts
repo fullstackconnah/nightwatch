@@ -20,7 +20,7 @@ test("registry: a non-array payload gives an empty set", () => {
 });
 
 const e = (entityId: string) => ({ entityId });
-test("filter: every domain list is filtered", () => {
+test("filter: only switches and lights are filtered", () => {
   const ent = {
     lights: [e("light.x"), e("light.hide")], switches: [e("switch.x"), e("switch.hide")],
     climates: [e("climate.hide")], locks: [e("lock.hide")], sensors: [e("sensor.x"), e("sensor.hide")],
@@ -30,11 +30,11 @@ test("filter: every domain list is filtered", () => {
   const out = withoutSettingsEntities(ent, hidden);
   assert.deepEqual(out.lights, [e("light.x")]);
   assert.deepEqual(out.switches, [e("switch.x")]);
-  assert.deepEqual(out.climates, []);
-  assert.deepEqual(out.locks, []);
-  assert.deepEqual(out.sensors, [e("sensor.x")]);
-  assert.deepEqual(out.scenes, []);
-  assert.deepEqual(out.mediaPlayers, [e("media_player.x")]);
+  assert.deepEqual(out.climates, ent.climates);
+  assert.deepEqual(out.locks, ent.locks);
+  assert.deepEqual(out.sensors, ent.sensors);
+  assert.deepEqual(out.scenes, ent.scenes);
+  assert.deepEqual(out.mediaPlayers, ent.mediaPlayers);
 });
 test("filter: an empty hidden set returns the same lists", () => {
   const ent = { lights: [e("light.x")], switches: [], climates: [], locks: [], sensors: [], scenes: [], mediaPlayers: [] };
@@ -144,3 +144,23 @@ test("cache: two concurrent calls open one read", () => withFake(async () => {
   assert.equal(opened, 1);
   assert.equal(a.size + b.size, 0);
 }));
+
+// --- controls only: sensors (battery) must survive; the route body is kioskEntities ---
+import { kioskEntities } from "./ha-settings-entities.ts";
+
+test("kioskEntities: hidden switches and lights drop, a hidden battery sensor stays, locks are emptied", () => {
+  const ent = {
+    lights: [e("light.x"), e("light.hide")], switches: [e("switch.x"), e("switch.hide")],
+    climates: [e("climate.hide")], locks: [e("lock.hide")], sensors: [e("sensor.battery_hide"), e("sensor.y")],
+    scenes: [e("scene.hide")], mediaPlayers: [e("media_player.hide")],
+  };
+  const hidden = new Set(["light.hide", "switch.hide", "climate.hide", "lock.hide", "sensor.battery_hide", "scene.hide", "media_player.hide"]);
+  const out = kioskEntities(ent, hidden);
+  assert.deepEqual(out.lights, [e("light.x")]);
+  assert.deepEqual(out.switches, [e("switch.x")]);
+  assert.deepEqual(out.sensors, [e("sensor.battery_hide"), e("sensor.y")]);
+  assert.deepEqual(out.climates, [e("climate.hide")]);
+  assert.deepEqual(out.scenes, [e("scene.hide")]);
+  assert.deepEqual(out.mediaPlayers, [e("media_player.hide")]);
+  assert.deepEqual(out.locks, []);
+});
