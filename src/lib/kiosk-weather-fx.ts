@@ -116,7 +116,7 @@ export const PUDDLE = {
   ringLife: { day: 0.9, dark: 1.4 },
   ringR: { day: [10, 24], dark: [14, 30] }, // base + span x u, before perspective
   ringKind: { day: 2.2, dark: 2.2 }, // shader sigma = 0.09 + (kind - 2) x 0.1
-  ringAlpha: { day: 0.45, dark: 0.5 }, // day: slate ink; the one number to change if the rings read faint
+  ringAlpha: { day: 0.55, dark: 0.5 }, // day: slate ink; the one number to change if the rings read faint
   ringCrestDy: -1.2, // px; up, so the crest sits on the ring's near edge
   ringCrestAlpha: 0.35, // day only: the white crest on a ring's near edge
   crownAlpha: { day: 0.3, dark: 0.4 },

@@ -267,7 +267,7 @@ describe("puddle line", () => {
   it("day rings are slate at 0.45 with a white crest; night has none", () => {
     const day = puddleParams("light", false, false, 1280, 800);
     const night = puddleParams("light", false, true, 1280, 800);
-    assert.equal(day.ringAlpha, 0.45);
+    assert.equal(day.ringAlpha, 0.55);
     assert.equal(night.ringAlpha, 0.5);
     assert.deepEqual([day.ringCrest, day.ringCrestAlpha], [true, 0.35]);
     assert.equal(night.ringCrest, false);
