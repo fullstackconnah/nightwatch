@@ -60,10 +60,10 @@ const host = () => ({
   network: { rxPerSec: 120_000, txPerSec: 45_000 }, tempC: 48, ts: Date.now(),
 });
 
-/** ResourceSnapshot (src/lib/docker.ts:644): the /resources watchlist rows, one memory limit set. */
+/** ResourceSnapshot (src/lib/docker.ts:644): the /resources watchlist rows, one memory limit set; the first row sits at 8% for the Meter squash check. */
 const resources = () => {
   const list = containers().containers.map((c, i) => ({
-    id: c.id, name: c.name, state: c.state, image: c.image, cpuPct: 3 + i, memBytes: (200 + 40 * i) * 1024 ** 2, memLimit: 1024 ** 3,
+    id: c.id, name: c.name, state: c.state, image: c.image, cpuPct: 3 + i, memBytes: i === 0 ? Math.round(0.08 * 1024 ** 3) : (200 + 40 * i) * 1024 ** 2, memLimit: 1024 ** 3,
     rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 4, sizeRw: 1024 ** 2, sizeRootFs: 100 * 1024 ** 2,
   }));
   return {

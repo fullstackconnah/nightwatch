@@ -224,20 +224,37 @@ try {
     }),
   );
 
-  // F2: /resources Meter fill, transition-property. The Gauge ring renders on no route today (VitalsStrip is unused, kiosk
-  // vitals are always compact), so there is no ring to measure; the Meter sits in an opened watchlist row.
+  // F2: /resources Meter fill. The Meter only renders in an opened container row (page.tsx:408); the rows are plain buttons in
+  // .panel (the old .wl-rowbtn selector matched nothing). The fixture's first container sits at 8% memory, so the same fill gives the
+  // transition-property and the low-percentage squash check (scaleX on a rounded-full bar).
   await guarded("meters", () =>
     each(async (s) => {
       for (const reduced of [false, true]) {
         const page = await visit(s, "/resources", { reduced });
-        await page.locator(".wl-rowbtn").first().click({ timeout: 8_000 });
-        await present(page.locator(".wl-detail .origin-left.rounded-full"));
-        const out = await page.evaluate(() => {
-          const fill = document.querySelector(".wl-detail .origin-left.rounded-full");
-          return fill ? getComputedStyle(fill).transitionProperty : { missing: ".wl-detail .origin-left.rounded-full" };
-        });
+        const row = page.locator(".panel button.w-full[title]");
+        const sel = ".origin-left.rounded-full";
+        let out;
+        if (!(await present(row))) out = missing(".panel button.w-full[title]");
+        else {
+          await row.first().click({ timeout: 8_000 });
+          out = (await present(page.locator(sel))) ? await page.evaluate((q) => {
+            const fill = document.querySelector(q);
+            const r = fill.getBoundingClientRect();
+            const t = fill.parentElement.getBoundingClientRect();
+            return { transition: getComputedStyle(fill).transitionProperty, transform: getComputedStyle(fill).transform, fillW: +r.width.toFixed(1), fillH: +r.height.toFixed(1), trackW: +t.width.toFixed(1) };
+          }, sel) : missing(sel);
+        }
         record("meters", `${s.name}-${reduced ? "reduced" : "normal"}`, { fill: out });
-        if (!reduced) await shoot(page, s, "resources");
+        if (!reduced && !out.missing) {
+          const track = page.locator(sel).first().locator("..");
+          await track.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(700); // the 500 ms scale transition settles
+          const bb = await track.boundingBox();
+          const pad = 16;
+          await page.screenshot({ path: join(OUT_DIR, `motion-meter-low-${s.name}.png`), clip: { x: Math.max(0, bb.x - pad), y: Math.max(0, bb.y - pad), width: bb.width + 2 * pad, height: bb.height + 2 * pad } });
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await shoot(page, s, "resources");
+        }
         await page.close();
       }
     }),
