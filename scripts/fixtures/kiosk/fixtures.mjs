@@ -63,3 +63,6 @@ export const HA_STATES = {
     mediaPlayers: [],
   },
 };
+
+/** /kiosk/api/climate-auto-off in the ClimateAutoOffServerState shape (use-climate-auto-off.ts): the pill and its sheet need it. */
+export const AUTO_OFF = { enabled: true, time: "23:00", skipDate: null, lastRunDate: null };

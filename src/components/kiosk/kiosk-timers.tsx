@@ -262,7 +262,7 @@ export function KioskTimersButton({ className }: { className?: string }) {
           // background-color/border-color/color for all of them. The `animate-pulse`
           // below (finished state) is untouched: it animates opacity, which
           // `.kiosk-press` does not own.
-          "flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
+          "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
           finished
             ? "animate-pulse border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
             : active

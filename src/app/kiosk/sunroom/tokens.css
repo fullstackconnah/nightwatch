@@ -51,11 +51,11 @@
   --sr-m-wash: 420ms;
   --sr-m-stop: 3s;
   /* the morning stop: colours, light model, shadows, press vector (the tick overrides these) */
-  --sr-bg: #e3e7ee;
-  --sr-panel: #e9edf3;
-  --sr-panel-2: #dde2ea;
-  --sr-line: #d3d9e3;
-  --sr-line-bright: #b9c2d1;
+  --sr-bg: #cfdee8;
+  --sr-panel: #d6e4ed;
+  --sr-panel-2: #c9d9e4;
+  --sr-line: #bed0dd;
+  --sr-line-bright: #a3baca;
   --sr-sunlit: #ecb64a;
   --sr-handle: #777f8b;
   --sr-ink: #2c3542;

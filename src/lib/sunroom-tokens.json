@@ -31,11 +31,11 @@
       {
         "name": "bg",
         "value": {
-          "morning": "#e3e7ee",
-          "dawn": "#dcdfe8",
-          "midday": "#e6eaf4",
+          "morning": "#cfdee8",
+          "dawn": "#dad7e5",
+          "midday": "#eef5fe",
           "golden": "#edeae8",
-          "dusk": "#dedde4",
+          "dusk": "#ecd5cd",
           "night": "#0d1425"
         },
         "usage": "Ground: the wall behind everything; it carries the sun's tint for the stop. Never a control face."
@@ -43,11 +43,11 @@
       {
         "name": "panel",
         "value": {
-          "morning": "#e9edf3",
-          "dawn": "#e2e5ed",
-          "midday": "#edf0f8",
+          "morning": "#d6e4ed",
+          "dawn": "#e2dfec",
+          "midday": "#f2faff",
           "golden": "#f2f0ed",
-          "dusk": "#e4e3ea",
+          "dusk": "#f2dbd3",
           "night": "#141d31"
         },
         "usage": "Ground: the face of every raised thing (pane, control, float). Always paired with `shadow-bevel` and its level's shadow (`shadow-control`, or the twin `shadow-pane` / `shadow-float`)."
@@ -55,11 +55,11 @@
       {
         "name": "panel-2",
         "value": {
-          "morning": "#dde2ea",
-          "dawn": "#d6dae4",
-          "midday": "#e0e5f0",
+          "morning": "#c9d9e4",
+          "dawn": "#d6d3e2",
+          "midday": "#e8f0fa",
           "golden": "#e7e4e1",
-          "dusk": "#d8d7de",
+          "dusk": "#e6cfc7",
           "night": "#0a1020"
         },
         "usage": "Ground: recessed wells (tracks, digit boxes) and disabled faces. Pair with `shadow-well`."
@@ -67,11 +67,11 @@
       {
         "name": "line",
         "value": {
-          "morning": "#d3d9e3",
-          "dawn": "#cbd1dd",
-          "midday": "#d5dae7",
+          "morning": "#bed0dd",
+          "dawn": "#ccc8da",
+          "midday": "#dce5f1",
           "golden": "#dcd8d5",
-          "dusk": "#cdccd5",
+          "dusk": "#ddc4bb",
           "night": "#1f2b45"
         },
         "usage": "Ground: hairlines that divide rows inside a pane, and the Timer ring track. Decorative only; never the sole cue for state."
@@ -79,11 +79,11 @@
       {
         "name": "line-bright",
         "value": {
-          "morning": "#b9c2d1",
-          "dawn": "#b4bccc",
-          "midday": "#bcc4d5",
+          "morning": "#a3baca",
+          "dawn": "#b7b2c8",
+          "midday": "#c3cfdf",
           "golden": "#c4c0bc",
-          "dusk": "#b6b5c1",
+          "dusk": "#c8aca3",
           "night": "#35466e"
         },
         "usage": "Ground: the stronger hairline for dividers that sit on `bg`."

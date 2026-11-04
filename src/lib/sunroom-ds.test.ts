@@ -99,7 +99,7 @@ describe("N6 / N7 generated tokens", () => {
   const tick = new Set(Object.keys(sunroomCssVars(sunroomStateAt(2), sunroomStateAt(2).light)));
   const declared = new Set([...gen.css.matchAll(/(--sr-[\w-]+)\s*:/g)].map((m) => m[1]));
   it("N7: regenerated tokens.css equals the committed file", () => {
-    assert.equal(gen.css, read("tokens.css"));
+    assert.equal(gen.css, read("tokens.css").replace(/\r\n/g, "\n")); // a Windows checkout (autocrlf) has CRLF; the generator writes LF
   });
   it("N6: every tokens.json name is emitted by tokens.css or the tick", () => {
     const missing = gen.names.filter((n) => !declared.has(n) && !tick.has(n));

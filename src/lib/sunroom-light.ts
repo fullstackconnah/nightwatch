@@ -248,11 +248,11 @@ export const SUNROOM_STOPS: readonly {
   {
     name: "dawn",
     palette: {
-      bg: "#dcdfe8",
-      panel: "#e2e5ed",
-      panel2: "#d6dae4",
-      line: "#cbd1dd",
-      lineBright: "#b4bccc",
+      bg: "#dad7e5",
+      panel: "#e2dfec",
+      panel2: "#d6d3e2",
+      line: "#ccc8da",
+      lineBright: "#b7b2c8",
       sunlit: "#ecac78",
       handle: "#727a86",
       ...LIGHT_FG,
@@ -278,11 +278,11 @@ export const SUNROOM_STOPS: readonly {
       // The shipped sunroom ground, unchanged. This stop is the continuity
       // anchor for the whole ramp — mid-morning is when the theme looks
       // exactly like the theme it replaces.
-      bg: "#e3e7ee",
-      panel: "#e9edf3",
-      panel2: "#dde2ea",
-      line: "#d3d9e3",
-      lineBright: "#b9c2d1",
+      bg: "#cfdee8",
+      panel: "#d6e4ed",
+      panel2: "#c9d9e4",
+      line: "#bed0dd",
+      lineBright: "#a3baca",
       sunlit: "#ecb64a",
       handle: "#777f8b",
       ...LIGHT_FG,
@@ -312,11 +312,11 @@ export const SUNROOM_STOPS: readonly {
       // removal of coolness — so the fix is to give midday more coolness to
       // remove, never to push golden toward beige. Red-minus-blue now swings
       // about -14 here to +5 at golden, against ~3 before.
-      bg: "#e6eaf4",
-      panel: "#edf0f8",
-      panel2: "#e0e5f0",
-      line: "#d5dae7",
-      lineBright: "#bcc4d5",
+      bg: "#eef5fe",
+      panel: "#f2faff",
+      panel2: "#e8f0fa",
+      line: "#dce5f1",
+      lineBright: "#c3cfdf",
       sunlit: "#efbd44",
       handle: "#7a818d",
       ...LIGHT_FG,
@@ -370,11 +370,11 @@ export const SUNROOM_STOPS: readonly {
   {
     name: "dusk",
     palette: {
-      bg: "#dedde4",
-      panel: "#e4e3ea",
-      panel2: "#d8d7de",
-      line: "#cdccd5",
-      lineBright: "#b6b5c1",
+      bg: "#ecd5cd",
+      panel: "#f2dbd3",
+      panel2: "#e6cfc7",
+      line: "#ddc4bb",
+      lineBright: "#c8aca3",
       sunlit: "#e2a07e",
       handle: "#737986",
       ...LIGHT_FG,

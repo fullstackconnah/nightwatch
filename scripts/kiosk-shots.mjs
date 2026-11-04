@@ -17,7 +17,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { HA_STATES, PINNED_ISO, QUIET, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, HA_STATES, PINNED_ISO, QUIET, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -26,6 +26,8 @@ const SIZES = [
   { name: "1024x768", viewport: { width: 1024, height: 768 } },
 ];
 const MAIN_URL = `${BASE_URL}/kiosk?theme=sunroom&wx=overcast&wxsun=day`;
+// glance renders only the read-only climate summary; the controls live in the pinned standard layout
+const CONTROLS_URL = `${MAIN_URL}&layout=standard`;
 const STOP_URL = `${BASE_URL}/kiosk?theme=sunroom&wx=off`;
 
 mkdirSync(OUT_DIR, { recursive: true });
@@ -72,7 +74,7 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   });
   await page.route("**/kiosk/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : QUIET;
+    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : ha && path.endsWith("/climate-auto-off") ? AUTO_OFF : QUIET;
     return route.fulfill({ json });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
@@ -157,10 +159,17 @@ const CONTROLS = () => {
 results.controls = { seen: {}, reduced: {} };
 for (const size of SIZES) {
   await guarded(`controls ${size.name}`, async () => {
-    const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
     const seenTile = await seen(page, ".sr-climate", 15_000);
     results.controls.seen[size.name] = { tile: seenTile, chip: await page.locator("button.sr-chip").count(), switchTrack: await page.locator(".sr-switch-track").count() };
     const out = (results.controls[size.name] = {});
+    if (!seenTile) {
+      // a missing tile is a failure, not a pass: record it and skip nothing silently
+      out.rest = { missing: ".sr-climate" };
+      await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
+      await context.close();
+      return;
+    }
     await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
     out.rest = await page.evaluate(CONTROLS);
     // a chip press: the sun catch should light (data-lit) and the word flips
@@ -174,18 +183,31 @@ for (const size of SIZES) {
     const expand = page.getByRole("button", { name: /Advanced controls for Living/ });
     if (await expand.count()) {
       await expand.click();
-      await seen(page, [role=dialog], 5000);
+      await seen(page, '[role=dialog]', 5000);
       await page.waitForTimeout(800);
       await page.screenshot({ path: join(OUT_DIR, `controls-modal-${size.name}.png`) });
       out.modal = await page.evaluate(CONTROLS);
       await page.keyboard.press("Escape");
       await page.waitForTimeout(400);
-    }
+    } else out.modal = { missing: "Advanced controls for Living" };
+    const pill = page.getByRole("button", { name: /AC auto-off/ });
+    if (await pill.count()) {
+      await pill.click();
+      if (await seen(page, '[role=dialog]', 5000)) {
+        await page.waitForTimeout(800);
+        await page.screenshot({ path: join(OUT_DIR, `controls-sheet-${size.name}.png`) });
+        out.sheet = await page.evaluate(CONTROLS);
+      } else out.sheet = { missing: "[role=dialog]" };
+    } else out.sheet = { missing: "AC auto-off pill" };
     await context.close();
   });
   await guarded(`controls reduced ${size.name}`, async () => {
-    const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, reduced: true, ha: true });
-    await seen(page, ".sr-climate", 15_000);
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, reduced: true, ha: true });
+    if (!(await seen(page, ".sr-climate", 15_000))) {
+      results.controls.reduced[size.name] = { missing: ".sr-climate" };
+      await context.close();
+      return;
+    }
     const chip = page.locator("button.sr-chip").first();
     if (await chip.count()) await chip.click();
     await page.waitForTimeout(300);
