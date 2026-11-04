@@ -14,6 +14,7 @@ export function SegmentButton({
   children,
   label,
   fill = false,
+  disabled = false,
 }: {
   active: boolean;
   onClick: () => void;
@@ -28,19 +29,22 @@ export function SegmentButton({
    * how the two-button DISK sub-view ended up rendering "STO…".
    */
   fill?: boolean;
+  /** Off, e.g. while the page shows old data. */
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      disabled={disabled}
       aria-label={label}
       title={label}
       className={cn(
         // px-1 on the narrowest phones, px-3 from sm up: six tabs at px-3 overflow a
         // 360px viewport, and a horizontal scroll strip would hide tabs behind a
         // gesture nobody discovers.
-        "h-11 md:h-8 min-w-11 md:min-w-0 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border active:scale-[0.98] motion-reduce:active:scale-100",
+        "h-11 md:h-8 min-w-11 md:min-w-0 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] motion-reduce:active:scale-100",
         fill && "flex-1 truncate",
         active
           ? "bg-accent/10 text-accent border-accent/30"

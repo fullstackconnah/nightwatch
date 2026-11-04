@@ -25,6 +25,8 @@ export function WriteAction({
   describedBy,
   run,
   onPending,
+  onActive,
+  autoCancelMs,
   renderAsk,
 }: {
   label: string;
@@ -45,6 +47,10 @@ export function WriteAction({
   run: () => Promise<void>;
   /** Lets a list hold its other writes while one is in flight. */
   onPending?: (pending: boolean) => void;
+  /** True from the question until the write is done or dismissed; lets a pair of writes show one frame at a time. */
+  onActive?: (active: boolean) => void;
+  /** The question cancels itself after this long (a lock is a door: Smart home's 4 s). */
+  autoCancelMs?: number;
   /** Replaces the default question (the shared ConfirmStop). */
   renderAsk?: (p: { onYes: () => void; onCancel: () => void }) => ReactNode;
 }) {
@@ -81,6 +87,17 @@ export function WriteAction({
     refocus.current = true;
     setPhase("idle");
   };
+
+  useEffect(() => {
+    if (phase !== "asking" || !autoCancelMs) return;
+    const t = setTimeout(cancel, autoCancelMs);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, autoCancelMs]);
+  useEffect(() => {
+    onActive?.(phase !== "idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   if (phase === "idle") {
     return (

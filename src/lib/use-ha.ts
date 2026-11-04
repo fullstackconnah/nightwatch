@@ -27,14 +27,17 @@ export interface UseHaResult {
   data: HaStatesResponse | undefined;
   error: unknown;
   isLoading: boolean;
-  runAction: (req: HaActionRequest, optimisticEntities: HaEntities) => Promise<void>;
+  /** True while a poll is in flight; the page uses it to date the last good answer. */
+  isValidating: boolean;
+  /** Resolves true when HA took the action, false when it did not (the failure is also in `actionErrors`). */
+  runAction: (req: HaActionRequest, optimisticEntities: HaEntities) => Promise<boolean>;
   /** entityId -> most recent action failure message for that entity. */
   actionErrors: Record<string, string>;
   dismissActionError: (entityId: string) => void;
 }
 
 export function useHa(refreshMs = 3000): UseHaResult {
-  const { data, error, isLoading, mutate } = useSWR<HaStatesResponse>(HA_STATES_KEY, fetcher, {
+  const { data, error, isLoading, isValidating, mutate } = useSWR<HaStatesResponse>(HA_STATES_KEY, fetcher, {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
@@ -61,15 +64,17 @@ export function useHa(refreshMs = 3000): UseHaResult {
 
       try {
         await postJson("/api/ha/action", req);
+        return true;
       } catch (e) {
         if (previous) await mutate(previous, { revalidate: false });
         const message =
           e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Action failed — try again.";
         setActionErrors((prev) => ({ ...prev, [req.entityId]: message }));
+        return false;
       }
     },
     [data, mutate, dismissActionError],
   );
 
-  return { data, error, isLoading, runAction, actionErrors, dismissActionError };
+  return { data, error, isLoading, isValidating, runAction, actionErrors, dismissActionError };
 }
