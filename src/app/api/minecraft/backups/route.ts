@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
+import { listContainers } from "@/lib/docker";
+import { restoreRefusal } from "@/lib/mc-backup-reason";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +41,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "restore" && isRestoreBody(body)) {
+    // Trust boundary: the UI disables Restore while running, but the route must refuse it too.
+    const all = await listContainers().catch(() => null);
+    if (!all) return NextResponse.json({ error: "Couldn't check whether the server is running." }, { status: 503 });
+    const refusal = restoreRefusal(all.find((c) => c.name === "minecraft")?.state);
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
     const probe = await mcManager.restoreBackup(body.instance, body.file);
     if (!isProbeOk(probe)) {
       const { status, error } = probeErrorResponse(probe);

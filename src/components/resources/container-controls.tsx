@@ -218,8 +218,11 @@ export function ConfirmStop({
   busy,
   touch,
   className,
+  say,
 }: {
   name: string;
+  /** Replaces the default "Stop {name}?" when a surface can say what stopping costs (Minecraft: who is disconnected). */
+  say?: string;
   onYes: () => void;
   onCancel: () => void;
   busy?: boolean;
@@ -238,7 +241,7 @@ export function ConfirmStop({
         }
       }}
     >
-      <span className="text-xs text-ink-dim">Stop {name}?</span>
+      <span className="text-xs text-ink-dim">{say ?? `Stop ${name}?`}</span>
       <Button size="sm" variant="ghost" className={size} disabled={busy} onClick={onCancel}>
         Cancel
       </Button>

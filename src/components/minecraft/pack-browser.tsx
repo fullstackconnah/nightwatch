@@ -1,20 +1,14 @@
 /**
- * Search CurseForge + Modrinth for a modpack, install it, and switch the
- * active instance to it — plus the list of what's already installed
- * (activate/delete). One pendingKey/confirmKey pair shared across both
- * sections: only one row can be mid-confirm or mid-request at a time, so a
- * double-click on a second row while the first is still in flight can't fire
- * two lifecycle-altering requests at once.
- *
- * No toasts, no window.confirm — every destructive or server-switching
- * action swaps its trigger button for an inline Cancel/Confirm pair first.
+ * The Pack strip's detail: search CurseForge and Modrinth, install a pack and make it active, and the list of what's
+ * installed (switch, delete). Every write uses the strips pattern's one idiom (WriteAction); while one is in flight
+ * the others are off, so two lifecycle-altering requests can't overlap.
  */
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/input";
 import { ApiError, postJson, useMinecraftPackSearch } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
@@ -23,11 +17,12 @@ import type { PackResult } from "@/lib/minecraft/packs";
 import { UploadPack } from "./upload-pack";
 
 const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
+const SOURCE_LABEL = { curseforge: "CurseForge", modrinth: "Modrinth", upload: "an upload" } as const;
 const compactNumber = new Intl.NumberFormat("en", { notation: "compact" });
 
 /**
  * On a 409 from POST /instances (already installed), the create call never
- * returns the instance's slug — only an error. The manager's slug is a
+ * returns the instance's slug, only an error. The manager's slug is a
  * deterministic sanitize of the pack's own slug, so the existing instance in
  * `instances` is found by matching either the raw slug or (source, packRef)
  * rather than re-deriving the manager's sanitize rule client-side.
@@ -39,308 +34,193 @@ function findInstalledSlug(pack: PackResult, instances: McInstance[]): string | 
   return byRef?.slug ?? null;
 }
 
-function installCopy(activeName: string | undefined, targetName: string): string {
-  return activeName
-    ? `Stops "${activeName}" and switches to "${targetName}". First boot can take several minutes.`
-    : `Installs "${targetName}". First boot can take several minutes.`;
-}
-
-function switchCopy(activeName: string | undefined, targetName: string): string {
-  return activeName
-    ? `Stops "${activeName}" and switches to "${targetName}". Loading the modpack can take a few minutes.`
-    : `Switches to "${targetName}". Loading the modpack can take a few minutes.`;
-}
-
 export function PackBrowser({
   instances,
   active,
   onChanged,
+  disabled,
 }: {
   instances: McInstance[];
   active: string | null;
   onChanged: () => void;
+  /** The server is not answering: pack writes are off (R-stale). */
+  disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [source, setSource] = useState<"all" | "curseforge" | "modrinth">("all");
   const { data: search, error: searchError } = useMinecraftPackSearch(debounced, source);
-
-  const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [confirmKey, setConfirmKey] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const off = disabled || busy;
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 400);
     return () => clearTimeout(t);
   }, [query]);
 
-  const activeInstance = instances.find((i) => i.slug === active);
-
-  function setError(key: string, message: string | null) {
-    setErrors((e) => {
-      const next = { ...e };
-      if (message) next[key] = message;
-      else delete next[key];
-      return next;
-    });
-  }
-
-  async function installAndActivate(key: string, pack: PackResult) {
-    setPendingKey(key);
-    setError(key, null);
+  async function installAndActivate(pack: PackResult) {
+    let slug: string | undefined;
     try {
-      let slug: string | undefined;
-      try {
-        const created = await postJson("/api/minecraft/instances", { pack });
-        slug = created?.slug as string | undefined;
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 409) {
-          slug = findInstalledSlug(pack, instances) ?? undefined;
-          if (!slug) throw e;
-        } else {
-          throw e;
-        }
+      const created = await postJson("/api/minecraft/instances", { pack });
+      slug = created?.slug as string | undefined;
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        slug = findInstalledSlug(pack, instances) ?? undefined;
+        if (!slug) throw e;
+      } else {
+        throw e;
       }
-      if (!slug) throw new Error("install did not return a slug");
-      await postJson(`/api/minecraft/instances/${encodeURIComponent(slug)}/activate`);
-      onChanged();
-      setConfirmKey(null);
-    } catch (e) {
-      setError(key, e instanceof Error ? e.message : "install failed");
-    } finally {
-      setPendingKey(null);
     }
+    if (!slug) throw new Error("install did not return a slug");
+    await postJson(`/api/minecraft/instances/${encodeURIComponent(slug)}/activate`);
+    onChanged();
   }
 
-  async function activate(key: string, slug: string) {
-    setPendingKey(key);
-    setError(key, null);
-    try {
-      await postJson(`/api/minecraft/instances/${encodeURIComponent(slug)}/activate`);
-      onChanged();
-      setConfirmKey(null);
-    } catch (e) {
-      setError(key, e instanceof Error ? e.message : "activate failed");
-    } finally {
-      setPendingKey(null);
-    }
+  async function activate(slug: string) {
+    await postJson(`/api/minecraft/instances/${encodeURIComponent(slug)}/activate`);
+    onChanged();
   }
 
-  async function remove(key: string, slug: string) {
-    setPendingKey(key);
-    setError(key, null);
-    try {
-      const res = await fetch(`/api/minecraft/instances/${encodeURIComponent(slug)}`, { method: "DELETE" });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
-      onChanged();
-      setConfirmKey(null);
-    } catch (e) {
-      setError(key, e instanceof Error ? e.message : "delete failed");
-    } finally {
-      setPendingKey(null);
-    }
+  async function remove(slug: string) {
+    const res = await fetch(`/api/minecraft/instances/${encodeURIComponent(slug)}`, { method: "DELETE" });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
+    onChanged();
   }
 
   return (
-    <div className="space-y-3">
-      <Card>
-        <CardHeader>
-          <CardTitle>Install a pack</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2 flex-wrap">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search modpacks…"
-              aria-label="Search modpacks"
-              className="flex-1 min-w-[10rem]"
-            />
-            <Select
-              value={source}
-              onChange={(e) => setSource(e.target.value as "all" | "curseforge" | "modrinth")}
-              aria-label="Source"
-              className="w-36"
-            >
-              <option value="all">All sources</option>
-              <option value="curseforge">CurseForge</option>
-              <option value="modrinth">Modrinth</option>
-            </Select>
+    <div className="st-stack">
+      <section className="st-stack" aria-label="Install a pack">
+        <h3 className="microlabel">Install a pack</h3>
+        <div className="flex gap-2 flex-wrap">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search modpacks…"
+            aria-label="Search modpacks"
+            className="flex-1 min-w-[10rem]"
+          />
+          <Select
+            value={source}
+            onChange={(e) => setSource(e.target.value as "all" | "curseforge" | "modrinth")}
+            aria-label="Source"
+            className="w-36"
+          >
+            <option value="all">All sources</option>
+            <option value="curseforge">CurseForge</option>
+            <option value="modrinth">Modrinth</option>
+          </Select>
+        </div>
+
+        {search?.curseforge === "no-key" && (
+          <p className="st-note">
+            CurseForge search needs an API key. Add it in <Link href="/settings" className="underline">Settings</Link>.
+          </p>
+        )}
+
+        {!debounced ? (
+          <p className="st-note">Type to search modpacks.</p>
+        ) : searchError ? (
+          <p className="text-xs text-bad">Couldn&apos;t search. Try again.</p>
+        ) : !search ? (
+          <p className="st-note">Searching…</p>
+        ) : search.results.length === 0 ? (
+          <p className="st-note">No results.</p>
+        ) : (
+          <div>
+            {search.results.map((r) => (
+              <div key={`${r.source}:${r.id}`} className="st-li">
+                {r.icon ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.icon} alt="" width={32} height={32} className="rounded shrink-0" />
+                ) : (
+                  <div className="w-8 h-8 rounded bg-panel-2 shrink-0" />
+                )}
+                <div className="st-grow">
+                  <div className="text-sm text-ink truncate">{r.name}</div>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    {r.loader && <Badge variant="neutral">{r.loader}</Badge>}
+                    {r.mcVersion && <Badge variant="neutral">{r.mcVersion}</Badge>}
+                    <span className="text-[0.68rem] text-ink-faint">{compactNumber.format(r.downloads)} downloads</span>
+                  </div>
+                </div>
+                <WriteAction
+                  label="Install"
+                  ariaLabel={`Install ${r.name}`}
+                  say={`Installs ${r.name} from ${SOURCE_LABEL[r.source]} and makes it active.`}
+                  yes="Yes, install"
+                  flight="Installing… first boot can take several minutes."
+                  failure="Couldn’t install the pack"
+                  disabled={off}
+                  onPending={setBusy}
+                  run={() => installAndActivate(r)}
+                />
+              </div>
+            ))}
           </div>
+        )}
+      </section>
 
-          {search?.curseforge === "no-key" && (
-            <p className="microlabel text-warn">CurseForge search needs an API key — add it in Settings.</p>
-          )}
-
-          {!debounced ? (
-            <p className="text-xs text-ink-faint">Type to search modpacks.</p>
-          ) : searchError ? (
-            <p className="text-xs text-bad">Couldn&apos;t search — try again.</p>
-          ) : !search ? (
-            <p className="text-xs text-ink-faint">Searching…</p>
-          ) : search?.results.length === 0 ? (
-            <p className="text-xs text-ink-faint">No results.</p>
-          ) : (
-            <div className="divide-y divide-line/50">
-              {search?.results.map((r) => {
-                const key = `install:${r.source}:${r.id}`;
-                return (
-                  <div key={key} className="py-2 flex items-center gap-3 flex-wrap">
-                    {r.icon ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.icon} alt="" width={32} height={32} className="rounded shrink-0" />
-                    ) : (
-                      <div className="w-8 h-8 rounded bg-panel-2 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm text-ink truncate">{r.name}</div>
-                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                        {r.loader && <Badge variant="neutral">{r.loader}</Badge>}
-                        {r.mcVersion && <Badge variant="neutral">{r.mcVersion}</Badge>}
-                        <span className="text-[0.68rem] text-ink-faint">
-                          {compactNumber.format(r.downloads)} downloads
-                        </span>
-                      </div>
+      <section className="st-stack" aria-label="Installed">
+        <h3 className="microlabel">Installed</h3>
+        {instances.length === 0 ? (
+          <p className="st-note">Nothing installed yet.</p>
+        ) : (
+          <div>
+            {instances.map((inst) => {
+              const isActive = inst.slug === active;
+              const reasonId = `mc-pack-delete-${inst.slug}`;
+              return (
+                <div key={inst.slug} className="st-li">
+                  <div className="st-grow">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm text-ink">{inst.name}</span>
+                      <Badge variant={SOURCE_VARIANT[inst.source]}>{inst.source}</Badge>
+                      {isActive && <Badge variant="ok">active</Badge>}
                     </div>
-                    {confirmKey === key ? (
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        <span className="text-[0.7rem] text-ink-dim max-w-[14rem] text-right">
-                          {installCopy(activeInstance?.name, r.name)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pendingKey !== null}
-                          onClick={() => setConfirmKey(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button size="sm" disabled={pendingKey !== null} onClick={() => void installAndActivate(key, r)}>
-                          {pendingKey === key ? "Switching…" : "Confirm switch"}
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button size="sm" variant="outline" disabled={pendingKey !== null} onClick={() => setConfirmKey(key)}>
-                        Install
-                      </Button>
-                    )}
-                    {errors[key] && <p className="w-full text-[0.7rem] text-bad">{errors[key]}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Installed</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {instances.length === 0 ? (
-            <p className="text-xs text-ink-faint">Nothing installed yet.</p>
-          ) : (
-            <div className="divide-y divide-line/50">
-              {active && <p id="mc-pack-delete-reason" className="pb-2 text-xs text-ink-faint">The active pack can't be deleted. Activate another first.</p>}
-              {instances.map((inst) => {
-                const isActive = inst.slug === active;
-                const activateKey = `activate:${inst.slug}`;
-                const deleteKey = `delete:${inst.slug}`;
-                return (
-                  <div key={inst.slug} className="py-2 flex items-center gap-3 flex-wrap">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-sm text-ink">{inst.name}</span>
-                        <Badge variant={SOURCE_VARIANT[inst.source]}>{inst.source}</Badge>
-                        {isActive && <Badge variant="ok">active</Badge>}
-                      </div>
-                      <div className="text-[0.68rem] text-ink-faint">
-                        {inst.mcVersion || "—"} · {inst.memoryGb} GB · {relativeTime(inst.createdAt)}
-                      </div>
+                    <div className="text-[0.68rem] text-ink-faint">
+                      {inst.mcVersion || "—"} · {inst.memoryGb} GB · {relativeTime(inst.createdAt)}
                     </div>
-
-                    {confirmKey === activateKey ? (
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        <span className="text-[0.7rem] text-ink-dim max-w-[14rem] text-right">
-                          {switchCopy(activeInstance?.name, inst.name)}
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pendingKey !== null}
-                          onClick={() => setConfirmKey(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={pendingKey !== null}
-                          onClick={() => void activate(activateKey, inst.slug)}
-                        >
-                          {pendingKey === activateKey ? "Switching…" : "Confirm switch"}
-                        </Button>
-                      </div>
-                    ) : (
-                      !isActive && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={pendingKey !== null}
-                          onClick={() => setConfirmKey(activateKey)}
-                        >
-                          Activate
-                        </Button>
-                      )
-                    )}
-
-                    {confirmKey === deleteKey ? (
-                      <div className="flex items-center gap-2 flex-wrap justify-end">
-                        <span className="text-[0.7rem] text-ink-dim max-w-[14rem] text-right">
-                          Deletes &quot;{inst.name}&quot; and its world. Can&apos;t be undone.
-                        </span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={pendingKey !== null}
-                          onClick={() => setConfirmKey(null)}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          disabled={pendingKey !== null}
-                          onClick={() => void remove(deleteKey, inst.slug)}
-                        >
-                          {pendingKey === deleteKey ? "Deleting…" : "Confirm"}
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isActive || pendingKey !== null}
-                        aria-describedby={isActive ? "mc-pack-delete-reason" : undefined}
-                        onClick={() => setConfirmKey(deleteKey)}
-                      >
-                        Delete
-                      </Button>
-                    )}
-
-                    {(errors[activateKey] || errors[deleteKey]) && (
-                      <p className="w-full text-[0.7rem] text-bad">{errors[activateKey] || errors[deleteKey]}</p>
+                    {isActive && (
+                      <p id={reasonId} className="st-note">
+                        Active · switch to another pack to delete this one
+                      </p>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  {!isActive && (
+                    <WriteAction
+                      label="Switch"
+                      ariaLabel={`Switch to ${inst.name}`}
+                      say={`Makes ${inst.name} the active pack.`}
+                      yes="Yes, switch"
+                      flight="Switching… loading the pack can take a few minutes."
+                      failure="Couldn’t switch the pack"
+                      disabled={off}
+                      onPending={setBusy}
+                      run={() => activate(inst.slug)}
+                    />
+                  )}
+                  <WriteAction
+                    label="Delete"
+                    ariaLabel={`Delete ${inst.name}`}
+                    say={`Deletes ${inst.name} from the server. This can’t be undone.`}
+                    yes="Yes, delete"
+                    danger
+                    flight="Deleting…"
+                    failure="Couldn’t delete the pack"
+                    disabled={off || isActive}
+                    describedBy={isActive ? reasonId : undefined}
+                    onPending={setBusy}
+                    run={() => remove(inst.slug)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
-      <UploadPack onChanged={onChanged} />
+      <UploadPack onChanged={onChanged} disabled={off} onPending={setBusy} />
     </div>
   );
 }

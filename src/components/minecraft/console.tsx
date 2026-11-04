@@ -9,9 +9,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
 import { cn } from "@/lib/utils";
@@ -27,7 +25,14 @@ function rconHint(rcon: "ok" | "unavailable" | "unconfigured"): string | null {
   return null;
 }
 
-export function Console({ rcon }: { rcon: "ok" | "unavailable" | "unconfigured" }) {
+export function Console({
+  rcon,
+  stale,
+}: {
+  rcon: "ok" | "unavailable" | "unconfigured";
+  /** The server is not answering: Send is off (the model's console-send). */
+  stale?: boolean;
+}) {
   const [lines, setLines] = useState<Line[]>([]);
   const [command, setCommand] = useState("");
   const [sending, setSending] = useState(false);
@@ -38,7 +43,7 @@ export function Console({ rcon }: { rcon: "ok" | "unavailable" | "unconfigured" 
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
-  const disabled = rcon !== "ok";
+  const disabled = rcon !== "ok" || Boolean(stale);
   const hint = rconHint(rcon);
 
   async function send() {
@@ -59,13 +64,7 @@ export function Console({ rcon }: { rcon: "ok" | "unavailable" | "unconfigured" 
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <Terminal size={11} /> Console
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
+    <div className="st-stack">
         <div
           ref={boxRef}
           className="logbox bg-bg rounded-md border border-line p-3 h-56 overflow-y-auto text-ink-dim"
@@ -94,7 +93,6 @@ export function Console({ rcon }: { rcon: "ok" | "unavailable" | "unconfigured" 
             Send
           </Button>
         </div>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
