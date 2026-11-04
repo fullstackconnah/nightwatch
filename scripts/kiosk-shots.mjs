@@ -69,7 +69,8 @@ async function seen(page, selector, timeout = 30_000) {
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
 async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
-  if (fixedTime === "flow") await context.clock.install({ time: new Date(PINNED_ISO) }); // same instant, still ticking: SWR's focus throttle and dedupe read Date.now
+  // "flow" and "ticking": start at the pinned instant but keep time passing (SWR's focus throttle and dedupe read Date.now; ticking is also fast-forwarded)
+  if (fixedTime === "flow" || fixedTime === "ticking") await context.clock.install({ time: new Date(PINNED_ISO) });
   else if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
@@ -591,12 +592,13 @@ await guarded("ambient rest", async () => {
 });
 // a stale weather pane: the first poll answers, the next says unreachable, so the view keeps the last good data and shows the tag
 await guarded("ambient stale", async () => {
-  // No fixedTime here: SWR throttles focus revalidation on Date.now(), which a pinned clock never advances. STOP_URL has wx=off, so the mocked outage is not overridden by a preview preset.
-  const { context, page, state } = await visit(STOP_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday") });
+  // fixedTime "ticking": midday, but Date.now() advances (setFixedTime never does, and the real 2 am clock shows the night overlay). STOP_URL has wx=off, so the mocked outage is not overridden by a preview preset.
+  const { context, page, state } = await visit(STOP_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: "ticking" });
   state.weather = { status: "unreachable", detail: "mocked outage" };
-  await page.waitForTimeout(4500); // SWR ignores focus for 5 s after mount
+  await page.clock.fastForward(6000); // SWR ignores focus for 5 s after mount
   let tag = false;
   for (let k = 0; k < 4 && !tag; k++) {
+    await page.clock.fastForward(6000);
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     tag = await seen(page, ".sr-stale", 3000);
   }
