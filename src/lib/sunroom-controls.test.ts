@@ -151,4 +151,8 @@ describe("AC mode colour: the power disc takes its face from the mode", () => {
     const tsx = readFileSync(join(process.cwd(), "src/components/kiosk/kiosk-climate.tsx"), "utf8");
     assert.match(tsx, /data-mode=\{isOn \? shownHvacMode : onMode \?\? undefined\}/);
   });
+  it("the climate working glow follows the tile's radius, so a running AC keeps the off tile's corners", () => {
+    const r = rules().find((x) => /.sr-climate .kiosk-climate-working$/.test(x.sel));
+    assert.match(r?.body ?? "", /border-radius:\s*inherit/);
+  });
 });

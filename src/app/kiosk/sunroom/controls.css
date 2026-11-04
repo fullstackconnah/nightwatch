@@ -467,6 +467,7 @@
 }
 /* The wash is about 12% alpha, so four coats of one inset shadow reach the old glow's edge strength with no new colour. */
 [data-kiosk-theme="sunroom"] .sr-climate .kiosk-climate-working {
+  border-radius: inherit;
   box-shadow: inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work);
   background: color-mix(in srgb, var(--sr-work) 33%, transparent);
 }
