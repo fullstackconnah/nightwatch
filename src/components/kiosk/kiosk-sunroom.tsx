@@ -87,7 +87,7 @@ function fadeFromOldStop(oldVars: Record<string, string>, oldDark: boolean) {
 
 export function KioskSunroomLight() {
   const theme = useKioskTheme();
-  const { data } = useKioskWeather();
+  const { data, isLoading } = useKioskWeather();
 
   const ok = data && data.status === "ok" ? data : null;
   const sun = ok?.sun ?? null;
@@ -152,14 +152,15 @@ export function KioskSunroomLight() {
   }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick]);
 
   /* The stop cross-fade: runs in a layout effect so the clone is taken before the browser paints the new values. */
-  const prevRef = useRef<{ vars: Record<string, string>; isDark: boolean } | null>(null);
+  const prevRef = useRef<{ vars: Record<string, string>; isDark: boolean; settled: boolean } | null>(null);
   useLayoutEffect(() => {
     if (!out || theme !== "sunroom") return;
     const prev = prevRef.current;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prev && shouldStopFade(prev.isDark, out.isDark, reduced)) fadeFromOldStop(prev.vars, prev.isDark);
-    prevRef.current = { vars: out.vars, isDark: out.isDark };
-  }, [out, theme]);
+    if (prev && shouldStopFade(prev.isDark, out.isDark, reduced, prev.settled)) fadeFromOldStop(prev.vars, prev.isDark);
+    // A ?wx= preview answers with a placeholder sun before the first fetch lands; that is not a settled stop (spec 4: no fade on load).
+    prevRef.current = { vars: out.vars, isDark: out.isDark, settled: !isLoading };
+  }, [out, theme]); // isLoading read from the render that produced `out`; it never needs to re-run the fade
 
   // Off-theme, or no sun to report: emit nothing; tokens.css is the whole definition.
   if (theme !== "sunroom" || !out) return null;

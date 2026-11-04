@@ -70,6 +70,9 @@ describe("pure functions", () => {
     assert.equal(shouldStopFade(true, false, false), true);
     assert.equal(shouldStopFade(true, true, false), false);
     assert.equal(shouldStopFade(false, true, true), false);
+    // the previous emission was a placeholder sun (?wx= preview before the first fetch lands): not a settled stop
+    assert.equal(shouldStopFade(false, true, false, false), false);
+    assert.equal(shouldStopFade(false, true, false, true), true);
   });
 });
 

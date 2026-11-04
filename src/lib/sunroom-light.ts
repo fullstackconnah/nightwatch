@@ -440,8 +440,8 @@ export function sunroomPress(l: Pick<SunroomLight, "lightX" | "lightY">) {
 
 /** Whether setStop's snapshot cross-fade runs: only when the light/dark side flips (the ink snaps there) and
  *  never on the first emission or under reduced motion, where the change is instant. */
-export function shouldStopFade(prevDark: boolean | null, nextDark: boolean, reduced: boolean): boolean {
-  return prevDark !== null && prevDark !== nextDark && !reduced;
+export function shouldStopFade(prevDark: boolean | null, nextDark: boolean, reduced: boolean, prevSettled = true): boolean {
+  return prevDark !== null && prevSettled && prevDark !== nextDark && !reduced;
 }
 
 const kebab = (k: string) => k.replace(/([A-Z]|\d+)/g, (m) => `-${m.toLowerCase()}`);

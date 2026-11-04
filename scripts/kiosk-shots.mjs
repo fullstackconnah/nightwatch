@@ -29,6 +29,7 @@ const STOP_URL = `${BASE_URL}/kiosk?theme=sunroom&wx=off`;
 mkdirSync(OUT_DIR, { recursive: true });
 const results = { errors: [], sixStop: {}, crossing: {} };
 let pageErrors = 0;
+const pageErrorMessages = {};
 const foreign = [];
 const browser = await chromium.launch({ headless: true });
 
@@ -57,7 +58,11 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   const page = await context.newPage();
   const state = { weather };
-  page.on("pageerror", () => pageErrors++);
+  page.on("pageerror", (e) => {
+    pageErrors++;
+    const m = String(e?.message ?? e).slice(0, 200);
+    pageErrorMessages[m] = (pageErrorMessages[m] ?? 0) + 1;
+  });
   page.on("request", (r) => {
     const u = r.url();
     if (/^(data|blob|about):/.test(u)) return;
@@ -65,11 +70,12 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   });
   await page.route("**/kiosk/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    return route.fulfill({ json: path.endsWith("/weather") ? state.weather : QUIET });
+    return route.fulfill({ json: path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : QUIET });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await seen(page, '[data-kiosk-theme="sunroom"]');
   await page.waitForTimeout(1200);
+  await page.waitForFunction(() => !document.querySelector(".sr-stopfade"), null, { timeout: 5000 }).catch(() => {}); // shoot the settled stop only
   return { context, page, state };
 }
 
@@ -122,7 +128,7 @@ for (const stop of STOPS) {
 await guarded("crossing", async () => {
   const { context, page, state } = await visit(STOP_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday") });
   state.weather = weatherFor("night");
-  await page.waitForTimeout(2200); // SWR dedupe
+  await page.waitForTimeout(4500); // SWR ignores focus for 5 s after mount (focusThrottleInterval, swr index.mjs:545) and dedupes for 2 s
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   results.crossing.cloneSeen = await seen(page, ".sr-stopfade", 6000);
   results.crossing.ariaHidden = await page.evaluate(() => document.querySelector(".sr-stopfade")?.getAttribute("aria-hidden") === "true");
@@ -134,6 +140,7 @@ await guarded("crossing", async () => {
 });
 
 results.n16PageErrors = pageErrors;
+results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;
 await browser.close();
 writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify(results, null, 2));
