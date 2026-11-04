@@ -114,8 +114,20 @@ try {
         const home = await visit(s, "/", { reduced });
         const trigger = home.locator(HOME_TRIGGER);
         if (await present(trigger)) {
+          // Centre the card first so the open menu is not cut off at the viewport bottom.
+          await trigger.first().evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+          await home.waitForTimeout(300);
           record("popRuns-home", mode, await runsAfterClick(home, trigger.first()));
-          if (!reduced) await shoot(home, s, "home-menu");
+          if (!reduced) {
+            await present(home.locator("[role=menu]"));
+            await home.waitForTimeout(400);
+            const menuInView = await home.evaluate(() => {
+              const r = document.querySelector("[role=menu]")?.getBoundingClientRect();
+              return !!r && r.top >= 0 && r.left >= 0 && r.bottom <= innerHeight && r.right <= innerWidth;
+            });
+            record("menuInView-home", mode, { menuInView });
+            await shoot(home, s, "home-menu");
+          }
           const item = home.getByRole("menuitem");
           if (await present(item)) record("confirmRuns-home", mode, await runsAfterClick(home, item.first()));
           else record("confirmRuns-home", mode, missing("[role=menuitem]"));
@@ -192,6 +204,13 @@ try {
       await page.evaluate(() => document.querySelectorAll(".nw-fade").forEach((b) => b.setAttribute("data-on", "")));
       await page.waitForTimeout(300);
       await shoot(page, s, "settings-saved");
+      // The footer-row badge beside Save (settings-access.tsx:379): in frame, in the "on" state.
+      const footer = page.locator(".nw-fade + button").last();
+      if (await present(footer)) {
+        await footer.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+        await page.waitForTimeout(300);
+        await shoot(page, s, "settings-saved-footer");
+      } else record("saved-footer", s.name, missing(".nw-fade + button"));
       const on = await m();
       const diff = (k) => Math.max(0, ...off.map((o, i) => (o[k] == null || on[i][k] == null ? 0 : Math.abs(o[k] - on[i][k]))));
       record("saved", s.name, { badges: off.length, headerPx: diff("headH"), titlePx: diff("titleTop"), savePx: Math.max(diff("saveTop"), diff("saveLeft")), restHeaders: off.map((o) => Math.round(o.headH)), wrapped: off.filter((o) => o.wrapped).length });
