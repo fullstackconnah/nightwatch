@@ -131,31 +131,42 @@
 
 /* ---------- Carousel dots: 44 px buttons, 8 px dots, a 24x8 ink pill that slides to the current one ---------- */
 [data-kiosk-theme="sunroom"] .sr-dots {
-  position: relative;
   gap: 0;
 }
-[data-kiosk-theme="sunroom"] .sr-dots > button > span {
+[data-kiosk-theme="sunroom"] .sr-dots-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+[data-kiosk-theme="sunroom"] .sr-dots-box > button > span {
   width: 8px;
   height: 8px;
   background: var(--sr-ink-faint);
   transition: none;
 }
 /* The dot buttons are hit areas: no cast and no press travel (the interim button press must not reach them). */
-[data-kiosk-theme="sunroom"] .sr-dots > button,
-[data-kiosk-theme="sunroom"] .sr-dots > button:active:not(:disabled) {
+[data-kiosk-theme="sunroom"] .sr-dots-box > button,
+[data-kiosk-theme="sunroom"] .sr-dots-box > button:active:not(:disabled) {
   box-shadow: none;
   transform: none;
 }
 [data-kiosk-theme="sunroom"] .sr-dots-pill {
   position: absolute;
-  left: 10px;
-  top: 18px;
+  left: calc((var(--sr-hit-min, 44px) - 24px) / 2);
+  top: 50%;
+  margin-top: -4px;
   width: 24px;
   height: 8px;
   border-radius: var(--sr-radius-full);
   background: var(--sr-ink);
   pointer-events: none;
   transition: transform var(--sr-m-slide) var(--sr-m-ease-out);
+}
+
+/* ---------- Rule 6 / N17: nothing loops at rest. The attention and restarting dots stay still; the word beside them carries the state. ---------- */
+[data-kiosk-theme="sunroom"] .dot-unhealthy,
+[data-kiosk-theme="sunroom"] .dot-restarting {
+  animation: none;
 }
 
 /* ---------- Reduced motion: values swap at once; the fade and the stale tag keep their opacity-only fade ---------- */

@@ -60,6 +60,7 @@ import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
 import { KioskDoorbellButton } from "@/components/kiosk/kiosk-doorbell";
 import { KioskStatusStripExtras } from "@/components/kiosk/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { KioskRadarModal, useKioskRadar } from "@/components/kiosk/kiosk-radar";
 
 type KioskViewMode = "glance" | "full";
@@ -297,6 +298,7 @@ function TempNode({
   registerRef: (node: HTMLElement | null) => void;
 }) {
   const current = weather.ok?.current ?? null;
+  const sr = useKioskTheme() === "sunroom";
   const full = mode === "full";
   // Kept mounted (empty) rather than conditionally rendered even with no
   // reading yet — a FLIP-registered node has to exist across the mode
@@ -331,7 +333,7 @@ function TempNode({
       >
         {current.label.toLowerCase()}
       </span>
-      {weather.status === "ready-stale" && <span className="shrink-0 microlabel !text-warn">stale</span>}
+      {weather.status === "ready-stale" && (sr ? <StaleTag /> : <span className="shrink-0 microlabel !text-warn">stale</span>)}
     </div>
   );
 }
@@ -339,6 +341,7 @@ function TempNode({
 function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (node: HTMLElement | null) => void }) {
   const health = useFreshness(useKioskHealth(HEALTH_POLL_MS));
   const full = mode === "full";
+  const sr = useKioskTheme() === "sunroom";
 
   if (health.status === "unreachable-empty") {
     return full ? (
@@ -392,7 +395,7 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
           exactly where JSX's whitespace trimming can eat an implicit space. */}
       <span className="font-mono tabular-nums" data-sr-live>{health.data.running}</span>{" "}
       <span className={cn(breathing && "kiosk-breathe")}>running</span>
-      {health.status === "ready-stale" && <span className="microlabel !text-warn ml-2">stale</span>}
+      {health.status === "ready-stale" && (sr ? <StaleTag /> : <span className="microlabel !text-warn ml-2">stale</span>)}
     </div>
   );
 }

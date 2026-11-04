@@ -76,6 +76,20 @@ describe("ambient.css static scans", () => {
 
   it("exists and has rules", () => assert.ok(all.length > 20));
 
+  it("N17 / rule 6: the attention and restarting dots stay static under Sunroom (the word carries the state)", () => {
+    for (const cls of [".dot-unhealthy", ".dot-restarting"]) {
+      const hit = all.filter((r) => !r.rm && r.sel.split(",").some((x) => x.trim() === `${SCOPE} ${cls}`));
+      assert.ok(hit.some((r) => /animation:\s*none/.test(r.body)), `${cls} has no animation:none rule`);
+    }
+  });
+  it("carousel pill is placed against the buttons: one relative box holds both, no fixed top guess", () => {
+    const box = all.find((r) => r.sel === `${SCOPE} .sr-dots-box`);
+    assert.ok(box && /position:\s*relative/.test(box.body));
+    const pill = all.find((r) => r.sel === `${SCOPE} .sr-dots-pill` && !r.rm);
+    assert.ok(pill && /top:\s*50%/.test(pill.body) && /margin-top:\s*-4px/.test(pill.body));
+    assert.match(read("src/components/kiosk/kiosk-carousel.tsx"), /sr-dots-box/);
+  });
+
   it("N10: every selector starts with the Sunroom scope", () => {
     const bad = all.flatMap((r) => r.sel.split(",").map((s) => s.trim())).filter((s) => !s.startsWith(SCOPE));
     assert.deepEqual(bad, []);

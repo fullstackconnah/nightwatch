@@ -306,6 +306,8 @@ export function KioskCarousel({
 
       {visible.length > 1 && (
         <div className={cn("flex items-center gap-1", sr && "sr-dots", dotsClassName)}>
+          {/* Sunroom: buttons and pill share one relative box so the pill is placed against the buttons, not the padded row. */}
+          <div className={sr ? "sr-dots-box" : "contents"}>
           {visible.map((id, i) => (
             <button
               key={id}
@@ -335,6 +337,7 @@ export function KioskCarousel({
           ))}
           {/* Sunroom: the current page is a 24x8 ink pill that slides to its dot. */}
           {sr && <span aria-hidden className="sr-dots-pill" style={{ transform: `translateX(${dotsPillX(clampedIndex)}px)` }} />}
+          </div>
         </div>
       )}
     </div>
