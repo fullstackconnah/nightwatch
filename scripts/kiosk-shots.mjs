@@ -17,7 +17,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AUTO_OFF, HA_STATES, PINNED_ISO, QUIET, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, HA_STATES, PINNED_ISO, QUIET, ROUTES, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -34,6 +34,10 @@ mkdirSync(OUT_DIR, { recursive: true });
 const results = { errors: [], sixStop: {}, crossing: {} };
 let pageErrors = 0;
 const pageErrorMessages = {};
+let consoleErrors = 0;
+const consoleErrorMessages = {};
+/** True when the kiosk error boundary ("Something went wrong") is on screen: a render crash, which counts as a failure. */
+const crashed = (page) => page.getByText("Something went wrong").count().then((n) => n > 0);
 const foreign = [];
 const browser = await chromium.launch({ headless: true });
 
@@ -67,6 +71,13 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
     const m = String(e?.message ?? e).slice(0, 200);
     pageErrorMessages[m] = (pageErrorMessages[m] ?? 0) + 1;
   });
+  // an error boundary swallows the throw, so pageerror never fires; React logs it to the console instead
+  page.on("console", (m) => {
+    if (m.type() !== "error") return;
+    consoleErrors++;
+    const t = m.text().slice(0, 200);
+    consoleErrorMessages[t] = (consoleErrorMessages[t] ?? 0) + 1;
+  });
   page.on("request", (r) => {
     const u = r.url();
     if (/^(data|blob|about):/.test(u)) return;
@@ -74,12 +85,13 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   });
   await page.route("**/kiosk/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : ha && path.endsWith("/climate-auto-off") ? AUTO_OFF : QUIET;
+    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : ha && path.endsWith("/climate-auto-off") ? AUTO_OFF : (ROUTES[path] ?? QUIET);
     return route.fulfill({ json });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
   await seen(page, '[data-kiosk-theme="sunroom"]');
   await page.waitForTimeout(1200);
+  if (await crashed(page)) (results.crashed ??= []).push(`${url} ${viewport.width}x${viewport.height}`);
   await page.waitForFunction(() => !document.querySelector(".sr-stopfade"), null, { timeout: 5000 }).catch(() => {}); // shoot the settled stop only
   return { context, page, state };
 }
@@ -165,7 +177,7 @@ for (const size of SIZES) {
     const out = (results.controls[size.name] = {});
     if (!seenTile) {
       // a missing tile is a failure, not a pass: record it and skip nothing silently
-      out.rest = { missing: ".sr-climate" };
+      out.rest = { missing: ".sr-climate", ...((await crashed(page)) && { crashed: true }) };
       await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
       await context.close();
       return;
@@ -217,6 +229,8 @@ for (const size of SIZES) {
   });
 }
 
+results.n16ConsoleErrors = consoleErrors;
+results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16PageErrors = pageErrors;
 results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;

@@ -66,3 +66,31 @@ export const HA_STATES = {
 
 /** /kiosk/api/climate-auto-off in the ClimateAutoOffServerState shape (use-climate-auto-off.ts): the pill and its sheet need it. */
 export const AUTO_OFF = { enabled: true, time: "23:00", skipDate: null, lastRunDate: null };
+
+/** /kiosk/api/vitals as HostVitals (src/lib/host-metrics.ts:19): kiosk-client.ts:129 and kiosk-status-strip.tsx:93 read cpu.percent and memory.percent. */
+export const VITALS = {
+  hostname: "host", os: "Linux", uptimeSeconds: 86400,
+  cpu: { percent: 12, cores: 4, model: "cpu", loadAvg: [0.4, 0.3, 0.2] },
+  memory: { total: 16e9, used: 6e9, available: 10e9, percent: 38 },
+  disk: [{ mount: "/", total: 500e9, used: 200e9, percent: 40 }],
+  network: { rxPerSec: 1000, txPerSec: 500 },
+  tempC: 45, ts: 1781484600000,
+};
+
+/** /kiosk/api/health as KioskHealthCounts (kiosk-client.ts:132), the route's body at app/kiosk/api/health/route.ts:14. */
+export const HEALTH = { total: 10, running: 9, paused: 0, restarting: 0, stopped: 1, unhealthy: 0, dead: 0 };
+
+/** /kiosk/api/doorbell as the unconfigured HaDoorbellSnapshot (ha-doorbell.ts:329): kiosk-doorbell.tsx:257 reads data.cameras.length, so QUIET threw there. */
+export const DOORBELL = { status: "unconfigured", cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null };
+
+/** Every /kiosk/api/* path the glance and standard layouts fetch, with its real-shaped body. Anything not listed (or weather and
+ *  attention, which visit() answers itself) gets QUIET. */
+export const ROUTES = {
+  "/kiosk/api/vitals": VITALS,
+  "/kiosk/api/health": HEALTH,
+  "/kiosk/api/doorbell": DOORBELL,
+  "/kiosk/api/nowplaying": { status: "idle" },
+  "/kiosk/api/downloads": { status: "unconfigured" },
+  "/kiosk/api/briefing": { status: "unconfigured" },
+  "/kiosk/api/weather/radar": { status: "unconfigured" },
+};

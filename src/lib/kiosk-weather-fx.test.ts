@@ -22,6 +22,7 @@ import {
   type WetBand,
 } from "./kiosk-weather-fx.ts";
 import { SUNROOM_STOPS, sunroomStateAt } from "./sunroom-light.ts";
+import { AUTO_OFF, HA_STATES, ROUTES } from "../../scripts/fixtures/kiosk/fixtures.mjs";
 
 /** Small seeded PRNG so the sampled tests are reproducible. */
 function mulberry32(seed: number) {
@@ -393,5 +394,23 @@ describe("zones in one y-down space (1280x800 lab rects)", () => {
     const tilesOnly = new Float32Array(clockOnly);
     tilesOnly.set([20, 724, 430, 788], 8);
     assert.equal(hasGlanceZones(tilesOnly), true);
+  });
+});
+
+describe("kiosk-shots fixtures", () => {
+  // every /kiosk/api GET the glance and standard layouts fetch; a path without a real-shaped fixture answers QUIET and crashes render
+  const FETCHED = [
+    "/kiosk/api/vitals", // kiosk-client.ts useKioskVitals (status strip, vitals history)
+    "/kiosk/api/health", // kiosk-client.ts useKioskHealth (kiosk-surface.tsx:340)
+    "/kiosk/api/doorbell", // kiosk-doorbell.tsx useDoorbellSnapshot
+    "/kiosk/api/nowplaying", // kiosk-client.ts useKioskNowPlaying
+    "/kiosk/api/downloads", // kiosk-downloads.tsx
+    "/kiosk/api/briefing", // kiosk-display.tsx useKioskBriefing
+    "/kiosk/api/weather/radar", // kiosk-radar.tsx:251
+  ];
+  it("has a fixture for every fetched path", () => {
+    for (const p of FETCHED) assert.ok(p in ROUTES, p);
+    // answered inline by visit(): weather and attention always, ha/states and climate-auto-off (kiosk-hub.tsx:56, use-climate-auto-off.ts:27) with ha:true
+    assert.ok(HA_STATES.entities.climates.length && AUTO_OFF.enabled);
   });
 });
