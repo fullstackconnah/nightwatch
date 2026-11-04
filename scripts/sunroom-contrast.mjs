@@ -30,10 +30,9 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { loadRamp } from "./sunroom-ramp.mjs";
 
 const AA = 4.5;
 /** Samples strictly between each adjacent stop pair. 19 gives a reading every
@@ -75,31 +74,18 @@ function auditPalette(palette) {
   return rows.sort((x, y) => x.ratio - y.ratio);
 }
 
-function compileRamp() {
-  const outDir = mkdtempSync(join(tmpdir(), "sunroom-ramp-"));
-  // Invoke tsc's own entry with the current node binary rather than going
-  // through `npx`: on Windows, spawning a .cmd shim without a shell fails with
-  // EINVAL (Node's CVE-2024-27980 mitigation), and enabling a shell to work
-  // around that would put this script's paths through cmd.exe quoting.
-  const tsc = join(process.cwd(), "node_modules", "typescript", "bin", "tsc");
-  execFileSync(
-    process.execPath,
-    [tsc, "src/lib/sunroom-light.ts", "--outDir", outDir, "--module", "esnext", "--target", "es2022", "--moduleResolution", "bundler"],
-    { stdio: "pipe" },
-  );
-  return { outDir, entry: join(outDir, "sunroom-light.js") };
-}
-
-let compiled;
+/* The ramp is compiled and imported by scripts/sunroom-ramp.mjs (shared with gen-sunroom-css.mjs): one compile path,
+ * no second copy of the stop table. */
+let ramp;
 try {
-  compiled = compileRamp();
+  ramp = await loadRamp();
 } catch (err) {
   console.error("Failed to compile src/lib/sunroom-light.ts:\n");
   console.error(err.stdout?.toString() || err.message);
   process.exit(1);
 }
 
-const { SUNROOM_STOPS, sunroomStateAt, sunroomT } = await import(pathToFileURL(compiled.entry).href);
+const { SUNROOM_STOPS, sunroomStateAt, sunroomT, sunroomShadows } = ramp.mod;
 
 const failures = [];
 
@@ -301,7 +287,139 @@ if (Math.abs(offsets["solar noon"]) > 2.5) {
   failures.push(`solar noon shadowX=${offsets["solar noon"].toFixed(1)} — expected near zero (overhead light)`);
 }
 
-rmSync(compiled.outDir, { recursive: true, force: true });
+/* GATE 5 — the Sill design-system pairs (shape brief checks N1 to N4).
+ *
+ * src/lib/sunroom-tokens.json is the DS contract. Each colour token's usage note names the grounds it must
+ * read on ("Reads on `bg`, `panel` ..." / "Holds 3:1 on ..."; "`a` over `b`" composites a over b), and its
+ * prefix sets the floor: Text 4.5, Figure and Mark 3. They are swept at the six stops, the between-stop
+ * steps and 48 t samples, light and dark crossing exempt as in gate 2 (ported from SR/checks.mjs:70-168).
+ * Also: N2 the ink ramp steps down on panel, N3 the on face differs from the off face and `handle` holds 3:1,
+ * N4 the pane edge and crease clear the per-stop floor (SR/checks.mjs:170-209, Gaussian model). */
+console.log("\nGATE 5 — DS pairs, ink ramp, on/off, pane edge\n");
+const tokensJson = JSON.parse(readFileSync(join(process.cwd(), "src/lib/sunroom-tokens.json"), "utf8"));
+const camel = (n) => n.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+const tokByName = Object.fromEntries(tokensJson.color.tokens.map((t) => [t.name, t]));
+const hexRgba = (h) => {
+  let s = h.slice(1);
+  if (s.length <= 4) s = [...s].map((c) => c + c).join("");
+  const n = (i) => parseInt(s.slice(i, i + 2), 16);
+  return { r: n(0), g: n(2), b: n(4), a: s.length === 8 ? n(6) / 255 : 1 };
+};
+const over = (top, under) => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
+const linC = (c) => channelLuminance(c);
+const lumC = (c) => 0.2126 * linC(c.r) + 0.7152 * linC(c.g) + 0.0722 * linC(c.b);
+const ratioC = (a, b) => { const x = lumC(a), y = lumC(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+const paletteColor = (palette, name) => {
+  let t = tokByName[name];
+  while (t && typeof t.value === "string") t = tokByName[t.value.slice(1, -1)]; // alias chain (stale, meter)
+  const key = camel(t ? t.name : name);
+  const v = palette[key];
+  if (v === undefined) throw new Error(`palette has no "${key}" for token ${name}`);
+  return hexRgba(v);
+};
+const NEED = { "Text:": 4.5, "Figure:": 3, "Mark:": 3 };
+const pairTokens = tokensJson.color.tokens
+  .map((t) => ({ t, need: NEED[Object.keys(NEED).find((k) => t.usage.startsWith(k))] }))
+  .filter((x) => x.need);
+const groundsOf = (usage) => {
+  const m = /(Reads on|Holds 3:1 on) ([^.]*)\./.exec(usage);
+  if (!m) return [];
+  const out = [];
+  const re = /`([^`]+)`( over `([^`]+)`)?/g;
+  let g;
+  while ((g = re.exec(m[2]))) out.push({ top: g[1], under: g[3] || null });
+  return out;
+};
+const pairs = pairTokens.map((x) => ({ ...x, grounds: groundsOf(x.t.usage) }));
+for (const p of pairs) if (!p.grounds.length) failures.push(`DS token ${p.t.name}: its usage note names no ground`);
+const groundColor = (palette, g) => {
+  const top = paletteColor(palette, g.top);
+  return g.under ? over(top, paletteColor(palette, g.under)) : top;
+};
+function auditDs(palette) {
+  const rows = [];
+  for (const p of pairs) {
+    const fg = paletteColor(palette, p.t.name);
+    for (const g of p.grounds) {
+      rows.push({ token: p.t.name, ground: g.under ? `${g.top}/${g.under}` : g.top, need: p.need, ratio: ratioC(fg, groundColor(palette, g)) });
+    }
+  }
+  return rows;
+}
+let dsChecked = 0;
+let dsWorst = null;
+const dsSample = (state, label) => {
+  for (const r of auditDs(state.palette)) {
+    dsChecked++;
+    const slack = r.ratio / r.need;
+    if (!dsWorst || slack < dsWorst.slack) dsWorst = { ...r, slack, label };
+    if (r.ratio < r.need) failures.push(`DS ${label}: ${r.token} on ${r.ground} = ${r.ratio.toFixed(2)} (need ${r.need})`);
+  }
+};
+let dsExempt = 0;
+for (let i = 0; i < SUNROOM_STOPS.length; i++) dsSample(sunroomStateAt(i, { elev01: 0.5 }), `stop ${SUNROOM_STOPS[i].name}`);
+for (let i = 0; i < SUNROOM_STOPS.length; i++) {
+  for (let s = 1; s <= STEPS_BETWEEN; s++) {
+    const state = sunroomStateAt(i + s / (STEPS_BETWEEN + 1), { elev01: 0.5 });
+    if (state.crossing) { dsExempt++; continue; }
+    dsSample(state, `${SUNROOM_STOPS[i].name}+${(s / (STEPS_BETWEEN + 1)).toFixed(2)}`);
+  }
+}
+for (let s = 0; s < 48; s++) {
+  const state = sunroomStateAt((s / 48) * SUNROOM_STOPS.length, { elev01: 0.5 });
+  if (state.crossing) { dsExempt++; continue; }
+  dsSample(state, `t${((s / 48) * SUNROOM_STOPS.length).toFixed(2)}`);
+}
+console.log(`  N1  ${dsChecked} pairs checked (${pairs.length} tokens), ${dsExempt} samples exempt as transit; closest to its floor: ${dsWorst.token} on ${dsWorst.ground} ${dsWorst.ratio.toFixed(2)} vs ${dsWorst.need} at ${dsWorst.label}`);
+
+// N2 ink ramp on panel, N3 handle/on-off, at every stop, step and t sample
+let rampChecked = 0;
+let onOffMin = Infinity;
+const rampSample = (state, label) => {
+  const panel = hexRgba(state.palette.panel);
+  const [a, b, c] = ["ink", "inkDim", "inkFaint"].map((n) => ratioC(hexRgba(state.palette[n]), panel));
+  rampChecked++;
+  if (!(a > b && b > c)) failures.push(`N2 ink ramp not ordered at ${label}: ${a.toFixed(2)} / ${b.toFixed(2)} / ${c.toFixed(2)}`);
+  if (state.crossing) return; // the ink is in transit: lightness of on/off is read at rest
+  const onOff = ratioC(hexRgba(state.palette.sunlit), panel);
+  onOffMin = Math.min(onOffMin, onOff);
+  if (!(onOff > 1.02)) failures.push(`N3 on face (sunlit) is not distinct from off (panel) at ${label}: ${onOff.toFixed(3)}`);
+};
+for (let i = 0; i < SUNROOM_STOPS.length; i++) {
+  rampSample(sunroomStateAt(i, { elev01: 0.5 }), SUNROOM_STOPS[i].name);
+  for (let s = 1; s <= STEPS_BETWEEN; s++) rampSample(sunroomStateAt(i + s / (STEPS_BETWEEN + 1), { elev01: 0.5 }), `${SUNROOM_STOPS[i].name}+${s}`);
+}
+for (let s = 0; s < 48; s++) rampSample(sunroomStateAt((s / 48) * SUNROOM_STOPS.length, { elev01: 0.5 }), `t${s}`);
+console.log(`  N2  ink > ink-dim > ink-faint on panel: ${rampChecked} samples, all ordered`);
+console.log(`  N3  on face vs off face lightness ratio, lowest ${onOffMin.toFixed(3)}; handle holds 3:1 on panel (in N1 pairs)`);
+if (!pairs.some((p) => p.t.name === "handle" && p.grounds.some((g) => g.top === "panel" && !g.under))) failures.push("N3 `handle` is not checked as a 3:1 mark on `panel`");
+
+// N4 pane edge and crease
+const EDGE_FLOOR = { morning: 1.107, dawn: 1.121, midday: 1.132, golden: 1.109, dusk: 1.127, night: 1.080 };
+const parseLayers = (s) => s.split(/,(?![^(]*\))/).map((p) => {
+  const m = /^(inset )?(-?[\d.]+)(?:px)? (-?[\d.]+)(?:px)? (-?[\d.]+)(?:px)?(?: (-?[\d.]+)(?:px)?)? rgba\((\d+),(\d+),(\d+),([\d.]+)\)$/.exec(p.trim());
+  if (!m) throw new Error(`cannot parse shadow layer "${p}"`);
+  return { inset: !!m[1], x: +m[2], y: +m[3], b: +m[4], s: +(m[5] || 0), c: { r: +m[6], g: +m[7], b: +m[8], a: +m[9] } };
+});
+const erf = (x) => { const s = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); return s * (1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x)); };
+const Phi = (z) => 0.5 * (1 + erf(z / Math.SQRT2));
+const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const cover = (l, n, d) => { const on = l.x * n[0] + l.y * n[1]; const w = l.inset ? l.s - on : l.s + on; return l.b > 0 ? Phi((w - d) / (l.b / 2)) : w > d ? 1 : 0; };
+const paintC = (base, ls, n, d) => ls.slice().reverse().reduce((g, l) => over({ ...l.c, a: l.c.a * cover(l, n, d) }, g), base);
+for (const stop of SUNROOM_STOPS) {
+  const state = sunroomStateAt(SUNROOM_STOPS.indexOf(stop), { elev01: 0.5 });
+  const sh = sunroomShadows(state.light);
+  const ls = parseLayers(`${sh.bevel}, ${sh.pane}`);
+  const inn = ls.filter((l) => l.inset);
+  const out = ls.filter((l) => !l.inset);
+  const panel = hexRgba(state.palette.panel);
+  const bg = hexRgba(state.palette.bg);
+  const edge = Math.min(...SIDES.map((n) => ratioC(paintC(panel, inn, n, 0.5), paintC(bg, out, n, 0.5))));
+  console.log(`  N4  ${stop.name.padEnd(8)} pane edge ${edge.toFixed(3)} (floor ${EDGE_FLOOR[stop.name]})`);
+  if (edge < EDGE_FLOOR[stop.name]) failures.push(`N4 ${stop.name}: pane edge ${edge.toFixed(3)} < ${EDGE_FLOOR[stop.name]}`);
+}
+
+ramp.cleanup();
 
 console.log("");
 if (failures.length) {
@@ -310,4 +428,4 @@ if (failures.length) {
   console.log("");
   process.exit(1);
 }
-console.log("ALL PASS — every stop and every sampled midpoint clears AA 4.5:1, and the light travels.\n");
+console.log("ALL PASS — every stop and every sampled midpoint clears AA 4.5:1, the DS pairs hold, and the light travels.\n");

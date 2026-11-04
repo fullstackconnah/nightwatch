@@ -63,6 +63,19 @@ export interface SunroomPalette {
   ok: string;
   warn: string;
   bad: string;
+  /** The Sunroom design-system tokens (src/lib/sunroom-tokens.json). `sunlit` and `handle` vary per stop and
+   *  interpolate with the ground; the rest only switch between the day and night sets, like the ink. */
+  sunlit: string;
+  handle: string;
+  onAccent: string;
+  edge: string;
+  focus: string;
+  scrim: string;
+  washHeat: string;
+  washCool: string;
+  washOk: string;
+  washWarn: string;
+  washBad: string;
 }
 
 /** The directional light model. Consumed as CSS custom properties; see the
@@ -127,10 +140,20 @@ export interface SunroomState {
  * failed, so both sit past the line rather than on it. */
 const LIGHT_FG = {
   ink: "#2c3542",
-  inkDim: "#4e5867",
+  // Was #4e5867, which read weaker than ink-faint; the DS value restores ink > ink-dim > ink-faint.
+  inkDim: "#3d4655",
   inkFaint: "#4f5662",
   accent: "#33559f",
   accentDim: "#2f4f96",
+  onAccent: "#f7f9fd",
+  edge: "#4f5866",
+  focus: "#2f4f96",
+  scrim: "#1a223373",
+  washHeat: "#e0702a1f",
+  washCool: "#3d7be01a",
+  washOk: "#19603a1a",
+  washWarn: "#b7791f24",
+  washBad: "#c0392b1f",
   ok: "#19603a",
   // Darkened again from #7a5613 to buy headroom for rain: `warn` is the
   // binding token on every light stop, so whatever margin it has IS the
@@ -148,6 +171,15 @@ const DARK_FG = {
   inkFaint: "#8fa0b7",
   accent: "#93b6ff",
   accentDim: "#7ea5f5",
+  onAccent: "#0d1425",
+  edge: "#8fa0b7",
+  focus: "#93b6ff",
+  scrim: "#000000a6",
+  washHeat: "#ff8a3d24",
+  washCool: "#6f9dff1f",
+  washOk: "#5ecf991f",
+  washWarn: "#edbe6124",
+  washBad: "#ff929229",
   ok: "#5ecf99",
   warn: "#edbe61",
   bad: "#ff9292",
@@ -179,6 +211,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#0a1020",
       line: "#1f2b45",
       lineBright: "#35466e",
+      sunlit: "#5b4422",
+      handle: "#647288",
       ...DARK_FG,
     },
     // No sun means no direction: the shadow collapses to a short ambient drop
@@ -219,6 +253,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#d6dae4",
       line: "#cbd1dd",
       lineBright: "#b4bccc",
+      sunlit: "#ecac78",
+      handle: "#727a86",
       ...LIGHT_FG,
     },
     // Sun barely over the horizon: the longest, softest, most horizontal
@@ -247,6 +283,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#dde2ea",
       line: "#d3d9e3",
       lineBright: "#b9c2d1",
+      sunlit: "#ecb64a",
+      handle: "#777f8b",
       ...LIGHT_FG,
     },
     // The shipped 7px/7px/14px neumorphic pair and its exact shadow and
@@ -279,6 +317,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#e0e5f0",
       line: "#d5dae7",
       lineBright: "#bcc4d5",
+      sunlit: "#efbd44",
+      handle: "#7a818d",
       ...LIGHT_FG,
     },
     // Overhead: no horizontal component, the shortest and tightest shadow of
@@ -307,6 +347,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#e7e4e1",
       line: "#dcd8d5",
       lineBright: "#c4c0bc",
+      sunlit: "#efaa45",
+      handle: "#7b818a",
       ...LIGHT_FG,
     },
     // Light from the right now — lightX has crossed zero. Warm violet-grey
@@ -333,6 +375,8 @@ export const SUNROOM_STOPS: readonly {
       panel2: "#d8d7de",
       line: "#cdccd5",
       lineBright: "#b6b5c1",
+      sunlit: "#e2a07e",
+      handle: "#737986",
       ...LIGHT_FG,
     },
     // Mirror of dawn on the other side of the sky: long, soft, low, and
@@ -353,6 +397,77 @@ export const SUNROOM_STOPS: readonly {
 ];
 
 const STOP_COUNT = SUNROOM_STOPS.length;
+
+/* ── The design system's surfaces, computed from the light ──────────────────
+   Ported from SR/gen-tokens.mjs:20-37 so the tick can emit the six shadow
+   strings for the live (blended, weathered) light, and the node gate can check
+   that at the six stops they equal src/lib/sunroom-tokens.json exactly. */
+const r1 = (n: number) => Math.round(n * 10) / 10 || 0;
+const a2 = (n: number) => Math.round(Math.min(1, n) * 100) / 100;
+const rgbaOf = (triple: string, a: number) => {
+  const [r, g, b] = triple.split(",").map((n) => Number(n.trim()));
+  return `rgba(${r},${g},${b},${a2(a)})`;
+};
+const unitOf = (l: Pick<SunroomLight, "lightX" | "lightY">) => {
+  const m = Math.hypot(l.lightX, l.lightY) || 1;
+  return { x: l.lightX / m, y: l.lightY / m };
+};
+
+/** The six shadow levels (bevel, well, control, contact, pane, float). Pane is the kiosk twin: a 1 px crease at
+ *  0.3 x the shadow alpha, the dark cast along the light vector and the light cast on its exact negation. */
+export function sunroomShadows(l: SunroomLight) {
+  const u = unitOf(l);
+  const b = { x: Math.round(u.x) || 0, y: Math.round(u.y) || 0 };
+  const sh = (a: number) => rgbaOf(l.shadowRgb, a);
+  const hi = (a: number) => rgbaOf(l.highlightRgb, a);
+  const twin = (s: number) =>
+    `0px 0px 0px 1px ${sh(l.shadowA * 0.3)}, ${r1(l.lightX * s)}px ${r1(l.lightY * s)}px ${r1(l.blur * s)}px ${sh(l.shadowA)}, ${r1(-l.lightX * s)}px ${r1(-l.lightY * s)}px ${r1(l.blur * s)}px ${hi(l.highlightA)}`;
+  return {
+    control: `${r1(l.lightX * 0.5)}px ${r1(l.lightY * 0.5)}px ${r1(l.blur * 0.7)}px ${sh(l.shadowA * 0.6)}, ${r1(u.x)}px ${r1(u.y)}px 2px ${sh(l.shadowA * 0.5)}`,
+    contact: `${r1(u.x)}px ${r1(u.y)}px 2px ${sh(l.shadowA * 0.45)}`,
+    pane: twin(1),
+    float: twin(1.5), // floats carry the pane's twin at 1.5x the length
+    bevel: `inset ${b.x}px ${b.y}px 0 0 ${hi(l.highlightA * 0.9)}, inset ${-b.x || 0}px ${-b.y || 0}px 0 0 ${sh(l.shadowA * 0.3)}`,
+    well: `inset ${r1(u.x * 2)}px ${r1(u.y * 2)}px ${r1(l.blur * 0.35)}px ${sh(l.shadowA * 0.55)}, inset ${-b.x || 0}px ${-b.y || 0}px 0 0 ${hi(l.highlightA * 0.6)}`,
+  };
+}
+
+/** How far a pressed face travels: 2 px along the unit light vector, into its own shadow. */
+export function sunroomPress(l: Pick<SunroomLight, "lightX" | "lightY">) {
+  const u = unitOf(l);
+  return { x: r1(u.x * 2), y: r1(u.y * 2) };
+}
+
+/** Whether setStop's snapshot cross-fade runs: only when the light/dark side flips (the ink snaps there) and
+ *  never on the first emission or under reduced motion, where the change is instant. */
+export function shouldStopFade(prevDark: boolean | null, nextDark: boolean, reduced: boolean, prevSettled = true): boolean {
+  return prevDark !== null && prevSettled && prevDark !== nextDark && !reduced;
+}
+
+const kebab = (k: string) => k.replace(/([A-Z]|\d+)/g, (m) => `-${m.toLowerCase()}`);
+
+/** Every `--sr-*` custom property the tick writes, for the state at `t` and the effective (blended) light. */
+export function sunroomCssVars(state: SunroomState, light: SunroomLight): Record<string, string> {
+  const px = (n: number) => `${Math.round(n * 10) / 10}px`;
+  const num = (n: number) => `${Math.round(n * 1000) / 1000}`;
+  const vars: Record<string, string> = {};
+  for (const [k, v] of Object.entries(state.palette)) vars[`--sr-${kebab(k)}`] = v;
+  vars["--sr-light-x"] = px(light.lightX);
+  vars["--sr-light-y"] = px(light.lightY);
+  vars["--sr-blur"] = px(light.blur);
+  vars["--sr-shadow-a"] = num(light.shadowA);
+  vars["--sr-highlight-a"] = num(light.highlightA);
+  vars["--sr-shadow-rgb"] = light.shadowRgb;
+  vars["--sr-highlight-rgb"] = light.highlightRgb;
+  vars["--sr-warmth"] = num(light.warmth);
+  vars["--sr-wash-rgb"] = light.washRgb;
+  vars["--sr-wash-a"] = num(Math.max(0, light.washA));
+  const press = sunroomPress(light);
+  vars["--sr-press-x"] = px(press.x);
+  vars["--sr-press-y"] = px(press.y);
+  for (const [k, v] of Object.entries(sunroomShadows(light))) vars[`--sr-shadow-${k}`] = v;
+  return vars;
+}
 
 /** Civil twilight, matching `buildSun`'s own phase cut in src/lib/weather.ts —
  *  the ramp and the weather module have to agree on where night ends, or the
@@ -685,11 +800,22 @@ export function sunroomStateAt(
     panel2: lerpHex(a.palette.panel2, b.palette.panel2, kg),
     line: lerpHex(a.palette.line, b.palette.line, kg),
     lineBright: lerpHex(a.palette.lineBright, b.palette.lineBright, kg),
+    sunlit: lerpHex(a.palette.sunlit, b.palette.sunlit, kg),
+    handle: lerpHex(a.palette.handle, b.palette.handle, kg),
     ink: nearer.palette.ink,
     inkDim: nearer.palette.inkDim,
     inkFaint: nearer.palette.inkFaint,
     accent: nearer.palette.accent,
     accentDim: nearer.palette.accentDim,
+    onAccent: nearer.palette.onAccent,
+    edge: nearer.palette.edge,
+    focus: nearer.palette.focus,
+    scrim: nearer.palette.scrim,
+    washHeat: nearer.palette.washHeat,
+    washCool: nearer.palette.washCool,
+    washOk: nearer.palette.washOk,
+    washWarn: nearer.palette.washWarn,
+    washBad: nearer.palette.washBad,
     ok: nearer.palette.ok,
     warn: nearer.palette.warn,
     bad: nearer.palette.bad,

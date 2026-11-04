@@ -914,56 +914,10 @@ body {
 }
 
 /* ── Sunroom's living light ───────────────────────────────────────────────
-   Sunroom is the one theme in this catalog whose surface treatment IS a
-   directional light model, so it is the one theme where a moving sun has
-   something to move. src/components/kiosk-sunroom.tsx writes the properties
-   below from real solar position; everything from here to the Aerogel block
-   reads them. Nothing outside `[data-kiosk-theme="sunroom"]` is affected.
-
-   WHY @property, AND WHY THE INITIAL VALUES ARE THE FALLBACK: custom
-   properties are strings and do not interpolate — unregistered, the theme
-   would snap between values every time the sun moved and the whole idea would
-   die. Registering them makes one `transition` on the scope animate the
-   entire palette and light model at once. It also means `var(--sr-bg, #fff)`
-   can NEVER reach its fallback, because a registered property always resolves
-   to its initial value. That is deliberate and load-bearing: each
-   `initial-value` below is the exact token the static sunroom shipped with, so
-   with the component absent, the weather feed down, or before hydration, this
-   theme renders byte-identically to the one it replaces. The no-JS fallback is
-   the registration itself. */
-@property --sr-bg { syntax: "<color>"; inherits: true; initial-value: #e3e7ee; }
-@property --sr-panel { syntax: "<color>"; inherits: true; initial-value: #e9edf3; }
-@property --sr-panel-2 { syntax: "<color>"; inherits: true; initial-value: #dde2ea; }
-@property --sr-line { syntax: "<color>"; inherits: true; initial-value: #d3d9e3; }
-@property --sr-line-bright { syntax: "<color>"; inherits: true; initial-value: #b9c2d1; }
-@property --sr-ink { syntax: "<color>"; inherits: true; initial-value: #2c3542; }
-@property --sr-ink-dim { syntax: "<color>"; inherits: true; initial-value: #55606f; }
-@property --sr-ink-faint { syntax: "<color>"; inherits: true; initial-value: #5d646e; }
-@property --sr-accent { syntax: "<color>"; inherits: true; initial-value: #3760b7; }
-@property --sr-accent-dim { syntax: "<color>"; inherits: true; initial-value: #3560ba; }
-@property --sr-ok { syntax: "<color>"; inherits: true; initial-value: #237145; }
-@property --sr-warn { syntax: "<color>"; inherits: true; initial-value: #835c16; }
-@property --sr-bad { syntax: "<color>"; inherits: true; initial-value: #ae3c3c; }
-/* The light model. Offsets are the SHADOW's, not the light's: positive
-   --sr-light-x means the shadow falls right, i.e. the light is on the left,
-   i.e. morning. The initial 7px/7px/14px is the shipped static pair exactly. */
-@property --sr-light-x { syntax: "<length>"; inherits: true; initial-value: 7px; }
-@property --sr-light-y { syntax: "<length>"; inherits: true; initial-value: 7px; }
-@property --sr-blur { syntax: "<length>"; inherits: true; initial-value: 14px; }
-@property --sr-shadow-a { syntax: "<number>"; inherits: true; initial-value: 0.55; }
-@property --sr-highlight-a { syntax: "<number>"; inherits: true; initial-value: 0.85; }
-@property --sr-warmth { syntax: "<number>"; inherits: true; initial-value: 0.16; }
-/* The ground wash. --sr-wash-rgb is a bare triple so it cannot be registered
-   (same reason as the shadow/highlight triples) and therefore snaps; --sr-wash-a
-   is registered and tweens, which is the half the eye follows. */
-@property --sr-wash-a { syntax: "<number>"; inherits: true; initial-value: 0.42; }
-/* --sr-shadow-rgb / --sr-highlight-rgb hold bare "r, g, b" triples for use
-   inside rgba(), which is not a registrable <syntax> — so they stay
-   unregistered and carry their fallback in the var() call instead. They
-   therefore SNAP rather than tween when the sun moves. That is acceptable
-   because the offsets and alphas wrapped around them do tween, and those are
-   what the eye tracks in a shadow; a hue step of a few units underneath a
-   moving, fading shadow is not perceptible. */
+   src/components/kiosk/kiosk-sunroom.tsx writes the --sr-* colours, light model, shadows and press vector
+   from real solar position; the generated src/app/kiosk/sunroom/tokens.css holds the morning stop as the
+   static fallback. Nothing tweens: custom properties are plain strings here, not registered. Nothing
+   outside `[data-kiosk-theme="sunroom"]` is affected. */
 
 /* Sunroom — neumorphism / Soft UI. Borderless embossed panels floating on a
    pale ground, lit by the actual sun; presence without glow. */
@@ -1014,123 +968,9 @@ body {
       rgba(22, 26, 34, calc(0.06 * var(--sr-shadow-a))) 0%,
       rgba(22, 26, 34, 0) 68%
     );
-
-  /* NOTE: the transition list for these properties is NOT here — it is
-     emitted by kiosk-sunroom.tsx, and only from its second update onward.
-     That is not an arbitrary split. Declared here, the transition also
-     applies to the FIRST time real solar values replace the @property
-     initial values above, which means every page load would spend 90 seconds
-     crossfading from the morning defaults to the actual hour: at midnight the
-     tablet would show a mid-morning room and slowly get dark, and every
-     screenshot taken inside that window reports stale values. Found exactly
-     that way — the harness caught --sr-bg identical across all five solar
-     states while the unregistered (and therefore un-transitioned) shadow hue
-     was already correct in each. The first application must land instantly;
-     only subsequent ones tween. */
-}
-[data-kiosk-theme="sunroom"] .panel {
-  border-color: transparent;
-  border-radius: 1.25rem;
-  /* One light source, two faces: the shadow falls along the light vector and
-     the highlight sits on its exact negation. Keeping them exact opposites is
-     what stops this reading as two independent lamps. */
-  box-shadow:
-    var(--sr-light-x) var(--sr-light-y) var(--sr-blur) rgba(var(--sr-shadow-rgb, 163, 177, 198), var(--sr-shadow-a)),
-    calc(-1 * var(--sr-light-x)) calc(-1 * var(--sr-light-y)) var(--sr-blur)
-      rgba(var(--sr-highlight-rgb, 255, 255, 255), var(--sr-highlight-a));
 }
 [data-kiosk-theme="sunroom"] button {
   border-radius: 0.875rem !important;
-}
-/* The one affordance soft-UI genuinely owes a touchscreen: pressing a raised
-   thing should push it in. The shadow pair inverts to `inset` and shrinks, so
-   the button reads as depressed into the same lit surface rather than merely
-   tinted. Fast — this is feedback, not an animation.
-
-   RETIMED onto the shared press variables (see KIOSK MOTION VOCABULARY at the
-   end of this file). This selector is (0,1,1) and `.kiosk-press` is (0,1,0),
-   so a sunroom button would otherwise have kept a symmetric 120ms in both
-   directions and been the one theme where a released control does not spring
-   back. The `:active` rule below is untouched and still outranks the shared
-   one, which is correct — under sunroom the shadow inversion IS the bevel
-   bloom, and it is a better one than a generic inset highlight. */
-[data-kiosk-theme="sunroom"] button {
-  transition:
-    box-shadow var(--kiosk-press-out-ms) var(--kiosk-ease-spring),
-    transform var(--kiosk-press-out-ms) var(--kiosk-ease-spring);
-}
-[data-kiosk-theme="sunroom"] button:active {
-  box-shadow:
-    inset calc(var(--sr-light-x) * 0.5) calc(var(--sr-light-y) * 0.5) calc(var(--sr-blur) * 0.6)
-      rgba(var(--sr-shadow-rgb, 163, 177, 198), var(--sr-shadow-a)),
-    inset calc(-0.5 * var(--sr-light-x)) calc(-0.5 * var(--sr-light-y)) calc(var(--sr-blur) * 0.6)
-      rgba(var(--sr-highlight-rgb, 255, 255, 255), var(--sr-highlight-a));
-}
-/* WARMTH BLOOM — the one live/active glow the brief asks for, hung off
-   `aria-pressed="true"`: the existing "this control is on" attribute the
-   HVAC mode picker (kiosk-climate.tsx) and the appearance theme/layout
-   picker (kiosk-appearance.tsx) already set, not a class invented for this.
-   Layered as a THIRD shadow behind the normal raised pair rather than
-   replacing them, so a selected tile still reads as a panel first and a
-   warm one second. No transition of its own: box-shadow here is already a
-   function of --sr-warmth, which is on the scope's own transition list, so
-   it inherits that tween for free. Kept to a soft few-percent glow — golden
-   hour should be noticeable, never the thing you notice.
-
-   The colour is MIXED FROM --color-warn rather than written as a literal
-   amber. DESIGN.md's rule is that a raw hex or rgb() in a component desyncs
-   the moment the token moves, and a hand-picked amber here would have been
-   exactly that: a warm value that happened to look right against this
-   theme's ground today and nothing keeping it there. Mixing the theme's own
-   warm token toward transparent means the glow follows the palette by
-   construction, and because the mix PERCENTAGE is driven by --sr-warmth, the
-   bloom still swells at golden and all but vanishes at night. */
-[data-kiosk-theme="sunroom"] button[aria-pressed="true"] {
-  box-shadow:
-    var(--sr-light-x) var(--sr-light-y) var(--sr-blur) rgba(var(--sr-shadow-rgb, 163, 177, 198), var(--sr-shadow-a)),
-    calc(-1 * var(--sr-light-x)) calc(-1 * var(--sr-light-y)) var(--sr-blur)
-      rgba(var(--sr-highlight-rgb, 255, 255, 255), var(--sr-highlight-a)),
-    0 0 calc(6px + 14px * var(--sr-warmth))
-      color-mix(in srgb, var(--color-warn) calc(8% + 22% * var(--sr-warmth)), transparent);
-}
-/* ── hit-area opt-out (kiosk-climate.tsx's POWER_BUTTON / EXPAND_BUTTON) ────
-   Those two buttons are 56px TOUCH TARGETS with no visible body of their own:
-   the affordance is a ~36px `<span>` chip centred inside them, and the button
-   itself deliberately overhangs the tile's rounded corner by 6px so the touch
-   floor can be met without the name row reserving 56px either side.
-
-   Every rule above keys off the `button` element, which meant sunroom painted
-   its raised/pressed box-shadow and its aria-pressed warmth bloom on that
-   overhanging invisible box — a lit 56×56 rectangle crossing the tile's own
-   border on two sides, and the reported "the power button isn't contained to
-   the container". Measured on production's running Office AC tile: the button
-   spans x641-697/y187.5-243.5 against a tile that starts at x646/y192.5.
-
-   So: no shadow on the hit area, and the bloom moves to the chip, which at
-   this offset sits a comfortable 4px inside the tile's edge. The chip is a
-   `<span>`, so it is untouched by the `button` rules and needs the glow spelled
-   out — the same three-shadow composition, minus the raised pair a 36px glyph
-   holder was never meant to have. */
-[data-kiosk-theme="sunroom"] button.kiosk-hitarea,
-[data-kiosk-theme="sunroom"] button.kiosk-hitarea:active,
-[data-kiosk-theme="sunroom"] button.kiosk-hitarea[aria-pressed="true"] {
-  box-shadow: none !important;
-}
-[data-kiosk-theme="sunroom"] button.kiosk-hitarea[aria-pressed="true"] > span {
-  box-shadow:
-    0 0 calc(5px + 11px * var(--sr-warmth))
-    color-mix(in srgb, var(--color-warn) calc(8% + 22% * var(--sr-warmth)), transparent);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* The room still tracks the sun — only the tweening stops. Values update
-     exactly as before and land instantly. `!important` outranks the
-     transition lists above, matching the pattern kiosk-sky.tsx uses on its
-     own inline transitions. */
-  [data-kiosk-theme="sunroom"],
-  [data-kiosk-theme="sunroom"] button {
-    transition: none !important;
-  }
 }
 
 /* ── range slider (kiosk-climate.tsx's fan-speed ladder) ───────────────────
@@ -1842,12 +1682,8 @@ body {
    shadow the system does not have. Derived from `--color-ink` via
    color-mix, never a literal rgba, so it follows all 16 palettes.
 
-   SUNROOM OWNS ITS OWN BLOOM. `[data-kiosk-theme="sunroom"] button:active`
-   (0,2,1) already inverts the raised shadow pair to inset and outranks the
-   `:active` rule below (0,2,0) — under that theme the press-in IS the bloom
-   and is better than this one, so nothing here needs an opt-out. The
-   transition on that same rule was retimed to these variables so the release
-   springs there too. */
+   SUNROOM OWNS ITS OWN PRESS. src/app/kiosk/sunroom/surface.css moves a pressed control 2px along the
+   light vector and outranks this rule, so nothing here needs an opt-out. */
 /* THE PROPERTY LIST IS FIVE LONG FOR A CASCADE REASON, not because a press
    moves five things. Everything in this file is UNLAYERED, and Tailwind v4
    puts its own utilities inside `@layer utilities` — so by the cascade-layers
@@ -1997,91 +1833,6 @@ body {
   }
 }
 
-/* ── sunroom: the refractive edge sweep ───────────────────────────────────
-   Sunlight catching the edge of an etched pane when you touch it. A specular
-   band travels along the pane's 1px border — the border only, which is the
-   whole idea: a sweep across the face would be a shine effect on a card,
-   while a sweep along the edge is light finding the one part of a glass sheet
-   that refracts. The border-only shape comes from the two-layer mask below
-   (full box minus content box, composited out), which is the one way to paint
-   a 1px ring with a gradient in it.
-
-   SUNROOM ONLY, on the owner's call. Every other theme's panes are opaque
-   material — hairline steel on the dark ones, paper and slate on the light —
-   and a refraction highlight on paper is a costume. Here it is the same sun
-   that is already lighting the room: the band's colour is the theme's own
-   live `--sr-highlight-rgb` and its strength rides `--sr-warmth`, so it is a
-   bright glint at golden hour and almost nothing at midnight.
-
-   `data-sheen` is stamped by kiosk-sheen.tsx for exactly one animation and
-   removed on `animationend`. The rule renders NOTHING without it, so the
-   pseudo-element does not exist at rest — no extra layer sitting on 40 panes
-   for the hours this screen spends untouched.
-
-   A `.kiosk-sheen` ELEMENT MUST POSITION ITSELF. This block deliberately does
-   not declare `position: relative` on the class, and that is a correctness
-   constraint rather than tidiness: the kiosk's full-mode header is
-   `panel kiosk-hdr-grid sticky top-0`, and a later `position: relative` from
-   here would silently override `sticky` and unpin the header — a whole class
-   of bug for a highlight. Mark a pane with `.kiosk-sheen` only when it already
-   carries `relative` (or add it at that call site), and never blanket-apply
-   this to `.panel`.
-
-   115deg, not the 45deg of the brief: at 45 the band is as long as the
-   pane's diagonal and crosses the whole ring at once, which reads as a wipe
-   over the tile. Leaning ~25 off vertical keeps it a short travelling glint
-   that arrives at one edge, runs the border, and leaves — the diagonal shaft
-   the brief is describing, at the angle where it still reads as one. */
-@keyframes kiosk-sheen-sweep {
-  from {
-    background-position: -75% 0;
-  }
-  to {
-    background-position: 175% 0;
-  }
-}
-[data-kiosk-theme="sunroom"] .kiosk-sheen[data-sheen]::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1px;
-  pointer-events: none;
-  background-image: linear-gradient(
-    115deg,
-    transparent 38%,
-    rgba(var(--sr-highlight-rgb, 255, 255, 255), calc(0.45 + 0.45 * var(--sr-warmth))) 50%,
-    transparent 62%
-  );
-  background-size: 250% 100%;
-  background-repeat: no-repeat;
-  /* The `#000` in these four gradients is NOT a colour and is not palette
-     drift: a mask samples only the ALPHA channel, so every one of them means
-     "fully opaque" and any hue would render identically. Reaching for a
-     palette token here would be worse than a literal — it would claim the mask
-     had a colour worth keeping in sync with the theme. Two layers, composited
-     `exclude`: the full box minus the content box leaves exactly the 1px
-     `padding` ring, which is the only way to paint a hairline border with a
-     travelling gradient inside it. */
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  animation: kiosk-sheen-sweep var(--kiosk-sheen-ms) var(--kiosk-ease-out);
-}
-@media (prefers-reduced-motion: reduce) {
-  /* Nothing static to keep. A stopped glint is a bright smear on one edge of
-     the pane, which is worse than no glint — so the whole pseudo-element
-     goes rather than just its animation. */
-  [data-kiosk-theme="sunroom"] .kiosk-sheen[data-sheen]::after {
-    display: none;
-  }
-}
-
 /* ── sunroom: corner light leaks ──────────────────────────────────────────
    Light entering the room at the frame, as distinct from the sky beyond it.
    KioskSky (kiosk-sky.tsx) already paints the sun's own colour as two soft
@@ -2130,15 +1881,7 @@ body {
       color-mix(in srgb, var(--color-warn) calc(2% + 7% * var(--sr-warmth)), transparent) 0%,
       transparent 70%
     );
-  /* No transition of its own, and none needed. `background-image` is not an
-     interpolable property — the `transition: background-image 90s linear`
-     that used to sit here was inert, matched by no browser's animatable-
-     property list, and only cost a per-recalc bookkeeping entry on a
-     full-viewport fixed layer for nothing. The layer still moves smoothly:
-     its only live inputs, `--sr-light-x` and `--sr-warmth`, are registered
-     custom properties (see kiosk-sunroom.tsx) that already arrive tweened
-     from that file's own transition list, so this rule just reads values
-     that are already easing and repaints along with them. */
+  /* No transition: values land at once (Sunroom rule 8); the tick moves them a few tenths of a pixel a minute. */
 }
 
 /* ── the digit reel ───────────────────────────────────────────────────────

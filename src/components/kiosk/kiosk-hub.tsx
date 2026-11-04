@@ -273,14 +273,7 @@ function ToggleChip({
       disabled={!available}
       onClick={onToggle}
       className={cn(
-        // `relative kiosk-sheen`: this pill is one of the sunroom refractive
-        // sweep's panes (globals.css's sheen block). It has to carry `relative`
-        // itself — that block deliberately refuses to stamp positioning, since
-        // doing so would override `position: sticky` on the full-mode header.
-        // The section roots above are NOT sheen panes on purpose: their own
-        // comment is that they are boxless by design, and a sweeping 1px ring
-        // would draw the box that decision removed.
-        "kiosk-press kiosk-sheen relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        "kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -331,7 +324,7 @@ function SceneChip({
         // is unlayered and fully owns the `transition` longhands, so a layered
         // Tailwind `transition` here would have been a dead class reading as
         // if it did something.
-        "kiosk-press kiosk-sheen relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
+        "kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}

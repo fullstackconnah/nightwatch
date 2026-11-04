@@ -5,144 +5,89 @@
    file is the only thing that knows about time, the network, or the DOM.
 
    It renders NOTHING visible. Its entire output is one <style> element
-   carrying the `--sr-*` custom properties, which the sunroom block in
-   globals.css reads. That indirection is deliberate: it means the theme has a
-   complete, correct static definition (the @property initial values) that
-   stands on its own when this component is absent, when the weather feed is
-   down, or before hydration — and this component only ever *improves* on it.
-   There is no state in which sunroom is broken because the sun is unknown.
+   carrying the `--sr-*` custom properties (colours, light model, the six
+   shadows and the press vector) that src/app/kiosk/sunroom/*.css read. The
+   generated tokens.css holds the morning stop as the static fallback, so the
+   theme is complete before hydration, when the weather feed is down, or when
+   this component is absent; this component only ever improves on it.
 
-   THE 60-SECOND TICK is the reason this is a component and not a one-shot
-   read. The weather feed refreshes every 15 minutes, and a light source that
-   jumped a quarter-hour at a time would read as a glitch rather than as the
-   day passing — the eye is far better at catching a discrete jump than a
-   continuous drift. But the sun's hour angle is not something we need the
-   network for: it advances an exact 0.25°/min, always, everywhere. So the
-   fetched reading becomes an ANCHOR, and between fetches we extrapolate from
-   it locally. Each 60s step is then a fraction of a degree, and the CSS
-   transition over it makes the travel genuinely continuous. Elevation is not
-   extrapolated — deriving it needs latitude and declination that this client
-   doesn't have — so it rides the fetch cadence and only drives the coarse
-   softness of the shadow, where a 15-minute step is invisible anyway.
+   THE 60-SECOND TICK: the weather feed refreshes every 15 minutes, but the
+   sun's hour angle advances an exact 0.25 deg per minute, so the fetched
+   reading becomes an ANCHOR and each tick extrapolates from it. Elevation is
+   not extrapolated (it needs latitude and declination this client lacks).
 
-   SCOPE: returns null on every theme but sunroom, which is contract gate 3.
-   The `:root ` prefix on the emitted selector is not cosmetic — see the
-   comment at STYLE_SELECTOR. The transition list is emitted here rather than
-   declared statically in globals.css, and deliberately withheld for one
-   frame — see the comment at TRANSITION below for why. */
+   NOTHING TWEENS. Colours and shadows are never animated (Sunroom rule 8):
+   each tick lands its values at once; a step is a few tenths of a pixel and
+   a sub-percent colour change, which the eye cannot catch. The one exception
+   is the dark crossing: when the ink snaps between the light and dark halves
+   of the ramp, the old look is cloned onto a layer above the page and only
+   that layer's OPACITY fades (SR bundle.js setStop). The clone is aria-hidden,
+   inert, out of the focus order and removed when the fade ends.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+   SCOPE: returns null on every theme but sunroom. The `:root ` prefix on the
+   emitted selector is not cosmetic: it lifts specificity to (0,2,0) so these
+   values outrank the static tokens.css block at (0,1,0) whatever order the
+   stylesheets end up in. */
+
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useKioskWeather, type KioskWeatherOk } from "@/lib/kiosk-client";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
-import { sunroomLightVector, sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
+import { shouldStopFade, sunroomCssVars, sunroomLightVector, sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
 
-/* The weather subscription now comes from useKioskWeather (kiosk-client.ts),
-   which owns the key, the interval and the `fetcher` for all five consumers:
-   this file, kiosk-sky, kiosk-sunroom-weather, kiosk-glass-weather, and
-   kiosk-display's useWeatherView. SWR still dedupes them into one request per
-   interval — the difference is that agreement is now structural rather than
-   five separately-declared constants that had to stay identical. */
-
-/** How often the light direction is recomputed from the anchor. Small enough
- *  that each step is sub-degree and the CSS transition can swallow it whole. */
+/** How often the light direction is recomputed from the anchor. */
 const TICK_MS = 60_000;
 
-/** The sun's hour angle advances 360° per 24h. Exact, not an approximation —
- *  it is the definition of the hour angle, which is why it can be extrapolated
- *  locally with no error accumulation beyond the anchor's own. */
+/** The sun's hour angle advances 360 deg per 24h; exact, so it extrapolates with no accumulating error. */
 const DEG_PER_MINUTE = 360 / (24 * 60);
 
-/* Specificity (0,2,0), which outranks globals.css's own
-   `[data-kiosk-theme="sunroom"]` block at (0,1,0) no matter what order the
-   stylesheets end up in. Relying on DOM order instead would work today and
-   break silently the first time Next hoists or inlines a stylesheet
-   differently — a cascade race is not something you want to debug through a
-   production build's CSS ordering. */
 const STYLE_SELECTOR = ":root [data-kiosk-theme=\"sunroom\"]";
 
-/* Two cadences, because two things move at two speeds. The light DIRECTION is
-   recomputed every 60s (TICK_MS) from the extrapolated hour angle, but each
-   emitted step is at most a few tenths of a px — the px() emitter below
-   rounds to 0.1px — so tweening that step across the FULL 60s window kept the
-   two full-viewport gradient layers that read --sr-light-x (this theme's own
-   ground wash and .kiosk-leaks, both `background-image`, neither
-   compositable) in continuous main-thread style-recalc + repaint for the
-   entire life of the theme, to move a value nobody could see moving. A 6s
-   ease per step lands the same sub-pixel travel just as invisibly and lets
-   paint idle ~90% of every minute. The palette and the shadow's weight still
-   ride the 15-minute fetch cadence and get the longer crossfade — the same
-   90s KioskSky uses against the same data; that part is unchanged.
+/** The cross-fade clone's class (surface.css owns its look) and the hard removal timeout (fade is 3s). */
+const FADE_CLASS = "sr-stopfade";
+const FADE_REMOVE_MS = 3400;
 
-   THIS IS WITHHELD ON THE FIRST UPDATE. If it were declared in the stylesheet
-   it would also apply to the first substitution of real solar values for the
-   @property initial values, and every load would spend 90 seconds crossfading
-   out of the morning defaults — a tablet booted at midnight would show a
-   mid-morning room and slowly darken. Emitting it from the second update
-   onward means the truth lands immediately and only the sun's own movement is
-   ever animated.
-
-   NO prefersReducedMotion() CHECK IN THIS FILE, deliberately. globals.css's
-   own `@media (prefers-reduced-motion: reduce)` block for
-   `[data-kiosk-theme="sunroom"]` sets `transition: none !important`, which
-   outranks whatever list this constant emits — reduced motion is enforced at
-   the CSS layer, not here, and every value below still lands instantly for
-   those users regardless of what this file does. */
-const TRANSITION = `
-  transition:
-    --sr-light-x 6s linear,
-    --sr-light-y 6s linear,
-    --sr-bg 90s linear,
-    --sr-panel 90s linear,
-    --sr-panel-2 90s linear,
-    --sr-line 90s linear,
-    --sr-line-bright 90s linear,
-    --sr-ink 90s linear,
-    --sr-ink-dim 90s linear,
-    --sr-ink-faint 90s linear,
-    --sr-accent 90s linear,
-    --sr-accent-dim 90s linear,
-    --sr-ok 90s linear,
-    --sr-warn 90s linear,
-    --sr-bad 90s linear,
-    --sr-blur 90s linear,
-    --sr-shadow-a 90s linear,
-    --sr-highlight-a 90s linear,
-    --sr-warmth 90s linear;`;
-
-type SunPhase = "night" | "dawn" | "day" | "dusk";
-
-/* The crossing between the light and dark halves of the ramp gets its own,
-   much shorter duration. Everything else drifts over 60-90s because it is
-   meant to be imperceptible; this one is the opposite — it passes through a
-   band of ground luminance where no ink colour clears AA, so the only correct
-   move is to be through it before anyone can read a word. Long enough not to
-   read as a flashbang on a dark wall at dusk, short enough that the illegible
-   state is never a state. */
-const CROSSING_MS = 650;
-
-/** Rain intensity, 0..1. mm/hr is the honest measure (a 90-minute nowcast of
- *  actual precipitation), and 4 mm/hr is treated as the top of the scale —
- *  that is solidly "heavy" in temperate rain; anything above it is already as
- *  dark as the design goes and clamps. */
+/** Rain intensity, 0..1. 4 mm/hr is the top of the scale and clamps. */
 function rainIntensity01(mmPerHour: number | undefined): number {
   if (typeof mmPerHour !== "number" || !Number.isFinite(mmPerHour)) return 0;
   return Math.min(1, Math.max(0, mmPerHour / 4));
 }
 
-
 /** Falls back to reconstructing the hour angle from `progress01` when the feed
- *  predates `hourAngleDeg`. Daylight spans roughly ±90° of hour angle, so
- *  mapping 0..1 onto -90..+90 recovers the one thing the light model actually
- *  needs from it: which side of noon we are on, and roughly how far. */
+ *  predates `hourAngleDeg`: daylight spans roughly +-90 deg of hour angle. */
 function anchorHourAngle(sun: NonNullable<KioskWeatherOk["sun"]>): number {
   if (typeof sun.hourAngleDeg === "number" && Number.isFinite(sun.hourAngleDeg)) return sun.hourAngleDeg;
   const p = Math.min(1, Math.max(0, sun.progress01));
   return (p - 0.5) * 180;
 }
 
+/** Clones the themed scope onto a fixed layer carrying the OLD stop's variables inline, then fades its opacity. */
+function fadeFromOldStop(oldVars: Record<string, string>, oldDark: boolean) {
+  const scope = document.querySelector<HTMLElement>("[data-kiosk-theme=\"sunroom\"]");
+  if (!scope) return;
+  document.querySelectorAll(`.${FADE_CLASS}`).forEach((n) => n.remove()); // a change mid-fade drops the older snapshot
+  const layer = document.createElement("div");
+  layer.className = FADE_CLASS;
+  layer.setAttribute("aria-hidden", "true");
+  layer.inert = true;
+  const copy = scope.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+  copy.querySelectorAll(`.${FADE_CLASS}, style`).forEach((n) => n.remove());
+  copy.querySelectorAll("[tabindex], a, button, input, select, textarea").forEach((n) => n.setAttribute("tabindex", "-1"));
+  for (const [k, v] of Object.entries(oldVars)) copy.style.setProperty(k, v);
+  copy.style.colorScheme = oldDark ? "dark" : "light";
+  copy.style.cssText += `;position:absolute;left:0;right:0;top:${-window.scrollY}px`;
+  layer.appendChild(copy);
+  scope.appendChild(layer); // inside the scope so surface.css (scoped, N10) styles it and --sr-m-* resolve
+  void layer.offsetWidth; // commit the opaque frame before the fade starts
+  layer.setAttribute("data-out", "");
+  const done = () => layer.remove();
+  layer.addEventListener("transitionend", (e) => { if (e.target === layer) done(); });
+  setTimeout(done, FADE_REMOVE_MS);
+}
+
 export function KioskSunroomLight() {
   const theme = useKioskTheme();
-  const { data } = useKioskWeather();
+  const { data, isLoading } = useKioskWeather();
 
   const ok = data && data.status === "ok" ? data : null;
   const sun = ok?.sun ?? null;
@@ -150,19 +95,16 @@ export function KioskSunroomLight() {
   const nowcastMmHr = ok?.rain?.nowcast?.[0]?.precipMmHr;
   const currentPrecipMm = ok?.current?.precipMm;
 
-  /* Minutes since the anchor landed. Kept as state (not a ref) because the
-     rendered output has to change when it advances; kept as a COUNT of ticks
-     rather than a timestamp so it stays SSR-stable and never reads the clock
-     during render. */
+  /* Minutes since the anchor landed. State rather than a ref because the
+     rendered output must change as it advances; a count so it stays SSR-stable
+     and never reads the clock during render. */
   const [tick, setTick] = useState(0);
   const anchorAtRef = useRef<number | null>(null);
   const anchorKey = sun ? `${sun.elevationDeg}:${sun.progress01}:${sun.hourAngleDeg ?? "na"}` : null;
 
   useEffect(() => {
     if (!anchorKey) return;
-    // A fresh reading resets both the anchor time and the extrapolation, so
-    // drift never accumulates across fetches — each 15-minute window
-    // extrapolates from its own ground truth, not from the previous estimate.
+    // A fresh reading resets the anchor and the extrapolation, so drift never accumulates across fetches.
     anchorAtRef.current = Date.now();
     setTick(0);
   }, [anchorKey]);
@@ -177,113 +119,51 @@ export function KioskSunroomLight() {
     return () => clearInterval(id);
   }, [anchorKey]);
 
-  /* Flipped one frame after the first real emission, which is what lets the
-     first application land instantly and every later one tween. A ref plus a
-     state flag rather than a plain "have we rendered" check, because the very
-     first emission may itself be several renders in (SWR resolving, theme
-     resolving) and only the render that actually writes values counts. */
-  const [tweening, setTweening] = useState(false);
-  const emittedRef = useRef(false);
-
-  const css = useMemo(() => {
+  const out = useMemo(() => {
     if (!sun) return null;
     const hourAngle = anchorHourAngle(sun) + tick * DEG_PER_MINUTE;
     const t = sunroomT({ elevationDeg: sun.elevationDeg, hourAngleDeg: hourAngle });
     const cloud01 = typeof cloudCoverPct === "number" ? cloudCoverPct / 100 : 0;
-    // Prefer the nowcast's first bucket over `current.precipMm`: it is what is
-    // falling in the next quarter hour rather than what has accumulated, and
-    // the ground should darken while it rains, not after.
+    // The nowcast's first bucket is what falls in the next quarter hour; the ground should darken while it rains.
     const rain01 = rainIntensity01(nowcastMmHr ?? currentPrecipMm);
-    const { palette, light, isDark, crossing } = sunroomStateAt(t, { cloud01, rain01 });
+    const state = sunroomStateAt(t, { cloud01, rain01 });
+    const { light, isDark } = state;
 
-    // Direction override: when the feed carries a true azimuth, redirect the
-    // shadow to point where the sun actually is instead of the stop ramp's
-    // hand-tuned guess, while keeping every stop-driven quality (magnitude,
-    // blur, alphas, colours) exactly as `sunroomStateAt` already produced it.
-    // `light.lightX/lightY` themselves are left untouched below (they still
-    // feed the emitted CSS as a fallback shape) — only these two locals
-    // change, and only when azimuth is actually present.
+    // Direction override: when the feed carries a true azimuth, point the shadow where the sun is while every
+    // stop-driven quality (magnitude, blur, alphas, colours) stays as the ramp produced it. Azimuth is not
+    // extrapolated between polls: its rate depends on latitude and swings fastest near noon.
     let lightX = light.lightX;
     let lightY = light.lightY;
     if (typeof sun.azimuthDeg === "number" && Number.isFinite(sun.azimuthDeg)) {
-      // Azimuth is deliberately NOT extrapolated between polls the way
-      // hourAngle is (see DEG_PER_MINUTE above): hourAngle is defined to
-      // advance a uniform 15°/hour, but azimuth's rate depends on latitude,
-      // declination and hour angle all at once and swings fastest near solar
-      // noon — a linear extrapolation would visibly drift within a single
-      // 15-minute window. Riding the fetch cadence instead costs nothing
-      // visible, the same trade this file already makes for elevation.
       const magnitude = Math.hypot(light.lightX, light.lightY);
       const vector = sunroomLightVector(sun.azimuthDeg, sun.elevationDeg, magnitude);
-      // Below the horizon there's no sun to point a shadow at, and the stop
-      // ramp's own night value collapses lightX to 0 (see sunroom-light.ts).
-      // Fade the geometric override back to that stop-tuned direction over
-      // the same civil-twilight band the ramp itself treats as dark, so the
-      // geometry never points a below-horizon tablet at a sun nobody can see.
+      // Below the horizon there is no sun to point at; fade the geometry back to the stop's own direction
+      // over the civil-twilight band the ramp treats as dark.
       const geoWeight = Math.min(1, Math.max(0, (sun.elevationDeg + 4) / 8));
       lightX = light.lightX + (vector.x - light.lightX) * geoWeight;
       lightY = light.lightY + (vector.y - light.lightY) * geoWeight;
     }
 
-    // Rounded on the way out: sub-pixel and sub-percent precision here buys
-    // nothing visually and would churn the emitted string on every tick,
-    // invalidating the style element for no reason.
-    const px = (n: number) => `${Math.round(n * 10) / 10}px`;
-    const num = (n: number) => `${Math.round(n * 1000) / 1000}`;
+    // Shadows and the press vector derive from the EFFECTIVE (blended) light, so they follow the real sun.
+    const vars = sunroomCssVars(state, { ...light, lightX, lightY });
+    const decls = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join("\n");
+    const css = `${STYLE_SELECTOR} {\n  color-scheme: ${isDark ? "dark" : "light"};\n${decls}\n}`;
+    return { css, vars, isDark };
+  }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick]);
 
-    /* color-scheme has to move with the ground or the browser keeps drawing
-       scrollbars, form controls and the tap-highlight for a light page on a
-       near-black one. It is not animatable and shouldn't be — it flips with
-       the ink, at the same instant, by construction. */
-    const scheme = `\n  color-scheme: ${isDark ? "dark" : "light"};`;
-    /* While crossing, every tween collapses to CROSSING_MS. Using the normal
-       90s here would leave the surface sitting in the illegible band for a
-       minute and a half. */
-    const transition = tweening ? (crossing ? TRANSITION.replace(/\d+s linear/g, `${CROSSING_MS}ms linear`) : TRANSITION) : "";
+  /* The stop cross-fade: runs in a layout effect so the clone is taken before the browser paints the new values. */
+  const prevRef = useRef<{ vars: Record<string, string>; isDark: boolean; settled: boolean } | null>(null);
+  useLayoutEffect(() => {
+    if (!out || theme !== "sunroom") return;
+    const prev = prevRef.current;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prev && shouldStopFade(prev.isDark, out.isDark, reduced, prev.settled)) fadeFromOldStop(prev.vars, prev.isDark);
+    // A ?wx= preview answers with a placeholder sun before the first fetch lands; that is not a settled stop (spec 4: no fade on load).
+    prevRef.current = { vars: out.vars, isDark: out.isDark, settled: !isLoading };
+  }, [out, theme]); // isLoading read from the render that produced `out`; it never needs to re-run the fade
 
-    return `${STYLE_SELECTOR} {${transition}${scheme}
-  --sr-bg: ${palette.bg};
-  --sr-panel: ${palette.panel};
-  --sr-panel-2: ${palette.panel2};
-  --sr-line: ${palette.line};
-  --sr-line-bright: ${palette.lineBright};
-  --sr-ink: ${palette.ink};
-  --sr-ink-dim: ${palette.inkDim};
-  --sr-ink-faint: ${palette.inkFaint};
-  --sr-accent: ${palette.accent};
-  --sr-accent-dim: ${palette.accentDim};
-  --sr-ok: ${palette.ok};
-  --sr-warn: ${palette.warn};
-  --sr-bad: ${palette.bad};
-  --sr-light-x: ${px(lightX)};
-  --sr-light-y: ${px(lightY)};
-  --sr-blur: ${px(light.blur)};
-  --sr-shadow-a: ${num(light.shadowA)};
-  --sr-highlight-a: ${num(light.highlightA)};
-  --sr-shadow-rgb: ${light.shadowRgb};
-  --sr-highlight-rgb: ${light.highlightRgb};
-  --sr-warmth: ${num(light.warmth)};
-  --sr-wash-rgb: ${light.washRgb};
-  --sr-wash-a: ${num(Math.max(0, light.washA))};
-}`;
-  }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick, tweening]);
+  // Off-theme, or no sun to report: emit nothing; tokens.css is the whole definition.
+  if (theme !== "sunroom" || !out) return null;
 
-  useEffect(() => {
-    if (!css || emittedRef.current) return;
-    emittedRef.current = true;
-    // One frame's gap is the whole mechanism: the browser must commit the
-    // untransitioned values as the element's current state before the
-    // transition declaration exists, or it will animate from the initial
-    // values anyway and nothing has been gained.
-    const id = requestAnimationFrame(() => setTweening(true));
-    return () => cancelAnimationFrame(id);
-  }, [css]);
-
-  // Off-theme, or no sun to report: emit nothing at all. The @property initial
-  // values in globals.css are a complete definition of the theme on their own,
-  // so "nothing" here means "the sunroom that shipped before this feature",
-  // not a half-styled surface.
-  if (theme !== "sunroom" || !css) return null;
-
-  return <style>{css}</style>;
+  return <style>{out.css}</style>;
 }
