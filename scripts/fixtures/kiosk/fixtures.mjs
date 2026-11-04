@@ -28,6 +28,32 @@ export function weatherFor(stop) {
   };
 }
 
+/** ?wxsun=dusk's sun (kiosk-weather-fx.ts SUNS.dusk): just below the horizon, so the rain draws its dusk look; the sunroom dusk stop sits at +10. */
+const DUSK_SUN = { elevationDeg: -2, hourAngleDeg: 95, phase: "dusk", progress01: 1 };
+
+/** The rain states for the rain-zone shots: weatherFor(stop) with the wet fields set (presets as WX_PRESETS in kiosk-weather-fx.ts). */
+export const RAIN_STATES = {
+  "heavy-night": { stop: "night", code: "rain", label: "Heavy rain", mmHr: 12, wind: 35 },
+  "storm-dusk": { stop: "dusk", sun: DUSK_SUN, code: "thunderstorm", label: "Thunderstorm", mmHr: 9, wind: 45 },
+  "drizzle-dusk": { stop: "dusk", sun: DUSK_SUN, code: "drizzle", label: "Drizzle", mmHr: 0.3, wind: 8 },
+};
+
+export function rainWeatherFor(state) {
+  const s = RAIN_STATES[state];
+  const w = weatherFor(s.stop);
+  return {
+    ...w,
+    ...(s.sun && { sun: s.sun }),
+    // precipMm is a 15-minute total (kiosk-weather-fx.ts effectiveMmHr)
+    current: { ...w.current, label: s.label, code: s.code, cloudCoverPct: 100, humidityPct: 90, precipMm: s.mmHr / 4, windKmh: s.wind },
+    days: w.days.map((d) => ({ ...d, code: s.code, label: s.label, rainPct: 80 })),
+    rain: { hours: [], summary: null, nowcast: [{ minutesFromNow: 0, precipMmHr: s.mmHr }] },
+  };
+}
+
+/** /kiosk/api/nowplaying: the bottom-centre pill (NowPlayingActive, src/lib/types/nowplaying.ts). */
+export const NOW_PLAYING = { status: "ok", source: "ha", title: "Evening news", appName: "YouTube", state: "playing", progress01: 0.4 };
+
 /** Every other /kiosk/api/* route answers "not configured": the kiosk renders its quiet state for each. */
 export const QUIET = { status: "unconfigured" };
 
@@ -62,6 +88,13 @@ export const HA_STATES = {
     scenes: [{ entityId: "scene.evening", name: "Evening", available: true }],
     mediaPlayers: [],
   },
+};
+
+/** Rain states only: the content of the shipped defect (a longer light tile, a long now-playing title), placeholder text. */
+export const RAIN_NOW_PLAYING = { ...NOW_PLAYING, title: "The Long Evening Programme Hour" };
+export const RAIN_HA_STATES = {
+  ...HA_STATES,
+  entities: { ...HA_STATES.entities, lights: [{ entityId: "light.floodlight", name: "Front door Floodlight", on: true, brightnessPct: 60, available: true }] },
 };
 
 /** /kiosk/api/climate-auto-off in the ClimateAutoOffServerState shape (use-climate-auto-off.ts): the pill and its sheet need it. */

@@ -188,6 +188,14 @@ export function zoneMask(x: number, y: number, zones: Float32Array, n: number, f
   return w;
 }
 
+/** `data-rain-zone` name -> mask slot. Same-named elements union into one rect,
+ *  so names that sit apart (left cluster, centre pill, right corner) need their
+ *  own slot or the union would blank the floor between them. Slots 1 and 2 are
+ *  the glance gate (hasGlanceZones); a name that also shows in full mode must
+ *  not use them. */
+export const RAIN_ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3, playing: 4 } as const;
+export const RAIN_ZONE_COUNT = 5;
+
 /** True when the glance text (sentence slot 1 or tiles slot 2) is on screen.
  *  Absent slots hold -1e5. Without them (the hub) rings and crowns stay off. */
 export function hasGlanceZones(zones: Float32Array): boolean {
