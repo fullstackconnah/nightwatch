@@ -1,0 +1,576 @@
+{
+  "version": 1,
+  "color": {
+    "themes": [
+      {
+        "id": "morning",
+        "name": "Morning"
+      },
+      {
+        "id": "dawn",
+        "name": "Dawn"
+      },
+      {
+        "id": "midday",
+        "name": "Midday"
+      },
+      {
+        "id": "golden",
+        "name": "Golden hour"
+      },
+      {
+        "id": "dusk",
+        "name": "Dusk"
+      },
+      {
+        "id": "night",
+        "name": "Night"
+      }
+    ],
+    "tokens": [
+      {
+        "name": "bg",
+        "value": {
+          "morning": "#e3e7ee",
+          "dawn": "#dcdfe8",
+          "midday": "#e6eaf4",
+          "golden": "#edeae8",
+          "dusk": "#dedde4",
+          "night": "#0d1425"
+        },
+        "usage": "Ground: the wall behind everything; it carries the sun's tint for the stop. Never a control face."
+      },
+      {
+        "name": "panel",
+        "value": {
+          "morning": "#e9edf3",
+          "dawn": "#e2e5ed",
+          "midday": "#edf0f8",
+          "golden": "#f2f0ed",
+          "dusk": "#e4e3ea",
+          "night": "#141d31"
+        },
+        "usage": "Ground: the face of every raised thing (pane, control, float). Always paired with `shadow-bevel` and its level's shadow (`shadow-control`, or the twin `shadow-pane` / `shadow-float`)."
+      },
+      {
+        "name": "panel-2",
+        "value": {
+          "morning": "#dde2ea",
+          "dawn": "#d6dae4",
+          "midday": "#e0e5f0",
+          "golden": "#e7e4e1",
+          "dusk": "#d8d7de",
+          "night": "#0a1020"
+        },
+        "usage": "Ground: recessed wells (tracks, digit boxes) and disabled faces. Pair with `shadow-well`."
+      },
+      {
+        "name": "line",
+        "value": {
+          "morning": "#d3d9e3",
+          "dawn": "#cbd1dd",
+          "midday": "#d5dae7",
+          "golden": "#dcd8d5",
+          "dusk": "#cdccd5",
+          "night": "#1f2b45"
+        },
+        "usage": "Ground: hairlines that divide rows inside a pane, and the Timer ring track. Decorative only; never the sole cue for state."
+      },
+      {
+        "name": "line-bright",
+        "value": {
+          "morning": "#b9c2d1",
+          "dawn": "#b4bccc",
+          "midday": "#bcc4d5",
+          "golden": "#c4c0bc",
+          "dusk": "#b6b5c1",
+          "night": "#35466e"
+        },
+        "usage": "Ground: the stronger hairline for dividers that sit on `bg`."
+      },
+      {
+        "name": "ink",
+        "value": {
+          "morning": "#2c3542",
+          "dawn": "#2c3542",
+          "midday": "#2c3542",
+          "golden": "#2c3542",
+          "dusk": "#2c3542",
+          "night": "#e4eaf4"
+        },
+        "usage": "Text: primary copy, names, readings, the label and state word on an on control. Reads on `bg`, `panel` and `panel-2`, `sunlit`, `wash-heat` over `panel`, `wash-cool` over `panel`, `wash-ok` over `panel`, `wash-warn` over `panel` and `wash-bad` over `panel`. Fixed across the five day stops."
+      },
+      {
+        "name": "ink-dim",
+        "value": {
+          "morning": "#3d4655",
+          "dawn": "#3d4655",
+          "midday": "#3d4655",
+          "golden": "#3d4655",
+          "dusk": "#3d4655",
+          "night": "#b0bdd0"
+        },
+        "usage": "Text: secondary copy, units, an off control's state word, stale readings. Reads on `bg`, `panel` and `panel-2`, `wash-heat` over `panel` and `wash-cool` over `panel`."
+      },
+      {
+        "name": "ink-faint",
+        "value": {
+          "morning": "#4f5662",
+          "dawn": "#4f5662",
+          "midday": "#4f5662",
+          "golden": "#4f5662",
+          "dusk": "#4f5662",
+          "night": "#8fa0b7"
+        },
+        "usage": "Text: microlabels and disabled labels; the floor for any copy. Reads on `bg`, `panel` and `panel-2`."
+      },
+      {
+        "name": "accent",
+        "value": {
+          "morning": "#33559f",
+          "dawn": "#33559f",
+          "midday": "#33559f",
+          "golden": "#33559f",
+          "dusk": "#33559f",
+          "night": "#93b6ff"
+        },
+        "usage": "Text: the climate target figure, links and the selected value in a ladder. Also the Segmented slab fill and the Slider fill. Reads on `bg`, `panel` and `panel-2`."
+      },
+      {
+        "name": "accent-dim",
+        "value": {
+          "morning": "#2f4f96",
+          "dawn": "#2f4f96",
+          "midday": "#2f4f96",
+          "golden": "#2f4f96",
+          "dusk": "#2f4f96",
+          "night": "#7ea5f5"
+        },
+        "usage": "Text: a pending target (sent, not yet confirmed). Reads on `bg`, `panel` and `panel-2`."
+      },
+      {
+        "name": "on-accent",
+        "value": {
+          "morning": "#f7f9fd",
+          "dawn": "#f7f9fd",
+          "midday": "#f7f9fd",
+          "golden": "#f7f9fd",
+          "dusk": "#f7f9fd",
+          "night": "#0d1425"
+        },
+        "usage": "Text: labels on an `accent` fill (the selected Segmented slab). Reads on `accent`."
+      },
+      {
+        "name": "sunlit",
+        "value": {
+          "morning": "#ecb64a",
+          "dawn": "#ecac78",
+          "midday": "#efbd44",
+          "golden": "#efaa45",
+          "dusk": "#e2a07e",
+          "night": "#5b4422"
+        },
+        "usage": "Fill: the face of a control that is on (a light, a scene, the AC power). It is the sun catching the face, in that hour's colour; at night it is a dim ember. Only for on; never for selection (that is `accent`) and never decoration."
+      },
+      {
+        "name": "edge",
+        "value": {
+          "morning": "#4f5866",
+          "dawn": "#4f5866",
+          "midday": "#4f5866",
+          "golden": "#4f5866",
+          "dusk": "#4f5866",
+          "night": "#8fa0b7"
+        },
+        "usage": "Mark: control borders that carry state: the Switch track and thumb rim, the Slider rungs, the off pip ring. Holds 3:1 on `bg`, `panel`, `panel-2` and `sunlit`."
+      },
+      {
+        "name": "handle",
+        "value": {
+          "morning": "#777f8b",
+          "dawn": "#727a86",
+          "midday": "#7a818d",
+          "golden": "#7b818a",
+          "dusk": "#737986",
+          "night": "#647288"
+        },
+        "usage": "Mark: the Sheet grabber and other drag handles; quieter than `edge`, still plain at arm's length. Holds 3:1 on `panel`."
+      },
+      {
+        "name": "focus",
+        "value": {
+          "morning": "#2f4f96",
+          "dawn": "#2f4f96",
+          "midday": "#2f4f96",
+          "golden": "#2f4f96",
+          "dusk": "#2f4f96",
+          "night": "#93b6ff"
+        },
+        "usage": "Mark: the keyboard focus ring, 3px solid with a 3px gap. Holds 3:1 on `bg`, `panel`, `panel-2` and `sunlit`."
+      },
+      {
+        "name": "ok",
+        "value": {
+          "morning": "#19603a",
+          "dawn": "#19603a",
+          "midday": "#19603a",
+          "golden": "#19603a",
+          "dusk": "#19603a",
+          "night": "#5ecf99"
+        },
+        "usage": "Text: healthy status words and the ok status dot. Reads on `bg`, `panel` and `panel-2` and `wash-ok` over `panel`."
+      },
+      {
+        "name": "warn",
+        "value": {
+          "morning": "#6b4a0f",
+          "dawn": "#6b4a0f",
+          "midday": "#6b4a0f",
+          "golden": "#6b4a0f",
+          "dusk": "#6b4a0f",
+          "night": "#edbe61"
+        },
+        "usage": "Text: warnings and \"Unavailable\". Reads on `bg`, `panel` and `panel-2` and `wash-warn` over `panel`."
+      },
+      {
+        "name": "bad",
+        "value": {
+          "morning": "#9d3232",
+          "dawn": "#9d3232",
+          "midday": "#9d3232",
+          "golden": "#9d3232",
+          "dusk": "#9d3232",
+          "night": "#ff9292"
+        },
+        "usage": "Text: errors (\"Couldn't set. Tap to retry.\") and the bad status dot. Reads on `bg`, `panel` and `panel-2` and `wash-bad` over `panel`."
+      },
+      {
+        "name": "stale",
+        "value": "{ink-faint}",
+        "usage": "Text: the Stale tag and \"Updated 14 min ago\" lines. Reads on `bg`, `panel` and `panel-2`. An alias of `ink-faint` so stale never looks like an error."
+      },
+      {
+        "name": "meter",
+        "value": "{accent}",
+        "usage": "Mark: Vitals meter fill, sparkline stroke, Timer ring arc (phase 2). Holds 3:1 on `panel`, `panel-2` and `line`."
+      },
+      {
+        "name": "scrim",
+        "value": {
+          "morning": "#1a223373",
+          "dawn": "#1a223373",
+          "midday": "#1a223373",
+          "golden": "#1a223373",
+          "dusk": "#1a223373",
+          "night": "#000000a6"
+        },
+        "usage": "Wash: dims the room behind a Dialog or the takeover Alert (phase 2). Nothing reads on the scrim itself; text sits on the float above it."
+      },
+      {
+        "name": "wash-heat",
+        "value": {
+          "morning": "#e0702a1f",
+          "dawn": "#e0702a1f",
+          "midday": "#e0702a1f",
+          "golden": "#e0702a1f",
+          "dusk": "#e0702a1f",
+          "night": "#ff8a3d24"
+        },
+        "usage": "Wash: over a pane while the AC is heating. The wash is a static tint, never pulsing; on a ClimateTile the working glow in the same colour breathes while the unit runs (glow means live state only)."
+      },
+      {
+        "name": "wash-cool",
+        "value": {
+          "morning": "#3d7be01a",
+          "dawn": "#3d7be01a",
+          "midday": "#3d7be01a",
+          "golden": "#3d7be01a",
+          "dusk": "#3d7be01a",
+          "night": "#6f9dff1f"
+        },
+        "usage": "Wash: over a pane while the AC is cooling or drying."
+      },
+      {
+        "name": "wash-ok",
+        "value": {
+          "morning": "#19603a1a",
+          "dawn": "#19603a1a",
+          "midday": "#19603a1a",
+          "golden": "#19603a1a",
+          "dusk": "#19603a1a",
+          "night": "#5ecf991f"
+        },
+        "usage": "Wash: behind a resolved Alert or a healthy server line (phase 2)."
+      },
+      {
+        "name": "wash-warn",
+        "value": {
+          "morning": "#b7791f24",
+          "dawn": "#b7791f24",
+          "midday": "#b7791f24",
+          "golden": "#b7791f24",
+          "dusk": "#b7791f24",
+          "night": "#edbe6124"
+        },
+        "usage": "Wash: behind a warning Alert or Toast (phase 2)."
+      },
+      {
+        "name": "wash-bad",
+        "value": {
+          "morning": "#c0392b1f",
+          "dawn": "#c0392b1f",
+          "midday": "#c0392b1f",
+          "golden": "#c0392b1f",
+          "dusk": "#c0392b1f",
+          "night": "#ff929229"
+        },
+        "usage": "Wash: behind an error Alert, the takeover and a failed Toast (phase 2)."
+      }
+    ]
+  },
+  "type": {
+    "fonts": [],
+    "families": {
+      "sans": "'Quicksand', ui-rounded, system-ui, sans-serif",
+      "mono": "'Red Hat Mono', ui-monospace, monospace"
+    },
+    "groups": [
+      {
+        "name": "Figures",
+        "family": "mono",
+        "styles": [
+          {
+            "name": "clock",
+            "fontSize": "120px",
+            "lineHeight": 1,
+            "fontWeight": 500,
+            "letterSpacing": "-0.03em",
+            "sample": "07:42",
+            "usage": "The glance clock only (phase 2, Clock)."
+          },
+          {
+            "name": "reading",
+            "fontSize": "56px",
+            "lineHeight": 1,
+            "fontWeight": 500,
+            "letterSpacing": "-0.02em",
+            "sample": "23.5°",
+            "usage": "A live reading the room reports: current temperature, outside temperature. Never rolls."
+          },
+          {
+            "name": "figure",
+            "fontSize": "40px",
+            "lineHeight": 1,
+            "fontWeight": 600,
+            "letterSpacing": "-0.01em",
+            "sample": "22.5",
+            "usage": "A value the person sets: the climate target in its odometer reel, in `accent`."
+          },
+          {
+            "name": "meta",
+            "fontSize": "16px",
+            "lineHeight": "20px",
+            "fontWeight": 500,
+            "letterSpacing": "0",
+            "sample": "cpu 14%  ·  up 12d",
+            "usage": "Measurements in small type: the server line, units, timer remainders."
+          }
+        ]
+      },
+      {
+        "name": "Text",
+        "family": "sans",
+        "styles": [
+          {
+            "name": "title",
+            "fontSize": "28px",
+            "lineHeight": "34px",
+            "fontWeight": 700,
+            "letterSpacing": "-0.01em",
+            "sample": "Living room",
+            "usage": "Tile and sheet titles."
+          },
+          {
+            "name": "body",
+            "fontSize": "22px",
+            "lineHeight": "28px",
+            "fontWeight": 600,
+            "letterSpacing": "0",
+            "sample": "Desk lamp",
+            "usage": "Chip labels, rows, sheet copy. Weight 600 so Quicksand holds at 3 m."
+          },
+          {
+            "name": "label",
+            "fontSize": "18px",
+            "lineHeight": "22px",
+            "fontWeight": 700,
+            "letterSpacing": "0.01em",
+            "sample": "Turn off",
+            "usage": "Button labels and Segmented labels."
+          },
+          {
+            "name": "micro",
+            "fontSize": "15px",
+            "lineHeight": "18px",
+            "fontWeight": 700,
+            "letterSpacing": "0.08em",
+            "sample": "TARGET",
+            "usage": "Microlabels and state words (ON, OFF, UNAVAILABLE). Set in uppercase in CSS; never below 15px."
+          }
+        ]
+      }
+    ]
+  },
+  "spacing": {
+    "note": "4px base. Touch sizes are spacing tokens too.",
+    "tokens": [
+      {
+        "name": "space-1",
+        "value": "4px",
+        "usage": "Pip to label."
+      },
+      {
+        "name": "space-2",
+        "value": "8px",
+        "usage": "Inside a control, between icon and label."
+      },
+      {
+        "name": "space-3",
+        "value": "12px",
+        "usage": "Between chips in a grid; between a microlabel and its figure."
+      },
+      {
+        "name": "space-4",
+        "value": "16px",
+        "usage": "Control padding; gap between rows in a pane."
+      },
+      {
+        "name": "space-6",
+        "value": "24px",
+        "usage": "Pane padding."
+      },
+      {
+        "name": "space-8",
+        "value": "32px",
+        "usage": "Between panes."
+      },
+      {
+        "name": "space-12",
+        "value": "48px",
+        "usage": "Screen gutter at 1180 px."
+      },
+      {
+        "name": "hit",
+        "value": "56px",
+        "usage": "The touch size of every control: height of Button, Chip, Stepper keys, Segmented; the hit area of an icon button."
+      },
+      {
+        "name": "hit-min",
+        "value": "44px",
+        "usage": "The floor for a secondary target (a dismiss or an expand in a tight corner). Never below."
+      }
+    ]
+  },
+  "radius": {
+    "note": "Soft and solid. Pills only for things that toggle.",
+    "tokens": [
+      {
+        "name": "radius-sm",
+        "value": "10px",
+        "usage": "Wells: PIN digit boxes, the Slider track."
+      },
+      {
+        "name": "radius-md",
+        "value": "16px",
+        "usage": "Buttons, Stepper keys, the Segmented track and slab."
+      },
+      {
+        "name": "radius-lg",
+        "value": "24px",
+        "usage": "Panes and floats."
+      },
+      {
+        "name": "radius-full",
+        "value": "999px",
+        "usage": "Chips, the Switch, pips and status dots."
+      }
+    ]
+  },
+  "shadow": {
+    "note": "One light: the real sun. Every dark cast falls along the stop's light vector. Panes and floats carry the kiosk twin: a light cast on the exact opposite side, toward the sun. Controls keep one cast. Every raised face carries `shadow-bevel` on its sun side. Values are computed from sunroom-light.ts per stop.",
+    "tokens": [
+      {
+        "name": "shadow-control",
+        "value": {
+          "morning": "3.5px 3.5px 9.8px rgba(163,177,198,0.33), 0.7px 0.7px 2px rgba(163,177,198,0.28)",
+          "dawn": "5px 2.5px 14px rgba(150,150,178,0.25), 0.9px 0.4px 2px rgba(150,150,178,0.21)",
+          "midday": "0px 4px 7.7px rgba(158,172,196,0.31), 0px 1px 2px rgba(158,172,196,0.26)",
+          "golden": "-4px 3px 12.6px rgba(170,156,168,0.3), -0.8px 0.6px 2px rgba(170,156,168,0.25)",
+          "dusk": "-5.5px 2px 15.4px rgba(146,140,170,0.23), -0.9px 0.3px 2px rgba(146,140,170,0.19)",
+          "night": "0px 1.5px 7px rgba(0,1,4,0.42), 0px 1px 2px rgba(0,1,4,0.35)"
+        },
+        "usage": "Rest shadow of every raised control (Button, Chip, Switch thumb, Stepper keys): one soft cast along the stop's light vector plus a 1px contact. Painted on the control's ::before layer so press can fade it."
+      },
+      {
+        "name": "shadow-contact",
+        "value": {
+          "morning": "0.7px 0.7px 2px rgba(163,177,198,0.25)",
+          "dawn": "0.9px 0.4px 2px rgba(150,150,178,0.19)",
+          "midday": "0px 1px 2px rgba(158,172,196,0.23)",
+          "golden": "-0.8px 0.6px 2px rgba(170,156,168,0.23)",
+          "dusk": "-0.9px 0.3px 2px rgba(146,140,170,0.17)",
+          "night": "0px 1px 2px rgba(0,1,4,0.32)"
+        },
+        "usage": "Pressed shadow: the control sits down on the sill, only the 1px contact stays. Painted on the ::after layer; it fades in as shadow-control fades out."
+      },
+      {
+        "name": "shadow-pane",
+        "value": {
+          "morning": "0px 0px 0px 1px rgba(163,177,198,0.17), 7px 7px 14px rgba(163,177,198,0.55), -7px -7px 14px rgba(255,255,255,0.85)",
+          "dawn": "0px 0px 0px 1px rgba(150,150,178,0.13), 10px 5px 20px rgba(150,150,178,0.42), -10px -5px 20px rgba(255,246,240,0.62)",
+          "midday": "0px 0px 0px 1px rgba(158,172,196,0.16), 0px 8px 11px rgba(158,172,196,0.52), 0px -8px 11px rgba(255,255,255,0.9)",
+          "golden": "0px 0px 0px 1px rgba(170,156,168,0.15), -8px 6px 18px rgba(170,156,168,0.5), 8px -6px 18px rgba(255,248,235,0.8)",
+          "dusk": "0px 0px 0px 1px rgba(146,140,170,0.11), -11px 4px 22px rgba(146,140,170,0.38), 11px -4px 22px rgba(250,240,244,0.55)",
+          "night": "0px 0px 0px 1px rgba(0,1,4,0.21), 0px 3px 10px rgba(0,1,4,0.7), 0px -3px 10px rgba(44,60,94,0.55)"
+        },
+        "usage": "Panes (Surface level \"pane\"): tiles, the climate tile, grouped controls. The kiosk twin: a dark cast along the stop's light vector and a light cast on the exact opposite (sun) side, plus a 1px crease where the pane meets the sill. Always with `shadow-bevel`."
+      },
+      {
+        "name": "shadow-float",
+        "value": {
+          "morning": "0px 0px 0px 1px rgba(163,177,198,0.17), 10.5px 10.5px 21px rgba(163,177,198,0.55), -10.5px -10.5px 21px rgba(255,255,255,0.85)",
+          "dawn": "0px 0px 0px 1px rgba(150,150,178,0.13), 15px 7.5px 30px rgba(150,150,178,0.42), -15px -7.5px 30px rgba(255,246,240,0.62)",
+          "midday": "0px 0px 0px 1px rgba(158,172,196,0.16), 0px 12px 16.5px rgba(158,172,196,0.52), 0px -12px 16.5px rgba(255,255,255,0.9)",
+          "golden": "0px 0px 0px 1px rgba(170,156,168,0.15), -12px 9px 27px rgba(170,156,168,0.5), 12px -9px 27px rgba(255,248,235,0.8)",
+          "dusk": "0px 0px 0px 1px rgba(146,140,170,0.11), -16.5px 6px 33px rgba(146,140,170,0.38), 16.5px -6px 33px rgba(250,240,244,0.55)",
+          "night": "0px 0px 0px 1px rgba(0,1,4,0.21), 0px 4.5px 15px rgba(0,1,4,0.7), 0px -4.5px 15px rgba(44,60,94,0.55)"
+        },
+        "usage": "Floating layers (Sheet, Dialog, Toast): the same twin as a pane at 1.5x the length (owner, 2026-11-04), so they sit higher; the scrim still sets dialogs apart. Never on a resting element."
+      },
+      {
+        "name": "shadow-bevel",
+        "value": {
+          "morning": "inset 1px 1px 0 0 rgba(255,255,255,0.77), inset -1px -1px 0 0 rgba(163,177,198,0.17)",
+          "dawn": "inset 1px 0px 0 0 rgba(255,246,240,0.56), inset -1px 0px 0 0 rgba(150,150,178,0.13)",
+          "midday": "inset 0px 1px 0 0 rgba(255,255,255,0.81), inset 0px -1px 0 0 rgba(158,172,196,0.16)",
+          "golden": "inset -1px 1px 0 0 rgba(255,248,235,0.72), inset 1px -1px 0 0 rgba(170,156,168,0.15)",
+          "dusk": "inset -1px 0px 0 0 rgba(250,240,244,0.5), inset 1px 0px 0 0 rgba(146,140,170,0.11)",
+          "night": "inset 0px 1px 0 0 rgba(44,60,94,0.5), inset 0px -1px 0 0 rgba(0,1,4,0.21)"
+        },
+        "usage": "The sun-side rim: a 1px highlight on the edge that faces the sun and a faint shade on the far edge. On every raised face (pane, control, float); on panes it holds the edge against the twin's sun-side halo."
+      },
+      {
+        "name": "shadow-well",
+        "value": {
+          "morning": "inset 1.4px 1.4px 4.9px rgba(163,177,198,0.3), inset -1px -1px 0 0 rgba(255,255,255,0.51)",
+          "dawn": "inset 1.8px 0.9px 7px rgba(150,150,178,0.23), inset -1px 0px 0 0 rgba(255,246,240,0.37)",
+          "midday": "inset 0px 2px 3.9px rgba(158,172,196,0.29), inset 0px -1px 0 0 rgba(255,255,255,0.54)",
+          "golden": "inset -1.6px 1.2px 6.3px rgba(170,156,168,0.28), inset 1px -1px 0 0 rgba(255,248,235,0.48)",
+          "dusk": "inset -1.9px 0.7px 7.7px rgba(146,140,170,0.21), inset 1px 0px 0 0 rgba(250,240,244,0.33)",
+          "night": "inset 0px 2px 3.5px rgba(0,1,4,0.39), inset 0px -1px 0 0 rgba(44,60,94,0.33)"
+        },
+        "usage": "Recessed grounds: Segmented track, Slider track, Switch track, PIN digit boxes. The light falls into the well from the sun side."
+      }
+    ]
+  }
+}

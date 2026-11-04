@@ -1,0 +1,64 @@
+/* Sunroom surfaces (Sill DS, PR 1): the pane, the press, the stop cross-fade.
+   Every selector starts with the Sunroom scope (check N10), so nothing here reaches another theme.
+   Shadows are the six strings the 60 s tick computes (--sr-shadow-*); they never animate (rule 8).
+   Only transform and opacity move, and every animated selector has an identical reduced-motion rule (check N8).
+   Controls keep this interim press until PR 2 replaces them with the Button and Chip components. */
+
+/* Pane = bevel + the twin with its 0.3 crease. One pane deep: a panel inside a pane is a well or a flat group. */
+[data-kiosk-theme="sunroom"] .panel {
+  border-color: transparent;
+  border-radius: 1.25rem;
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-pane);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* The press: the face sits down 2 px along the sun's vector and keeps only the 1 px contact. No colour tween. */
+[data-kiosk-theme="sunroom"] :is(button, .kiosk-press) {
+  transition: transform var(--sr-m-press-out) var(--sr-m-ease-spring);
+}
+[data-kiosk-theme="sunroom"] :is(button, .kiosk-press):active:not(:disabled) {
+  transform: translate(var(--sr-press-x), var(--sr-press-y));
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-contact);
+  transition-duration: var(--sr-m-press-in);
+}
+/* On: sat into the sill. The sun catch on Chip, icon toggles and Switch arrives in PR 2. */
+[data-kiosk-theme="sunroom"] button[aria-pressed="true"] {
+  box-shadow: var(--sr-shadow-well);
+}
+/* Hit areas (kiosk-climate's 56 px buttons) have no visible body: no shadow, no travel. */
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea,
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea:active:not(:disabled),
+[data-kiosk-theme="sunroom"] button.kiosk-hitarea[aria-pressed="true"] {
+  box-shadow: none;
+  transform: none;
+}
+
+/* The breath is off under Sunroom (lead ruling OPEN-S3): the room is calm, a stale feed stays visibly stale. */
+[data-kiosk-theme="sunroom"] .kiosk-breathe {
+  animation: none;
+}
+
+/* The dark-crossing cross-fade (kiosk-sunroom.tsx fadeFromOldStop): a clone of the old look above the page,
+   aria-hidden and inert, whose OPACITY alone fades. Removed on transitionend. */
+[data-kiosk-theme="sunroom"] .sr-stopfade {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-toast);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--sr-m-stop) var(--sr-m-ease-day);
+}
+[data-kiosk-theme="sunroom"] .sr-stopfade[data-out] {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-kiosk-theme="sunroom"] :is(button, .kiosk-press) {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] .sr-stopfade {
+    transition: none;
+  }
+}

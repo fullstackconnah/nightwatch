@@ -21,7 +21,6 @@
    without converting the kiosk layout to a client boundary wholesale. */
 
 import { useEffect, useState } from "react";
-import { KioskSheen } from "@/components/kiosk/kiosk-sheen";
 import { DEFAULT_THEME_FONTS, kioskFontValue, useKioskFonts } from "@/lib/kiosk-fonts";
 import {
   Archivo,
@@ -321,8 +320,7 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       style={style}
     >
       {children}
-      {/* KioskSheen (stamps `data-sheen` for the sunroom edge-sweep pseudo-
-          element) and the leaks div below both belong at the END of this
+      {/* The leaks div below belongs at the END of this
           div, not the front, and for the same reason `<KioskSky />` is not
           mounted HERE at all: kiosk/layout.tsx mounts it as the FIRST element
           of `children`, specifically so this module never has to import
@@ -343,7 +341,6 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
           position — "after every real child, including the panels" still
           resolves to "below every panel, above the sky," which is the actual
           requirement. */}
-      <KioskSheen />
       <div aria-hidden className="kiosk-leaks" />
     </div>
   );

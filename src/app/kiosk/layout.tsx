@@ -4,6 +4,8 @@ import { KioskSky } from "@/components/kiosk/kiosk-sky";
 import { KioskSunroomLight } from "@/components/kiosk/kiosk-sunroom";
 import { KioskSunroomWeather } from "@/components/kiosk/kiosk-sunroom-weather";
 import { KioskGlassWeather } from "@/components/kiosk/kiosk-glass-weather";
+import "./sunroom/tokens.css";
+import "./sunroom/surface.css";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",

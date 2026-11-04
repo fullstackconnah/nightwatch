@@ -270,8 +270,6 @@ export function KioskClimateTile({
         // ClimateSection's `data-kiosk-focus` group (kiosk-hub.tsx) — when
         // another tile is being adjusted, this one recedes with the rest.
         "kiosk-defocus",
-        // kiosk-sheen requires `relative`, which this root already carries.
-        "kiosk-sheen",
         // The container wears the SELECTED mode's colour (see modeTint
         // above) the instant the mode is picked; off keeps the neutral
         // panel, and neutral/off-theme running keeps the SAME on-state
