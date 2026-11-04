@@ -304,6 +304,16 @@ try {
     await goto(s.page, "/orchestrators", strips(4));
     await board(s, "05-ok-mixed", s.page.locator("[data-checkpoint]").first().waitFor({ timeout: SLOW }), "main");
     record("badgesMixed", s.name, await texts(s.page, "[data-state-badge]"));
+    // C3: record only; the review checks that no "waiting" sits on an agent whose waiting is null
+    record("waitingNodes05", s.name, await s.page.evaluate(() => {
+      const out = [], w = document.createTreeWalker(document.querySelector("main"), NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!/waiting/i.test(n.textContent)) continue;
+        const el = n.parentElement;
+        out.push({ text: n.textContent.trim().slice(0, 60), cls: el.className, rowId: el.closest("[data-row-id]")?.dataset.rowId ?? null });
+      }
+      return out;
+    }));
     record("tallyMixed", s.name, await s.page.locator(".ol-tally").innerText());
     record("partialBand", s.name, await texts(s.page, "[data-band=partial]"));
     record("checkpointLength", s.name, (await s.page.locator("[data-checkpoint]").first().textContent()).length);
@@ -312,18 +322,17 @@ try {
   // 6 odip detail (open on first paint)
   stage = "step 6";
   await each(async (s) => { await shoot(s, "06-odip-detail", "[data-row-id='lane-odip']"); });
-  // 6b no session cookie: fresh context
+  // 6b load failed 403: the signed-in page, with the status route answering 403 before a fresh load (no data yet -> load-error)
   stage = "step 6b";
   await each(async (s) => {
-    const ctx = await browser.newContext(s.opts);
-    const p = await ctx.newPage();
-    watch(p, `${s.name}-nocookie`);
-    await p.goto(`${BASE_URL}/orchestrators`, { waitUntil: "domcontentloaded" });
-    await p.getByText("This page needs a full sign-in", { exact: false }).first().waitFor({ timeout: SLOW }).catch(() => {});
-    const t = await p.locator("body").innerText();
-    record("loadFailed403", s.name, { url: p.url(), has403Sentence: t.includes("This page needs a full sign-in. The kiosk PIN does not open it.") });
-    await shoot({ ...s, page: p }, "06b-load-failed");
-    await ctx.close();
+    const pat = "**/api/orchestra/status";
+    await s.page.route(pat, (route) => route.fulfill({ status: 403, json: { error: "forbidden" } }));
+    await s.page.goto(`${BASE_URL}/orchestrators`, { waitUntil: "domcontentloaded" });
+    await s.page.getByText("This page needs a full sign-in", { exact: false }).first().waitFor({ timeout: SLOW }).catch(() => {});
+    const t = await s.page.locator("body").innerText();
+    record("loadFailed403", s.name, { url: s.page.url(), has403Sentence: t.includes("This page needs a full sign-in. The kiosk PIN does not open it.") });
+    await shoot(s, "06b-load-failed");
+    await s.page.unroute(pat);
   });
   // 7 night-watch-orchestr (unknown) expanded -> detail error
   stage = "step 7";

@@ -3,7 +3,7 @@
  * Zero dependencies. The bearer token picks the scenario:
  *
  *   mock-mixed   four orchestrators, one of each run state (default for captures)
- *   mock-stuck   one agent waiting 7 m, one stalled at 24 m, one quiet at 19 m, a 26-character agent name
+ *   mock-stuck   one agent waiting 7 m, one stalled at 24 m, one quiet at 19 m, a 26-character agent name, and five agents in the dev lane (so Show 2 more appears)
  *   mock-busy    one lane with six agents in flight (the Show more slot)
  *   mock-empty   ok, no orchestrators registered
  *   mock-slow    mixed, after a 4 s delay (under the proxy's 5 s timeout)
@@ -33,7 +33,7 @@ const SUMMARIES = [
 ];
 
 const STUCK = [
-  lane("dev", "Development lane", "stalled", 24, "claude-opus-5-5", [ag("dev-reviewer", 24), ag("dev-builder", 19), ag("dev-long-agent-name-here-x", 5)], 1),
+  lane("dev", "Development lane", "stalled", 24, "claude-opus-5-5", [ag("dev-reviewer", 24), ag("dev-builder", 19), ag("dev-long-agent-name-here-x", 5), ag("dev-fixer", 4), ag("dev-lookup", 2)], 1),
   lane("design", "Design briefs", "running", 2, "claude-opus-5-5", [ag("design-shape", 2, { tool: "Bash", sinceMin: 7 })]),
   lane("odip", "ODIP delivery", "running", 3, "claude-sonnet-5-5", [ag("odip-builder", 3)]),
   lane("ops", "Operations", "stopped", 60 * 5, "claude-sonnet-5-5", [], 0, "offline"),
