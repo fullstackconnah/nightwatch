@@ -69,6 +69,7 @@ export function KioskCarousel({
   heightPx = PANE_HEIGHT_PX,
   dotsClassName,
   heightClassName,
+  onPageChange,
 }: {
   widgetIds: readonly KioskWidgetId[];
   ctx: Omit<KioskWidgetCtx, "reportEmpty">;
@@ -85,6 +86,8 @@ export function KioskCarousel({
   heightPx?: number;
   /** Lets the band tuck its dots in tighter than a full-height column wants. */
   dotsClassName?: string;
+  /** Reports the visible page id, so a line outside the carousel can avoid repeating it. */
+  onPageChange?: (id: KioskWidgetId | null) => void;
   /** Overrides `heightPx` with a class, so the reserved height can respond to
    *  a media query. Needed because glance is a fixed-height screen: on a short
    *  viewport a 132px band pushes the light controls below the fold, and with
@@ -126,6 +129,8 @@ export function KioskCarousel({
 
   const visible = useMemo(() => widgetIds.filter((id) => emptyMap[id] !== true), [widgetIds, emptyMap]);
   const clampedIndex = visible.length === 0 ? 0 : Math.min(index, visible.length - 1);
+  const currentId = visible[clampedIndex] ?? null;
+  useEffect(() => onPageChange?.(currentId), [currentId, onPageChange]);
 
   function clearPauseTimer() {
     if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);

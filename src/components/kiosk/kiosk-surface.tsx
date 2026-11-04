@@ -41,6 +41,7 @@ import {
 import { KioskClock } from "@/components/kiosk/kiosk-clock";
 import { KioskForecastRail } from "@/components/kiosk/kiosk-forecast";
 import { KioskCarousel } from "@/components/kiosk/kiosk-carousel";
+import { conditionWord } from "@/lib/kiosk-weather-fx";
 import { useKioskWidgetLayout } from "@/lib/kiosk-widgets";
 import {
   KioskDisplay,
@@ -331,14 +332,14 @@ function TempNode({
           !full && "[@media(max-height:700px)]:!text-2xl",
         )}
       >
-        {current.label.toLowerCase()}
+        {conditionWord(current.label)}
       </span>
       {weather.status === "ready-stale" && (sr ? <StaleTag /> : <span className="shrink-0 microlabel !text-warn">stale</span>)}
     </div>
   );
 }
 
-function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (node: HTMLElement | null) => void }) {
+function ServerLine({ mode, registerRef, hideRunning }: { mode: KioskViewMode; registerRef: (node: HTMLElement | null) => void; hideRunning?: boolean }) {
   const health = useFreshness(useKioskHealth(HEALTH_POLL_MS));
   const full = mode === "full";
   const sr = useKioskTheme() === "sunroom";
@@ -387,7 +388,8 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
       {health.status === "ready-stale" && <StaleTag />}
     </div>
   ) : (
-    <div ref={registerRef} className="text-base text-ink-dim">
+    // invisible, not removed: the line keeps its height so the band does not jump when the page changes.
+    <div ref={registerRef} className={cn("text-base text-ink-dim", hideRunning && "invisible")}>
       {/* `{" "}` rather than relying on the source's own whitespace: the literal
           space between the count and "running" used to be free (one text node,
           same line), but wrapping "running" in its own span to carry the class
@@ -570,6 +572,8 @@ export function KioskSurface({
   // edits, so "what rotates through the forecast slot" is a user choice.
   const widgetLayout = useKioskWidgetLayout();
   const glanceBandIds = widgetLayout.glance;
+  // The containers page already says "N running"; the server line below the dots then stays quiet.
+  const [bandPageId, setBandPageId] = useState<string | null>(null);
   /* The radar modal is owned HERE, not by the rail whose button opens it, so it
      survives a glance⇄full flip and the band's own rotation rather than being
      unmounted with whichever subtree happened to host the trigger. Same
@@ -727,10 +731,11 @@ export function KioskSurface({
                   onInteraction={onInteraction}
                   heightClassName={GLANCE_BAND_HEIGHT_CLASS}
                   dotsClassName="justify-center pt-1"
+                  onPageChange={setBandPageId}
                 />
               )}
         </div>
-        <ServerLine mode={mode} registerRef={flip.register("server-line")} />
+        <ServerLine mode={mode} registerRef={flip.register("server-line")} hideRunning={mode === "glance" && bandPageId === "containers"} />
 
         {full && (
           /* `basis-full` gives the controls their own line under the clock

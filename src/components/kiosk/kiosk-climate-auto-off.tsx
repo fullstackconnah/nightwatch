@@ -43,7 +43,7 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
           originRef.current = btnRef.current?.getBoundingClientRect() ?? null;
           setOpen(true);
         }}
-        // -my-2.5 -mr-1: same "overflow without pushing layout" idiom as
+        // -my-2.5: same "overflow without pushing layout" idiom as
         // kiosk-timers.tsx's close X (-mr-2.5 there). The 44px h-11 touch
         // target is a hard a11y floor and must not shrink, but this pill
         // sits inline with SectionHeader in ClimateSection's header row —
@@ -54,7 +54,7 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
         // rendered 44px target still overflows the row invisibly above/below.
         data-lit={state.enabled}
         onPointerDown={aimCatch}
-        className="sr-chip sr-chip-sm kiosk-press -my-2.5 -mr-1 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        className="sr-chip sr-chip-sm kiosk-press -my-2.5 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
         <SunCatch />
         <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />

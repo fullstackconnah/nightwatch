@@ -213,6 +213,7 @@ export function KioskGlance({
       <button
         type="button"
         data-rain-zone="admin"
+        data-sr-admin
         /* Admin DOES opt out, and it has to — this is not a style choice.
            An earlier version let the press reach the root handler on the
            reasoning that promoting to full underneath the PIN pad is

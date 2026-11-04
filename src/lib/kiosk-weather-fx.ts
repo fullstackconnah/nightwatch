@@ -206,8 +206,8 @@ export function zoneMask(x: number, y: number, zones: Float32Array, n: number, f
 export const RAIN_ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3, playing: 4 } as const;
 export const RAIN_ZONE_COUNT = 5;
 
-/** True when the glance text (sentence slot 1 or tiles slot 2) is on screen.
- *  Absent slots hold -1e5. Without them (the hub) rings and crowns stay off. */
+/** True when the glance text (slot 1, the centre column: every widget there, prose or control, carries
+ *  the "sentence" zone; or tiles slot 2) is on screen. Absent slots hold -1e5. Without them (the hub) rings and crowns stay off. */
 export function hasGlanceZones(zones: Float32Array): boolean {
   return zones[4] > -1e4 || zones[8] > -1e4;
 }
@@ -307,6 +307,11 @@ export function flashPeakDeltaL(groundHex: string, alpha: number): number {
   const c = hexRgb(FLASH_GLOW_HEX);
   const blended = g.map((v, i) => v * (1 - alpha) + c[i] * alpha);
   return Math.abs(relLum(blended) - relLum(g));
+}
+
+/** Weather condition word as the kiosk shows it: lowercase in every period (the night look used to keep the API's capital). */
+export function conditionWord(label: string): string {
+  return label.toLowerCase();
 }
 
 // --- ?wx= preview ------------------------------------------------------------
