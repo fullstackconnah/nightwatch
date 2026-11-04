@@ -16,6 +16,11 @@ export function shouldDismiss(dy: number, h: number, v: number): boolean {
   return dy > 0 && (dy > 0.4 * h || v > 0.11);
 }
 
+/** Where a closing sheet ends: 100% down, or (reduced motion) faded in place. */
+export function sheetExitFrame(reduced: boolean): PropertyIndexedKeyframes {
+  return reduced ? { opacity: 0 } : { transform: "translateY(100%)" };
+}
+
 /** Release velocity in px/ms from [timeStamp, raw] samples; a finger that paused over 80 ms before lifting has none. */
 export function releaseVelocity(pts: [number, number][], endT: number): number {
   const a = pts[0];

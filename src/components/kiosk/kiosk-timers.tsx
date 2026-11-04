@@ -1,7 +1,7 @@
 "use client";
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
-import { SunSheetGrabber } from "@/components/kiosk/kiosk-sheet-grabber";
+import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
 
 /* THESIS: the kitchen wants several pots on the stove at once — pasta,
    eggs, a load of laundry — tracked from anywhere in the room, not just
@@ -357,6 +357,7 @@ function KioskTimersOverlay({
     closingRef.current = true;
 
     const node = dialogRef.current;
+    if (node && slideSheetOut(node, onClose)) return; // Sunroom: slide down, then close (after any guard above)
     if (originRect && node) {
       const fireClose = () => {
         if (closeFiredRef.current) return;

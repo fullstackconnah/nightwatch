@@ -6,7 +6,27 @@
 
 import { useRef, type PointerEvent, type RefObject } from "react";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
-import { releaseVelocity, sheetDragY, shouldDismiss } from "@/lib/sunroom-overlays";
+import { releaseVelocity, sheetDragY, sheetExitFrame, shouldDismiss } from "@/lib/sunroom-overlays";
+
+/** Sunroom only: slide the sheet down over --sr-m-slide (a 180 ms fade under reduced motion), then call `done` once. From the
+ *  inline offset a drag left, so a dismissing release carries on from where the finger let go. False elsewhere: the caller closes as before. */
+export function slideSheetOut(panel: HTMLElement, done: () => void): boolean {
+  if (!panel.closest('[data-kiosk-theme="sunroom"]')) return false;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const cs = getComputedStyle(panel);
+  const ms = reduced ? 180 : parseFloat(cs.getPropertyValue("--sr-m-slide")) || 260;
+  const easing = cs.getPropertyValue("--sr-m-ease-out").trim() || "ease-out";
+  let fired = false;
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    done();
+  };
+  panel.style.transition = "none";
+  panel.animate(sheetExitFrame(reduced), { duration: ms, easing: reduced ? "ease" : easing, fill: "forwards" }).finished.catch(() => {}).finally(fire);
+  window.setTimeout(fire, ms + 80); // an unmount race can leave `finished` unresolved; the sheet must still close
+  return true;
+}
 
 export function SunSheetGrabber({ panelRef, onDismiss }: { panelRef: RefObject<HTMLElement | null>; onDismiss: () => void }) {
   const sunroom = useKioskTheme() === "sunroom";
@@ -37,9 +57,11 @@ export function SunSheetGrabber({ panelRef, onDismiss }: { panelRef: RefObject<H
     drag.current = null;
     if (!panel) return;
     const v = releaseVelocity(d.pts, e.timeStamp);
-    panel.style.transition = "";
-    panel.style.transform = "";
-    if (shouldDismiss(d.dy, d.h, v)) onDismiss();
+    if (shouldDismiss(d.dy, d.h, v)) onDismiss(); // keeps the dragged offset: the close slides on from here
+    else {
+      panel.style.transition = "";
+      panel.style.transform = "";
+    }
   };
 
   return (

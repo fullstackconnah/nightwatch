@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { CHIME_GAP_MS, chimeDue, playChime, releaseVelocity, rubberband, sheetDragY, shouldDismiss, unlockAudio } from "./sunroom-overlays.ts";
+import { CHIME_GAP_MS, chimeDue, playChime, releaseVelocity, rubberband, sheetDragY, sheetExitFrame, shouldDismiss, unlockAudio } from "./sunroom-overlays.ts";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8").replace(/\r\n/g, "\n");
 const noComments = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -110,5 +110,24 @@ describe("Alert: the chime plays under Sunroom only", () => {
   it("playChime is called behind the Sunroom check, and the first touch unlocks audio", () => {
     assert.match(a, /sunroom\) playChime\(\)/);
     assert.match(a, /useChimeUnlock\(\)/);
+  });
+});
+
+describe("sheet slide-out (fix round 1, item 1)", () => {
+  it("sheetExitFrame: slides to 100% down, or fades in place under reduced motion", () => {
+    assert.deepEqual(sheetExitFrame(false), { transform: "translateY(100%)" });
+    assert.deepEqual(sheetExitFrame(true), { opacity: 0 });
+  });
+  it("a dismissing release keeps the dragged offset and every Sunroom close slides before onClose", () => {
+    const grab = noComments(read("src/components/kiosk/kiosk-sheet-grabber.tsx"));
+    const end = grab.slice(grab.indexOf("const end ="), grab.indexOf("return (", grab.indexOf("const end =")));
+    assert.ok(end.indexOf("shouldDismiss") < end.indexOf('panel.style.transform = ""'), "the offset is cleared only on the non-dismiss path");
+    assert.match(end, /else/);
+    for (const f of ["kiosk-timers", "kiosk-climate-auto-off"]) {
+      const src = noComments(read(`src/components/kiosk/${f}.tsx`));
+      const rc = src.slice(src.indexOf("function requestClose"));
+      assert.match(rc, /slideSheetOut\(node, onClose\)/);
+      assert.ok(rc.indexOf("slideSheetOut") < rc.indexOf("containerCollapse"), "slide replaces the collapse under Sunroom");
+    }
   });
 });

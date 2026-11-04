@@ -1,7 +1,7 @@
 "use client";
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
-import { SunSheetGrabber } from "@/components/kiosk/kiosk-sheet-grabber";
+import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Minus, Moon, Plus, X } from "lucide-react";
@@ -193,6 +193,7 @@ function ClimateAutoOffSheet({
     }
 
     const node = dialogRef.current;
+    if (node && slideSheetOut(node, onClose)) return; // Sunroom: slide down, then close (after any guard above)
     if (originRect && node) {
       const fireClose = () => {
         if (closeFiredRef.current) return;
