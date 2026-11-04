@@ -337,6 +337,66 @@
           "night": "#ff929229"
         },
         "usage": "Wash: behind an error Alert, the takeover and a failed Toast (phase 2)."
+      },
+      {
+        "name": "mode-heat",
+        "value": {
+          "morning": "#ed7429",
+          "dawn": "#ed7429",
+          "midday": "#ed7429",
+          "golden": "#ed7429",
+          "dusk": "#ed7429",
+          "night": "#81411d"
+        },
+        "usage": "Fill: the AC power disc while the AC heats. Icon ink reads on it. Fixed across the five day stops."
+      },
+      {
+        "name": "mode-cool",
+        "value": {
+          "morning": "#86acea",
+          "dawn": "#86acea",
+          "midday": "#86acea",
+          "golden": "#86acea",
+          "dusk": "#86acea",
+          "night": "#375587"
+        },
+        "usage": "Fill: the AC power disc while the AC cools. Icon ink reads on it. Fixed across the five day stops."
+      },
+      {
+        "name": "mode-dry",
+        "value": {
+          "morning": "#86d1e7",
+          "dawn": "#86d1e7",
+          "midday": "#86d1e7",
+          "golden": "#86d1e7",
+          "dusk": "#86d1e7",
+          "night": "#457481"
+        },
+        "usage": "Fill: the AC power disc while the AC dries. Icon ink reads on it. Fixed across the five day stops."
+      },
+      {
+        "name": "mode-fan",
+        "value": {
+          "morning": "#9ba6b1",
+          "dawn": "#9ba6b1",
+          "midday": "#9ba6b1",
+          "golden": "#9ba6b1",
+          "dusk": "#9ba6b1",
+          "night": "#474e55"
+        },
+        "usage": "Fill: the AC power disc while the AC runs as a fan. Icon ink reads on it. Fixed across the five day stops."
+      },
+      {
+        "name": "mode-auto",
+        "value": {
+          "morning": "#c585bf",
+          "dawn": "#c585bf",
+          "midday": "#c585bf",
+          "golden": "#c585bf",
+          "dusk": "#c585bf",
+          "night": "#6e446a"
+        },
+        "usage": "Fill: the AC power disc while the AC picks heat or cool (auto and heat_cool). Icon ink reads on it. Fixed across the five day stops."
       }
     ]
   },

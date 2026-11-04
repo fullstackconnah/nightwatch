@@ -107,3 +107,48 @@ describe("Glaze: a chip that is on rests on --sr-on-rest, not the full sunlit fa
     assert.doesNotMatch(css, /sr-chip > \.dot/);
   });
 });
+
+describe("AC mode colour: the power disc takes its face from the mode", () => {
+  const raw = readFileSync(join(process.cwd(), "src/app/kiosk/sunroom/controls.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = () => [...raw.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({ sel: sel.trim(), body }));
+  const faceOf = (mode: string) => rules().find((r) => r.sel.includes(`[data-mode="${mode}"]`) && /--sr-catch-face/.test(r.body))?.body.match(/--sr-catch-face:\s*var\((--sr-mode-[a-z]+)\)/)?.[1];
+  const DAY = { modeHeat: "#ed7429", modeCool: "#86acea", modeDry: "#86d1e7", modeFan: "#9ba6b1", modeAuto: "#c585bf" };
+  const NIGHT = { modeHeat: "#81411d", modeCool: "#375587", modeDry: "#457481", modeFan: "#474e55", modeAuto: "#6e446a" };
+
+  it("each mode maps to its --sr-mode-* face; heat_cool shares auto; an unknown mode has none", () => {
+    assert.equal(faceOf("heat"), "--sr-mode-heat");
+    assert.equal(faceOf("cool"), "--sr-mode-cool");
+    assert.equal(faceOf("dry"), "--sr-mode-dry");
+    assert.equal(faceOf("fan_only"), "--sr-mode-fan");
+    assert.equal(faceOf("auto"), "--sr-mode-auto");
+    assert.equal(faceOf("heat_cool"), "--sr-mode-auto");
+    assert.equal(faceOf("bogus"), undefined);
+    assert.match(raw, /button\.sr-icon-btn\[aria-pressed\] \.sr-catch\s*\{[^}]*background:\s*var\(--sr-catch-face,\s*var\(--sr-sunlit\)\)/);
+  });
+  it("the palette carries the 5 mode tokens per stop: day set at the five day stops, night set at night", () => {
+    for (const [i, s] of SUNROOM_STOPS.entries()) {
+      const p = sunroomStateAt(i).palette as unknown as Record<string, string>;
+      const want = s.name === "night" ? NIGHT : DAY;
+      for (const [k, v] of Object.entries(want)) assert.equal(p[k], v, `${s.name} ${k}`);
+    }
+  });
+  it("mode tokens snap with the ink like the washes, never blend, and reach the css vars", () => {
+    const p = (t: number) => sunroomStateAt(t).palette as unknown as Record<string, string>;
+    for (const k of Object.keys(DAY)) assert.ok([DAY[k as keyof typeof DAY], NIGHT[k as keyof typeof NIGHT]].includes(p(4.5)[k]), k);
+    const vars = sunroomCssVars(sunroomStateAt(2), SUNROOM_STOPS[2].light);
+    assert.equal(vars["--sr-mode-heat"], DAY.modeHeat);
+    assert.equal(vars["--sr-mode-auto"], DAY.modeAuto);
+  });
+  it("a mode change while on cross-fades background-color over 180 ms; reduced motion drops it", () => {
+    const on = rules().find((r) => /button\.sr-icon-btn\[aria-pressed="true"\] \.sr-catch$/.test(r.sel) && !/prefers/.test(r.sel) && /background-color/.test(r.body));
+    assert.match(on?.body ?? "", /background-color 180ms/);
+    const rm = raw.slice(raw.lastIndexOf("prefers-reduced-motion"));
+    const rr = [...rm.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].find(([, sel]) => /button\.sr-icon-btn\[aria-pressed="true"\] \.sr-catch/.test(sel));
+    assert.ok(rr, "reduced-motion rule for the mode disc");
+    assert.doesNotMatch(rr[2], /background-color/);
+  });
+  it("the climate power button carries data-mode: the shown mode while on, the remembered one while off", () => {
+    const tsx = readFileSync(join(process.cwd(), "src/components/kiosk/kiosk-climate.tsx"), "utf8");
+    assert.match(tsx, /data-mode=\{isOn \? shownHvacMode : onMode \?\? undefined\}/);
+  });
+});

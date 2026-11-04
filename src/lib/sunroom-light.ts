@@ -78,6 +78,12 @@ export interface SunroomPalette {
   washOk: string;
   washWarn: string;
   washBad: string;
+  /** The AC power disc's face while on, by mode; snap with the ink like the washes. */
+  modeHeat: string;
+  modeCool: string;
+  modeDry: string;
+  modeFan: string;
+  modeAuto: string;
 }
 
 /** The directional light model. Consumed as CSS custom properties; see the
@@ -156,6 +162,11 @@ const LIGHT_FG = {
   washOk: "#19603a1a",
   washWarn: "#b7791f24",
   washBad: "#c0392b1f",
+  modeHeat: "#ed7429",
+  modeCool: "#86acea",
+  modeDry: "#86d1e7",
+  modeFan: "#9ba6b1",
+  modeAuto: "#c585bf",
   ok: "#19603a",
   // Darkened again from #7a5613 to buy headroom for rain: `warn` is the
   // binding token on every light stop, so whatever margin it has IS the
@@ -182,6 +193,11 @@ const DARK_FG = {
   washOk: "#5ecf991f",
   washWarn: "#edbe6124",
   washBad: "#ff929229",
+  modeHeat: "#81411d",
+  modeCool: "#375587",
+  modeDry: "#457481",
+  modeFan: "#474e55",
+  modeAuto: "#6e446a",
   ok: "#5ecf99",
   warn: "#edbe61",
   bad: "#ff9292",
@@ -825,6 +841,11 @@ export function sunroomStateAt(
     washOk: nearer.palette.washOk,
     washWarn: nearer.palette.washWarn,
     washBad: nearer.palette.washBad,
+    modeHeat: nearer.palette.modeHeat,
+    modeCool: nearer.palette.modeCool,
+    modeDry: nearer.palette.modeDry,
+    modeFan: nearer.palette.modeFan,
+    modeAuto: nearer.palette.modeAuto,
     ok: nearer.palette.ok,
     warn: nearer.palette.warn,
     bad: nearer.palette.bad,
