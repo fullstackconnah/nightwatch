@@ -1,4 +1,5 @@
 import { loadConfig } from "@/lib/config";
+import { createHiddenIdsCache, fetchRegistryHiddenIds } from "@/lib/ha-settings-entities";
 import { IntegrationClient, type Probe } from "@/lib/integration-client";
 import type {
   HaActionRequest,
@@ -623,3 +624,17 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
       return { ok: false, status: "invalid", detail: "Unknown action." };
   }
 }
+
+// --- entity registry (settings entities) -------------------------------------
+
+/** Config/diagnostic entity ids: cached 10 min, a failure cached empty for 60 s (kiosk then shows everything). */
+const cachedHiddenIds = createHiddenIdsCache({
+  read: async () => {
+    const creds = haCredentials();
+    return creds ? fetchRegistryHiddenIds(creds, TIMEOUT_MS) : new Set<string>();
+  },
+  ttlMs: 10 * 60 * 1000,
+  failTtlMs: 60 * 1000,
+  onFail: () => console.warn("[ha] entity registry read failed; showing all entities for 60s"),
+});
+export const getHiddenSettingsIds = cachedHiddenIds;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getHaStates } from "@/lib/ha";
+import { getHaStates, getHiddenSettingsIds } from "@/lib/ha";
+import { readHiddenFailOpen, withoutSettingsEntities } from "@/lib/ha-settings-entities";
 import type { HaStatesResponse } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
@@ -15,12 +16,15 @@ export const dynamic = "force-dynamic";
  * about lock state (locked/unlocked/jammed) ever reaches this public surface.
  */
 export async function GET() {
-  const result = await getHaStates();
+  // Parallel: the registry read must not add its latency to the states fetch.
+  const [result, hidden] = await Promise.all([getHaStates(), readHiddenFailOpen(getHiddenSettingsIds)]);
   if (!result.entities) return NextResponse.json(result);
 
+  // Wall kiosk shows daily controls only: HA config/diagnostic entities (camera
+  // "Email on event", "FTP upload"...) are hidden. /smarthome is unfiltered.
   const sanitized: HaStatesResponse = {
     ...result,
-    entities: { ...result.entities, locks: [] },
+    entities: withoutSettingsEntities({ ...result.entities, locks: [] }, hidden),
   };
   return NextResponse.json(sanitized);
 }
