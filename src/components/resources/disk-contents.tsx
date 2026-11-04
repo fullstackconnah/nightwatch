@@ -248,7 +248,7 @@ export function DiskContentsPanel({ label }: { label: string }) {
           scanned {relativeTime(scan.scannedAt)} · {(scan.durationMs / 1000).toFixed(1)}s
         </div>
         <Button size="sm" variant="ghost" disabled={rescanning} onClick={handleRescan}>
-          <RotateCw size={12} className={rescanning ? "animate-spin" : ""} /> Rescan
+          <RotateCw size={12} className={rescanning ? "animate-spin motion-reduce:animate-none" : ""} /> Rescan
         </Button>
       </div>
 

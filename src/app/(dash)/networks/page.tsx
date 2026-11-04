@@ -128,9 +128,9 @@ function UplinkBand({
           </div>
           <div className="h-1.5 w-full rounded-full bg-line/60 overflow-hidden mt-2">
             <div
-              className="h-full rounded-full transition-[width] duration-700 ease-out"
+              className="h-full w-full origin-left rounded-full transition-transform duration-[600ms] ease-[var(--ease-calm)] motion-reduce:transition-none"
               style={{
-                width: `${Math.max(utilisation, 0.4)}%`,
+                transform: `scaleX(${Math.max(utilisation, 0.4) / 100})`,
                 background: utilisation >= 85 ? "var(--color-warn)" : "var(--color-accent)",
               }}
             />
@@ -378,19 +378,30 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
           {shown.length > 0 && " · select up to 4 to compare their throughput above"}
         </p>
 
-        <div className="flex h-2.5 w-full rounded-full overflow-hidden mt-3 bg-line/60">
-          {shown.map((r, i) => (
-            <div
-              key={r.id}
-              title={`${r.name}: ${formatRate(r.rx + r.tx)}`}
-              style={{ width: total > 0 ? `${((r.rx + r.tx) / total) * 100}%` : 0, background: hue(i) }}
-              className="transition-[width] duration-700 ease-out"
-            />
-          ))}
+        {/* Each segment is full width, scaled and shifted: transform animates on the compositor, width does not. */}
+        <div className="relative h-2.5 w-full rounded-full overflow-hidden mt-3 bg-line/60">
+          {shown.map((r, i) => {
+            const before = shown.slice(0, i).reduce((a, x) => a + x.rx + x.tx, 0);
+            return (
+              <div
+                key={r.id}
+                title={`${r.name}: ${formatRate(r.rx + r.tx)}`}
+                style={{
+                  transform: total > 0 ? `translateX(${(before / total) * 100}%) scaleX(${(r.rx + r.tx) / total})` : "scaleX(0)",
+                  background: hue(i),
+                }}
+                className="absolute inset-0 origin-left transition-transform duration-[600ms] ease-[var(--ease-calm)] motion-reduce:transition-none"
+              />
+            );
+          })}
           {restTotal > 0 && (
             <div
               title={`${rest.length} others: ${formatRate(restTotal)}`}
-              style={{ width: `${(restTotal / total) * 100}%`, background: "var(--color-ink-faint)" }}
+              style={{
+                transform: `translateX(${((total - restTotal) / total) * 100}%) scaleX(${restTotal / total})`,
+                background: "var(--color-ink-faint)",
+              }}
+              className="absolute inset-0 origin-left transition-transform duration-[600ms] ease-[var(--ease-calm)] motion-reduce:transition-none"
             />
           )}
         </div>

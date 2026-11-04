@@ -259,12 +259,12 @@ export function KioskTimersButton({ className }: { className?: string }) {
           // kiosk-press replaces active:scale-[0.98] + the bare `transition`
           // utility (see globals.css's KIOSK MOTION VOCABULARY) — this file has
           // eight such sites; `.kiosk-press` already transitions
-          // background-color/border-color/color for all of them. The `animate-pulse`
-          // below (finished state) is untouched: it animates opacity, which
-          // `.kiosk-press` does not own.
+          // background-color/border-color/color for all of them. The finished pulse
+          // below animates opacity, which `.kiosk-press` does not own; it runs 30 x 2 s,
+          // then holds the steady warn paint.
           "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
           finished
-            ? "animate-pulse border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
+            ? "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_30] border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
             : active
               ? "border-accent/40 bg-accent/10 text-accent"
               : "border-line text-ink-dim hover:border-line-bright hover:bg-panel-2 hover:text-ink",
@@ -529,10 +529,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
 
   return (
     <div
-      className={cn(
-        "panel flex flex-col items-center gap-3 p-4",
-        finished && "animate-pulse motion-reduce:animate-none",
-      )}
+      className="panel flex flex-col items-center gap-3 p-4"
     >
       <div className="microlabel max-w-full truncate" title={timer.name}>
         {timer.name}

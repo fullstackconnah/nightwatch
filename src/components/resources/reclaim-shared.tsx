@@ -64,7 +64,7 @@ export function PruneAction({
 
   if (step === "confirm") {
     return (
-      <div className="flex items-center gap-2 flex-wrap justify-end">
+      <div key="confirm" className="nw-confirm flex items-center gap-2 flex-wrap justify-end">
         <span className="text-xs text-ink-dim">
           Prune {count} {itemLabel}
           {bytes == null ? (
@@ -105,7 +105,7 @@ export function PruneAction({
         {step === "busy" ? "Pruning…" : "Prune"}
       </Button>
       {error && (
-        <span className="dk-failed">
+        <span key="error" data-kind="error" className="nw-confirm dk-failed">
           {error}
           <Button size="sm" variant="outline" onClick={handleConfirm}>
             Retry

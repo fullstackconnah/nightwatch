@@ -208,9 +208,10 @@ function ViewSwitch({ view, onChange }: { view: View; onChange: (v: View) => voi
       >
         <span
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-accent",
-            "transition-[left] duration-200 ease-out",
-            containers ? "left-[1.0625rem]" : "left-[0.1875rem]",
+            "absolute top-1/2 left-[0.1875rem] -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-accent",
+            "transition-transform duration-200 ease-out motion-reduce:transition-none",
+            // rest points 0.1875rem and 1.0625rem: a 0.875rem shift between them
+            containers ? "translate-x-[0.875rem]" : "translate-x-0",
           )}
         />
       </span>
@@ -700,8 +701,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                         <div className="mt-1 h-0.5 rounded-full bg-panel-2 overflow-hidden">
                           {pct > 0 && (
                             <div
-                              className="h-full rounded-full transition-[width] duration-300 ease-out"
-                              style={{ width: `${pct}%`, background: "var(--color-accent-dim)" }}
+                              className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none"
+                              style={{ transform: `scaleX(${pct / 100})`, background: "var(--color-accent-dim)" }}
                             />
                           )}
                         </div>
@@ -780,8 +781,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                     <div className="mt-1.5 h-0.5 rounded-full bg-panel-2 overflow-hidden">
                       {pct > 0 && (
                         <div
-                          className="h-full rounded-full transition-[width] duration-300 ease-out"
-                          style={{ width: `${pct}%`, background: "var(--color-accent-dim)" }}
+                          className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none"
+                          style={{ transform: `scaleX(${pct / 100})`, background: "var(--color-accent-dim)" }}
                         />
                       )}
                     </div>

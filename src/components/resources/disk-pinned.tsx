@@ -126,7 +126,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => void }) {
         title="Rescan"
         className="h-11 w-11 md:h-7 md:w-7 flex items-center justify-center text-ink-faint hover:text-ink cursor-pointer shrink-0 rounded-md hover:bg-panel-2"
       >
-        <RotateCw size={13} className={refreshing ? "animate-spin" : ""} />
+        <RotateCw size={13} className={refreshing ? "animate-spin motion-reduce:animate-none" : ""} />
       </button>
       <button
         type="button"
