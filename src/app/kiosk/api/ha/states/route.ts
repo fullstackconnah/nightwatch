@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getHaStates, getHiddenSettingsIds } from "@/lib/ha";
-import { readHiddenFailOpen, withoutSettingsEntities } from "@/lib/ha-settings-entities";
+import { readHiddenFailOpen, kioskEntities } from "@/lib/ha-settings-entities";
 import type { HaStatesResponse } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ export async function GET() {
   // "Email on event", "FTP upload"...) are hidden. /smarthome is unfiltered.
   const sanitized: HaStatesResponse = {
     ...result,
-    entities: withoutSettingsEntities({ ...result.entities, locks: [] }, hidden),
+    entities: kioskEntities(result.entities, hidden),
   };
   return NextResponse.json(sanitized);
 }
