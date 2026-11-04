@@ -340,7 +340,7 @@ export function KioskClimateTile({
       {/* Name row reserves space on BOTH sides now (px-8): the power button
           overhangs the left corner and the expand button the right, and the
           name has to truncate before it reaches either. */}
-      <div className="sr-climate-name flex w-full items-center justify-center gap-1.5 px-8">
+      <div className="sr-climate-name flex w-full flex-wrap items-center justify-center gap-x-1.5 px-8">
         <span className="min-w-0 truncate text-sm text-ink sm:text-base">{climate.name}</span>
         {!climate.available && <span className="microlabel !text-warn shrink-0" data-sr-tone="warn">unavailable</span>}
       </div>

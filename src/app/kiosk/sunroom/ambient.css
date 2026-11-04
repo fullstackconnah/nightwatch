@@ -118,9 +118,21 @@
 [data-kiosk-theme="sunroom"] [data-sr-np][data-playing] .sr-state {
   color: var(--sr-ink);
 }
-/* The song's progress is a reading that moves every poll: no transition. */
+/* The song's progress is a reading that moves every poll: no transition. It sits 2 px inside the pill with round ends, not on its edge. */
 [data-kiosk-theme="sunroom"] [data-sr-np] [data-sr-np-progress] {
   transition: none;
+  inset-inline: 2px;
+  bottom: 2px;
+  border-radius: var(--sr-radius-full);
+}
+/* Admin reads at the micro size in ink-dim, on a 44 px target; its position is the caller's. */
+[data-kiosk-theme="sunroom"] [data-sr-admin] {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+  text-transform: uppercase;
+  color: var(--sr-ink-dim);
+  min-width: var(--sr-hit-min);
+  min-height: var(--sr-hit-min);
 }
 /* Track change: the new title slides in 8 px from the right as it fades up. The resting text has no transform. */
 @keyframes sr-np-in {

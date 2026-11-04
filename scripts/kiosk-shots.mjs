@@ -17,6 +17,7 @@
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
  * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
+ * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
 import { chromium } from "playwright";
@@ -657,6 +658,77 @@ for (const size of SIZES) {
     const offAfter = await pillOffset(page, 1);
     const ok = (o) => !!o && Math.abs(o.dx) <= 1 && Math.abs(o.dy) <= 1;
     results.ambient[key] = { ...(await AMBIENT_CHECKS(page)), before, after: await pill.evaluate((el) => el.style.transform), pillBox: await pill.evaluate((el) => { const r = el.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }), pillOffset: { before: offBefore, after: offAfter, within1px: ok(offBefore) && ok(offAfter) } };
+    await context.close();
+  });
+}
+
+// ---- kiosk polish round (P1-P7): numeric checks at ?theme=sunroom&wx=overcast&wxsun=day (MAIN_URL); P4 also at the night stop ----
+// results.polish.<key>. P1 on the glance main, containers page (capture polish-containers-<size>.png; ambient-carousel-after covers the second page).
+// P3 on ambient-nowplaying-1180x820. P4 on ambient-main-midday/night-<size>. P5, P6 and P7 on controls-rest-<size> (standard layout).
+results.polish = {};
+await guarded("polish P1 containers page", async () => {
+  const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true });
+  const dot = page.locator('button[aria-label="Show Containers"]');
+  if (!(await seen(page, ".sr-dots-pill", 15_000)) || !(await dot.count())) results.polish.p1 = { missing: "Containers dot" };
+  else {
+    await dot.click();
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: join(OUT_DIR, "polish-containers-1180x820.png") });
+    // innerText skips visibility:hidden, so this counts what a person can read
+    results.polish.p1 = { runningCount: await page.evaluate(() => (document.body.innerText.match(/\brunning\b/g) ?? []).length) }; // must be 1
+  }
+  await context.close();
+});
+await guarded("polish P3 progress inset", async () => {
+  const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true, nowPlaying: true });
+  if (!(await seen(page, "[data-sr-np-progress]", 15_000))) results.polish.p3 = { missing: "[data-sr-np-progress]" };
+  else {
+    // layout offsets, not the rect: the bar is scaleX-ed
+    results.polish.p3 = await page.evaluate(() => {
+      const b = document.querySelector("[data-sr-np-progress]");
+      const p = b.offsetParent;
+      return { left: b.offsetLeft, right: p.clientWidth - b.offsetLeft - b.offsetWidth, bottom: p.clientHeight - b.offsetTop - b.offsetHeight, radius: getComputedStyle(b).borderBottomLeftRadius }; // left, right, bottom >= 2
+    });
+  }
+  await context.close();
+});
+for (const size of SIZES) {
+  for (const stop of ["midday", "night"]) {
+    await guarded(`polish P4 ${stop} ${size.name}`, async () => {
+      const { context, page } = await visit(STOP_URL, { viewport: size.viewport, weather: weatherFor(stop), fixedTime: stop === "midday" });
+      results.polish[`p4-${stop}-${size.name}`] = await page.evaluate(() =>
+        [...document.querySelectorAll("[data-sr-admin]")].map((el) => {
+          const r = el.getBoundingClientRect();
+          return { fontPx: parseFloat(getComputedStyle(el).fontSize), w: Math.round(r.width), h: Math.round(r.height) }; // fontPx >= 15, w and h >= 44
+        }));
+      await context.close();
+    });
+  }
+}
+for (const size of SIZES) {
+  await guarded(`polish P5 P6 P7 ${size.name}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    if (!(await seen(page, ".sr-climate", 15_000))) results.polish[`controls-${size.name}`] = { missing: ".sr-climate" };
+    else {
+      await settleRest(page);
+      results.polish[`controls-${size.name}`] = await page.evaluate(() => {
+        const out = {};
+        const pill = document.querySelector('button[aria-label^="AC auto-off"]');
+        if (pill) {
+          const r = pill.getBoundingClientRect();
+          const row = pill.parentElement.getBoundingClientRect();
+          const grid = document.querySelector(".sr-climate").parentElement.getBoundingClientRect();
+          // right <= vw - 20; the pill's centre sits inside the CLIMATE header row; right matches the tile grid's right edge
+          out.p5 = { right: +r.right.toFixed(1), limit: innerWidth - 20, gridRight: +grid.right.toFixed(1), centreInRow: r.top + r.height / 2 >= row.top && r.top + r.height / 2 <= row.bottom, top: +r.top.toFixed(1), rowTop: +row.top.toFixed(1), rowBottom: +row.bottom.toFixed(1) };
+        } else out.p5 = { missing: "auto-off pill" };
+        const study = [...document.querySelectorAll(".sr-climate-name")].find((n) => /Study/.test(n.textContent ?? ""));
+        const nm = study?.firstElementChild;
+        out.p6 = nm ? { scrollWidth: nm.scrollWidth, clientWidth: nm.clientWidth } : { missing: "Study name" }; // scrollWidth <= clientWidth
+        out.p7 = [...document.querySelectorAll('button.sr-chip[role="switch"][aria-checked="true"]')].map((c) => c.querySelectorAll(".sr-pip, .dot").length); // each must be 1
+        return out;
+      });
+      await page.screenshot({ path: join(OUT_DIR, `polish-controls-${size.name}.png`) });
+    }
     await context.close();
   });
 }

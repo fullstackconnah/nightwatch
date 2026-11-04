@@ -118,6 +118,7 @@ export function KioskStatusStripExtras({
         ) : (
           <button
             type="button"
+            data-sr-admin
             onClick={(e) => onAdminClick(e.currentTarget.getBoundingClientRect())}
             className="h-11 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
           >
