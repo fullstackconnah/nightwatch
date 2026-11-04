@@ -6,8 +6,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutGrid,
   Boxes,
-  HardDrive,
-  Database,
   Network,
   ScrollText,
   Settings,
@@ -32,7 +30,7 @@ import { useContainers } from "@/lib/client";
 type NavItem = { href: string; label: string; icon: typeof LayoutGrid };
 type NavGroup = { label: string; items: NavItem[] };
 
-// Three groups, the same taxonomy the sidebar, the mobile "More" sheet and
+// Two groups, the same taxonomy the sidebar, the mobile "More" sheet and
 // (implicitly) the log rail's own stack-grouping idiom all share.
 const GROUPS: NavGroup[] = [
   {
@@ -40,15 +38,8 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/", label: "Overview", icon: LayoutGrid },
       { href: "/resources", label: "Resources", icon: Gauge },
-      { href: "/containers", label: "Containers", icon: Boxes },
+      { href: "/docker", label: "Docker", icon: Boxes },
       { href: "/logs", label: "Logs", icon: ScrollText },
-    ],
-  },
-  {
-    label: "Inventory",
-    items: [
-      { href: "/images", label: "Images", icon: HardDrive },
-      { href: "/volumes", label: "Volumes", icon: Database },
       // "Network", not "Networks": the page is no longer a docker-network
       // inventory — it is this box's network (uplink throughput, bridges,
       // container footprint, ports).
@@ -74,13 +65,13 @@ const GROUPS: NavGroup[] = [
 // a "More" cell covering everything below it. This is what a scrolling
 // 11-cell rail could never guarantee — the four destinations checked most
 // (glance-first, per PRODUCT.md) always land in the same four spots.
-const MOBILE_FIXED = GROUPS[0].items;
-// Everything the "More" sheet holds, grouped under the same two labels
-// (Monitor's items already live in the fixed cells, so that group is empty
-// here and simply isn't rendered).
-const SHEET_GROUPS = GROUPS.slice(1);
+const MOBILE_FIXED = GROUPS[0].items.slice(0, 4);
+// Everything the "More" sheet holds: Monitor's fifth item (Network) and the rest.
+const SHEET_GROUPS: NavGroup[] = [{ label: "Monitor", items: GROUPS[0].items.slice(4) }, ...GROUPS.slice(1)];
 
 function isActive(href: string, pathname: string) {
+  // The container detail page belongs to Docker: its back link and Remove both return there.
+  if (href === "/docker") return pathname.startsWith("/docker") || pathname.startsWith("/containers/");
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
@@ -162,7 +153,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
                     >
                       <Icon size={15} />
                       {label}
-                      {label === "Containers" && unhealthy > 0 && (
+                      {label === "Docker" && unhealthy > 0 && (
                         <span className="ml-auto dot dot-unhealthy" title={`${unhealthy} unhealthy`} />
                       )}
                     </Link>
@@ -258,7 +249,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
             >
               <span className="relative">
                 <Icon size={18} />
-                {label === "Containers" && unhealthy > 0 && (
+                {label === "Docker" && unhealthy > 0 && (
                   <span
                     className="absolute -top-0.5 -right-1 dot dot-unhealthy"
                     title={`${unhealthy} unhealthy`}
@@ -411,7 +402,7 @@ function MoreSheet({
                     >
                       <Icon size={16} />
                       {label}
-                      {label === "Containers" && unhealthy > 0 && (
+                      {label === "Docker" && unhealthy > 0 && (
                         <span className="ml-auto dot dot-unhealthy" title={`${unhealthy} unhealthy`} />
                       )}
                     </Link>

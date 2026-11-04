@@ -13,7 +13,10 @@ import { removeConfirmText } from "@/lib/container-remove";
 
 type Step = "idle" | "confirm" | "busy" | "error";
 
-export function RemoveContainerAction({ id, name }: { id: string; name: string }) {
+const DOCKER_LIST = "/docker?find=containers";
+
+/** Without `onRemoved` (the detail page) a success returns to the Docker list; a list row passes its own. */
+export function RemoveContainerAction({ id, name, onRemoved }: { id: string; name: string; onRemoved?: () => void }) {
   const router = useRouter();
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
@@ -27,7 +30,8 @@ export function RemoveContainerAction({ id, name }: { id: string; name: string }
       const body = await res.json().catch(() => ({}));
       if (res.status === 404) setGone(true);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-      router.push("/containers");
+      if (onRemoved) onRemoved();
+      else router.push(DOCKER_LIST);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't remove it. Try again.");
       setStep("error");
@@ -53,8 +57,8 @@ export function RemoveContainerAction({ id, name }: { id: string; name: string }
       <div role="alert" className="flex items-center gap-2 flex-wrap max-md:basis-full">
         <span className="text-xs text-ink">{error}</span>
         {gone ? (
-          <Link href="/containers" className="inline-flex h-11 items-center px-3 text-xs text-ink underline underline-offset-2 md:h-7">
-            Back to containers
+          <Link href={DOCKER_LIST} className="inline-flex h-11 items-center px-3 text-xs text-ink underline underline-offset-2 md:h-7">
+            Back to Docker
           </Link>
         ) : (
           <Button size="sm" variant="outline" onClick={() => void remove()}>
@@ -70,7 +74,7 @@ export function RemoveContainerAction({ id, name }: { id: string; name: string }
 
   const busy = step === "busy";
   return (
-    <Button variant="outline" disabled={busy} aria-busy={busy} onClick={() => setStep("confirm")}>
+    <Button variant="outline" data-feature="remove" disabled={busy} aria-busy={busy} onClick={() => setStep("confirm")}>
       {busy ? <RotateCw size={13} className="animate-spin motion-reduce:animate-none" /> : <Trash2 size={13} />}{" "}
       {busy ? "Removing…" : "Remove"}
     </Button>

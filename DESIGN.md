@@ -281,6 +281,8 @@ A fourteen-token palette that is almost entirely one desaturated blue, spent so 
 
 **The Threshold Rule.** Amber and red are earned, not chosen. Every use is a comparison against a real limit — a drive's own critical temperature, 85% of a full-duplex link's one-way capacity, 80%/92% on a meter, the drive's own SMART threshold. Colour that expresses a feeling instead of a limit is how a dashboard teaches its reader to ignore it.
 
+**The /docker clean-up list.** One page answers "how much can go?" with one number, then lists the chores in the order that answer implies, then a find-anything list. Rules that make it calm: (1) every destructive trigger (Prune, Delete, Remove) is outlined at rest and red appears only on the confirm step's "Yes, ..." button; exited rows use the neutral dot. (2) Chores are tiered: one-tap prunes with something to clear first (biggest bytes first, the only tier the Ranker may reorder), then the review chores, then empty ones, with build cache always last. (3) An open chore holds its rows by a snapshot of ids, so rows never join or leave under the pointer; new ones wait behind a reserved pill ("1 new · show") and the owner's own write commits at once. (4) One fixed-height status slot carries exactly one item (error, stale, sizes, or the build-cache note), so a state change never moves the hero. (5) The old list routes redirect with a 307 to `/docker?find=...`. Styles are the `dk-` block in `globals.css`.
+
 ## Typography
 
 **Body Font:** Inter (with Segoe UI, system-ui, -apple-system, sans-serif)

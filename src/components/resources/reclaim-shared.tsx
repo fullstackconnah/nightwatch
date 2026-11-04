@@ -1,7 +1,7 @@
 /* THESIS: a prune button is the one place this app asks "are you sure" — no browser
    confirm(), an inline two-step that names exactly what's about to disappear.
    OWN-WORLD: nightwatch console — .panel hairlines, mono data, button-danger tint,
-   real copy over generic alerts. Shared by reclaim-images.tsx and reclaim-volumes.tsx
+   real copy over generic alerts. Shared by the /docker chores
    so the confirm flow and the /api/docker/disk-usage poll are defined exactly once. */
 "use client";
 
@@ -30,8 +30,8 @@ type PruneStep = "idle" | "confirm" | "busy";
  * Danger action + explicit inline confirm, per DESIGN.md's Touch-Equivalent and
  * button-danger rules — never a browser confirm(). Three states in one control:
  * idle button -> inline "prune N, reclaim ~X? confirm/cancel" -> busy spinner.
- * The caller owns what happens after a successful prune (refetch + a "reclaimed"
- * banner) via onPruned.
+ * The caller owns what happens after a successful prune (refetch + the size count-down
+ * summary) via onPruned.
  */
 export function PruneAction({
   target,
@@ -43,7 +43,7 @@ export function PruneAction({
   target: PruneTarget;
   itemLabel: string;
   count: number;
-  bytes: number;
+  bytes: number | null;
   onPruned: (result: PruneResult) => void;
 }) {
   const [step, setStep] = useState<PruneStep>("idle");
@@ -66,23 +66,34 @@ export function PruneAction({
     return (
       <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className="text-xs text-ink-dim">
-          Prune {count} {itemLabel}, reclaim ~<span className="font-mono">{formatBytes(bytes, 1)}</span>? Can&apos;t be undone.
+          Prune {count} {itemLabel}
+          {bytes == null ? (
+            "? Sizes still arriving. Can't be undone."
+          ) : (
+            <>
+              , reclaim ~<span className="font-mono">{formatBytes(bytes, 1)}</span>? Can&apos;t be undone.
+            </>
+          )}
         </span>
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel
         </Button>
         <Button size="sm" variant="danger" onClick={handleConfirm}>
-          Confirm
+          Yes, prune
         </Button>
       </div>
     );
   }
 
+  // Outlined at rest: nothing is wrong until a prune is offered, so red waits for the confirm step.
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1 max-md:items-stretch">
       <Button
         size="sm"
-        variant="danger"
+        variant="outline"
+        data-feature={`prune-${target}`}
+        aria-label={`Prune ${itemLabel}`}
+        className="min-w-24 max-md:w-full"
         disabled={count === 0 || step === "busy"}
         onClick={() => setStep("confirm")}
       >
@@ -91,29 +102,16 @@ export function PruneAction({
         ) : (
           <Trash2 size={12} />
         )}
-        Prune {itemLabel}
+        {step === "busy" ? "Pruning…" : "Prune"}
       </Button>
-      {error && <span className="text-[0.7rem] text-bad text-right">{error}</span>}
-    </div>
-  );
-}
-
-/** The post-prune receipt: real copy, mono bytes, dismissible. Shown once, above
- *  the (now-refreshed) list, until the user dismisses it or prunes again. */
-export function ReclaimedBanner({ result, onDismiss }: { result: PruneResult; onDismiss: () => void }) {
-  return (
-    <div className="mb-3 rounded-md border border-ok/30 bg-ok/5 px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
-      <span className="text-xs text-ink-dim">
-        Reclaimed <span className="font-mono text-ok">{formatBytes(result.reclaimedBytes, 1)}</span> across{" "}
-        {result.deleted.length} item{result.deleted.length === 1 ? "" : "s"}.
-      </span>
-      <button
-        type="button"
-        onClick={onDismiss}
-        className="text-[0.7rem] text-ink-faint hover:text-ink shrink-0 min-h-11 md:min-h-0 px-1"
-      >
-        dismiss
-      </button>
+      {error && (
+        <span className="dk-failed">
+          {error}
+          <Button size="sm" variant="outline" onClick={handleConfirm}>
+            Retry
+          </Button>
+        </span>
+      )}
     </div>
   );
 }

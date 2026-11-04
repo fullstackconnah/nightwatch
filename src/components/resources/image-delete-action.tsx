@@ -62,6 +62,7 @@ export function ImageDeleteAction({
   size,
   inUse,
   usedBy,
+  text,
   onDeleted,
 }: {
   imageId: string;
@@ -70,12 +71,14 @@ export function ImageDeleteAction({
   size: number;
   inUse: boolean;
   usedBy: string[];
+  /** A visible label ("Delete") for roomy rows; without it the trigger is an icon. */
+  text?: string;
   onDeleted: (result: ImageDeleteResult) => void;
 }) {
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
 
-  if (inUse) return <ImageInUseButton label={label} usedBy={usedBy} />;
+  if (inUse) return <ImageInUseButton label={label} usedBy={usedBy} text={text} />;
 
   async function handleConfirm() {
     setStep("busy");
@@ -104,7 +107,7 @@ export function ImageDeleteAction({
           Cancel
         </Button>
         <Button size="sm" variant="danger" className="h-11 md:h-7" onClick={() => void handleConfirm()}>
-          Confirm
+          Yes, delete
         </Button>
       </div>
     );
@@ -113,21 +116,30 @@ export function ImageDeleteAction({
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
-        size="icon"
-        variant="ghost"
+        size={text ? "sm" : "icon"}
+        variant={text ? "outline" : "ghost"}
+        data-feature="delete-image"
         disabled={step === "busy"}
         onClick={() => setStep("confirm")}
         aria-label={`Delete ${label}`}
         title={`Delete ${label}`}
-        className={cn(ICON_BUTTON, "hover:text-bad hover:bg-bad/10")}
+        className={cn(!text && ICON_BUTTON)}
       >
         {step === "busy" ? (
           <RotateCw size={13} className="animate-spin motion-reduce:animate-none" />
         ) : (
           <Trash2 size={13} />
         )}
+        {text && (step === "busy" ? "Deleting…" : text)}
       </Button>
-      {error && <span className="text-[0.65rem] text-bad text-right max-w-[12rem]">{error}</span>}
+      {error && (
+        <span className="dk-failed">
+          {error}
+          <Button size="sm" variant="outline" onClick={() => void handleConfirm()}>
+            Retry
+          </Button>
+        </span>
+      )}
     </div>
   );
 }
