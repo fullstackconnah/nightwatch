@@ -147,6 +147,9 @@ export function minecraftModel(i: ModelInput): Model {
   } else if (!c) {
     chip = { tone: "neutral", label: "No container" };
     answer = "No minecraft container was found on this host.";
+  } else if (c.state === "paused") {
+    chip = { tone: "neutral", label: "Paused" };
+    answer = "Minecraft is paused. Players can't move until you resume it.";
   } else if (!running) {
     chip = { tone: "neutral", label: "Stopped" };
     answer = `Minecraft is stopped. ${active ? `${active.name} is installed.` : ""}`.trim();
@@ -170,7 +173,7 @@ export function minecraftModel(i: ModelInput): Model {
     ? "No container"
     : running
       ? status.rcon === "unavailable" && uptimeMs !== null && uptimeMs < STARTING_MS ? "Starting…" : `Running for ${formatUptime((uptimeMs ?? 0) / 1000)}`
-      : crashed ? `Stopped: exit code ${c.exitCode}` : "Stopped";
+      : c.state === "paused" ? "Paused" : crashed ? `Stopped: exit code ${c.exitCode}` : "Stopped";
   const state: Record<StripId, Pick<Strip, "state" | "tone">> = {
     server: { state: serverState, tone: crashed ? "bad" : null },
     players: {

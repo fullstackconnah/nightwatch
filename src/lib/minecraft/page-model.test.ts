@@ -94,6 +94,13 @@ test("a clean exit (0, 143, none) is stopped, not crashed", () => {
   }
 });
 
+test("a paused container reads Paused, not Stopped", () => {
+  const m = minecraftModel(input({ container: { state: "paused", exitCode: null, startedAt: null } }));
+  assert.deepEqual(m.chip, { tone: "neutral", label: "Paused" });
+  assert.equal(m.answer, "Minecraft is paused. Players can't move until you resume it.");
+  assert.equal(m.strips[0].state, "Paused");
+});
+
 test("no pack: Pack opens and goes first", () => {
   const m = minecraftModel(input({ status: status({ instances: [], active: null }) }));
   assert.deepEqual(m.chip, { tone: "neutral", label: "No pack" });
