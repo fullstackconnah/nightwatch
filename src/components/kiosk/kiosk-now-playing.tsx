@@ -70,6 +70,8 @@ export function KioskNowPlaying() {
   return (
     <div
       ref={nodeRef}
+      // Its own mask slot: it shows in full mode too, so it must not touch the glance gate (kiosk-weather-fx.ts RAIN_ZONE_SLOT).
+      data-rain-zone="playing"
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       className={cn(

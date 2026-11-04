@@ -12,12 +12,15 @@
  * n20PaneInPane, sixStop.<stop>, crossing.{cloneSeen,ariaHidden,inert,strayClones,scopeIntact}.
  * PR 2 (controls): controls.<size>.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord}, controls.reduced.<size>.n14Running,
  * controls.seen (the climate tile and chips rendered). States: rest, modal (climate), sheet (auto-off).
+ * Rain zones: rain-<state>-full.png and rain-<state>-floor.png (y 700-800) at 1280x800 for heavy-night, storm-dusk and
+ * drizzle-dusk (the rain is in the mocked weather, no ?wx=); rainZoneCover.<state> lists the visible controls in the
+ * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
  */
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AUTO_OFF, HA_STATES, PINNED_ISO, QUIET, ROUTES, STOPS, ZONE, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, HA_STATES, NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, ZONE, rainWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -62,7 +65,7 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   const page = await context.newPage();
@@ -89,7 +92,17 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
   });
   await page.route("**/kiosk/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith("/weather") ? state.weather : path.endsWith("/attention") ? { status: "quiet" } : ha && path.endsWith("/ha/states") ? HA_STATES : ha && path.endsWith("/climate-auto-off") ? AUTO_OFF : (ROUTES[path] ?? QUIET);
+    const json = path.endsWith("/weather")
+      ? state.weather
+      : path.endsWith("/attention")
+        ? { status: "quiet" }
+        : ha && path.endsWith("/ha/states")
+          ? HA_STATES
+          : ha && path.endsWith("/climate-auto-off")
+            ? AUTO_OFF
+            : nowPlaying && path.endsWith("/nowplaying")
+              ? NOW_PLAYING
+              : (ROUTES[path] ?? QUIET);
     return route.fulfill({ json });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
@@ -252,6 +265,38 @@ for (const size of SIZES) {
     await page.waitForTimeout(300);
     const running = (await page.evaluate(SCAN)).running;
     results.controls.reduced[size.name] = { n14Running: running };
+    await context.close();
+  });
+}
+
+// ---- rain zones: every visible control in the floor band (y >= 0.75h, where rings spawn) sits inside a [data-rain-zone] rect ----
+const RAIN_ZONE_COVER = () => {
+  const vis = (r) => r.width > 0 && r.height > 0;
+  const zones = [...document.querySelectorAll("[data-rain-zone]")].map((el) => el.getBoundingClientRect()).filter(vis);
+  const floor = innerHeight * 0.75;
+  const inside = (r) => zones.some((z) => r.left >= z.left - 2 && r.top >= z.top - 2 && r.right <= z.right + 2 && r.bottom <= z.bottom + 2);
+  return [...document.querySelectorAll('button, a, [role=button], [role=group][aria-label^="Now playing"], [aria-pressed]')]
+    .filter((el) => !el.closest("[aria-hidden=true], nextjs-portal") && getComputedStyle(el).visibility !== "hidden")
+    .map((el) => ({ el, r: el.getBoundingClientRect() }))
+    .filter(({ r }) => vis(r) && r.bottom > floor)
+    .filter(({ r }) => !inside(r))
+    .map(({ el, r }) => `${el.getAttribute("aria-label") ?? el.textContent?.trim().slice(0, 30) ?? el.tagName}@${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.right)},${Math.round(r.bottom)}`);
+};
+results.rainZoneCover = {};
+for (const name of Object.keys(RAIN_STATES)) {
+  await guarded(`rain ${name}`, async () => {
+    const { context, page } = await visit(`${BASE_URL}/kiosk?theme=sunroom`, {
+      viewport: { width: 1280, height: 800 },
+      weather: rainWeatherFor(name),
+      fixedTime: true,
+      ha: true,
+      nowPlaying: true,
+    });
+    await seen(page, '[data-rain-zone="playing"]', 15_000);
+    await page.waitForTimeout(2500); // rects are re-read once a second; let the rings fill the floor
+    await page.screenshot({ path: join(OUT_DIR, `rain-${name}-full.png`) });
+    await page.screenshot({ path: join(OUT_DIR, `rain-${name}-floor.png`), clip: { x: 0, y: 700, width: 1280, height: 100 } });
+    results.rainZoneCover[name] = await page.evaluate(RAIN_ZONE_COVER);
     await context.close();
   });
 }

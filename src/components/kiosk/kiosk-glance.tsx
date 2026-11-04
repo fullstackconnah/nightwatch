@@ -173,8 +173,8 @@ export function KioskGlance({
         return (
           <div
             key={id}
-            // The sentence and the briefing share one rain-mask zone (the particle layer unions same-named rects).
-            data-rain-zone={dropsWhenShort ? "sentence" : undefined}
+            // Every widget in this centre column, prose or control (scenes), shares one rain-mask zone (same-named rects union).
+            data-rain-zone="sentence"
             className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}
           >
             {def.render(ctx)}

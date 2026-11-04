@@ -12,8 +12,9 @@
  * disposal on unmount.
  *
  * ZONE-MASK CONTRACT. The loud marks (rings, crowns, the dark sheen) never
- * reach glance text: the glance clock, sentence and briefing, light/timer row
- * and Admin button carry `data-rain-zone`, their rects are read into a mask,
+ * reach glance text or a floor control: the glance clock, the below-band stack,
+ * light/timer row, Admin button and now-playing pill carry `data-rain-zone`
+ * (slots: kiosk-weather-fx.ts RAIN_ZONE_SLOT), their rects are read into a mask,
  * and rings are masked to 0 inside them (and not spawned within 12 px).
  * Streaks and gust lines are multiplied by it too (streaks keep a floor,
  * gust lines go to 0). So the text gate is the zone floors, not low alphas;
@@ -43,6 +44,8 @@ import {
   puddleParams,
   rainParams,
   hasGlanceZones,
+  RAIN_ZONE_COUNT,
+  RAIN_ZONE_SLOT,
   ringSpawnOk,
   sampleStreak,
   stepStrikes,
@@ -122,7 +125,7 @@ const PUDDLE_VERT = /* glsl */ `
 `;
 
 const PUDDLE_FRAG = /* glsl */ `
-  uniform vec4 uZones[4];
+  uniform vec4 uZones[${RAIN_ZONE_COUNT}];
   uniform float uFeather;
   varying vec2 vUv;
   varying vec4 vColor;
@@ -143,7 +146,7 @@ const PUDDLE_FRAG = /* glsl */ `
       }
     }
     float m = 1.0;
-    for ( int i = 0; i < 4; i++ ) {
+    for ( int i = 0; i < ${RAIN_ZONE_COUNT}; i++ ) {
       vec4 z = uZones[i];
       vec2 dd = max( max( z.xy - vP, vP - z.zw ), 0.0 );
       m = min( m, smoothstep( 0.0, uFeather, length( dd ) ) );
@@ -319,8 +322,8 @@ export function KioskSunroomParticles({
     puddleGeo.setAttribute("aFloor", puddleFloorAttr);
     puddleGeo.setIndex(new THREE.BufferAttribute(puddleIndex, 1));
     puddleGeo.setDrawRange(0, 0);
-    // Four zone rects in CSS px, y down; unused slots sit far off-stage, where the mask is 1.
-    const uZones = [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()];
+    // RAIN_ZONE_COUNT zone rects in CSS px, y down; unused slots sit far off-stage, where the mask is 1.
+    const uZones = Array.from({ length: RAIN_ZONE_COUNT }, () => new THREE.Vector4());
     const puddleMat = new THREE.ShaderMaterial({
       uniforms: { uZones: { value: uZones }, uFeather: { value: PUDDLE.feather }, uHeight: { value: height } },
       vertexShader: PUDDLE_VERT,
@@ -344,8 +347,8 @@ export function KioskSunroomParticles({
        container resize, on a prop change and then at most once a second from the
        frame loop, so tags that appear late (weather data), vanish or move
        (glance <-> full) are picked up within a second. */
-    const ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3 } as const;
-    const zoneRects = new Float32Array(16);
+    const NZ = RAIN_ZONE_COUNT;
+    const zoneRects = new Float32Array(NZ * 4);
     const panelRect = new Float32Array(4);
     let panelOk = false;
     let glance = false;
@@ -353,12 +356,12 @@ export function KioskSunroomParticles({
     const readRects = () => {
       rectsAt = performance.now();
       const o = container.getBoundingClientRect();
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < NZ; i++) {
         zoneRects[i * 4] = zoneRects[i * 4 + 1] = Infinity;
         zoneRects[i * 4 + 2] = zoneRects[i * 4 + 3] = -Infinity;
       }
       document.querySelectorAll<HTMLElement>("[data-rain-zone]").forEach((el) => {
-        const slot = ZONE_SLOT[el.dataset.rainZone as keyof typeof ZONE_SLOT];
+        const slot = RAIN_ZONE_SLOT[el.dataset.rainZone as keyof typeof RAIN_ZONE_SLOT];
         const r = el.getBoundingClientRect();
         if (slot === undefined || r.width * r.height === 0) return;
         const k = slot * 4;
@@ -367,7 +370,7 @@ export function KioskSunroomParticles({
         zoneRects[k + 2] = Math.max(zoneRects[k + 2], r.right - o.left);
         zoneRects[k + 3] = Math.max(zoneRects[k + 3], r.bottom - o.top);
       });
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < NZ; i++) {
         const k = i * 4;
         if (zoneRects[k] === Infinity) zoneRects.fill(-1e5, k, k + 4);
         uZones[i].set(zoneRects[k], zoneRects[k + 1], zoneRects[k + 2], zoneRects[k + 3]);
@@ -625,7 +628,7 @@ export function KioskSunroomParticles({
           const persp = 0.6 + (0.4 * (y - height * 0.75)) / (height * 0.25);
           const r = (q.ringR0 + q.ringRSpan * Math.random()) * persp;
           const x = Math.random() * width;
-          if (!ringSpawnOk(x, y, r, zoneRects, 4)) continue;
+          if (!ringSpawnOk(x, y, r, zoneRects, NZ)) continue;
           ringX[ringCount] = x;
           ringY[ringCount] = y;
           ringR[ringCount] = r;
@@ -838,9 +841,9 @@ export function KioskSunroomParticles({
              exceed peak x floor (the contrast gate's assumption). */
           const mask = glance
             ? Math.min(
-                zoneMask(s.x, s.y, zoneRects, 4),
-                zoneMask((s.x + tx) / 2, (s.y + ty) / 2, zoneRects, 4),
-                zoneMask(tx, ty, zoneRects, 4),
+                zoneMask(s.x, s.y, zoneRects, NZ),
+                zoneMask((s.x + tx) / 2, (s.y + ty) / 2, zoneRects, NZ),
+                zoneMask(tx, ty, zoneRects, NZ),
               )
             : 0; // the hub: zone floor everywhere
           // Clear at the tail, full at the head.
@@ -917,8 +920,8 @@ export function KioskSunroomParticles({
             // Bright at the leading edge, dissolving behind it: the shape a
             // streak of moving air actually has.
             // Out of every text zone by construction: floor 0 on the mask.
-            gustColorAttr.setXYZW(tail, 1, 1, 1, env * 0.12 * zoneMask(x, y, zoneRects, 4));
-            gustColorAttr.setXYZW(head, 1, 1, 1, env * zoneMask(x + s.len, y, zoneRects, 4));
+            gustColorAttr.setXYZW(tail, 1, 1, 1, env * 0.12 * zoneMask(x, y, zoneRects, NZ));
+            gustColorAttr.setXYZW(head, 1, 1, 1, env * zoneMask(x + s.len, y, zoneRects, NZ));
             lineIdx++;
           }
         }
