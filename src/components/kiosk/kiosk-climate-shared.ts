@@ -66,7 +66,7 @@ export function titleCase(s: string): string {
 // over the same press (see globals.css's own comment on `.kiosk-press`'s
 // cascade-layer reasoning).
 export const NUDGE_BUTTON =
-  "flex h-14 w-14 shrink-0 items-center justify-center rounded-tile font-mono text-lg text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40";
+  "sr-btn sr-btn-nudge flex h-14 w-14 shrink-0 items-center justify-center rounded-tile font-mono text-lg text-ink-dim outline-none ring-1 ring-transparent transition hover:ring-line-bright hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press disabled:pointer-events-none disabled:opacity-40";
 
 // The corner expand button is still a real 56px hit target (touch floor
 // invariant holds regardless of where a control sits), but it visually reads
@@ -101,22 +101,22 @@ export const NUDGE_BUTTON =
 // two shadows on the button and re-hangs the bloom on the inner chip, which
 // sits fully inside the tile at this offset.
 export const EXPAND_BUTTON =
-  "kiosk-hitarea group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
+  "sr-icon-btn kiosk-hitarea group absolute -top-1.5 -right-1.5 flex h-14 w-14 items-center justify-center text-ink-dim outline-none transition hover:text-ink disabled:pointer-events-none disabled:opacity-40";
 
 // Same kiosk-press swap as NUDGE_BUTTON above, in place of the
 // group-active:scale-[0.98] this chip used to carry — the chip is the actual
 // visible affordance (EXPAND_BUTTON itself is deliberately chromeless), so
 // its own :active is what kiosk-press now answers to.
 export const EXPAND_BUTTON_CHIP =
-  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";
+  "sr-face flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";
 
 /** Mirrors EXPAND_BUTTON on the opposite corner. Same 56px touch target, same
  *  negative offset so it overhangs the tile's own padding rather than stealing
  *  a column from the two rows of text between them, and the same invisible
  *  hit-area / inner-chip split (see EXPAND_BUTTON's comment). */
 export const POWER_BUTTON =
-  "kiosk-hitarea group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
+  "sr-icon-btn kiosk-hitarea group absolute -top-1.5 -left-1.5 flex h-14 w-14 items-center justify-center outline-none disabled:pointer-events-none disabled:opacity-40";
 
 // Same kiosk-press swap, mirrored from EXPAND_BUTTON_CHIP above.
 export const POWER_BUTTON_CHIP =
-  "flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";
+  "sr-face flex h-9 w-9 items-center justify-center rounded-tile ring-1 ring-transparent transition group-hover:ring-line-bright group-focus-visible:ring-1 group-focus-visible:ring-accent kiosk-press";

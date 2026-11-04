@@ -33,6 +33,7 @@ import type { UseKioskHaResult } from "@/components/kiosk/kiosk-hub";
 import { cn } from "@/lib/utils";
 import { KioskDigitReel } from "@/components/kiosk/kiosk-digits";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { aimCatch, SunCatch } from "@/components/kiosk/kiosk-sun-catch";
 import {
   NUDGE_STEP,
   preferredOnMode,
@@ -120,24 +121,16 @@ export function KioskClimateTile({
   // model), not a new system-wide colour language; modeTint is null
   // off-theme, which also suppresses the glow layer below.
   const kioskTheme = useKioskTheme();
-  const modeTint: "heat" | "chill" | "arid" | "neutral" | null =
+  // Sill DS: only heating and cooling carry a wash (the --sr-wash-* tokens) and the working glow; every other
+  // mode is the plain pane. No mode owns a colour of its own, so no new hue.
+  const modeTint: "heat" | "chill" | null =
     kioskTheme !== "sunroom" || !isOn
       ? null
       : shownHvacMode === "heat"
         ? "heat"
         : shownHvacMode === "cool"
           ? "chill"
-          : shownHvacMode === "dry"
-            ? "arid"
-            : "neutral";
-  const modeTintVar =
-    modeTint === "heat"
-      ? "var(--color-heat)"
-      : modeTint === "chill"
-        ? "var(--color-chill)"
-        : modeTint === "arid"
-          ? "var(--color-arid)"
-          : "var(--color-accent)";
+          : null;
 
   // Remembered last-used mode (see the last-mode-memory block above
   // preferredOnMode): SSR-safe null seed, filled in from localStorage after
@@ -278,15 +271,8 @@ export function KioskClimateTile({
         // contrast-checked across all 16 themes. The tint crossfade on a
         // mode change rides `.kiosk-defocus`'s owned transition list for
         // free (see that class's comment lower down).
-        !isOn
-          ? "border-line bg-panel-2"
-          : modeTint === "heat"
-            ? "border-heat/40 bg-heat/10"
-            : modeTint === "chill"
-              ? "border-chill/40 bg-chill/10"
-              : modeTint === "arid"
-                ? "border-arid/40 bg-arid/10"
-                : "border-accent/40 bg-accent/10",
+        !isOn ? "border-line bg-panel-2" : "border-accent/40 bg-accent/10",
+        "sr-climate",
         !climate.available && "opacity-60",
       )}
       // This tile is the one being adjusted (ClimateSection's `focused`
@@ -296,6 +282,8 @@ export function KioskClimateTile({
       // this tile — it lives outside the tile root now, see the comment at
       // its render site below.)
       data-kiosk-focused={focused ? "true" : undefined}
+      data-sr-wash={modeTint === "heat" ? "heat" : modeTint === "chill" ? "cool" : undefined}
+      data-state={climate.available ? undefined : "unavailable"}
       // NO inline `transitionProperty` here, and that is a fix rather than an
       // omission. This tile carried one to get background-color/border-color
       // into the transition list that `.kiosk-defocus` owns — and an inline
@@ -324,16 +312,7 @@ export function KioskClimateTile({
         <div
           aria-hidden
           className="kiosk-climate-working pointer-events-none absolute inset-0 -z-10 rounded-tile"
-          // The glow is an INSET box-shadow — strongest at the tile's border,
-          // fading toward the centre (owner's spec) — plus a faint centre
-          // wash so the middle isn't hollow, both in modeTintVar's root-locked
-          // mode colour (see the @theme comment on --color-heat for why the
-          // theme-scoped warn/blue can't be used here). The shadow itself is
-          // static; only the layer's opacity pulses (see .kiosk-climate-working).
-          style={{
-            boxShadow: `inset 0 0 18px 2px color-mix(in srgb, ${modeTintVar} 45%, transparent)`,
-            background: `color-mix(in srgb, ${modeTintVar} 4%, transparent)`,
-          }}
+          // The glow's colours are the wash tokens (kiosk/sunroom/controls.css); only the opacity pulses.
         />
       )}
 
@@ -348,8 +327,10 @@ export function KioskClimateTile({
           // ink-faint has no AA headroom left for an interactive control's own
           // glyph (CLAUDE.md: it's microlabel-only) — ink-dim in the off state.
           className={cn(POWER_BUTTON, isOn ? "text-accent" : "text-ink-dim hover:text-ink")}
+          onPointerDown={aimCatch}
         >
           <span className={POWER_BUTTON_CHIP}>
+            <SunCatch />
             <Power size={20} aria-hidden />
           </span>
         </button>
@@ -358,9 +339,9 @@ export function KioskClimateTile({
       {/* Name row reserves space on BOTH sides now (px-8): the power button
           overhangs the left corner and the expand button the right, and the
           name has to truncate before it reaches either. */}
-      <div className="flex w-full items-center justify-center gap-1.5 px-8">
+      <div className="sr-climate-name flex w-full items-center justify-center gap-1.5 px-8">
         <span className="min-w-0 truncate text-sm text-ink sm:text-base">{climate.name}</span>
-        {!climate.available && <span className="microlabel !text-warn shrink-0">unavailable</span>}
+        {!climate.available && <span className="microlabel !text-warn shrink-0" data-sr-tone="warn">unavailable</span>}
       </div>
 
       <button
@@ -381,7 +362,7 @@ export function KioskClimateTile({
 
       {/* Distance-readable figure — the number a person 2-3m away actually
           needs, unchanged in size from the row version. */}
-      <div className="font-mono text-3xl text-ink">{formatTemp(climate.currentTemp, climate.unit)}</div>
+      <div className="sr-climate-now font-mono text-3xl text-ink" data-sr-live>{formatTemp(climate.currentTemp, climate.unit)}</div>
 
       {/* [−]  target  [+] — target BETWEEN the two buttons, the shape asked
           for, not beside them. `min-h-14` on the cluster (not just the
@@ -411,7 +392,7 @@ export function KioskClimateTile({
             one line sitting centred in the same reserved space. */}
         <div className="flex min-h-[2.5rem] w-20 shrink-0 flex-col items-center justify-center">
           {error ? (
-            <div role="alert" title={error} className="microlabel !text-bad w-full truncate">
+            <div role="alert" title={error} className="microlabel !text-bad w-full truncate" data-sr-tone="bad">
               {error}
             </div>
           ) : (

@@ -51,6 +51,9 @@ import type {
   HaSwitch,
 } from "@/lib/types/ha";
 import { cn } from "@/lib/utils";
+import { chipWord, showSub } from "@/lib/sunroom-controls";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { aimCatch, SunCatch, SunChipMarks } from "@/components/kiosk/kiosk-sun-catch";
 
 const HA_STATES_KEY = "/kiosk/api/ha/states";
 // Idle/night backoff (2026-08 perf pass): a light/switch/scene flip is the
@@ -263,6 +266,7 @@ function ToggleChip({
   error?: string;
   onToggle: () => void;
 }) {
+  const sr = useKioskTheme() === "sunroom";
   return (
     <button
       type="button"
@@ -272,8 +276,9 @@ function ToggleChip({
       title={fullName}
       disabled={!available}
       onClick={onToggle}
+      onPointerDown={aimCatch}
       className={cn(
-        "kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        "sr-chip kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -288,12 +293,14 @@ function ToggleChip({
       // layered `transition-colors` outright rather than merging with it. The
       // reasoning and the measurement are recorded on the class itself.
     >
+      <SunCatch />
       <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="max-w-72 truncate text-sm text-ink">{name}</span>
-      <span className={cn("max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error}>
-        {error ?? subtitle}
+      <span className="sr-chip-name max-w-72 truncate text-sm text-ink">{name}</span>
+      <span className={cn("sr-chip-sub max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
+        {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
       </span>
       <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />
+      <SunChipMarks on={on} error={!!error} />
     </button>
   );
 }
@@ -318,7 +325,11 @@ function SceneChip({
       aria-label={`Activate ${scene.name}`}
       disabled={!scene.available || pending}
       onClick={onActivate}
+      onPointerDown={aimCatch}
+      data-lit={activated}
+      aria-busy={pending || undefined}
       className={cn(
+        "sr-chip",
         // Same sheen pane as ToggleChip above. The bare `transition` utility
         // this used to carry is gone rather than left in place: `.kiosk-press`
         // is unlayered and fully owns the `transition` longhands, so a layered
@@ -329,11 +340,13 @@ function SceneChip({
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
     >
+      <SunCatch />
       <Sparkles size={15} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="max-w-28 truncate text-sm text-ink">{scene.name}</span>
-      <span className={cn("max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")}>
+      <span className="sr-chip-name max-w-28 truncate text-sm text-ink">{scene.name}</span>
+      <span className={cn("sr-chip-sub max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined}>
         {statusText}
       </span>
+      <SunChipMarks on={activated} error={!!error} busy={pending} scene />
     </button>
   );
 }

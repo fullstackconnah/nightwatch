@@ -1,0 +1,509 @@
+/* Sunroom controls (Sill DS, PR 2): Button, Chip with the sun catch, Switch, Segmented, Stepper reel, Slider, ClimateTile.
+   Ported from SR bundle.css by section. Every selector starts with the Sunroom scope (check N10) and reads colour
+   only through the --sr-* tokens, so the stop colours can change without touching this file.
+   Only transform and opacity move (check N8); each animated selector has the same selector in the reduced-motion block.
+   Elements that update more than once a minute carry data-sr-live and are never styled here with a transition (check N12). */
+
+/* ---------- Raised faces: one cast shadow (::before) hands over to a contact shadow (::after) on press ---------- */
+[data-kiosk-theme="sunroom"] button.sr-btn,
+[data-kiosk-theme="sunroom"] button.sr-chip,
+[data-kiosk-theme="sunroom"] .sr-face {
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: var(--sr-panel);
+  color: var(--sr-ink);
+  opacity: 1;
+  box-shadow: var(--sr-shadow-bevel);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  transition: transform var(--sr-m-press-out) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn::before,
+[data-kiosk-theme="sunroom"] button.sr-btn::after,
+[data-kiosk-theme="sunroom"] button.sr-chip::before,
+[data-kiosk-theme="sunroom"] button.sr-chip::after,
+[data-kiosk-theme="sunroom"] .sr-face::before,
+[data-kiosk-theme="sunroom"] .sr-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  transition: opacity var(--sr-m-press-out) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn::before,
+[data-kiosk-theme="sunroom"] button.sr-chip::before,
+[data-kiosk-theme="sunroom"] .sr-face::before {
+  box-shadow: var(--sr-shadow-control);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn::after,
+[data-kiosk-theme="sunroom"] button.sr-chip::after,
+[data-kiosk-theme="sunroom"] .sr-face::after {
+  box-shadow: var(--sr-shadow-contact);
+  opacity: 0;
+}
+/* Pressed: 2 px along the sun's vector, the cast gives way to the contact shadow. Shows on pointer-down. */
+[data-kiosk-theme="sunroom"] button.sr-btn:active:not(:disabled),
+[data-kiosk-theme="sunroom"] button.sr-chip:active:not(:disabled),
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:active:not(:disabled) > .sr-face {
+  transform: translate(var(--sr-press-x), var(--sr-press-y)) scale(0.98);
+  box-shadow: var(--sr-shadow-bevel);
+  transition-duration: var(--sr-m-press-in);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn:active:not(:disabled)::before,
+[data-kiosk-theme="sunroom"] button.sr-chip:active:not(:disabled)::before,
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:active:not(:disabled) > .sr-face::before {
+  opacity: 0;
+  transition-duration: var(--sr-m-press-in);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn:active:not(:disabled)::after,
+[data-kiosk-theme="sunroom"] button.sr-chip:active:not(:disabled)::after,
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:active:not(:disabled) > .sr-face::after {
+  opacity: 1;
+  transition-duration: var(--sr-m-press-in);
+}
+/* A face inside an icon button never presses on its own (the button's hit area owns the press). */
+[data-kiosk-theme="sunroom"] .sr-face:active:not(:disabled) {
+  transform: none;
+  box-shadow: var(--sr-shadow-bevel);
+}
+@media (hover: hover) {
+  [data-kiosk-theme="sunroom"] button.sr-btn:hover:not(:active, :disabled),
+  [data-kiosk-theme="sunroom"] button.sr-chip:hover:not(:active, :disabled),
+  [data-kiosk-theme="sunroom"] button.sr-icon-btn:hover:not(:active, :disabled) > .sr-face {
+    transform: translate(calc(var(--sr-press-x) * -0.5), calc(var(--sr-press-y) * -0.5));
+  }
+}
+[data-kiosk-theme="sunroom"] :is(button.sr-btn, button.sr-chip, button.sr-icon-btn, button.sr-switch, button.sr-seg-opt):focus-visible {
+  outline: 3px solid var(--sr-focus);
+  outline-offset: 3px;
+}
+/* Disabled: flat on the well, still legible (ink-faint holds 4.5:1 on panel-2). The utility opacity is dropped. */
+[data-kiosk-theme="sunroom"] button.sr-btn:disabled,
+[data-kiosk-theme="sunroom"] button.sr-chip:disabled,
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:disabled > .sr-face {
+  background: var(--sr-panel-2);
+  color: var(--sr-ink-faint);
+  box-shadow: none;
+  opacity: 1;
+  transform: none;
+}
+[data-kiosk-theme="sunroom"] button.sr-btn:disabled::before,
+[data-kiosk-theme="sunroom"] button.sr-chip:disabled::before,
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:disabled > .sr-face::before {
+  opacity: 0;
+}
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:disabled {
+  opacity: 1;
+}
+
+/* ---------- Button (the temperature nudges) ---------- */
+[data-kiosk-theme="sunroom"] button.sr-btn {
+  padding: 0;
+  border-radius: var(--sr-radius-md);
+  font: var(--sr-type-label);
+  letter-spacing: var(--sr-track-label);
+}
+[data-kiosk-theme="sunroom"] button.sr-btn-nudge {
+  font-family: var(--sr-font-mono);
+  font-size: 24px;
+  line-height: 1;
+}
+
+/* ---------- Icon button: the 56 px hit area stays, a 40 px raised face sits in it ---------- */
+[data-kiosk-theme="sunroom"] button.sr-icon-btn {
+  background: none;
+  color: var(--sr-ink);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[aria-pressed="false"] {
+  color: var(--sr-ink-dim);
+}
+[data-kiosk-theme="sunroom"] .sr-face {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--sr-radius-full);
+}
+
+/* ---------- The sun catch: a disc of sunlit grows from the touch point to flood the face ---------- */
+[data-kiosk-theme="sunroom"] .sr-lit {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+}
+[data-kiosk-theme="sunroom"] .sr-catch {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160%;
+  aspect-ratio: 1;
+  margin: -80% 0 0 -80%;
+  border-radius: 50%;
+  background: var(--sr-sunlit);
+  opacity: 0;
+  transform: scale(0.06);
+  transition: transform var(--sr-m-catch-out) var(--sr-m-ease-out), opacity var(--sr-m-fade) linear;
+}
+[data-kiosk-theme="sunroom"] [data-lit="true"] .sr-catch,
+[data-kiosk-theme="sunroom"] [aria-pressed="true"] .sr-catch,
+[data-kiosk-theme="sunroom"] [aria-checked="true"] .sr-catch {
+  opacity: 1;
+  transform: scale(1);
+  transition: transform var(--sr-m-catch) var(--sr-m-ease-out), opacity 120ms linear;
+}
+/* Ink on the sun: icons and the quiet text on a lit chip take ink, so every pair holds its contrast. */
+[data-kiosk-theme="sunroom"] :is([data-lit="true"], [aria-pressed="true"], [aria-checked="true"]) > svg,
+[data-kiosk-theme="sunroom"] :is([data-lit="true"], [aria-pressed="true"], [aria-checked="true"]) > .sr-chip-sub:not([data-sr-tone]) {
+  color: var(--sr-ink);
+}
+
+/* ---------- Chip ---------- */
+[data-kiosk-theme="sunroom"] button.sr-chip {
+  min-height: var(--sr-hit);
+  gap: var(--sr-space-3);
+  padding: 0 var(--sr-space-6) 0 var(--sr-space-4);
+  border-radius: var(--sr-radius-full);
+  font: var(--sr-type-body);
+}
+[data-kiosk-theme="sunroom"] button.sr-chip-sm {
+  min-height: var(--sr-hit-min);
+  gap: var(--sr-space-2);
+  padding: 0 var(--sr-space-4);
+  font: var(--sr-type-label);
+}
+[data-kiosk-theme="sunroom"] button.sr-chip > .dot {
+  display: none;
+}
+[data-kiosk-theme="sunroom"] .sr-chip-name {
+  min-width: 0;
+  color: var(--sr-ink);
+}
+[data-kiosk-theme="sunroom"] .sr-pip {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: var(--sr-radius-full);
+  box-shadow: inset 0 0 0 2px var(--sr-edge);
+  transform: scale(0.86);
+  transition: transform var(--sr-m-pop) var(--sr-m-ease-spring);
+}
+[data-kiosk-theme="sunroom"] :is(button.sr-chip[aria-checked="true"], button.sr-chip[data-lit="true"]) .sr-pip {
+  background: var(--sr-ink);
+  box-shadow: none;
+  transform: scale(1);
+}
+[data-kiosk-theme="sunroom"] .sr-state {
+  flex: none;
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+  text-transform: uppercase;
+  color: var(--sr-ink-dim);
+}
+[data-kiosk-theme="sunroom"] :is(button.sr-chip[aria-checked="true"], button.sr-chip[data-lit="true"]) .sr-state {
+  color: var(--sr-ink);
+}
+[data-kiosk-theme="sunroom"] .sr-state[data-sr-tone="bad"] {
+  color: var(--sr-bad);
+}
+[data-kiosk-theme="sunroom"] button.sr-chip[aria-busy="true"] .sr-pip {
+  box-shadow: none;
+  border: 2px solid var(--sr-edge);
+  border-right-color: transparent;
+  animation: sr-spin 900ms linear infinite;
+}
+@keyframes sr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Switch ---------- */
+[data-kiosk-theme="sunroom"] button.sr-switch {
+  min-height: var(--sr-hit);
+  gap: var(--sr-space-3);
+  padding: 0 var(--sr-space-2);
+  border: 0;
+  border-radius: var(--sr-radius-md);
+  background: none;
+  box-shadow: none;
+  color: var(--sr-ink-dim);
+  font: var(--sr-type-label);
+}
+[data-kiosk-theme="sunroom"] button.sr-switch:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+[data-kiosk-theme="sunroom"] button.sr-switch[aria-checked="true"] {
+  color: var(--sr-ink);
+}
+[data-kiosk-theme="sunroom"] button.sr-switch > :first-child {
+  flex: 1;
+  text-align: left;
+}
+[data-kiosk-theme="sunroom"] button.sr-switch .sr-state {
+  font-family: var(--sr-font-sans);
+  color: inherit;
+}
+[data-kiosk-theme="sunroom"] .sr-switch-track {
+  position: relative;
+  isolation: isolate;
+  width: 68px;
+  height: 40px;
+  flex: none;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-panel-2);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-well);
+}
+[data-kiosk-theme="sunroom"] .sr-switch-thumb {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-panel);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-control);
+  transition: transform var(--sr-m-thumb) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-switch[aria-checked="true"] .sr-switch-thumb {
+  transform: translateX(28px);
+}
+
+/* ---------- Segmented: one row of up to five slides a slab under the chosen option; more wrap and fill the chosen one ---------- */
+[data-kiosk-theme="sunroom"] .sr-seg[data-slab] {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0;
+  padding: 4px;
+  min-height: var(--sr-hit);
+  border-radius: var(--sr-radius-md);
+  background: var(--sr-panel-2);
+  box-shadow: var(--sr-shadow-well);
+}
+[data-kiosk-theme="sunroom"] .sr-seg-slab {
+  position: absolute;
+  z-index: -1;
+  left: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: calc((100% - 8px) / var(--n, 3));
+  border-radius: 12px;
+  background: var(--sr-accent);
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-control);
+  transform: translateX(calc(var(--i, 0) * 100%));
+  transition: transform var(--sr-m-thumb) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: auto;
+  min-height: 48px;
+  padding: 0 var(--sr-space-3);
+  border: 0;
+  border-radius: 12px;
+  background: var(--sr-panel-2);
+  box-shadow: var(--sr-shadow-well);
+  opacity: 1;
+  font: var(--sr-type-label);
+  letter-spacing: var(--sr-track-label);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+[data-kiosk-theme="sunroom"] .sr-seg[data-slab] button.sr-seg-opt {
+  background: none;
+  box-shadow: none;
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt:active:not(:disabled) {
+  transform: none;
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt > span,
+[data-kiosk-theme="sunroom"] button.sr-seg-opt::after {
+  grid-area: 1 / 1;
+  transition: opacity var(--sr-m-fade) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt > span {
+  color: var(--sr-ink-dim);
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt::after {
+  content: attr(data-label);
+  color: var(--sr-on-accent);
+  opacity: 0;
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt[aria-pressed="true"] > span {
+  opacity: 0;
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt[aria-pressed="true"]::after {
+  opacity: 1;
+}
+[data-kiosk-theme="sunroom"] .sr-seg:not([data-slab]) button.sr-seg-opt[aria-pressed="true"] {
+  background: var(--sr-accent);
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-control);
+}
+[data-kiosk-theme="sunroom"] button.sr-seg-opt:disabled > span {
+  color: var(--sr-ink-faint);
+}
+
+/* ---------- Stepper: the odometer reel rolls only the value a person sets ---------- */
+[data-kiosk-theme="sunroom"] .kiosk-reel-strip {
+  transition: transform var(--sr-m-reel) var(--sr-m-ease-out);
+}
+
+/* ---------- Slider: the fan-speed ladder is a native range, so keyboard and the debounced write stay ---------- */
+[data-kiosk-theme="sunroom"] input.sr-ladder:disabled {
+  opacity: 1;
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder::-webkit-slider-runnable-track {
+  height: 16px;
+  border: 0;
+  border-radius: var(--sr-radius-sm);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-well);
+  background: linear-gradient(to right, var(--sr-accent) 0%, var(--sr-accent) var(--kiosk-range-fill, 0%), var(--sr-panel-2) var(--kiosk-range-fill, 0%), var(--sr-panel-2) 100%);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder:disabled::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, var(--sr-line-bright) 0%, var(--sr-line-bright) var(--kiosk-range-fill, 0%), var(--sr-panel-2) var(--kiosk-range-fill, 0%), var(--sr-panel-2) 100%);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder::-moz-range-track {
+  height: 16px;
+  border: 0;
+  border-radius: var(--sr-radius-sm);
+  background: var(--sr-panel-2);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-well);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder::-moz-range-progress {
+  height: 16px;
+  border-radius: var(--sr-radius-sm);
+  background: var(--sr-accent);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder::-webkit-slider-thumb {
+  width: 40px;
+  height: 40px;
+  margin-top: -12px;
+  border: 0;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-panel);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-bevel), var(--sr-shadow-control);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder::-moz-range-thumb {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-panel);
+  box-shadow: inset 0 0 0 2px var(--sr-edge), var(--sr-shadow-bevel), var(--sr-shadow-control);
+}
+[data-kiosk-theme="sunroom"] input.sr-ladder:focus-visible::-webkit-slider-thumb,
+[data-kiosk-theme="sunroom"] input.sr-ladder:focus-visible::-moz-range-thumb {
+  outline: 3px solid var(--sr-focus);
+  outline-offset: 3px;
+}
+
+/* ---------- ClimateTile: a pane with a static wash; heating and cooling add the working glow ---------- */
+[data-kiosk-theme="sunroom"] .sr-climate {
+  border-color: transparent;
+  border-radius: var(--sr-radius-lg);
+  background: var(--sr-panel);
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-pane);
+}
+[data-kiosk-theme="sunroom"] .sr-climate::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--sr-m-wash) var(--sr-m-ease-out);
+}
+[data-kiosk-theme="sunroom"] .sr-climate[data-sr-wash="heat"] {
+  --sr-work: var(--sr-wash-heat);
+}
+[data-kiosk-theme="sunroom"] .sr-climate[data-sr-wash="cool"] {
+  --sr-work: var(--sr-wash-cool);
+}
+[data-kiosk-theme="sunroom"] .sr-climate[data-sr-wash]::after {
+  background: var(--sr-work);
+  opacity: 1;
+}
+/* The wash is about 12% alpha, so four coats of one inset shadow reach the old glow's edge strength with no new colour. */
+[data-kiosk-theme="sunroom"] .sr-climate .kiosk-climate-working {
+  box-shadow: inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work), inset 0 0 14px 2px var(--sr-work);
+  background: color-mix(in srgb, var(--sr-work) 33%, transparent);
+}
+[data-kiosk-theme="sunroom"] .sr-climate[data-state="unavailable"] {
+  opacity: 1;
+}
+[data-kiosk-theme="sunroom"] .sr-climate[data-state="unavailable"] .sr-climate-now {
+  color: var(--sr-ink-faint);
+}
+/* The corner buttons overhang the tile; the name row keeps clear of their 40 px faces. */
+[data-kiosk-theme="sunroom"] .sr-climate-name {
+  padding-inline: 2.75rem;
+}
+
+/* ---------- Reduced motion: no travel; the press keeps its shadow hand-over, the catch and labels cross-fade ---------- */
+@media (prefers-reduced-motion: reduce) {
+  [data-kiosk-theme="sunroom"] button.sr-btn,
+  [data-kiosk-theme="sunroom"] button.sr-chip,
+  [data-kiosk-theme="sunroom"] .sr-face {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-btn:active:not(:disabled),
+  [data-kiosk-theme="sunroom"] button.sr-chip:active:not(:disabled),
+  [data-kiosk-theme="sunroom"] button.sr-icon-btn:active:not(:disabled) > .sr-face {
+    transform: none;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-btn::before,
+  [data-kiosk-theme="sunroom"] button.sr-btn::after,
+  [data-kiosk-theme="sunroom"] button.sr-chip::before,
+  [data-kiosk-theme="sunroom"] button.sr-chip::after,
+  [data-kiosk-theme="sunroom"] .sr-face::before,
+  [data-kiosk-theme="sunroom"] .sr-face::after {
+    transition: opacity 90ms linear;
+  }
+  [data-kiosk-theme="sunroom"] .sr-catch {
+    transform: none;
+    transition: opacity 120ms linear;
+  }
+  [data-kiosk-theme="sunroom"] [data-lit="true"] .sr-catch,
+  [data-kiosk-theme="sunroom"] [aria-pressed="true"] .sr-catch,
+  [data-kiosk-theme="sunroom"] [aria-checked="true"] .sr-catch {
+    transform: none;
+    transition: opacity 120ms linear;
+  }
+  [data-kiosk-theme="sunroom"] .sr-pip {
+    transition: none;
+    transform: none;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-chip[aria-busy="true"] .sr-pip {
+    animation: none;
+    border-right-color: var(--sr-edge);
+    opacity: 0.6;
+  }
+  [data-kiosk-theme="sunroom"] .sr-switch-thumb {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] .sr-seg-slab {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-seg-opt > span,
+  [data-kiosk-theme="sunroom"] button.sr-seg-opt::after {
+    transition: opacity 120ms linear;
+  }
+  [data-kiosk-theme="sunroom"] .kiosk-reel-strip {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] .sr-climate::after {
+    transition: opacity 120ms linear;
+  }
+}

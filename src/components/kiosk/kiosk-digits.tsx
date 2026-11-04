@@ -20,46 +20,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { foldReelIndex, nextReelIndex } from "@/lib/sunroom-reel";
 
 /** The two-copy strip: [0,1,...,9,0,1,...,9]. Cell `i` shows digit `i % 10`;
  *  for any digit there are exactly two cells that show it, at `digit` and
  *  `digit + 10`. */
 const REEL_CELLS: readonly number[] = [...Array(10).keys(), ...Array(10).keys()];
 
-/** Picks the landing cell (0..19) for `digit` given the direction the value
- *  is actually moving. There are only ever two candidates — `digit` (the
- *  first copy) and `digit + 10` (the second) — which is the whole point of
- *  carrying the strip twice: the direction search only ever has to choose
- *  between them, never walk the full 20-cell range.
- *
- *  direction === 1 (value went up): the smallest candidate strictly ahead of
- *  `current` — i.e. keep rolling forward.
- *  direction === -1 (value went down): the largest candidate strictly behind
- *  `current` — i.e. keep rolling backward.
- *  direction === 0, or a directional search that finds no candidate on its
- *  side (already at/past both copies — the strip's own edge): fall back to
- *  whichever candidate is numerically nearest, accepting one short-way roll
- *  rather than breaking. */
-function nextReelIndex(current: number, digit: number, direction: 1 | -1 | 0): number {
-  const low = digit; // first copy: cells 0-9
-  const high = digit + 10; // second copy: cells 10-19
-
-  if (direction === 1) {
-    if (low > current) return low;
-    if (high > current) return high;
-  } else if (direction === -1) {
-    if (high < current) return high;
-    if (low < current) return low;
-  }
-
-  return Math.abs(low - current) <= Math.abs(high - current) ? low : high;
-}
+/* nextReelIndex (which of the two cells showing a digit to land on, so a roll keeps its direction) and foldReelIndex
+   (rest cells 5-14, so both directions always have a cell one step away) live in lib/sunroom-reel.ts, where node
+   gates them (check N9). */
 
 function DigitColumn({ digit, direction }: { digit: number; direction: 1 | -1 | 0 }) {
   // Absolute cell index into the 20-cell strip, initialised to the digit's
   // own value (its cell in the first copy) — the column starts at rest,
   // never mid-roll.
-  const [index, setIndex] = useState<number>(digit);
+  const [index, setIndex] = useState<number>(foldReelIndex(digit));
   const prevDigitRef = useRef(digit);
   // For one render after a 10-19 -> 0-9 renormalisation, the strip must not
   // visibly animate the jump — see handleTransitionEnd below.
@@ -86,10 +62,11 @@ function DigitColumn({ digit, direction }: { digit: number; direction: 1 | -1 | 
   // paint with no transition running to animate the (fake) jump.
   function handleTransitionEnd() {
     setIndex((current) => {
-      if (current < 10) return current;
+      const rest = foldReelIndex(current);
+      if (rest === current) return current;
       setSuppressTransition(true);
       requestAnimationFrame(() => setSuppressTransition(false));
-      return current - 10;
+      return rest;
     });
   }
 

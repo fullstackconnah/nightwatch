@@ -262,7 +262,7 @@ export function KioskTimersButton({ className }: { className?: string }) {
           // background-color/border-color/color for all of them. The finished pulse
           // below animates opacity, which `.kiosk-press` does not own; it runs 30 x 2 s,
           // then holds the steady warn paint.
-          "flex h-11 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
+          "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
           finished
             ? "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_30] border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
             : active

@@ -34,3 +34,63 @@ export const QUIET = { status: "unconfigured" };
 /** The pinned instant for the main states: Sydney, 10:30, so the clock and any time text are stable. */
 export const PINNED_ISO = "2026-06-15T10:30:00+10:00";
 export const ZONE = "Australia/Sydney";
+
+/** /kiosk/api/ha/states in the full HaStatesResponse shape (src/lib/types/ha.ts): a partial body throws in render.
+ *  Two climates (heating, and unavailable) cover the working glow and the unavailable state; Lamp starts off so the chip step's press is a visible change (writes are mocked, so only the press shows, not a re-polled on); the lights, switches and
+ *  scene cover Chip on, off and the sun catch. */
+export const HA_STATES = {
+  status: "ok",
+  entities: {
+    lights: [{ entityId: "light.lamp", name: "Lamp", on: false, brightnessPct: 60, available: true }],
+    switches: [
+      { entityId: "switch.fan", name: "Fan", on: false, available: true },
+      { entityId: "switch.heater", name: "Heater", on: true, available: true },
+    ],
+    climates: [
+      {
+        entityId: "climate.living", name: "Living", hvacMode: "heat", hvacModes: ["off", "heat", "cool", "auto", "fan_only"],
+        currentTemp: 19.5, targetTemp: 22, targetTempLow: null, targetTempHigh: null, unit: "°C", available: true,
+        fanMode: "auto", fanModes: ["auto", "low", "medium", "high"], minTemp: 16, maxTemp: 30, targetTempStep: 0.5,
+      },
+      {
+        entityId: "climate.study", name: "Study", hvacMode: "off", hvacModes: ["off", "heat", "cool"],
+        currentTemp: null, targetTemp: null, targetTempLow: null, targetTempHigh: null, unit: "°C", available: false,
+      },
+    ],
+    locks: [],
+    sensors: [],
+    scenes: [{ entityId: "scene.evening", name: "Evening", available: true }],
+    mediaPlayers: [],
+  },
+};
+
+/** /kiosk/api/climate-auto-off in the ClimateAutoOffServerState shape (use-climate-auto-off.ts): the pill and its sheet need it. */
+export const AUTO_OFF = { enabled: true, time: "23:00", skipDate: null, lastRunDate: null };
+
+/** /kiosk/api/vitals as HostVitals (src/lib/host-metrics.ts:19): kiosk-client.ts:129 and kiosk-status-strip.tsx:93 read cpu.percent and memory.percent. */
+export const VITALS = {
+  hostname: "host", os: "Linux", uptimeSeconds: 86400,
+  cpu: { percent: 12, cores: 4, model: "cpu", loadAvg: [0.4, 0.3, 0.2] },
+  memory: { total: 16e9, used: 6e9, available: 10e9, percent: 38 },
+  disk: [{ mount: "/", total: 500e9, used: 200e9, percent: 40 }],
+  network: { rxPerSec: 1000, txPerSec: 500 },
+  tempC: 45, ts: 1781484600000,
+};
+
+/** /kiosk/api/health as KioskHealthCounts (kiosk-client.ts:132), the route's body at app/kiosk/api/health/route.ts:14. */
+export const HEALTH = { total: 10, running: 9, paused: 0, restarting: 0, stopped: 1, unhealthy: 0, dead: 0 };
+
+/** /kiosk/api/doorbell as the unconfigured HaDoorbellSnapshot (ha-doorbell.ts:329): kiosk-doorbell.tsx:257 reads data.cameras.length, so QUIET threw there. */
+export const DOORBELL = { status: "unconfigured", cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null };
+
+/** Every /kiosk/api/* path the glance and standard layouts fetch, with its real-shaped body. Anything not listed (or weather and
+ *  attention, which visit() answers itself) gets QUIET. */
+export const ROUTES = {
+  "/kiosk/api/vitals": VITALS,
+  "/kiosk/api/health": HEALTH,
+  "/kiosk/api/doorbell": DOORBELL,
+  "/kiosk/api/nowplaying": { status: "idle" },
+  "/kiosk/api/downloads": { status: "unconfigured" },
+  "/kiosk/api/briefing": { status: "unconfigured" },
+  "/kiosk/api/weather/radar": { status: "unconfigured" },
+};

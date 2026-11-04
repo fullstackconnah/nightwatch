@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 import { parseTime, type AutoOffStatus } from "@/lib/climate-auto-off";
 import type { UseClimateAutoOffResult } from "@/lib/kiosk/use-climate-auto-off";
+import { aimCatch, SunCatch, SunSwitchTrack } from "@/components/kiosk/kiosk-sun-catch";
 
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -48,8 +49,11 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
         // vertical margin shrinks the button's margin box (what the flex row
         // measures) back down near SectionHeader's own line height while the
         // rendered 44px target still overflows the row invisibly above/below.
-        className="kiosk-press -my-2.5 -mr-1 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        data-lit={state.enabled}
+        onPointerDown={aimCatch}
+        className="sr-chip sr-chip-sm kiosk-press -my-2.5 -mr-1 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
+        <SunCatch />
         <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />
         <span
           className={cn("font-mono text-xs tabular-nums", state.enabled ? "text-accent" : "text-ink-dim")}
@@ -252,7 +256,7 @@ function ClimateAutoOffSheet({
   // second 0.4 multiplier on top of it compounds to ~0.16, well past what
   // the wrapper alone intends.
   const stepBtn =
-    "kiosk-press flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent";
+    "sr-btn sr-btn-nudge sr-btn-sm kiosk-press flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent";
 
   return (
     <div
@@ -311,13 +315,15 @@ function ClimateAutoOffSheet({
                 if (!ok && stateRef.current) setLocalTime(stateRef.current.time);
               });
             }}
+            onPointerDown={aimCatch}
             className={cn(
-              "kiosk-press flex h-11 w-full items-center justify-between rounded-md border px-3 outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              "sr-switch kiosk-press flex h-11 w-full items-center justify-between rounded-md border px-3 outline-none focus-visible:ring-1 focus-visible:ring-accent",
               enabled ? "border-accent-dim text-accent" : "border-line text-ink-dim",
             )}
           >
             <span className="text-sm font-semibold">Nightly auto-off</span>
-            <span className="font-mono text-xs">{enabled ? "on" : "off"}</span>
+            <SunSwitchTrack />
+            <span className="sr-state font-mono text-xs">{enabled ? "on" : "off"}</span>
           </button>
 
           <div className={cn("space-y-2", !enabled && "opacity-40")} aria-disabled={!enabled}>
