@@ -19,6 +19,7 @@
    showing it with a tiny stale tag rather than blanking. */
 
 import { useEffect, useMemo, useState } from "react";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
@@ -287,13 +288,17 @@ function SectionLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }
 }
 
 function MicroDatum({ icon: Icon, label, value }: { icon?: LucideIcon; label: string; value: string }) {
+  // Sunroom: a changed reading cross-fades in over 180 ms (keyed on the value), it never rolls.
+  const sr = useKioskTheme() === "sunroom";
   return (
     <div className="flex flex-col items-center gap-0.5">
       <div className="flex items-center gap-1 text-ink-faint">
         {Icon && <Icon size={11} aria-hidden />}
         <span className="microlabel">{label}</span>
       </div>
-      <span className="font-mono text-sm text-ink">{value}</span>
+      <span key={sr ? value : undefined} className={sr ? "font-mono text-sm text-ink sr-fade-in" : "font-mono text-sm text-ink"}>
+        {value}
+      </span>
     </div>
   );
 }
@@ -306,7 +311,7 @@ function WeatherUnconfigured() {
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <Cloud size={18} className="relative text-ink-faint" aria-hidden />
       <div className="relative">
-        <div className="microlabel !text-warn">Weather not configured</div>
+        <div className="microlabel !text-warn" data-sr-tone="warn">Weather not configured</div>
       </div>
     </div>
   );
@@ -316,7 +321,7 @@ function WeatherUnreachable({ detail }: { detail?: string }) {
   return (
     <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
       <span className="dot dot-dead" aria-hidden />
-      <span className="microlabel !text-bad">Weather unreachable</span>
+      <span className="microlabel !text-bad" data-sr-tone="bad">Weather unreachable</span>
       {detail && <span className="text-xs text-ink-dim">{detail}</span>}
     </div>
   );
@@ -384,10 +389,14 @@ function CurrentWeatherCompact({
   // CurrentWeatherLarge above. Feels-like joins the day row (it wasn't shown
   // in this compact variant before) since it's cheap supplementary context
   // once the current reading itself moves out.
+  const sr = useKioskTheme() === "sunroom";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {mode === "day" ? (
-        <span className="font-mono text-sm text-ink-faint">
+        <span
+          key={sr ? `${Math.round(current.feelsC)}|${Math.round(today.maxC)}|${Math.round(today.minC)}|${today.rainPct}` : undefined}
+          className={sr ? "font-mono text-sm text-ink-faint sr-fade-in" : "font-mono text-sm text-ink-faint"}
+        >
           feels {Math.round(current.feelsC)}° · H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° ·{" "}
           {today.rainPct}% rain
         </span>

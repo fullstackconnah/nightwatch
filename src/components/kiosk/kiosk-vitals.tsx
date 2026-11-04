@@ -5,6 +5,20 @@ import { Gauge, Meter } from "@/components/charts";
 import { KioskSpark, KioskSparkPair } from "@/components/kiosk/kiosk-spark";
 import { useKioskVitalsHistory } from "@/lib/kiosk-client";
 import { formatBytes, formatRate } from "@/lib/format";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { meterTone, meterWord } from "@/lib/sunroom-ambient";
+
+/** Sunroom: a meter above its warn line says so in a word, so a status colour never stands alone. */
+function VitalWord({ percent, warnAt = 80, badAt = 92 }: { percent: number; warnAt?: number; badAt?: number }) {
+  const sr = useKioskTheme() === "sunroom";
+  const tone = meterTone(percent, warnAt, badAt);
+  if (!sr || tone === "ok") return null;
+  return (
+    <span className="sr-word ml-auto" data-sr-tone={tone}>
+      {meterWord(tone)}
+    </span>
+  );
+}
 
 /** Ambient host vitals — the same CPU/RAM/disk/net numbers VitalsStrip shows
  *  on the logged-in overview, reframed for glanceability from across a room:
@@ -27,7 +41,7 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
     // whatever useKioskVitals/SWR produced) — narrow it the same way
     // drive-health.tsx/kiosk-hub.tsx already do elsewhere in this app.
     return (
-      <div className="panel px-6 py-5 text-bad text-sm text-center max-w-md">
+      <div className="panel px-6 py-5 text-bad text-sm text-center max-w-md" data-sr-tone="bad">
         Host metrics unavailable — {error instanceof Error ? error.message : String(error)}
       </div>
     );
@@ -65,9 +79,11 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
       // instead of stretch nobody asked for.
       <div className="panel flex w-full max-w-2xl items-center justify-between gap-3 px-3 py-2.5">
         <div className="flex flex-none flex-col gap-1">
-          <div className="microlabel">cpu</div>
+          <div className="microlabel flex items-center gap-1.5">
+            cpu <VitalWord percent={host?.cpu.percent ?? 0} />
+          </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 font-mono text-sm text-ink">
+            <span className="shrink-0 font-mono text-sm text-ink" data-sr-live>
               {host ? `${Math.round(host.cpu.percent)}%` : isLoading ? "…" : "—"}
             </span>
             <div className="w-20">
@@ -78,22 +94,22 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
 
         <div className="flex flex-none flex-col gap-1">
           <div className="microlabel flex items-center gap-1.5">
-            <MemoryStick size={11} /> memory
+            <MemoryStick size={11} /> memory <VitalWord percent={host?.memory.percent ?? 0} />
           </div>
           <Meter percent={host?.memory.percent ?? 0} />
-          <div className="font-mono text-[11px] text-ink-dim">
+          <div className="font-mono text-[11px] text-ink-dim" data-sr-live>
             {host ? `${formatBytes(host.memory.used, 0)} / ${formatBytes(host.memory.total, 0)}` : isLoading ? "…" : "—"}
           </div>
         </div>
 
         <div className="flex flex-none flex-col gap-1">
           <div className="microlabel flex items-center gap-1.5">
-            <HardDrive size={11} /> disk
+            <HardDrive size={11} /> disk <VitalWord percent={primaryDisk?.percent ?? 0} warnAt={85} badAt={95} />
           </div>
           {primaryDisk ? (
             <>
               <Meter percent={primaryDisk.percent} warnAt={85} badAt={95} />
-              <div className="font-mono text-[11px] text-ink-dim">
+              <div className="font-mono text-[11px] text-ink-dim" data-sr-live>
                 {formatBytes(primaryDisk.used, 0)} / {formatBytes(primaryDisk.total, 0)}
               </div>
             </>
@@ -105,10 +121,10 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
         <div className="flex flex-none flex-col gap-1">
           <div className="microlabel">network</div>
           <div className="flex items-center gap-2 font-mono text-[11px]">
-            <span className="flex items-center gap-1 text-accent">
+            <span className="flex items-center gap-1 text-accent" data-sr-live>
               <ArrowDown size={11} className="shrink-0" /> {host ? `${formatBytes(host.network.rxPerSec, 0)}/s` : "…"}
             </span>
-            <span className="flex items-center gap-1 text-blue">
+            <span className="flex items-center gap-1 text-blue" data-sr-live>
               <ArrowUp size={11} className="shrink-0" /> {host ? `${formatBytes(host.network.txPerSec, 0)}/s` : "…"}
             </span>
           </div>
@@ -123,7 +139,10 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 w-full max-w-3xl">
       <div className="panel px-3 py-4 flex flex-col items-center gap-2">
-        <Gauge percent={host?.cpu.percent ?? 0} label="cpu" size={84} />
+        <div data-sr-gauge data-sr-live>
+          <Gauge percent={host?.cpu.percent ?? 0} label="cpu" size={84} />
+        </div>
+        <VitalWord percent={host?.cpu.percent ?? 0} />
         {/* The gauge says "now"; this says "the last four minutes" — that
             pairing is the whole reason to add it. 22px keeps it an ambient
             trend, not a second reading: glance mode is a fixed-height band
@@ -140,22 +159,22 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
           under a point-in-time gauge. */}
       <div className="panel px-4 py-4 flex flex-col justify-center gap-2">
         <div className="microlabel flex items-center gap-1.5">
-          <MemoryStick size={11} /> memory
+          <MemoryStick size={11} /> memory <VitalWord percent={host?.memory.percent ?? 0} />
         </div>
         <Meter percent={host?.memory.percent ?? 0} />
-        <div className="font-mono text-xs text-ink-dim">
+        <div className="font-mono text-xs text-ink-dim" data-sr-live>
           {host ? `${formatBytes(host.memory.used)} / ${formatBytes(host.memory.total)}` : isLoading ? "…" : "—"}
         </div>
       </div>
 
       <div className="panel px-4 py-4 flex flex-col justify-center gap-2">
         <div className="microlabel flex items-center gap-1.5">
-          <HardDrive size={11} /> disk
+          <HardDrive size={11} /> disk <VitalWord percent={primaryDisk?.percent ?? 0} warnAt={85} badAt={95} />
         </div>
         {primaryDisk ? (
           <>
             <Meter percent={primaryDisk.percent} warnAt={85} badAt={95} />
-            <div className="font-mono text-xs text-ink-dim">
+            <div className="font-mono text-xs text-ink-dim" data-sr-live>
               {formatBytes(primaryDisk.used, 0)} / {formatBytes(primaryDisk.total, 0)}
             </div>
           </>
@@ -166,10 +185,10 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
 
       <div className="panel px-4 py-4 flex flex-col justify-center gap-1.5">
         <div className="microlabel">network</div>
-        <div className="flex items-center gap-2 font-mono text-sm text-accent">
+        <div className="flex items-center gap-2 font-mono text-sm text-accent" data-sr-live>
           <ArrowDown size={13} /> {host ? formatRate(host.network.rxPerSec) : "…"}
         </div>
-        <div className="flex items-center gap-2 font-mono text-sm text-blue">
+        <div className="flex items-center gap-2 font-mono text-sm text-blue" data-sr-live>
           <ArrowUp size={13} /> {host ? formatRate(host.network.txPerSec) : "…"}
         </div>
         {/* 26px: a hair taller than the CPU spark since it has two mirrored

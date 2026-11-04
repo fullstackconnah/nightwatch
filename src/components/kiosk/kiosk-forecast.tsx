@@ -30,6 +30,7 @@
 
 import { Radar } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { WEATHER_ICON, type WeatherDay } from "@/components/kiosk/kiosk-display";
 
 const DAY_FMT = new Intl.DateTimeFormat("en-AU", { weekday: "short" });
@@ -132,6 +133,8 @@ export function KioskForecastRail({
   onRadarClick?: (originRect?: DOMRect) => void;
 }) {
   const s = SIZE[size];
+  // Sunroom: no sky tint behind a cell (no new hue); the cells read as ink on the pane.
+  const sr = useKioskTheme() === "sunroom";
   // Full view only, per the owner: glance is a reading surface, and a control
   // in the rotating band is one you reach for as it moves away.
   const showRadarButton = size === "full" && Boolean(onRadarClick);
@@ -157,6 +160,7 @@ export function KioskForecastRail({
           // glance later can't silently produce a button that does nothing.
           onPointerDown={(e) => e.stopPropagation()}
           aria-label="Open the rain radar"
+          data-sr-radar
           title="Rain radar"
           /* Sized to the rail, not to the 44px touch floor the rest of the
              kiosk holds — the same documented exception the Today cell used to
@@ -224,6 +228,7 @@ export function KioskForecastRail({
               <span
                 className={cn(
                   s.day,
+                  "sr-fc-day",
                   "font-semibold uppercase tracking-wider",
                   emphasized ? "text-accent" : "text-ink-dim",
                 )}
@@ -232,12 +237,12 @@ export function KioskForecastRail({
               </span>
 
               <span className="mt-0.5 flex items-center gap-1.5">
-                <Icon className={cn(s.icon, emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
-                <span className={cn("font-mono leading-none text-ink", s.temp)}>{Math.round(day.maxC)}°</span>
+                <Icon className={cn(s.icon, "sr-fc-icon", emphasized ? "text-accent" : "text-ink-dim")} aria-hidden />
+                <span className={cn("sr-fc-hi font-mono leading-none text-ink", s.temp)}>{Math.round(day.maxC)}°</span>
               </span>
 
               <span className={cn("mt-0.5 flex items-baseline gap-1.5 font-mono leading-none", s.low)}>
-                <span className="text-ink-faint">{Math.round(day.minC)}°</span>
+                <span className="sr-fc-lo text-ink-faint">{Math.round(day.minC)}°</span>
                 {/* Below the threshold this renders nothing at all — the absence
                     IS the reading. `text-blue` (not ink) so the one percentage on
                     a settled week is unmistakably the wet day. */}
@@ -251,7 +256,7 @@ export function KioskForecastRail({
           );
 
           return (
-            <div key={day.date} className={cellClassName} style={{ backgroundColor: DAY_TINT[day.code] }}>
+            <div key={day.date} className={cn(cellClassName, "sr-fc")} data-today={emphasized || undefined} style={sr ? undefined : { backgroundColor: DAY_TINT[day.code] }}>
               {content}
             </div>
           );

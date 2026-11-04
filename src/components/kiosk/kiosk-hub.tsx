@@ -815,7 +815,7 @@ function HubSkeleton() {
 function HubLoadError({ error }: { error: unknown }) {
   return (
     <div role="status" className="panel flex flex-wrap items-center gap-3 px-4 py-3">
-      <span className="microlabel !text-bad">load failed</span>
+      <span className="microlabel !text-bad" data-sr-tone="bad">load failed</span>
       <p className="text-xs text-ink-dim">
         {error instanceof Error ? error.message : "Could not reach nightwatch's own /kiosk/api/ha/states."}
       </p>
@@ -835,7 +835,7 @@ function HubUnconfigured() {
     <div role="status" className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
-      <span className="microlabel relative !text-warn">Home Assistant not connected</span>
+      <span className="microlabel relative !text-warn" data-sr-tone="warn">Home Assistant not connected</span>
       <p className="relative text-xs text-ink-dim">Connect it in Settings → Integrations, and your lights, scenes and climate appear here.</p>
     </div>
   );
@@ -846,7 +846,7 @@ function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"
   return (
     <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
       <span className={cn("dot", isUnreachable ? "dot-dead" : "dot-unhealthy")} aria-hidden />
-      <span className={cn("microlabel", isUnreachable ? "!text-bad" : "!text-warn")}>
+      <span className={cn("microlabel", isUnreachable ? "!text-bad" : "!text-warn")} data-sr-tone={isUnreachable ? "bad" : "warn"}>
         Home Assistant {kind}
       </span>
       {detail && <span className="text-xs text-ink-dim">{detail}</span>}

@@ -342,7 +342,7 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
 
   if (health.status === "unreachable-empty") {
     return full ? (
-      <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-bad">
+      <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-bad" data-sr-tone="bad">
         <ShieldAlert size={13} aria-hidden />
         container health unreachable
       </div>
@@ -377,8 +377,10 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
   return full ? (
     <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-ink-dim">
       <span className="dot dot-running" aria-hidden />
-      {health.data.running}
-      <span className={cn("microlabel", breathing && "kiosk-breathe")}>running</span>
+      <span data-sr-live>{health.data.running}</span>
+      <span className={cn("microlabel", breathing && "kiosk-breathe")} data-sr-tone={breathing ? "ok" : undefined}>
+        running
+      </span>
       {health.status === "ready-stale" && <StaleTag />}
     </div>
   ) : (
@@ -388,7 +390,7 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
           same line), but wrapping "running" in its own span to carry the class
           puts a JSX expression boundary between them, and that boundary is
           exactly where JSX's whitespace trimming can eat an implicit space. */}
-      <span className="font-mono tabular-nums">{health.data.running}</span>{" "}
+      <span className="font-mono tabular-nums" data-sr-live>{health.data.running}</span>{" "}
       <span className={cn(breathing && "kiosk-breathe")}>running</span>
       {health.status === "ready-stale" && <span className="microlabel !text-warn ml-2">stale</span>}
     </div>
