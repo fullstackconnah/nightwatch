@@ -19,7 +19,8 @@ export function weatherFor(stop) {
   const s = STOP_SUNS[stop];
   return {
     status: "ok",
-    current: { cloudCoverPct: 0, precipMm: 0, windKmh: 5, code: "clear" },
+    // the real /kiosk/api/weather current shape (kiosk-weather-fx.test.ts:328), or kiosk-surface's label.toLowerCase() throws
+    current: { tempC: 14, feelsC: 13, humidityPct: 60, label: "Clear", cloudCoverPct: 0, precipMm: 0, windKmh: 5, code: "clear" },
     rain: { nowcast: [{ minutesFromNow: 0, precipMmHr: 0 }] },
     sun: { elevationDeg: s.elevationDeg, hourAngleDeg: s.hourAngleDeg, phase: s.elevationDeg > 6 ? "day" : s.elevationDeg > -6 ? "dawn" : "night", progress01: 0.5 },
   };
