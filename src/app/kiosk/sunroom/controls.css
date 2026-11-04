@@ -158,6 +158,27 @@
   transform: scale(1);
   transition: transform var(--sr-m-catch) var(--sr-m-ease-out), opacity 120ms linear;
 }
+/* Glaze: a chip blooms to full sunlit, then settles to the per-stop --sr-on-rest. Chips only; round toggles and the Switch keep the full catch. */
+[data-kiosk-theme="sunroom"] button.sr-chip .sr-lit {
+  opacity: 1;
+  transition: opacity 0s linear var(--sr-m-catch-out);
+}
+[data-kiosk-theme="sunroom"] button.sr-chip[aria-pressed="true"] .sr-lit,
+[data-kiosk-theme="sunroom"] button.sr-chip[aria-checked="true"] .sr-lit,
+[data-kiosk-theme="sunroom"] button.sr-chip[data-lit="true"] .sr-lit {
+  opacity: var(--sr-on-rest);
+  transition: opacity 480ms var(--sr-m-ease-out) var(--sr-m-catch);
+}
+/* disabled and on: no light, the pip and word go faint */
+[data-kiosk-theme="sunroom"] button.sr-chip:disabled .sr-lit {
+  opacity: 0;
+}
+[data-kiosk-theme="sunroom"] button.sr-chip:disabled:is([aria-checked="true"], [aria-pressed="true"], [data-lit="true"]) .sr-pip {
+  background: var(--sr-ink-faint);
+}
+[data-kiosk-theme="sunroom"] button.sr-chip:disabled:is([aria-checked="true"], [aria-pressed="true"], [data-lit="true"]) .sr-state {
+  color: var(--sr-ink-faint);
+}
 /* Ink on the sun: icons and the quiet text on a lit chip take ink, so every pair holds its contrast. */
 [data-kiosk-theme="sunroom"] :is([data-lit="true"], [aria-pressed="true"], [aria-checked="true"]) > svg,
 [data-kiosk-theme="sunroom"] :is([data-lit="true"], [aria-pressed="true"], [aria-checked="true"]) > .sr-chip-sub:not([data-sr-tone]) {
@@ -177,9 +198,6 @@
   gap: var(--sr-space-2);
   padding: 0 var(--sr-space-4);
   font: var(--sr-type-label);
-}
-[data-kiosk-theme="sunroom"] button.sr-chip > .dot {
-  display: none;
 }
 [data-kiosk-theme="sunroom"] .sr-chip-name {
   min-width: 0;
@@ -480,6 +498,12 @@
   [data-kiosk-theme="sunroom"] [aria-checked="true"] .sr-catch {
     transform: none;
     transition: opacity 120ms linear;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-chip .sr-lit,
+  [data-kiosk-theme="sunroom"] button.sr-chip[aria-pressed="true"] .sr-lit,
+  [data-kiosk-theme="sunroom"] button.sr-chip[aria-checked="true"] .sr-lit,
+  [data-kiosk-theme="sunroom"] button.sr-chip[data-lit="true"] .sr-lit {
+    transition: none;
   }
   [data-kiosk-theme="sunroom"] .sr-pip {
     transition: none;

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { catchOrigin, chipWord, showSub } from "./sunroom-controls.ts";
+import { SUNROOM_STOPS, sunroomCssVars, sunroomStateAt } from "./sunroom-light.ts";
 
 describe("catchOrigin (bundle.js aimCatch)", () => {
   it("puts the disc's origin under the finger: the disc's box starts at (-0.3w, h/2 - 0.8w) in the lit layer", () => {
@@ -53,5 +54,42 @@ describe("N12 static: nothing that updates more than once a minute is transition
   it("no controls.css rule that selects [data-sr-live] declares a transition or animation", () => {
     const bad = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(([, sel, body]) => /data-sr-live/.test(sel) && /(transition|animation)\s*:(?!\s*none)/.test(body));
     assert.deepEqual(bad.map((m) => m[1].trim()), []);
+  });
+});
+
+describe("Glaze: a chip that is on rests on --sr-on-rest, not the full sunlit face", () => {
+  const css = readFileSync(join(process.cwd(), "src/app/kiosk/sunroom/controls.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = () => [...css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({ sel: sel.trim(), body }));
+  const onChipLit = () => rules().find((r) => /sr-chip\[aria-checked="true"\] \.sr-lit/.test(r.sel) && r.body.includes("on-rest"));
+  const WANT: Record<string, string> = { dawn: "0.28", morning: "0.18", midday: "0.18", golden: "0.24", dusk: "0.5", night: "0.32" };
+
+  it("on-rest exists at every stop with the contrast-table value", () => {
+    for (const [i, s] of SUNROOM_STOPS.entries()) {
+      assert.equal(sunroomCssVars(sunroomStateAt(i), s.light)["--sr-on-rest"], WANT[s.name], s.name);
+    }
+  });
+  it("on-rest lerps between stops like sunlit", () => {
+    const v = Number(sunroomCssVars(sunroomStateAt(4.5), SUNROOM_STOPS[4].light)["--sr-on-rest"]); // golden to dusk
+    assert.ok(v > 0.24 && v < 0.5, String(v));
+  });
+  it("the resting ON chip face is the glaze, and the full light only shows during the bloom", () => {
+    assert.match(onChipLit()?.body ?? "", /opacity:\s*var\(--sr-on-rest\)/);
+    const base = rules().find((r) => /button\.sr-chip \.sr-lit$/.test(r.sel));
+    assert.match(base?.body ?? "", /opacity:\s*1/);
+  });
+  it("disabled ON shows no light and ink-faint pip and word", () => {
+    const lit = rules().find((r) => /button\.sr-chip:disabled \.sr-lit/.test(r.sel));
+    assert.match(lit?.body ?? "", /opacity:\s*0/);
+    assert.match(css, /button\.sr-chip:disabled:is\([^)]*\) \.sr-pip\s*\{[^}]*--sr-ink-faint/);
+    assert.match(css, /button\.sr-chip:disabled:is\([^)]*\) \.sr-state\s*\{[^}]*--sr-ink-faint/);
+  });
+  it("reduced motion lands on the glaze with no .sr-lit transition", () => {
+    const rm = css.slice(css.indexOf("prefers-reduced-motion"));
+    assert.match(rm, /\[data-lit="true"\] \.sr-lit\s*\{[^}]*transition:\s*none/);
+  });
+  it("one indicator: the toggle chip's dot is gone in Sunroom and the hiding rule is deleted", () => {
+    const hub = readFileSync(join(process.cwd(), "src/components/kiosk/kiosk-hub.tsx"), "utf8");
+    assert.match(hub, /\{!sr && <span aria-hidden className=\{cn\("h-2 w-2/);
+    assert.doesNotMatch(css, /sr-chip > \.dot/);
   });
 });
