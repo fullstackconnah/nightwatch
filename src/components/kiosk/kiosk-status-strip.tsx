@@ -81,7 +81,7 @@ export function KioskStatusStripExtras({
       {elevated && (
         <div className={revealClass} style={revealStyle(0)}>
           {vitals.status === "unreachable-empty" ? (
-            <div className="flex items-center gap-1.5 font-mono text-xs text-bad">
+            <div className="flex items-center gap-1.5 font-mono text-xs text-bad" data-sr-tone="bad">
               <ShieldAlert size={12} aria-hidden />
               <span className="hidden sm:inline">vitals unreachable</span>
               <span className="sm:hidden">vitals down</span>
@@ -90,10 +90,10 @@ export function KioskStatusStripExtras({
             vitals.data && (
               <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
                 <span>
-                  cpu <span className="text-ink">{Math.round(vitals.data.cpu.percent)}%</span>
+                  cpu <span className="text-ink" data-sr-live>{Math.round(vitals.data.cpu.percent)}%</span>
                 </span>
                 <span>
-                  mem <span className="text-ink">{Math.round(vitals.data.memory.percent)}%</span>
+                  mem <span className="text-ink" data-sr-live>{Math.round(vitals.data.memory.percent)}%</span>
                 </span>
                 {vitals.status === "ready-stale" && <StaleTag />}
               </div>

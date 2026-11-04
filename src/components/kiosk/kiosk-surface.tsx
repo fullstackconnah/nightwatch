@@ -60,6 +60,7 @@ import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
 import { KioskDoorbellButton } from "@/components/kiosk/kiosk-doorbell";
 import { KioskStatusStripExtras } from "@/components/kiosk/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { KioskRadarModal, useKioskRadar } from "@/components/kiosk/kiosk-radar";
 
 type KioskViewMode = "glance" | "full";
@@ -297,6 +298,7 @@ function TempNode({
   registerRef: (node: HTMLElement | null) => void;
 }) {
   const current = weather.ok?.current ?? null;
+  const sr = useKioskTheme() === "sunroom";
   const full = mode === "full";
   // Kept mounted (empty) rather than conditionally rendered even with no
   // reading yet — a FLIP-registered node has to exist across the mode
@@ -331,7 +333,7 @@ function TempNode({
       >
         {current.label.toLowerCase()}
       </span>
-      {weather.status === "ready-stale" && <span className="shrink-0 microlabel !text-warn">stale</span>}
+      {weather.status === "ready-stale" && (sr ? <StaleTag /> : <span className="shrink-0 microlabel !text-warn">stale</span>)}
     </div>
   );
 }
@@ -339,10 +341,11 @@ function TempNode({
 function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (node: HTMLElement | null) => void }) {
   const health = useFreshness(useKioskHealth(HEALTH_POLL_MS));
   const full = mode === "full";
+  const sr = useKioskTheme() === "sunroom";
 
   if (health.status === "unreachable-empty") {
     return full ? (
-      <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-bad">
+      <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-bad" data-sr-tone="bad">
         <ShieldAlert size={13} aria-hidden />
         container health unreachable
       </div>
@@ -377,8 +380,10 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
   return full ? (
     <div ref={registerRef} className="flex items-center gap-1.5 font-mono text-xs text-ink-dim">
       <span className="dot dot-running" aria-hidden />
-      {health.data.running}
-      <span className={cn("microlabel", breathing && "kiosk-breathe")}>running</span>
+      <span data-sr-live>{health.data.running}</span>
+      <span className={cn("microlabel", breathing && "kiosk-breathe")} data-sr-tone={breathing ? "ok" : undefined}>
+        running
+      </span>
       {health.status === "ready-stale" && <StaleTag />}
     </div>
   ) : (
@@ -388,9 +393,9 @@ function ServerLine({ mode, registerRef }: { mode: KioskViewMode; registerRef: (
           same line), but wrapping "running" in its own span to carry the class
           puts a JSX expression boundary between them, and that boundary is
           exactly where JSX's whitespace trimming can eat an implicit space. */}
-      <span className="font-mono tabular-nums">{health.data.running}</span>{" "}
+      <span className="font-mono tabular-nums" data-sr-live>{health.data.running}</span>{" "}
       <span className={cn(breathing && "kiosk-breathe")}>running</span>
-      {health.status === "ready-stale" && <span className="microlabel !text-warn ml-2">stale</span>}
+      {health.status === "ready-stale" && (sr ? <StaleTag /> : <span className="microlabel !text-warn ml-2">stale</span>)}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { useKioskNowPlaying } from "@/lib/kiosk-client";
 import { useKioskPollInterval } from "@/lib/kiosk-activity";
 import { cn } from "@/lib/utils";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { KIOSK_EASE_OUT, KIOSK_FADE_MS } from "@/lib/kiosk-motion";
 import type { NowPlayingActive } from "@/lib/types/nowplaying";
 
@@ -35,6 +36,7 @@ export function KioskNowPlaying() {
   const [mounted, setMounted] = useState(Boolean(active));
   const [entered, setEntered] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
+  const sr = useKioskTheme() === "sunroom";
 
   useEffect(() => {
     if (active) {
@@ -94,6 +96,8 @@ export function KioskNowPlaying() {
       <div
         role="group"
         aria-label={`Now playing: ${active.title}`}
+        data-sr-np
+        data-playing={playing || undefined}
         className={cn(
           "panel relative flex max-w-[min(90vw,28rem)] items-center gap-2.5 overflow-hidden rounded-full py-2.5 pl-3.5 pr-4",
           // Paused dims the whole pill a touch — a quieter state than
@@ -105,8 +109,15 @@ export function KioskNowPlaying() {
           !playing && "opacity-75",
         )}
       >
-        <Icon size={16} className="shrink-0 text-accent" aria-hidden />
-        <span className="min-w-0 truncate text-sm">
+        {sr ? (
+          <>
+            <span className="sr-pip" aria-hidden />
+            <span className="sr-state">{playing ? "Playing" : "Paused"}</span>
+          </>
+        ) : (
+          <Icon size={16} className="shrink-0 text-accent" aria-hidden />
+        )}
+        <span key={sr ? active.title : undefined} className={cn("min-w-0 truncate text-sm", sr && "sr-np-in")}>
           <span className="text-ink">{active.title}</span>
           {active.subtitle && <span className="text-ink-dim"> — {active.subtitle}</span>}
         </span>
@@ -118,6 +129,8 @@ export function KioskNowPlaying() {
           // never shows square corners poking past the pill's curve.
           <div
             className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent transition-transform duration-1000 ease-linear motion-reduce:transition-none"
+            data-sr-np-progress
+            data-sr-live
             style={{ transform: `scaleX(${Math.max(0, Math.min(1, active.progress01))})` }}
           />
         )}

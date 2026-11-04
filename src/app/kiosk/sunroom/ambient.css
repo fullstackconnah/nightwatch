@@ -1,0 +1,191 @@
+/* Sunroom ambient and data (Sill DS, PR 4): ForecastCell, WeatherNow, Clock, VitalsMeter, StatusLine, StaleTag,
+   NowPlaying, CarouselDots, plus the token-only states. Ported from SR phase2/ambient.css onto the kiosk's own markup.
+   Every selector starts with the Sunroom scope (N10) and reads colour only through --sr-* tokens (N6).
+   These are read hundreds of times a day, so almost nothing moves: a data change is one 180 ms cross-fade, and values that
+   tick (vitals, the clock, an age) just change (N12). Only transform and opacity ever move (N8). */
+
+/* ---------- Skeletons are a well with no shimmer loop (hub, weather, briefing) ---------- */
+[data-kiosk-theme="sunroom"] .animate-pulse {
+  animation: none;
+  box-shadow: var(--sr-shadow-well);
+}
+
+/* ---------- Cross-fade on a data change (SrFade, kiosk-display.tsx): the new value fades up, no roll ---------- */
+@keyframes sr-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+[data-kiosk-theme="sunroom"] .sr-fade-in {
+  animation: sr-fade-in var(--sr-m-fade) ease both;
+}
+
+/* ---------- Stale tag: dashed edge, panel-2 face, stale ink, 24 px, fades in once ---------- */
+[data-kiosk-theme="sunroom"] .sr-stale {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px dashed var(--sr-edge);
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-panel-2);
+  color: var(--sr-stale);
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: sr-fade-in var(--sr-m-fade) ease both;
+}
+
+/* ---------- Forecast cell: the day and the lows go quiet, the high reads, no sky tint behind the cell ---------- */
+[data-kiosk-theme="sunroom"] .sr-fc-day {
+  color: var(--sr-ink-faint);
+  letter-spacing: var(--sr-track-micro);
+}
+[data-kiosk-theme="sunroom"] .sr-fc[data-today] .sr-fc-day {
+  color: var(--sr-accent);
+}
+[data-kiosk-theme="sunroom"] .sr-fc-icon {
+  color: var(--sr-ink-dim);
+}
+[data-kiosk-theme="sunroom"] .sr-fc-hi {
+  color: var(--sr-ink);
+}
+[data-kiosk-theme="sunroom"] .sr-fc-lo {
+  color: var(--sr-ink-dim);
+}
+/* The radar button is a 44 px target (N11). The negative margin keeps the rail's layout box at the old 32 px,
+   so the sticky header's height, which feeds the FLIP measurement, does not move. */
+[data-kiosk-theme="sunroom"] button[data-sr-radar] {
+  width: var(--sr-hit-min);
+  height: var(--sr-hit-min);
+  margin-block: -6px;
+  margin-inline: -6px;
+  /* 16 px to the first cell box (.sr-fc, measured): end margin + the rail gap-2 (8) - the cell's own -mx-1 (4) = 16, so the end margin is space-4 - space-1 (12). */
+  margin-inline-end: calc(var(--sr-space-4) - var(--sr-space-1));
+}
+
+/* ---------- Weather now and the notes that stand for a missing feed ---------- */
+[data-kiosk-theme="sunroom"] .sr-word {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+  text-transform: uppercase;
+  color: var(--sr-ink-dim);
+}
+[data-kiosk-theme="sunroom"] [data-sr-tone="ok"] {
+  color: var(--sr-ok);
+}
+[data-kiosk-theme="sunroom"] .sr-word[data-sr-tone="warn"] {
+  color: var(--sr-warn);
+}
+[data-kiosk-theme="sunroom"] .sr-word[data-sr-tone="bad"] {
+  color: var(--sr-bad);
+}
+
+/* ---------- Vitals meter: an 8 px well with a fill; the fill is the one transition on a fast value ---------- */
+[data-kiosk-theme="sunroom"] [role="progressbar"] {
+  height: 8px;
+  background: var(--sr-panel-2);
+  box-shadow: var(--sr-shadow-well);
+}
+[data-kiosk-theme="sunroom"] [role="progressbar"] > div {
+  box-shadow: none !important; /* charts.tsx Meter paints an inline glow */
+  transition: transform var(--sr-m-slide) var(--sr-m-ease-out);
+}
+/* The CPU ring is a reading, not a fill: it jumps. */
+[data-kiosk-theme="sunroom"] [data-sr-gauge] circle {
+  transition: none;
+}
+
+/* ---------- Now playing: a control-level pill, a sunlit pip and a word, no equaliser, no icon ---------- */
+[data-kiosk-theme="sunroom"] .panel[data-sr-np] {
+  background: var(--sr-panel);
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-control);
+  opacity: 1;
+}
+[data-kiosk-theme="sunroom"] [data-sr-np] .sr-pip {
+  transform: none;
+  transition: none;
+}
+[data-kiosk-theme="sunroom"] [data-sr-np][data-playing] .sr-pip {
+  background: var(--sr-sunlit);
+  box-shadow: none;
+}
+[data-kiosk-theme="sunroom"] [data-sr-np] .sr-state {
+  min-width: 5.6em;
+}
+[data-kiosk-theme="sunroom"] [data-sr-np][data-playing] .sr-state {
+  color: var(--sr-ink);
+}
+/* The song's progress is a reading that moves every poll: no transition. */
+[data-kiosk-theme="sunroom"] [data-sr-np] [data-sr-np-progress] {
+  transition: none;
+}
+/* Track change: the new title slides in 8 px from the right as it fades up. The resting text has no transform. */
+@keyframes sr-np-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: none; }
+}
+[data-kiosk-theme="sunroom"] .sr-np-in {
+  animation: sr-np-in var(--sr-m-fade) var(--sr-m-ease-out) both;
+}
+
+/* ---------- Carousel dots: 44 px buttons, 8 px dots, a 24x8 ink pill that slides to the current one ---------- */
+[data-kiosk-theme="sunroom"] .sr-dots {
+  gap: 0;
+}
+[data-kiosk-theme="sunroom"] .sr-dots-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+[data-kiosk-theme="sunroom"] .sr-dots-box > button > span {
+  width: 8px;
+  height: 8px;
+  background: var(--sr-ink-faint);
+  transition: none;
+}
+/* The dot buttons are hit areas: no cast and no press travel (the interim button press must not reach them). */
+[data-kiosk-theme="sunroom"] .sr-dots-box > button,
+[data-kiosk-theme="sunroom"] .sr-dots-box > button:active:not(:disabled) {
+  box-shadow: none;
+  transform: none;
+}
+[data-kiosk-theme="sunroom"] .sr-dots-pill {
+  position: absolute;
+  left: calc((var(--sr-hit-min, 44px) - 24px) / 2);
+  top: 50%;
+  margin-top: -4px;
+  width: 24px;
+  height: 8px;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-ink);
+  pointer-events: none;
+  transition: transform var(--sr-m-slide) var(--sr-m-ease-out);
+}
+
+/* ---------- Rule 6 / N17: nothing loops at rest. The attention and restarting dots stay still; the word beside them carries the state. ---------- */
+[data-kiosk-theme="sunroom"] .dot-unhealthy,
+[data-kiosk-theme="sunroom"] .dot-restarting {
+  animation: none;
+}
+
+/* ---------- Reduced motion: values swap at once; the fade and the stale tag keep their opacity-only fade ---------- */
+@media (prefers-reduced-motion: reduce) {
+  [data-kiosk-theme="sunroom"] .sr-fade-in {
+    animation: sr-fade-in var(--sr-m-fade) ease both;
+  }
+  [data-kiosk-theme="sunroom"] .sr-stale {
+    animation: sr-fade-in var(--sr-m-fade) ease both;
+  }
+  [data-kiosk-theme="sunroom"] .sr-np-in {
+    animation: sr-fade-in var(--sr-m-fade) ease both;
+  }
+  [data-kiosk-theme="sunroom"] [role="progressbar"] > div {
+    transition: none;
+  }
+  [data-kiosk-theme="sunroom"] .sr-dots-pill {
+    transition: none;
+  }
+}

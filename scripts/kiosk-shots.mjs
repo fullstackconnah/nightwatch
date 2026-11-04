@@ -15,6 +15,8 @@
  * Rain zones: rain-<state>-full.png and rain-<state>-floor.png (y 700-800) at 1280x800 for heavy-night, storm-dusk and
  * drizzle-dusk, plus light-day, drizzle-day and light-day-reduced (midday sun, the last with reduced motion; the day ones add rain-<state>-floor-pad.png, y 560-800) (the rain is in the mocked weather, no ?wx=); rainZoneCover.<state> lists the visible controls in the
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
+ * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
+ * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
  */
 
 import { chromium } from "playwright";
@@ -67,7 +69,8 @@ async function seen(page, selector, timeout = 30_000) {
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
 async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
-  if (fixedTime === "flow") await context.clock.install({ time: new Date(PINNED_ISO) }); // same instant, still ticking: SWR's focus throttle and dedupe read Date.now
+  // "flow" and "ticking": start at the pinned instant but keep time passing (SWR's focus throttle and dedupe read Date.now; ticking is also fast-forwarded)
+  if (fixedTime === "flow" || fixedTime === "ticking") await context.clock.install({ time: new Date(PINNED_ISO) });
   else if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
@@ -560,6 +563,100 @@ for (const name of Object.keys(RAIN_STATES)) {
     // Day states: a padded crop of the whole ring band (0.75H = y 600) so the slate rings and crests read at pixel size.
     if (RAIN_STATES[name].day) await page.screenshot({ path: join(OUT_DIR, `rain-${name}-floor-pad.png`), clip: { x: 0, y: 560, width: 1280, height: 240 } });
     results.rainZoneCover[name] = await page.evaluate(RAIN_ZONE_COVER);
+    await context.close();
+  });
+}
+
+// ---- ambient and data (PR 4): N11/N12/N17/N18 on the glance main, a stale pane, now playing, a carousel page change; main at midday and night ----
+// results.ambient.<state>: { n11Small, n12LiveTransitions, n18ToneWithoutWord } from CONTROLS, plus the state's own counts.
+// Shots: ambient-<state>-<size>.png. Shoot after .sr-stopfade has gone (visit() waits for it).
+results.ambient = {};
+const AMBIENT_CHECKS = (page) => page.evaluate(CONTROLS);
+for (const size of SIZES) {
+  for (const stop of ["midday", "night"]) {
+    await guarded(`ambient main ${stop} ${size.name}`, async () => {
+      const { context, page } = await visit(STOP_URL, { viewport: size.viewport, weather: weatherFor(stop), fixedTime: stop === "midday" });
+      await page.screenshot({ path: join(OUT_DIR, `ambient-main-${stop}-${size.name}.png`), fullPage: true });
+      results.ambient[`main-${stop}-${size.name}`] = await AMBIENT_CHECKS(page);
+      await context.close();
+    });
+  }
+}
+// ambient.radarGap: px from the radar button's right edge to the first forecast cell's left edge in the standard layout; must be >= 16
+results.ambient.radarGap = {};
+for (const size of SIZES) {
+  await guarded(`ambient radarGap ${size.name}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    results.ambient.radarGap[size.name] = await page.evaluate(() => {
+      const b = document.querySelector("[data-sr-radar]")?.getBoundingClientRect();
+      const c = document.querySelector(".sr-fc")?.getBoundingClientRect();
+      return b && c ? Math.round((c.left - b.right) * 10) / 10 : null;
+    });
+    await context.close();
+  });
+}
+// main at rest after a 10 s idle (N17: nothing animates), glance is the default layout
+await guarded("ambient rest", async () => {
+  const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true });
+  await page.waitForTimeout(10_000);
+  await page.screenshot({ path: join(OUT_DIR, "ambient-rest-1180x820.png"), fullPage: true });
+  results.ambient.rest = { ...(await AMBIENT_CHECKS(page)), n17Running: (await page.evaluate(SCAN)).running };
+  await context.close();
+});
+// a stale weather pane: the first poll answers, the next says unreachable, so the view keeps the last good data and shows the tag
+await guarded("ambient stale", async () => {
+  // fixedTime "ticking": midday, but Date.now() advances (setFixedTime never does, and the real 2 am clock shows the night overlay). STOP_URL has wx=off, so the mocked outage is not overridden by a preview preset.
+  const { context, page, state } = await visit(STOP_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: "ticking" });
+  state.weather = { status: "unreachable", detail: "mocked outage" };
+  await page.clock.fastForward(6000); // SWR ignores focus for 5 s after mount
+  let tag = false;
+  for (let k = 0; k < 4 && !tag; k++) {
+    await page.clock.fastForward(6000);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    tag = await seen(page, ".sr-stale", 3000);
+  }
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(OUT_DIR, "ambient-stale-1180x820.png") });
+  results.ambient.stale = { ...(await AMBIENT_CHECKS(page)), tagSeen: tag, tagCount: await page.locator(".sr-stale").count(), tagText: await page.locator(".sr-stale").first().textContent().catch(() => null) };
+  await context.close();
+});
+// now playing: the pill carries a pip and the word, no icon
+await guarded("ambient now playing", async () => {
+  const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true, nowPlaying: true });
+  const np = await seen(page, "[data-sr-np]", 15_000);
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: join(OUT_DIR, "ambient-nowplaying-1180x820.png") });
+  results.ambient.nowPlaying = { ...(await AMBIENT_CHECKS(page)), seen: np, word: await page.locator("[data-sr-np] .sr-state").first().textContent().catch(() => null), pip: await page.locator("[data-sr-np] .sr-pip").count() };
+  await context.close();
+});
+// a carousel page change: tap the second dot; the 24x8 pill slides 44 px (transform only). pillOffset = pill centre minus the current dot's centre, before and after; each within 1 px
+const pillOffset = (page, idx) => page.evaluate((n) => {
+  const p = document.querySelector(".sr-dots-pill")?.getBoundingClientRect();
+  const d = document.querySelectorAll('button[aria-label^="Show "] > span')[n]?.getBoundingClientRect();
+  if (!p || !d) return null;
+  return { dx: +((p.left + p.width / 2) - (d.left + d.width / 2)).toFixed(2), dy: +((p.top + p.height / 2) - (d.top + d.height / 2)).toFixed(2) };
+}, idx);
+for (const size of SIZES) {
+  await guarded(`ambient carousel ${size.name}`, async () => {
+    const key = size.name === "1024x768" ? "carousel" : `carousel-${size.name}`;
+    const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true });
+    const pill = page.locator(".sr-dots-pill").first();
+    const has = await seen(page, ".sr-dots-pill", 15_000);
+    const dot = page.locator('button[aria-label^="Show "]').nth(1);
+    if (!has || !(await dot.count())) {
+      results.ambient[key] = { missing: has ? "second dot" : ".sr-dots-pill" };
+      await context.close();
+      return;
+    }
+    const before = await pill.evaluate((el) => el.style.transform);
+    const offBefore = await pillOffset(page, 0);
+    await page.screenshot({ path: join(OUT_DIR, `ambient-carousel-before-${size.name}.png`) });
+    await dot.click();
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: join(OUT_DIR, `ambient-carousel-after-${size.name}.png`) });
+    const offAfter = await pillOffset(page, 1);
+    const ok = (o) => !!o && Math.abs(o.dx) <= 1 && Math.abs(o.dy) <= 1;
+    results.ambient[key] = { ...(await AMBIENT_CHECKS(page)), before, after: await pill.evaluate((el) => el.style.transform), pillBox: await pill.evaluate((el) => { const r = el.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; }), pillOffset: { before: offBefore, after: offAfter, within1px: ok(offBefore) && ok(offAfter) } };
     await context.close();
   });
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { prefersReducedMotion } from "@/lib/kiosk-motion";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 
 /**
  * Ambient trend charts for kiosk-vitals.tsx: a smoothed, gliding sparkline
@@ -191,6 +192,8 @@ function buildMirroredSmoothPaths(
 function useGlide(sig: string, stepPx: number, glideMs: number, reduced: boolean) {
   const ref = useRef<SVGGElement>(null);
   const prevSig = useRef<string | null>(null);
+  // Sunroom: a sparkline redraws in place, it never glides (no motion on a reading).
+  const sunroom = useKioskTheme() === "sunroom";
 
   useEffect(() => {
     const isFirst = prevSig.current === null;
@@ -200,7 +203,7 @@ function useGlide(sig: string, stepPx: number, glideMs: number, reduced: boolean
     // glideMs <= 0: the caller opted out of the glide entirely (the compact
     // vitals strip) — the chart redraws in place when a sample lands instead
     // of travelling continuously.
-    if (reduced || isFirst || !changed || glideMs <= 0) return;
+    if (reduced || sunroom || isFirst || !changed || glideMs <= 0) return;
     const g = ref.current;
     if (!g) return;
     g.style.transition = "none";
@@ -208,7 +211,7 @@ function useGlide(sig: string, stepPx: number, glideMs: number, reduced: boolean
     void g.getBoundingClientRect();
     g.style.transition = `transform ${glideMs}ms linear`;
     g.style.transform = "translateX(0)";
-  }, [sig, stepPx, glideMs, reduced]);
+  }, [sig, stepPx, glideMs, reduced, sunroom]);
 
   return ref;
 }

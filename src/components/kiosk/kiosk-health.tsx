@@ -23,7 +23,7 @@ export function KioskHealth() {
 
   if (error) {
     return (
-      <div className="panel px-6 py-4 text-bad text-sm text-center max-w-md">
+      <div className="panel px-6 py-4 text-bad text-sm text-center max-w-md" data-sr-tone="bad">
         Containers unreachable — {error.message}
       </div>
     );
@@ -37,7 +37,7 @@ export function KioskHealth() {
     <div className="flex flex-col items-center gap-3">
       <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
         {COUNT_ITEMS.map(({ key, label, dot }) => (
-          <div key={key} className="flex items-center gap-1.5 font-mono text-sm text-ink-dim">
+          <div key={key} className="flex items-center gap-1.5 font-mono text-sm text-ink-dim" data-sr-live>
             <span className={cn("dot", dot)} />
             {isLoading && !data ? "…" : (data?.[key] ?? 0)}
             <span className="microlabel">{label}</span>
@@ -48,6 +48,7 @@ export function KioskHealth() {
       {severity && (
         <div
           role="status"
+          data-sr-tone={severity}
           className={cn(
             "panel border px-4 py-2 flex items-center gap-2 text-sm font-mono",
             severity === "bad" ? "border-bad/40 bg-bad/5 text-bad" : "border-warn/40 bg-warn/5 text-warn",

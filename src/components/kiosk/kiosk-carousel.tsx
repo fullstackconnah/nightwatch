@@ -34,6 +34,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { dotsPillX } from "@/lib/sunroom-ambient";
 import { KIOSK_MOVE_MS, KIOSK_EASE_OUT, prefersReducedMotion } from "@/lib/kiosk-motion";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { useKioskIdle, useKioskNight, KIOSK_IDLE_AFTER_MS } from "@/lib/kiosk-activity";
@@ -100,6 +102,7 @@ export function KioskCarousel({
   const reducedRef = useRef<boolean | null>(null);
   if (reducedRef.current === null) reducedRef.current = prefersReducedMotion();
   const reduced = reducedRef.current;
+  const sr = useKioskTheme() === "sunroom";
 
   const pointerRef = useRef<{ id: number; x: number; y: number } | null>(null);
   const pauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,7 +305,9 @@ export function KioskCarousel({
       </div>
 
       {visible.length > 1 && (
-        <div className={cn("flex items-center gap-1", dotsClassName)}>
+        <div className={cn("flex items-center gap-1", sr && "sr-dots", dotsClassName)}>
+          {/* Sunroom: buttons and pill share one relative box so the pill is placed against the buttons, not the padded row. */}
+          <div className={sr ? "sr-dots-box" : "contents"}>
           {visible.map((id, i) => (
             <button
               key={id}
@@ -330,6 +335,9 @@ export function KioskCarousel({
               />
             </button>
           ))}
+          {/* Sunroom: the current page is a 24x8 ink pill that slides to its dot. */}
+          {sr && <span aria-hidden className="sr-dots-pill" style={{ transform: `translateX(${dotsPillX(clampedIndex)}px)` }} />}
+          </div>
         </div>
       )}
     </div>

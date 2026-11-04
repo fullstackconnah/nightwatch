@@ -8,6 +8,7 @@ import "./sunroom/tokens.css";
 import "./sunroom/surface.css";
 import "./sunroom/controls.css";
 import "./sunroom/overlays.css";
+import "./sunroom/ambient.css";
 
 export const metadata: Metadata = {
   title: "kiosk · nightwatch",
