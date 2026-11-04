@@ -224,21 +224,20 @@ try {
     }),
   );
 
-  // F2: /resources Meter fill and Gauge ring, transition-property.
+  // F2: /resources Meter fill, transition-property. The Gauge ring renders on no route today (VitalsStrip is unused, kiosk
+  // vitals are always compact), so there is no ring to measure; the Meter sits in an opened watchlist row.
   await guarded("meters", () =>
     each(async (s) => {
       for (const reduced of [false, true]) {
         const page = await visit(s, "/resources", { reduced });
-        await present(page.locator("main svg circle[stroke-dashoffset]"));
+        await page.locator(".wl-rowbtn").first().click({ timeout: 8_000 });
+        await present(page.locator(".wl-detail .origin-left.rounded-full"));
         const out = await page.evaluate(() => {
-          const fill = document.querySelector("main .origin-left.rounded-full");
-          const ring = document.querySelector("main svg circle[stroke-dashoffset]");
-          return {
-            fill: fill ? getComputedStyle(fill).transitionProperty : { missing: "main .origin-left.rounded-full" },
-            ring: ring ? getComputedStyle(ring).transitionProperty : { missing: "main svg circle[stroke-dashoffset]" },
-          };
+          const fill = document.querySelector(".wl-detail .origin-left.rounded-full");
+          return fill ? getComputedStyle(fill).transitionProperty : { missing: ".wl-detail .origin-left.rounded-full" };
         });
-        record("meters", `${s.name}-${reduced ? "reduced" : "normal"}`, out);
+        record("meters", `${s.name}-${reduced ? "reduced" : "normal"}`, { fill: out });
+        if (!reduced) await shoot(page, s, "resources");
         await page.close();
       }
     }),

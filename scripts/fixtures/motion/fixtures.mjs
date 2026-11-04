@@ -1,7 +1,7 @@
 /* Mocked API bodies for scripts/motion-shots.mjs, in the real response shapes. Placeholder names and hosts only; nothing
  * here names a real host, PIN or secret. read(pathname) returns the GET body for a path, or undefined for "not mocked".
  *
- * Shapes taken from: ContainersResponse (src/lib/client.ts) and TiledContainer (src/lib/tiles.ts); WidgetData
+ * Shapes taken from: ResourceSnapshot (src/lib/docker.ts), ContainersResponse (src/lib/client.ts) and TiledContainer (src/lib/tiles.ts); WidgetData
  * (src/lib/widgets/types.ts); AttentionReport (src/lib/attention-report.ts); HostVitals (src/lib/host-metrics.ts);
  * SettingsFullResponse (src/components/settings/settings-integrations.tsx). Docker and Minecraft bodies reuse the
  * fixtures of docker-shots.mjs and minecraft-shots.mjs.
@@ -60,6 +60,18 @@ const host = () => ({
   network: { rxPerSec: 120_000, txPerSec: 45_000 }, tempC: 48, ts: Date.now(),
 });
 
+/** ResourceSnapshot (src/lib/docker.ts:644): the /resources watchlist rows, one memory limit set. */
+const resources = () => {
+  const list = containers().containers.map((c, i) => ({
+    id: c.id, name: c.name, state: c.state, image: c.image, cpuPct: 3 + i, memBytes: (200 + 40 * i) * 1024 ** 2, memLimit: 1024 ** 3,
+    rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0, pids: 4, sizeRw: 1024 ** 2, sizeRootFs: 100 * 1024 ** 2,
+  }));
+  return {
+    updatedAt: Date.now(), containers: list, volumes: [], hostDisks: host().disk, dockerRootDir: "/var/lib/docker",
+    totals: { cpuPct: 20, memBytes: 4 * 1024 ** 3, memTotal: 16 * 1024 ** 3, containerDisk: 1024 ** 3, volumeDisk: 0, layersSize: 1024 ** 3, buildCacheBytes: 0, rxBytes: 0, txBytes: 0, blkReadBytes: 0, blkWriteBytes: 0 },
+  };
+};
+
 const off = { configured: false };
 const settings = () => ({
   config: { groups: [], urls: {}, icons: {}, hidden: [], widgets: [] },
@@ -84,6 +96,7 @@ export function read(pathname) {
       return { widgets: { pihole: { type: "pihole", fields: [{ label: "Blocked", value: "14%" }, { label: "Queries", value: "9,812" }], fetchedAt: Date.now(), configured: true } } };
     case "/api/attention": return attention();
     case "/api/host": return host();
+    case "/api/resources": return resources();
     case "/api/settings": return settings();
     case "/api/minecraft/status": return MC.calm.status;
     case "/api/minecraft/backups": return { backups: BACKUPS };
