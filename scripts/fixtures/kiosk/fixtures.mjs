@@ -36,12 +36,12 @@ export const PINNED_ISO = "2026-06-15T10:30:00+10:00";
 export const ZONE = "Australia/Sydney";
 
 /** /kiosk/api/ha/states in the full HaStatesResponse shape (src/lib/types/ha.ts): a partial body throws in render.
- *  Two climates (heating, and unavailable) cover the working glow and the unavailable state; the lights, switches and
+ *  Two climates (heating, and unavailable) cover the working glow and the unavailable state; Lamp starts off so the chip step's press is a visible change (writes are mocked, so only the press shows, not a re-polled on); the lights, switches and
  *  scene cover Chip on, off and the sun catch. */
 export const HA_STATES = {
   status: "ok",
   entities: {
-    lights: [{ entityId: "light.lamp", name: "Lamp", on: true, brightnessPct: 60, available: true }],
+    lights: [{ entityId: "light.lamp", name: "Lamp", on: false, brightnessPct: 60, available: true }],
     switches: [
       { entityId: "switch.fan", name: "Fan", on: false, available: true },
       { entityId: "switch.heater", name: "Heater", on: true, available: true },

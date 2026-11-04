@@ -25,15 +25,17 @@ export function aimCatch(e: PointerEvent<HTMLElement>) {
 }
 
 /** The pip and the state word of a Chip. */
-export function SunChipMarks({ on, error, busy }: { on: boolean; error?: boolean; busy?: boolean }) {
+export function SunChipMarks({ on, error, busy, scene }: { on: boolean; error?: boolean; busy?: boolean; scene?: boolean }) {
   if (useKioskTheme() !== "sunroom") return null;
-  const { word, tone } = chipWord({ on, error, busy });
+  const { word, tone } = chipWord({ on, error, busy, scene });
   return (
     <>
       <span className="sr-pip" aria-hidden />
-      <span className="sr-state" data-sr-tone={tone}>
-        {word}
-      </span>
+      {word && (
+        <span className="sr-state" data-sr-tone={tone}>
+          {word}
+        </span>
+      )}
     </>
   );
 }

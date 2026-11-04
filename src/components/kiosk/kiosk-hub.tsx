@@ -51,6 +51,8 @@ import type {
   HaSwitch,
 } from "@/lib/types/ha";
 import { cn } from "@/lib/utils";
+import { chipWord, showSub } from "@/lib/sunroom-controls";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { aimCatch, SunCatch, SunChipMarks } from "@/components/kiosk/kiosk-sun-catch";
 
 const HA_STATES_KEY = "/kiosk/api/ha/states";
@@ -264,6 +266,7 @@ function ToggleChip({
   error?: string;
   onToggle: () => void;
 }) {
+  const sr = useKioskTheme() === "sunroom";
   return (
     <button
       type="button"
@@ -294,7 +297,7 @@ function ToggleChip({
       <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
       <span className="sr-chip-name max-w-72 truncate text-sm text-ink">{name}</span>
       <span className={cn("sr-chip-sub max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
-        {error ?? subtitle}
+        {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
       </span>
       <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />
       <SunChipMarks on={on} error={!!error} />
@@ -343,7 +346,7 @@ function SceneChip({
       <span className={cn("sr-chip-sub max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined}>
         {statusText}
       </span>
-      <SunChipMarks on={activated} error={!!error} busy={pending} />
+      <SunChipMarks on={activated} error={!!error} busy={pending} scene />
     </button>
   );
 }

@@ -9,8 +9,14 @@ export function catchOrigin(lit: { left: number; top: number; width: number; hei
 }
 
 /** The word beside a chip's pip (rule 5: a state is never colour alone). An error is the only status colour here. */
-export function chipWord(s: { on: boolean; error?: boolean; busy?: boolean }): { word: string; tone?: "bad" } {
+export function chipWord(s: { on: boolean; error?: boolean; busy?: boolean; scene?: boolean }): { word: string; tone?: "bad" } {
   if (s.error) return { word: "Error", tone: "bad" };
+  if (s.scene) return { word: "" }; // a scene has no off state; its sublabel is the state word (N18 holds via the accent tone)
   if (s.busy) return { word: "Working" };
   return { word: s.on ? "On" : "Off" };
+}
+
+/** Whether a chip's sublabel still earns its place beside the DS state word: not when it only repeats it. */
+export function showSub(sub: string, word: string): boolean {
+  return word === "Error" || sub.trim().toLowerCase() !== word.toLowerCase();
 }

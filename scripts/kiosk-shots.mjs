@@ -172,6 +172,18 @@ const CONTROLS = () => {
   const tone = [...document.querySelectorAll("[data-sr-tone]")].filter((el) => !(el.textContent ?? "").trim()).map((el) => el.className || el.tagName);
   return { n11Small: small, n12LiveTransitions: live, n18ToneWithoutWord: tone };
 };
+/** Before a rest shot: no focus ring, no dialog, no finite animation still running (infinite ambient loops don't count). Times out at 5 s and carries on. */
+const settleRest = (page) =>
+  page
+    .waitForFunction(
+      () =>
+        !document.querySelector('[data-kiosk-focus="on"]') &&
+        !document.querySelector("[role=dialog]") &&
+        document.getAnimations().filter((a) => a.playState === "running" && isFinite(a.effect?.getTiming().iterations)).length === 0,
+      null,
+      { timeout: 5000 },
+    )
+    .then(() => true, () => false);
 results.controls = { seen: {}, reduced: {} };
 for (const size of SIZES) {
   await guarded(`controls ${size.name}`, async () => {
@@ -182,10 +194,12 @@ for (const size of SIZES) {
     if (!seenTile) {
       // a missing tile is a failure, not a pass: record it and skip nothing silently
       out.rest = { missing: ".sr-climate", ...((await crashed(page)) && { crashed: true }) };
+      out.restSettled = await settleRest(page);
       await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
       await context.close();
       return;
     }
+    out.restSettled = await settleRest(page);
     await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
     out.rest = await page.evaluate(CONTROLS);
     // (a) the AC auto-off pill opens its sheet; close it with its Close button before the next step
