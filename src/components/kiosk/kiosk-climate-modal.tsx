@@ -1,5 +1,7 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+
 /**
  * The climate detail modal and its control groups, extracted from
  * kiosk-climate.tsx. See that file for the tile this opens from.
@@ -37,7 +39,7 @@ import { HVAC_LABEL, formatTemp, titleCase } from "@/components/kiosk/kiosk-clim
 function GroupHeading({ title, value }: { title: string; value?: string }) {
   return (
     <div className="mb-2 flex items-baseline justify-between gap-3">
-      <span className="microlabel">{title}</span>
+      <span className="microlabel" data-sr-group>{title}</span>
       <span className="font-mono text-xs text-accent">{value ?? "—"}</span>
     </div>
   );
@@ -491,6 +493,7 @@ export function KioskClimateModal({
   };
 
   return (
+<KioskPortal>
     <div
       aria-hidden={false}
       // bg-bg/60 backdrop-blur-md, not the old /90 + blur-sm: at 90% opacity
@@ -502,6 +505,7 @@ export function KioskClimateModal({
       // itself is `.panel`, an OPAQUE surface (globals.css: `background:
       // var(--color-panel)`, no alpha channel), so nothing about the modal's
       // own copy sits over this backdrop at all.
+      data-sr-overlay="dialog"
       className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/60 px-4 backdrop-blur-md transition-opacity motion-reduce:transition-none"
       style={{ ...transitionStyle, opacity: shown ? 1 : 0 }}
       // Backdrop click closes; target===currentTarget guards against a tap on
@@ -528,6 +532,7 @@ export function KioskClimateModal({
            a modal is a deliberate, dismissible visit — clipping its last group
            off the bottom would hide the swing control entirely, so this one box
            is allowed to scroll. */
+        data-sr-face="float"
         className="panel relative z-(--z-modal) max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto p-6 transition-[opacity,transform] motion-reduce:transition-none"
         // With an originRect, WAAPI owns the panel's entrance and exit
         // (containerExpand/-Collapse composite over inline style), so the
@@ -541,7 +546,7 @@ export function KioskClimateModal({
         }
       >
         <div className="mb-5 flex items-center justify-between gap-2">
-          <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">
+          <h2 id={titleId} data-sr-title className="text-sm font-semibold tracking-tight text-ink">
             {climate.name}
           </h2>
           <button
@@ -692,5 +697,6 @@ export function KioskClimateModal({
         )}
       </div>
     </div>
+</KioskPortal>
   );
 }

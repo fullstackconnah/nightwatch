@@ -1,0 +1,107 @@
+/* Sunroom overlays (Sill DS PR 3): Sheet, Dialog, PinPad, TimerRing, Alert, Toast.
+   Every selector starts with the Sunroom scope (check N10). Colour, type and shadow come only through the --sr-* tokens.
+   Only transform and opacity move (check N8); each animated selector has its twin in the reduced-motion block.
+   The overlays mount in [data-sr-overlay-host], a child of the theme scope (kiosk-overlay-host.tsx), so none of this
+   has a transformed ancestor (N13). Markup hooks: data-sr-overlay (the scrim), data-sr-face (the float), data-sr-title. */
+
+/* ---------- No glass (rule 6, F2): nothing under Sunroom blurs the room, whatever utility class asks for it ---------- */
+[data-kiosk-theme="sunroom"] * {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* The defocus dims without a blur: opacity alone, no filter (the blur selector is more specific, so it is repeated). */
+[data-kiosk-theme="sunroom"] .kiosk-defocus,
+[data-kiosk-theme="sunroom"] [data-kiosk-focus="on"] .kiosk-defocus:not([data-kiosk-focused="true"]) {
+  filter: none;
+}
+[data-kiosk-theme="sunroom"] .kiosk-defocus {
+  transition: opacity var(--kiosk-focus-ms) ease-out;
+}
+
+/* ---------- Scrim and float ---------- */
+[data-kiosk-theme="sunroom"] [data-sr-overlay] {
+  background-color: var(--sr-scrim);
+}
+/* Sheet, Dialog, Toast and the trays: bevel plus the twin at 1.5x (rule 3). */
+[data-kiosk-theme="sunroom"] [data-sr-face="float"] {
+  border-radius: var(--sr-radius-lg);
+  box-shadow: var(--sr-shadow-bevel), var(--sr-shadow-float);
+}
+/* F5: an overlay's title is the DS title style, read through the type tokens. */
+[data-kiosk-theme="sunroom"] [data-sr-title] {
+  font: var(--sr-type-title);
+  letter-spacing: var(--sr-track-title);
+  color: var(--sr-ink);
+}
+/* The climate modal's group headings are micro (shape section 3, Dialog row). */
+[data-kiosk-theme="sunroom"] [data-sr-group] {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+  text-transform: uppercase;
+}
+
+/* ---------- Sheet: rises from the bottom edge, grabber on top ---------- */
+[data-kiosk-theme="sunroom"] [data-sr-overlay="sheet"] {
+  align-items: flex-end;
+  padding: 0;
+}
+[data-kiosk-theme="sunroom"] [data-sr-overlay="sheet"] [data-sr-face] {
+  max-width: 720px;
+  max-height: 85vh;
+  border-radius: var(--sr-radius-lg) var(--sr-radius-lg) 0 0;
+  animation: sr-sheet-in var(--sr-m-slide) var(--sr-m-ease-out) backwards;
+}
+[data-kiosk-theme="sunroom"] .sr-sheet-head {
+  display: grid;
+  place-items: center;
+  flex: none;
+  height: var(--sr-hit-min);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+[data-kiosk-theme="sunroom"] .sr-grabber {
+  width: 40px;
+  height: 5px;
+  border-radius: var(--sr-radius-full);
+  background: var(--sr-handle);
+}
+@keyframes sr-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes sr-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------- PinPad: wells and a row of raised keys; the message states the lockout in words ---------- */
+[data-kiosk-theme="sunroom"] .sr-pin-well {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: var(--sr-radius-sm);
+  background: var(--sr-panel-2);
+  color: var(--sr-ink);
+  box-shadow: var(--sr-shadow-well);
+}
+[data-kiosk-theme="sunroom"] .sr-pin-msg {
+  font: var(--sr-type-label);
+  letter-spacing: var(--sr-track-label);
+}
+
+/* ---------- TimerRing: the ring repaints once a second and never eases (DIRECTION section 9) ---------- */
+[data-kiosk-theme="sunroom"] .sr-ring-arc,
+[data-kiosk-theme="sunroom"] .sr-ring-track {
+  transition: none;
+}
+
+/* Reduced motion: the sheet fades instead of travelling; the defocus does not ease. */
+@media (prefers-reduced-motion: reduce) {
+  [data-kiosk-theme="sunroom"] [data-sr-overlay="sheet"] [data-sr-face] {
+    animation: sr-fade-in var(--sr-m-fade) ease backwards;
+  }
+  [data-kiosk-theme="sunroom"] .kiosk-defocus {
+    transition: none;
+  }
+}

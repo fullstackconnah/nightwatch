@@ -1,5 +1,7 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Delete, Lock, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -185,7 +187,9 @@ export function KioskPinPad({
   }
 
   return (
+<KioskPortal>
     <div
+      data-sr-overlay="dialog"
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 backdrop-blur-sm px-4"
       // The trap above only ever runs from a keydown that bubbles through a
       // focused descendant — it can't fire once focus has been knocked out
@@ -208,12 +212,13 @@ export function KioskPinPad({
         aria-labelledby="kiosk-pin-pad-title"
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
+        data-sr-face="float"
         className={cn("panel w-full max-w-xs p-6", shake && "kiosk-pin-shake")}
       >
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <Lock size={15} className="text-accent" />
-            <span id="kiosk-pin-pad-title" className="text-sm font-semibold tracking-tight">
+            <span id="kiosk-pin-pad-title" data-sr-title className="text-sm font-semibold tracking-tight">
               Admin PIN
             </span>
           </div>
@@ -232,7 +237,7 @@ export function KioskPinPad({
             <div
               key={i}
               className={cn(
-                "h-12 w-10 rounded-md border flex items-center justify-center font-mono text-lg",
+                "sr-pin-well h-12 w-10 rounded-md border flex items-center justify-center font-mono text-lg",
                 i < digits.length ? "border-accent/50 text-ink bg-panel-2" : "border-line text-ink-faint",
               )}
             >
@@ -241,13 +246,13 @@ export function KioskPinPad({
           ))}
         </div>
 
-        <div className="text-center text-xs mb-4 min-h-4" role="alert">
+        <div className="sr-pin-msg text-center text-xs mb-4 min-h-4" role="alert">
           {lockedUntil !== null ? (
-            <span className="text-warn">
+            <span className="text-warn" data-sr-tone="warn" data-sr-live>
               Too many attempts — try again in {Math.ceil(lockedRemainingMs / 1000)}s
             </span>
           ) : error ? (
-            <span className="text-bad">{error}</span>
+            <span className="text-bad" data-sr-tone="bad">{error}</span>
           ) : (
             <span className="text-ink-dim">Enter the 4-digit PIN</span>
           )}
@@ -271,7 +276,7 @@ export function KioskPinPad({
                 // background-color/border-color, which is all the hover
                 // state here touches. These are the most-pressed controls on
                 // the whole surface, so this is where the new feel matters most.
-                className="h-14 rounded-md border border-line text-ink font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none kiosk-press"
+                className="sr-btn sr-btn-nudge h-14 rounded-md border border-line text-ink font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none kiosk-press"
               >
                 {key === "back" ? <Delete size={18} className="mx-auto" /> : key}
               </button>
@@ -280,5 +285,6 @@ export function KioskPinPad({
         </div>
       </div>
     </div>
+</KioskPortal>
   );
 }

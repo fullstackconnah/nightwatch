@@ -1,5 +1,7 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+
 /* THESIS: the front door is the one thing a wall tablet should be allowed to
    interrupt for. Everything else on this surface is ambient — you look at it
    when you choose to — but a person standing at your door is time-bounded:
@@ -591,7 +593,9 @@ export function KioskDoorbellModal({
   const current = cameras.find((c) => c.entityId === selected);
 
   return (
+<KioskPortal>
     <div
+      data-sr-overlay="dialog"
       className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/90 px-4 backdrop-blur-sm transition-opacity motion-reduce:transition-none"
       style={{ ...transitionStyle, opacity: shown ? 1 : 0 }}
       onPointerDown={(e) => {
@@ -608,6 +612,7 @@ export function KioskDoorbellModal({
         // Any touch inside the panel is "I'm still watching" — the auto-close
         // exists to reclaim an ABANDONED screen, not to hurry anyone along.
         onPointerDown={keepOpen}
+        data-sr-face="float"
         className="panel relative z-(--z-modal) w-full max-w-3xl p-4 transition-[opacity,transform] motion-reduce:transition-none md:p-5"
         // With an originRect, WAAPI owns the panel's entrance and exit
         // (containerExpand/-Collapse composite over inline style), so the
@@ -622,7 +627,7 @@ export function KioskDoorbellModal({
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={titleId} className="flex items-center gap-2 text-base font-semibold tracking-tight text-ink">
+            <h2 id={titleId} data-sr-title className="flex items-center gap-2 text-base font-semibold tracking-tight text-ink">
               {/* The live dot is the answer to "is this now, or the last thing
                   it saw" — the single most important thing to know about a
                   camera picture, and one a still frame cannot tell you. */}
@@ -682,6 +687,7 @@ export function KioskDoorbellModal({
         </div>
       </div>
     </div>
+</KioskPortal>
   );
 }
 

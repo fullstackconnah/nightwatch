@@ -308,6 +308,113 @@ for (const size of SIZES) {
   });
 }
 
+// ---- overlays (PR 3): N11 targets, N13 ancestors, N14 reduced motion, N16, N18/N19 with each overlay open ----
+// JSON keys: overlays.<size>.<state>.{n13Ancestors,n13PanelEmpty,inHost,hostIsScopeChild,n19Backdrop,n19Defocus,titlePx,n11Small,n12LiveTransitions,n18ToneWithoutWord}
+// (or {missing}), overlays.pin.{wrongShake,lockedMsg,keysDisabled}, overlays.elevated.{admin,appearance}, overlays.reduced.<size>.<state>.n14Running.
+// States: autoOff (sheet), climateModal (dialog), timers (sheet), pin (PIN pad), doorbell, alerts (tray). Downloads tray and toast, the
+// alert takeover and radar cannot be opened in the fixture world (downloads and radar are "unconfigured", no alert is raised); their keys are absent.
+const OVERLAY_SCAN = () => {
+  const dlg = document.querySelector("[data-sr-face]") ?? document.querySelector("[role=dialog]");
+  const host = document.querySelector("[data-sr-overlay-host]");
+  const scope = document.querySelector('[data-kiosk-theme="sunroom"]');
+  const ancestors = [];
+  for (let el = dlg?.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+    const cs = getComputedStyle(el);
+    if (cs.transform !== "none" || cs.filter !== "none" || cs.perspective !== "none") ancestors.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)}`);
+  }
+  const title = document.querySelector("[data-sr-title]");
+  return {
+    n13Ancestors: ancestors,
+    n13PanelEmpty: dlg ? getComputedStyle(dlg).getPropertyValue("--sr-panel").trim() === "" : true,
+    inHost: !!(dlg && host && host.contains(dlg)),
+    hostIsScopeChild: !!host && host.parentElement === scope,
+    n19Backdrop: [...document.querySelectorAll("*")].filter((el) => { const b = getComputedStyle(el).backdropFilter; return b && b !== "none"; }).length,
+    n19Defocus: [...document.querySelectorAll(".kiosk-defocus")].filter((el) => getComputedStyle(el).filter !== "none").length,
+    titlePx: title ? getComputedStyle(title).fontSize : null,
+    ...CONTROLS(),
+  };
+};
+const OVERLAY_STATES = [
+  { key: "autoOff", open: (p) => p.getByRole("button", { name: /^AC auto-off/ }), close: (p) => p.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click() },
+  { key: "climateModal", shot1024: true, open: (p) => p.getByRole("button", { name: /Advanced controls for Living/ }), close: (p) => p.keyboard.press("Escape") },
+  { key: "timers", open: (p) => p.getByRole("button", { name: /^Timers/ }), close: (p) => p.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click() },
+  { key: "pin", shot1024: true, open: (p) => p.getByRole("button", { name: /^Admin/ }).first(), close: (p) => p.keyboard.press("Escape") },
+  { key: "doorbell", open: (p) => p.getByRole("button", { name: "View the front door camera" }), close: (p) => p.keyboard.press("Escape") },
+  { key: "alerts", open: (p) => p.getByRole("button", { name: /^Alerts?\b/ }).first(), close: (p) => p.keyboard.press("Escape") },
+];
+/** Open one overlay; resolves the locator's presence, the dialog's arrival, then runs `then`; always closes and waits for the dialog to go. */
+async function withOverlay(page, st, then) {
+  const trigger = st.open(page);
+  if (!(await trigger.count())) return { missing: `${st.key} trigger` };
+  await trigger.click();
+  if (!(await seen(page, "[role=dialog]", 5000))) return { missing: `${st.key} dialog` };
+  await page.waitForTimeout(800);
+  const r = await then();
+  await st.close(page);
+  await page.waitForSelector("[role=dialog]", { state: "detached", timeout: 5000 }).catch(() => (r.stuckOpen = true));
+  await page.waitForTimeout(300);
+  return r;
+}
+results.overlays = { reduced: {} };
+for (const size of SIZES) {
+  await guarded(`overlays ${size.name}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    await seen(page, ".sr-climate", 15_000);
+    const out = (results.overlays[size.name] = {});
+    for (const st of OVERLAY_STATES) {
+      page.step = `overlay ${st.key}`;
+      out[st.key] = await withOverlay(page, st, async () => {
+        if (size.name === "1180x820" || st.shot1024) await page.screenshot({ path: join(OUT_DIR, `overlay-${st.key}-${size.name}.png`) });
+        return page.evaluate(OVERLAY_SCAN);
+      });
+    }
+    await context.close();
+  });
+  await guarded(`overlays reduced ${size.name}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, reduced: true, ha: true });
+    await seen(page, ".sr-climate", 15_000);
+    const out = (results.overlays.reduced[size.name] = {});
+    for (const st of OVERLAY_STATES) {
+      page.step = `overlay reduced ${st.key}`;
+      out[st.key] = await withOverlay(page, st, async () => ({ n14Running: (await page.evaluate(SCAN)).running }));
+    }
+    await context.close();
+  });
+}
+// the PIN pad's guards in the fixture world: a 429 shows the countdown word with the keys disabled; a 200 elevates (the admin panel and appearance appear)
+await guarded("overlays pin lockout", async () => {
+  const { context, page } = await visit(CONTROLS_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+  await page.route("**/api/auth/kiosk", (route) =>
+    route.request().method() === "POST" ? route.fulfill({ status: 429, json: { error: "Too many attempts", lockedUntil: Date.now() + 30_000 } }) : route.fallback(),
+  );
+  const admin = page.getByRole("button", { name: /^Admin/ }).first();
+  if (!(await admin.count())) return void (results.overlays.pin = { missing: "Admin button" });
+  await admin.click();
+  await seen(page, "[role=dialog]", 5000);
+  for (const d of "0000") await page.getByRole("button", { name: `digit ${d}` }).click(); // placeholder PIN: the route is mocked
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: join(OUT_DIR, "overlay-pin-locked-1180x820.png") });
+  results.overlays.pin = await page.evaluate(() => ({
+    lockedMsg: document.querySelector(".sr-pin-msg")?.textContent ?? "",
+    msgTone: document.querySelector(".sr-pin-msg [data-sr-tone]")?.getAttribute("data-sr-tone") ?? null,
+    keysDisabled: [...document.querySelectorAll('[role=dialog] button[aria-label^="digit"]')].every((b) => b.disabled),
+  }));
+  await context.close();
+});
+await guarded("overlays elevated", async () => {
+  const { context, page } = await visit(CONTROLS_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+  await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? route.fulfill({ json: { ok: true, expiresAt: Date.now() + 120_000 } }) : route.fallback()));
+  const admin = page.getByRole("button", { name: /^Admin/ }).first();
+  if (!(await admin.count())) return void (results.overlays.elevated = { missing: "Admin button" });
+  await admin.click();
+  await seen(page, "[role=dialog]", 5000);
+  for (const d of "0000") await page.getByRole("button", { name: `digit ${d}` }).click();
+  await page.waitForTimeout(1500);
+  results.overlays.elevated = { appearance: await page.getByRole("tablist", { name: "Personalisation" }).count(), admin: await page.getByText(/elevated · locks in/).count() };
+  if (results.overlays.elevated.admin) await page.screenshot({ path: join(OUT_DIR, "overlay-elevated-1180x820.png") });
+  await context.close();
+});
+
 // ---- rain zones: every visible control in the floor band (y >= 0.75h, where rings spawn) sits inside a [data-rain-zone] rect ----
 const RAIN_ZONE_COVER = () => {
   const vis = (r) => r.width > 0 && r.height > 0;
