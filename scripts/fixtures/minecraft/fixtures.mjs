@@ -59,6 +59,8 @@ export const FIXTURES = {
   calmEmpty: { ...base, status: { ...okStatus, players: { online: 0, max: 10, players: [] } } },
   // Stopped (clean exit) and no container: the two stopped rows that are not a crash.
   stopped: { ...base, container: { state: "exited", exitCode: 143, startedAt: NOW - 5 * HOUR }, status: { ...okStatus, players: null, rcon: "unavailable" } },
+  // Paused: the container is paused, mc-manager answers. Resume and Stop share the Server slot.
+  paused: { ...base, container: { state: "paused", exitCode: null, startedAt: NOW - 3 * HOUR }, status: okStatus },
   noContainer: { ...base, container: null, status: okStatus },
 };
 

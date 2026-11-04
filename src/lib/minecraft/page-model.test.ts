@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { leadFor, minecraftModel, type McContainer, type Model, type ModelInput, type WriteId } from "./page-model.ts";
+import { leadFor, minecraftModel, noPackNote, type McContainer, type Model, type ModelInput, type WriteId } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-04T10:00:00Z");
 const pack = (slug: string, name: string) => ({
@@ -66,6 +66,8 @@ test("down: warn, Server opens, why-line notice, Docker verbs still work", () =>
   const m = minecraftModel(input({ status: status({ manager: "unreachable", managerDetail: "connect refused", instances: [], active: null, players: null }) }));
   assert.deepEqual(m.chip, { tone: "warn", label: "Manager down" });
   assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.");
+  assert.equal(m.evidence, "mc-manager isn’t answering · retrying every 10 s");
+  assert.doesNotMatch(m.evidence, /ECONNREFUSED|:8090|example.invalid|connect refused/);
   assert.equal(m.notice, "Start, stop and restart still work through Docker.");
   assert.equal(m.autoTarget, "server");
   assert.deepEqual(enabled(m), ["pause", "restart", "stop"]);
@@ -204,4 +206,12 @@ test("restore follows the stopped-state allow-list; paused offers Resume", () =>
   assert.equal(w(p, "resume").enabled, true);
   assert.equal(w(p, "stop").enabled, true);
   assert.equal(w(p, "pause").enabled, false);
+});
+
+test("noPackNote: only when mc-manager answered and listed no active pack", () => {
+  assert.equal(noPackNote(status({ instances: [], active: null })), "No pack active. Pick one in the Pack strip.");
+  assert.equal(noPackNote(status()), null);
+  assert.equal(noPackNote(status({ manager: "unreachable", instances: [], active: null })), null);
+  assert.equal(noPackNote(status({ manager: "unauthorized", instances: [], active: null })), null);
+  assert.equal(noPackNote(undefined), null);
 });

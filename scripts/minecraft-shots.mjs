@@ -243,6 +243,7 @@ async function shoot(page, s, key, full = false) {
   await page.waitForTimeout(300);
   await page.screenshot({ path: `${base}-view.png` });
   if (!full) return;
+  await page.evaluate(() => window.scrollTo(0, 0));
   if (s.name === "390") {
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
     await page.setViewportSize({ width: 390, height: Math.min(h, 6000) });
@@ -277,6 +278,39 @@ const FEATURES = [
   ["pause", "log", (p) => detail(p).getByRole("button", { name: /^(Pause|Resume)$/ })],
   ["open-in-logs", "log", (p) => p.locator('[data-row-id="log"] .st-slot a')],
 ];
+
+/** S3 / C18paused: the paused Server slot (Resume + Stop) at both widths, strip closed and open. */
+async function paused(s) {
+  const { page } = await visit(s, "paused");
+  const toggle = page.locator('[data-k="open-server"]');
+  if ((await toggle.getAttribute("aria-expanded")) === "true") await toggle.click();
+  await page.waitForTimeout(150);
+  await shoot(page, s, "paused", false);
+  const probe = await page.evaluate(() => {
+    const row = document.querySelector('[data-row-id="server"]');
+    const box = (el) => el.getBoundingClientRect();
+    const btn = (re) => [...row.querySelectorAll(".st-slot button")].find((b) => re.test(b.textContent));
+    const resume = btn(/^Resume/), stop = btn(/^Stop/);
+    const title = row.querySelector(".st-name"), state = row.querySelector(".st-state");
+    const vis = (b) => Boolean(b) && box(b).width > 0 && box(b).height > 0;
+    const t = box(title);
+    const s = box(state);
+    const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    // Same line as the title or wrapped whole below it, never on top of the title or the state line.
+    const placed1 = (b) => !hit(box(b), t) && !hit(box(b), s) && (Math.abs(box(b).top - t.top) <= 2 || box(b).top >= t.bottom - 1 || box(b).bottom > t.top && box(b).top < t.bottom);
+    return {
+      visible: vis(resume) && vis(stop),
+      placed: vis(resume) && vis(stop) && [resume, stop].every(placed1),
+      stateTruncated: state.scrollWidth > state.clientWidth,
+      overflowPx: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  record("C18paused", s.name, { ...probe, ok: probe.visible && probe.placed && !probe.stateTruncated && probe.overflowPx <= 0 });
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: join(OUT_DIR, `mc-paused-${s.name}-open-view.png`) });
+  await page.close();
+}
 
 try {
   for (const s of sessions) {
@@ -325,8 +359,9 @@ try {
       await measure(page, "stale", ["Stale", "Showing what was true"]);
       const staleWrites = states.stale.writes;
       record("C11stale", s.name, { writesOn: staleWrites, ok: staleWrites.length === 0 });
-      await shoot(page, s, "stale", false);
+      await shoot(page, s, "stale", true);
       await page.close();
+      await paused(s);
       record("C4", s.name, { delta: Math.round((Math.max(...heights) - Math.min(...heights)) * 10) / 10, heights: [...new Set(heights.map((h) => Math.round(h * 10) / 10))] });
       record("C9", s.name, { minContrast, bad: Object.entries(states).filter(([, v]) => v.lowContrast.length).map(([k]) => k) });
       record("C10", s.name, dup);

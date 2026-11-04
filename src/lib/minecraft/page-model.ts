@@ -64,6 +64,10 @@ const ORDER = {
 } as const satisfies Record<string, readonly StripId[]>;
 const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "pause", "resume", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
 /** The full answer leads the strip the answer names, and only that one (R3). */
+/** The Server detail says "no pack" only when mc-manager answered and listed none; down or rejected, it would be false advice. */
+export const noPackNote = (s: MinecraftStatusResponse | undefined): string | null =>
+  s?.manager === "ok" && !s.instances.some((p) => p.slug === s.active) ? "No pack active. Pick one in the Pack strip." : null;
+
 export const leadFor = (m: Pick<Model, "autoTarget" | "detailLead">, id: StripId): string | null => (m.autoTarget === id ? m.detailLead : null);
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
@@ -125,7 +129,8 @@ export function minecraftModel(i: ModelInput): Model {
   } else if (!managerOk) {
     chip = { tone: "warn", label: "Manager down" };
     answer = "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.";
-    evidence = `${status.managerDetail ?? "No answer"} · retrying every 10 s`;
+    // The raw error (host, port) stays out of the DOM.
+    evidence = "mc-manager isn’t answering · retrying every 10 s";
     notice = "Start, stop and restart still work through Docker.";
     autoTarget = "server";
   } else if (crashed) {

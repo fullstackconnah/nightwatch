@@ -8,7 +8,7 @@ import { ConfirmStop } from "@/components/resources/container-controls";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { postJson, type MinecraftStatusResponse } from "@/lib/client";
-import { leadFor, type Model } from "@/lib/minecraft/page-model";
+import { leadFor, noPackNote, type Model } from "@/lib/minecraft/page-model";
 
 const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
 
@@ -137,7 +137,7 @@ export function ServerDetail({
           <Badge variant="neutral">{active.memoryGb} GB</Badge>
         </div>
       ) : (
-        <p className="st-note">No pack active. Pick one in the Pack strip.</p>
+        noPackNote(status) && <p className="st-note">{noPackNote(status)}</p>
       )}
       {installFailed && <p className="st-note">Some files need manual download. Open the Log strip to see which.</p>}
       {container && restart?.enabled && (
