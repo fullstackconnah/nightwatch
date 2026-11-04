@@ -204,6 +204,7 @@ try {
       await page.evaluate(() => document.querySelectorAll(".nw-fade").forEach((b) => b.setAttribute("data-on", "")));
       await page.waitForTimeout(300);
       await shoot(page, s, "settings-saved");
+      const on = await m();
       // The footer-row badge beside Save (settings-access.tsx:379): in frame, in the "on" state.
       const footer = page.locator(".nw-fade + button").last();
       if (await present(footer)) {
@@ -211,7 +212,6 @@ try {
         await page.waitForTimeout(300);
         await shoot(page, s, "settings-saved-footer");
       } else record("saved-footer", s.name, missing(".nw-fade + button"));
-      const on = await m();
       const diff = (k) => Math.max(0, ...off.map((o, i) => (o[k] == null || on[i][k] == null ? 0 : Math.abs(o[k] - on[i][k]))));
       record("saved", s.name, { badges: off.length, headerPx: diff("headH"), titlePx: diff("titleTop"), savePx: Math.max(diff("saveTop"), diff("saveLeft")), restHeaders: off.map((o) => Math.round(o.headH)), wrapped: off.filter((o) => o.wrapped).length });
       await page.close();
