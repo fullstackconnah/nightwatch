@@ -54,13 +54,6 @@ export function rainWeatherFor(state) {
 /** /kiosk/api/nowplaying: the bottom-centre pill (NowPlayingActive, src/lib/types/nowplaying.ts). */
 export const NOW_PLAYING = { status: "ok", source: "ha", title: "Evening news", appName: "YouTube", state: "playing", progress01: 0.4 };
 
-/** Rain states only: the content of the shipped defect (a longer light tile, a long now-playing title), placeholder text. */
-export const RAIN_NOW_PLAYING = { ...NOW_PLAYING, title: "The Long Evening Programme Hour" };
-export const RAIN_HA_STATES = {
-  ...HA_STATES,
-  entities: { ...HA_STATES.entities, lights: [{ entityId: "light.floodlight", name: "Front door Floodlight", on: true, brightnessPct: 60, available: true }] },
-};
-
 /** Every other /kiosk/api/* route answers "not configured": the kiosk renders its quiet state for each. */
 export const QUIET = { status: "unconfigured" };
 
@@ -95,6 +88,13 @@ export const HA_STATES = {
     scenes: [{ entityId: "scene.evening", name: "Evening", available: true }],
     mediaPlayers: [],
   },
+};
+
+/** Rain states only: the content of the shipped defect (a longer light tile, a long now-playing title), placeholder text. */
+export const RAIN_NOW_PLAYING = { ...NOW_PLAYING, title: "The Long Evening Programme Hour" };
+export const RAIN_HA_STATES = {
+  ...HA_STATES,
+  entities: { ...HA_STATES.entities, lights: [{ entityId: "light.floodlight", name: "Front door Floodlight", on: true, brightnessPct: 60, available: true }] },
 };
 
 /** /kiosk/api/climate-auto-off in the ClimateAutoOffServerState shape (use-climate-auto-off.ts): the pill and its sheet need it. */
