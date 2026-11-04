@@ -19,9 +19,11 @@ export function weatherFor(stop) {
   const s = STOP_SUNS[stop];
   return {
     status: "ok",
-    // the real /kiosk/api/weather current shape (kiosk-weather-fx.test.ts:328), or kiosk-surface's label.toLowerCase() throws
+    // the full WeatherOk shape the header, rail and radar read (kiosk-weather-fx.test.ts:326-330); a partial body throws in render
+    place: "Home",
     current: { tempC: 14, feelsC: 13, humidityPct: 60, label: "Clear", cloudCoverPct: 0, precipMm: 0, windKmh: 5, code: "clear" },
-    rain: { nowcast: [{ minutesFromNow: 0, precipMmHr: 0 }] },
+    days: ["15", "16", "17", "18", "19"].map((d) => ({ date: `2026-06-${d}`, code: "clear", label: "Clear", maxC: 17, minC: 9, rainPct: 5, sunrise: `2026-06-${d}T07:00`, sunset: `2026-06-${d}T17:00` })),
+    rain: { hours: [], summary: null, nowcast: [{ minutesFromNow: 0, precipMmHr: 0 }] },
     sun: { elevationDeg: s.elevationDeg, hourAngleDeg: s.hourAngleDeg, phase: s.elevationDeg > 6 ? "day" : s.elevationDeg > -6 ? "dawn" : "night", progress01: 0.5 },
   };
 }
