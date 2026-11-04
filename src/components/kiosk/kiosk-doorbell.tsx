@@ -297,6 +297,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
  *  a one-second-old frame, not a live view — and hiding that behind the same
  *  indicator as a working stream would be a lie about a security camera. */
 export type CameraStatus = "connecting" | "live" | "stills" | "failed";
+const DOT_WORD: Record<CameraStatus, string> = { connecting: "Connecting", live: "Live", stills: "Stills", failed: "Offline" };
 
 function CameraView({
   entityId,
@@ -591,6 +592,8 @@ export function KioskDoorbellModal({
   };
   const heading = trigger ? TRIGGER_LABEL[trigger.kind] : "Front door";
   const current = cameras.find((c) => c.entityId === selected);
+  // Sunroom hides a subtitle that only repeats the title.
+  const dup = (current?.name ?? selected) === heading && !(trigger && trigger.ageSec !== null) && status !== "stills";
 
   return (
 <KioskPortal>
@@ -633,8 +636,10 @@ export function KioskDoorbellModal({
                   camera picture, and one a still frame cannot tell you. */}
               <span className={cn("dot", status === "live" ? "dot-running" : "dot-stopped")} aria-hidden />
               {heading}
+              {/* Sunroom only: the dot's word (hidden elsewhere). */}
+              <span className="hidden font-mono text-xs font-normal text-ink-dim" data-sr-dot-word>{DOT_WORD[status]}</span>
             </h2>
-            <p className="mt-0.5 truncate text-xs text-ink-faint">
+            <p className="mt-0.5 truncate text-xs text-ink-faint" data-sr-sub data-sr-dup={dup ? "" : undefined}>
               {current?.name ?? selected}
               {trigger && trigger.ageSec !== null && ` · ${describeAge(trigger.ageSec)}`}
               {status === "stills" && " · stills"}

@@ -67,7 +67,8 @@ async function seen(page, selector, timeout = 30_000) {
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
 async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
-  if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
+  if (fixedTime === "flow") await context.clock.install({ time: new Date(PINNED_ISO) }); // same instant, still ticking: SWR's focus throttle and dedupe read Date.now
+  else if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
   const state = { weather };
@@ -326,6 +327,7 @@ const OVERLAY_SCAN = () => {
   }
   const title = document.querySelector("[data-sr-title]");
   return {
+    bottomGap: dlg ? Math.round((innerHeight - dlg.getBoundingClientRect().bottom) * 10) / 10 : null, // viewport height minus the overlay's bottom edge: >= 0 for sheets
     n13Ancestors: ancestors,
     n13PanelEmpty: dlg ? getComputedStyle(dlg).getPropertyValue("--sr-panel").trim() === "" : true,
     inHost: !!(dlg && host && host.contains(dlg)),
@@ -342,13 +344,23 @@ const OVERLAY_STATES = [
   { key: "pin", shot1024: true, open: (p) => p.getByRole("button", { name: /^Admin/ }).first(), close: (p) => p.keyboard.press("Escape") },
   { key: "radar", open: (p) => p.getByRole("button", { name: "Open the rain radar" }), close: (p) => p.keyboard.press("Escape") },
 ];
+/** Waits until the overlay's own animations are done (getAnimations() empty), capped at 1 s, then 100 ms. */
+async function settle(page, sel = "[data-sr-face]") {
+  await page.evaluate(async (q) => {
+    const el = document.querySelector(q);
+    if (!el) return;
+    const running = [el, el.parentElement].flatMap((n) => (n ? n.getAnimations() : []));
+    await Promise.race([Promise.all(running.map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 1000))]);
+  }, sel);
+  await page.waitForTimeout(100);
+}
 /** Open one overlay; resolves the locator's presence, the dialog's arrival, then runs `then`; always closes and waits for the dialog to go. */
 async function withOverlay(page, st, then) {
   const trigger = st.open(page);
   if (!(await trigger.count())) return { missing: `${st.key} trigger` };
   await trigger.click();
   if (!(await seen(page, "[role=dialog]", 5000))) return { missing: `${st.key} dialog` };
-  await page.waitForTimeout(800);
+  await settle(page);
   const r = await then();
   await st.close(page);
   await page.waitForSelector("[role=dialog]", { state: "detached", timeout: 5000 }).catch(() => (r.stuckOpen = true));
@@ -435,9 +447,9 @@ const SCAN_AT = (sel) => {
     const cs = getComputedStyle(a);
     if (cs.transform !== "none" || cs.filter !== "none" || cs.perspective !== "none") ancestors.push(`${a.tagName.toLowerCase()}.${String(a.className).slice(0, 40)}`);
   }
-  return { present: !!el, inHost: !!(el && host && host.contains(el)), face: el ? getComputedStyle(el).boxShadow !== "none" : false, n13Ancestors: ancestors };
+  return { bottomGap: el ? Math.round((innerHeight - el.getBoundingClientRect().bottom) * 10) / 10 : null, present: !!el, inHost: !!(el && host && host.contains(el)), face: el ? getComputedStyle(el).boxShadow !== "none" : false, n13Ancestors: ancestors };
 };
-const extraVisit = (routes) => visit(EXTRA_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), ha: true, routes, initScript: AUDIO_STUB });
+const extraVisit = (routes, viewport = SIZES[0].viewport) => visit(EXTRA_URL, { viewport, weather: weatherFor("midday"), fixedTime: "flow", ha: true, routes, initScript: AUDIO_STUB });
 results.overlays.extra = {};
 await guarded("overlays extra doorbell", async () => {
   const { context, page } = await extraVisit({ "/kiosk/api/doorbell": DOORBELL_OK });
@@ -446,7 +458,7 @@ await guarded("overlays extra doorbell", async () => {
   if (!(await trigger.count())) return void (out.missing = "doorbell trigger");
   await trigger.click();
   if (!(await seen(page, "[role=dialog]", 5000))) return void (out.missing = "doorbell dialog");
-  await page.waitForTimeout(800);
+  await settle(page);
   await page.screenshot({ path: join(OUT_DIR, "overlay-doorbell-1180x820.png") });
   Object.assign(out, await page.evaluate(SCAN_AT, "[data-sr-face]"));
   await context.close();
@@ -455,7 +467,7 @@ await guarded("overlays extra alerts", async () => {
   const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_WARN });
   const take = (results.overlays.extra.alertTakeover = {});
   if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for one raised alert");
-  await page.waitForTimeout(800);
+  await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-alert-takeover-1180x820.png") });
   Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), { chimeOscillators: await page.evaluate(() => window.__osc) });
   await page.getByRole("status").filter({ hasText: "A container stopped" }).first().click(); // a tap dismisses
@@ -465,11 +477,33 @@ await guarded("overlays extra alerts", async () => {
   if (!(await btn.count())) return void (tray.missing = "alerts button after the takeover");
   await btn.click();
   if (!(await seen(page, '[role=dialog][aria-label="Alerts"]', 5000))) return void (tray.missing = "alerts tray");
-  await page.waitForTimeout(800);
+  await settle(page, '[role=dialog][aria-label="Alerts"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-alert-tray-1180x820.png") });
   Object.assign(tray, await page.evaluate(SCAN_AT, '[role=dialog][aria-label="Alerts"]'));
   await context.close();
 });
+// overlays.extra.downloadsOverlap.<size>: px² where the downloads button meets any forecast cell; must be 0.
+results.overlays.extra.downloadsOverlap = {};
+for (const size of SIZES) {
+  await guarded(`downloads overlap ${size.name}`, async () => {
+    const { context, page } = await extraVisit({ "/kiosk/api/downloads": downloads(1) }, size.viewport);
+    await page.waitForSelector('[data-testid="kiosk-forecast-rail"]', { timeout: 15_000 }).catch(() => {});
+    await page.waitForTimeout(6000); // first poll
+    results.overlays.extra.downloadsOverlap[size.name] = await page.evaluate(() => {
+      const btn = [...document.querySelectorAll("button")].find((b) => /downloads? in progress/.test(b.getAttribute("aria-label") ?? ""));
+      const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
+      if (!btn || !rail) return { missing: !btn ? "downloads button" : "forecast rail" };
+      const a = btn.getBoundingClientRect();
+      let area = 0;
+      for (const cell of rail.children) {
+        const b = cell.getBoundingClientRect();
+        area += Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+      }
+      return { area: Math.round(area) };
+    });
+    await context.close();
+  });
+}
 await guarded("overlays extra downloads", async () => {
   const routes = { "/kiosk/api/downloads": downloads(1) };
   const { context, page } = await extraVisit(routes);
@@ -479,7 +513,7 @@ await guarded("overlays extra downloads", async () => {
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   if (!(await seen(page, "[role=status][data-sr-face]", 15_000))) toast.missing = "toast did not fire after a second download appeared";
   else {
-    await page.waitForTimeout(600);
+    await settle(page, "[role=status][data-sr-face]");
     await page.screenshot({ path: join(OUT_DIR, "overlay-downloads-toast-1180x820.png") });
     Object.assign(toast, await page.evaluate(SCAN_AT, "[role=status][data-sr-face]"));
   }
@@ -488,7 +522,7 @@ await guarded("overlays extra downloads", async () => {
   if (!(await btn.count())) return void (tray.missing = "downloads button");
   await btn.click({ force: true }); // the toast may still sit over the corner
   if (!(await seen(page, '[role=dialog][aria-label="Downloads"]', 5000))) return void (tray.missing = "downloads tray");
-  await page.waitForTimeout(800);
+  await settle(page, '[role=dialog][aria-label="Downloads"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-downloads-tray-1180x820.png") });
   Object.assign(tray, await page.evaluate(SCAN_AT, '[role=dialog][aria-label="Downloads"]'));
   await context.close();

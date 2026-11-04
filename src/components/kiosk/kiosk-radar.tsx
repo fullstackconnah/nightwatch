@@ -374,20 +374,20 @@ export function KioskRadarModal({
           </button>
         </div>
 
-        {loading && <div className="py-16 text-center text-sm text-ink-dim">Loading radar…</div>}
+        {loading && <div data-sr-body className="py-16 text-center text-sm text-ink-dim">Loading radar…</div>}
 
         {unreachable && (
-          <div role="alert" className="py-16 text-center text-sm text-bad">
+          <div role="alert" data-sr-body className="py-16 text-center text-sm text-bad">
             Radar is unavailable right now.
           </div>
         )}
 
         {unconfigured && (
-          <div className="py-16 text-center text-sm text-ink-dim">No location configured for the radar.</div>
+          <div data-sr-body className="py-16 text-center text-sm text-ink-dim">No location configured for the radar.</div>
         )}
 
         {okData && layersFailed && (
-          <div role="alert" className="py-16 text-center text-sm text-bad">
+          <div role="alert" data-sr-body className="py-16 text-center text-sm text-bad">
             Radar imagery failed to load.
           </div>
         )}

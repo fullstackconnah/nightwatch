@@ -310,7 +310,7 @@ function ClimateAutoOffSheet({
           </button>
         </div>
 
-        <div className="space-y-5 overflow-y-auto px-4 py-4">
+        <div data-sr-sheet-body className="space-y-5 overflow-y-auto px-4 py-4">
           <button
             ref={firstFocusRef}
             type="button"

@@ -18,6 +18,46 @@
   transition: opacity var(--kiosk-focus-ms) ease-out;
 }
 
+/* ---------- F2: overlay text follows the DS scale (title 28, body 22, label 18, meta 16, micro 15) ----------
+   Selectors are (0,2,0) so they beat the utility size classes; later rules win a tie, so the order below is the ranking. */
+[data-kiosk-theme="sunroom"] :where([data-sr-face]) :is(.text-xs, .text-sm, .text-base, .text-2xs) {
+  font: var(--sr-type-label);
+  letter-spacing: var(--sr-track-label);
+}
+[data-kiosk-theme="sunroom"] :where([data-sr-face]) .microlabel {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+}
+/* Body and helper copy; the doorbell subtitle is a one-line helper, so it stays label. */
+[data-kiosk-theme="sunroom"] :where([data-sr-face]) :is(p, [data-sr-body]) {
+  font: var(--sr-type-body);
+  letter-spacing: var(--sr-track-body);
+}
+[data-kiosk-theme="sunroom"] :where([data-sr-face]) [data-sr-sub] {
+  font: var(--sr-type-label);
+  letter-spacing: var(--sr-track-label);
+}
+/* Mono meta (percent, time, state word). */
+[data-kiosk-theme="sunroom"] :where([data-sr-face]) .font-mono:is(.text-xs, .text-2xs) {
+  font: var(--sr-type-meta);
+  letter-spacing: var(--sr-track-meta);
+}
+/* Dialogs share one inner padding (F7). */
+[data-kiosk-theme="sunroom"] [data-sr-overlay="dialog"] [data-sr-face] {
+  padding: var(--sr-space-6);
+}
+/* F3: a segment already shows its value, so the echo beside the heading goes. */
+[data-kiosk-theme="sunroom"] [data-sr-echo] {
+  display: none;
+}
+/* F6: the doorbell drops a subtitle that only repeats the title, and the live dot gets its word. */
+[data-kiosk-theme="sunroom"] [data-sr-dup] {
+  display: none;
+}
+[data-kiosk-theme="sunroom"] [data-sr-dot-word] {
+  display: inline;
+}
+
 /* ---------- Scrim and float ---------- */
 [data-kiosk-theme="sunroom"] [data-sr-overlay] {
   background-color: var(--sr-scrim);
@@ -46,8 +86,10 @@
   padding: 0;
 }
 [data-kiosk-theme="sunroom"] [data-sr-overlay="sheet"] [data-sr-face] {
+  display: flex;
+  flex-direction: column;
   max-width: 720px;
-  max-height: 85vh;
+  max-height: calc(100dvh - var(--sr-space-6)); /* F1: the sheet ends at the viewport bottom, its body scrolls */
   border-radius: var(--sr-radius-lg) var(--sr-radius-lg) 0 0;
   animation: sr-sheet-in var(--sr-m-slide) var(--sr-m-ease-out) backwards;
 }
@@ -65,6 +107,12 @@
   height: 5px;
   border-radius: var(--sr-radius-full);
   background: var(--sr-handle);
+}
+[data-kiosk-theme="sunroom"] [data-sr-overlay="sheet"] [data-sr-sheet-body] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 @keyframes sr-sheet-in {
   from { transform: translateY(100%); }
@@ -86,8 +134,8 @@
   box-shadow: var(--sr-shadow-well);
 }
 [data-kiosk-theme="sunroom"] .sr-pin-msg {
-  font: var(--sr-type-label);
-  letter-spacing: var(--sr-track-label);
+  font: var(--sr-type-body);
+  letter-spacing: var(--sr-track-body);
 }
 
 /* ---------- TimerRing: the ring repaints once a second and never eases (DIRECTION section 9) ---------- */

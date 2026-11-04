@@ -36,11 +36,11 @@ import { HVAC_LABEL, formatTemp, titleCase } from "@/components/kiosk/kiosk-clim
  *  state alone, because with four groups on screen the pressed chip is one tint
  *  among twenty-odd controls; as a line of type next to the heading it reads at
  *  a glance and, on the slider below, it is the ONLY readout. */
-function GroupHeading({ title, value }: { title: string; value?: string }) {
+function GroupHeading({ title, value, echo }: { title: string; value?: string; echo?: boolean }) {
   return (
     <div className="mb-2 flex items-baseline justify-between gap-3">
       <span className="microlabel" data-sr-group>{title}</span>
-      <span className="font-mono text-xs text-accent">{value ?? "—"}</span>
+      <span className="font-mono text-xs text-accent" data-sr-echo={echo ? "" : undefined}>{value ?? "—"}</span>
     </div>
   );
 }
@@ -89,7 +89,7 @@ function ModeChipGroup({
   const slabAt = sunroom && options.length <= 5 ? options.indexOf(current ?? "") : -1;
   return (
     <div className={cn("mt-6", className)} role="group" aria-label={groupLabel} data-kiosk-focused={focused ? "true" : undefined}>
-      <GroupHeading title={title} value={current ? displayLabel(current) : undefined} />
+      <GroupHeading title={title} value={current ? displayLabel(current) : undefined} echo />
       <div
         className="sr-seg flex flex-wrap justify-center gap-2"
         data-slab={slabAt >= 0 ? "" : undefined}

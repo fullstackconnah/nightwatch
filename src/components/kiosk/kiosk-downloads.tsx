@@ -500,6 +500,14 @@ export function KioskDownloads() {
     if (items.length === 0) setTrayOpen(false);
   }, [items.length]);
 
+  // The button is fixed over the header's right end; this flag lets the header keep that corner clear (globals.css).
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    if (!hasItems) return;
+    document.documentElement.setAttribute("data-kiosk-downloads", "");
+    return () => document.documentElement.removeAttribute("data-kiosk-downloads");
+  }, [hasItems]);
+
   return (
     <>
       <KioskDownloadsButton ref={buttonRef} items={items} trayOpen={trayOpen} onPress={() => setTrayOpen((o) => !o)} />

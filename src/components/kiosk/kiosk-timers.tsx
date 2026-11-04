@@ -468,7 +468,7 @@ function KioskTimersOverlay({
           </button>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+        <div data-sr-sheet-body className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
           {list.length > 0 && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {list.map((t) => (

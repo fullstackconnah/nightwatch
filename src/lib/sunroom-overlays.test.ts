@@ -131,3 +131,32 @@ describe("sheet slide-out (fix round 1, item 1)", () => {
     }
   });
 });
+
+describe("fix round 2: sheet height, DS type scale, climate echo, downloads corner", () => {
+  const css = noComments(read("src/app/kiosk/sunroom/overlays.css"));
+  it("F1: the sheet ends at the viewport bottom and its body scrolls inside it", () => {
+    assert.match(css, /\[data-sr-overlay="sheet"\] \[data-sr-face\]\s*\{[^}]*max-height:\s*calc\(100dvh - var\(--sr-space-6\)\)/);
+    assert.match(css, /\[data-sr-sheet-body\]\s*\{[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain|\[data-sr-sheet-body\]\s*\{[^}]*overscroll-behavior:\s*contain;[^}]*overflow-y:\s*auto/);
+    for (const f of ["kiosk-climate-auto-off", "kiosk-timers"]) assert.match(read(`src/components/kiosk/${f}.tsx`), /data-sr-sheet-body/);
+  });
+  it("F2: overlay text reads label, body, meta and micro through the type tokens, with no px literal", () => {
+    assert.match(css, /:is\(\.text-xs, \.text-sm, \.text-base, \.text-2xs\)\s*\{[^}]*font:\s*var\(--sr-type-label\)/);
+    assert.match(css, /:is\(p, \[data-sr-body\]\)\s*\{[^}]*font:\s*var\(--sr-type-body\)/);
+    assert.match(css, /\.font-mono:is\(\.text-xs, \.text-2xs\)\s*\{[^}]*font:\s*var\(--sr-type-meta\)/);
+    assert.match(css, /\.microlabel\s*\{[^}]*font:\s*var\(--sr-type-micro\)/);
+    assert.doesNotMatch(css, /font(-size)?:\s*[^;]*\d+px/);
+  });
+  it("F3: the segment echo is hidden under Sunroom and only the mode groups carry it", () => {
+    assert.match(css, /\[data-sr-echo\]\s*\{[^}]*display:\s*none/);
+    assert.match(read("src/components/kiosk/kiosk-climate-modal.tsx"), /<GroupHeading title=\{title\} value=\{current \? displayLabel\(current\) : undefined\} echo \/>/);
+  });
+  it("F6/F7: a duplicate subtitle is hidden, the dot has a word, dialogs share one padding", () => {
+    assert.match(css, /\[data-sr-dup\]\s*\{[^}]*display:\s*none/);
+    assert.match(css, /\[data-sr-dot-word\]\s*\{[^}]*display:\s*inline/);
+    assert.match(css, /\[data-sr-overlay="dialog"\] \[data-sr-face\]\s*\{[^}]*padding:\s*var\(--sr-space-6\)/);
+  });
+  it("F4: a downloads button keeps the header's right corner clear in every theme", () => {
+    assert.match(read("src/app/globals.css"), /html\[data-kiosk-downloads\] \.kiosk-hdr-grid\s*\{[^}]*padding-right/);
+    assert.match(read("src/components/kiosk/kiosk-downloads.tsx"), /data-kiosk-downloads/);
+  });
+});
