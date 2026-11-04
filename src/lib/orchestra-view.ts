@@ -103,7 +103,7 @@ export function formatQuiet(quietMin: number | null): string {
  */
 export function orchestraAttention(
   status: OrchestraState,
-  details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[],
+  details: Pick<OrchestratorSummary, "name" | "title" | "inFlight">[],
   lastInFlight = 0,
 ): { headline: string; detail: string; action: string } | null {
   if (status === "unreachable") {
@@ -123,6 +123,17 @@ export function orchestraAttention(
     };
   }
   if (status !== "ok") return null;
+  // A waiting agent (a pending tool call, usually a permission prompt) blocks work now, so it outranks a stalled one.
+  const waiting = details
+    .flatMap((o) => o.inFlight.filter((e) => e.waiting).map((e) => ({ agent: e.name, orch: o.title ?? o.name, tool: e.waiting!.tool, since: e.waiting!.sinceMin })))
+    .sort((a, b) => b.since - a.since);
+  const wTop = waiting[0];
+  if (wTop) {
+    const call = `${id(wTop.agent)} has a ${wTop.tool} call waiting ${wTop.since}m, usually a permission prompt.`;
+    return waiting.length === 1
+      ? { headline: `${id(wTop.orch)} is waiting for you`, detail: call, action: "Answer it on the PC." }
+      : { headline: `${waiting.length} agents are waiting for you`, detail: `Longest: ${call}`, action: "Answer them on the PC." };
+  }
   const stalled = details
     .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))
     .sort((a, b) => (b.quietMin ?? 0) - (a.quietMin ?? 0));
@@ -180,6 +191,10 @@ export function tallySegments(t: LaneTally): { n: number; label: string }[] {
     { n: t.agents, label: t.agents === 1 ? "agent in flight" : "agents in flight" },
   ].filter((s) => s.n > 0);
 }
+
+/** Home's one line: Lanes tally in Home's order, without the agent count. */
+export const homeLanesText = (list: OrchestratorSummary[]): string =>
+  tallySegments(laneTally(list)).filter((s) => !s.label.startsWith("agent")).map((s) => `${s.n} ${s.label}`).join(", ") || "no lanes";
 
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
