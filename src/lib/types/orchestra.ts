@@ -13,11 +13,15 @@ export interface OrchestratorSummary {
   stalledCount: number;
   /** Slack watcher: online | busy | offline, or null when the service could not tell. */
   watcher: string | null;
+  /** Every agent in flight, from the list call (no path). Empty when the service sends none. */
+  inFlight: OrchestratorInFlight[];
 }
 
 export interface OrchestratorInFlight {
   name: string;
   quietMin: number | null;
+  /** A tool call with no result for 5+ minutes (usually a permission prompt), or null. */
+  waiting: { tool: string; sinceMin: number } | null;
 }
 
 export interface OrchestratorDetail extends OrchestratorSummary {
@@ -25,7 +29,6 @@ export interface OrchestratorDetail extends OrchestratorSummary {
   plugins: string[];
   checkpoint: string | null;
   sessionId?: string | null;
-  inFlight: OrchestratorInFlight[];
 }
 
 export interface OrchestraSnapshot {

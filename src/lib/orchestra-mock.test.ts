@@ -35,6 +35,28 @@ describe("orchestra mock speaks the shape src/lib/orchestra.ts reads", () => {
     assert.equal(gone.orchestrator, null);
   });
 
+  it("every list item carries inFlight with waiting, and never a path", async () => {
+    const s = await getOrchestraSnapshot(creds("mock-mixed"));
+    assert.deepEqual(s.orchestrators.map((o) => o.inFlight.length), [2, 0, 3, 0]);
+    assert.ok(s.orchestrators.every((o) => o.inFlight.every((a) => a.waiting === null)));
+    assert.ok(!JSON.stringify(s).includes("jsonl"));
+  });
+
+  it("mock-stuck: one waiting 7 m, a stalled 24 m, a quiet 19 m and a 26-character name", async () => {
+    const s = await getOrchestraSnapshot(creds("mock-stuck"));
+    const agents = s.orchestrators.flatMap((o) => o.inFlight);
+    assert.deepEqual(agents.find((a) => a.waiting)?.waiting, { tool: "Bash", sinceMin: 7 });
+    assert.deepEqual(agents.filter((a) => a.quietMin === 24 || a.quietMin === 19).length, 2);
+    assert.ok(agents.some((a) => a.name.length === 26));
+    const d = await getOrchestraDetail("design", creds("mock-stuck"));
+    assert.equal(d.orchestrator?.inFlight[0].waiting?.sinceMin, 7);
+  });
+
+  it("mock-busy: one lane has six agents in flight", async () => {
+    const s = await getOrchestraSnapshot(creds("mock-busy"));
+    assert.equal(s.orchestrators[0].inFlight.length, 6);
+  });
+
   it("mock-empty: ok with no orchestrators", async () => {
     const s = await getOrchestraSnapshot(creds("mock-empty"));
     assert.deepEqual([s.status, s.orchestrators.length], ["ok", 0]);

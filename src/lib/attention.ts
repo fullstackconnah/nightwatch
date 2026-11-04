@@ -476,7 +476,7 @@ async function computeReport(): Promise<Computed> {
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
     // Last: a quiet agent is never a household outage.
-    { id: "orchestra", label: "Orchestrators", run: () => probeOrchestra() },
+    { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },
   ];
   const outcomes = await runProbes(defs, PROBE_DEADLINE_MS);
 

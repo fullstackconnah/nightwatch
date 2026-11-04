@@ -55,8 +55,36 @@ describe("getOrchestraSnapshot", () => {
     assert.equal(snap.orchestrators.length, 1);
     assert.deepEqual(snap.orchestrators[0], {
       name: "dev", title: "Dev", state: "running", lastActivityAt: "2026-10-31T01:00:00Z", model: "opus",
-      home: "F:\\x", inFlightCount: 2, stalledCount: 1, watcher: "online",
+      home: "F:\\x", inFlightCount: 2, stalledCount: 1, watcher: "online", inFlight: [],
     });
+  });
+  it("keeps each agent's valid waiting, turns every bad shape into null and drops where and costToday", async () => {
+    const agents = [
+      { name: "ok", quietMin: 2, where: "F:\\secret", waiting: { tool: "Bash", sinceMin: 7 } },
+      { name: "long", quietMin: 2, waiting: { tool: "T".repeat(80), sinceMin: 0 } },
+      { name: "notool", quietMin: 2, waiting: { tool: "", sinceMin: 7 } },
+      { name: "nonum", quietMin: 2, waiting: { tool: "Bash", sinceMin: "7" } },
+      { name: "neg", quietMin: 2, waiting: { tool: "Bash", sinceMin: -1 } },
+      { name: "nan", quietMin: 2, waiting: { tool: "Bash", sinceMin: null } },
+      { name: "str", quietMin: 2, waiting: "Bash" },
+      { name: "none", quietMin: null },
+      { bogus: true },
+    ];
+    const url = await stub(() => ({ code: 200, body: { orchestrators: [{ ...dev, inFlight: agents }] } }));
+    const snap = await getOrchestraSnapshot({ url, token: TOKEN });
+    const got = snap.orchestrators[0].inFlight;
+    assert.deepEqual(got.map((a) => a.name), ["ok", "long", "notool", "nonum", "neg", "nan", "str", "none"]);
+    assert.deepEqual(got[0], { name: "ok", quietMin: 2, waiting: { tool: "Bash", sinceMin: 7 } });
+    assert.deepEqual(got[1].waiting, { tool: "T".repeat(64), sinceMin: 0 });
+    assert.deepEqual(got.slice(2).map((a) => a.waiting), [null, null, null, null, null, null]);
+    assert.equal(got[7].quietMin, null);
+    assert.ok(!JSON.stringify(snap).includes("secret"));
+    assert.ok(!("costToday" in snap.orchestrators[0]));
+  });
+  it("a missing or non-array inFlight is an empty list", async () => {
+    const url = await stub(() => ({ code: 200, body: { orchestrators: [dev, { ...dev, name: "odip", inFlight: "x" }] } }));
+    const snap = await getOrchestraSnapshot({ url, token: TOKEN });
+    assert.deepEqual(snap.orchestrators.map((o) => o.inFlight), [[], []]);
   });
   it("a server that never answers is unreachable within 6 s", { timeout: 8000 }, async () => {
     const url = await stub(() => "hang");
@@ -93,7 +121,7 @@ describe("getOrchestraDetail", () => {
     const url = await stub((u) => (u === "/v1/orchestrators/dev" ? { code: 200, body: full } : { code: 404, body: { error: "not found" } }));
     const d = await getOrchestraDetail("dev", { url, token: TOKEN });
     assert.equal(d.status, "ok");
-    assert.deepEqual(d.orchestrator?.inFlight, [{ name: "a1", quietMin: 21 }]);
+    assert.deepEqual(d.orchestrator?.inFlight, [{ name: "a1", quietMin: 21, waiting: null }]);
     assert.equal(d.orchestrator?.checkpoint, "c");
     assert.equal(d.orchestrator?.sessionId, "11111111-2222-3333-4444-555555555555");
     const missing = await getOrchestraDetail("nope", { url, token: TOKEN });

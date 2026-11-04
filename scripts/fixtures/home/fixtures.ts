@@ -105,7 +105,7 @@ const disk = (now: number, minAgo: number) =>
   });
 const lane = (now: number, minAgo: number) =>
   hit(now, "orchestra", "orchestra", "warn", "dev lane has been stuck for 40 min", minAgo, {
-    owner: { href: "/orchestrators", label: "Open Orchestrators" },
+    owner: { href: "/orchestrators", label: "Open AI lanes" },
   });
 
 export function build(now: number) {
