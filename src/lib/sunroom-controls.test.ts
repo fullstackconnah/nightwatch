@@ -60,7 +60,7 @@ describe("N12 static: nothing that updates more than once a minute is transition
 describe("Glaze: a chip that is on rests on --sr-on-rest, not the full sunlit face", () => {
   const css = readFileSync(join(process.cwd(), "src/app/kiosk/sunroom/controls.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
   const rules = () => [...css.matchAll(/([^{}@]+)\{([^{}]*)\}/g)].map(([, sel, body]) => ({ sel: sel.trim(), body }));
-  const onChipLit = () => rules().find((r) => /sr-chip\[aria-checked="true"\] \.sr-lit/.test(r.sel) && r.body.includes("on-rest"));
+  const onChipLit = () => rules().find((r) => /sr-chip\[role="switch"\]\[aria-checked="true"\] \.sr-lit/.test(r.sel) && r.body.includes("on-rest"));
   const WANT: Record<string, string> = { dawn: "0.28", morning: "0.18", midday: "0.18", golden: "0.24", dusk: "0.5", night: "0.32" };
 
   it("on-rest exists at every stop with the contrast-table value", () => {
@@ -74,18 +74,32 @@ describe("Glaze: a chip that is on rests on --sr-on-rest, not the full sunlit fa
   });
   it("the resting ON chip face is the glaze, and the full light only shows during the bloom", () => {
     assert.match(onChipLit()?.body ?? "", /opacity:\s*var\(--sr-on-rest\)/);
-    const base = rules().find((r) => /button\.sr-chip \.sr-lit$/.test(r.sel));
+    const base = rules().find((r) => /button\.sr-chip\[role="switch"\] \.sr-lit$/.test(r.sel));
     assert.match(base?.body ?? "", /opacity:\s*1/);
   });
   it("disabled ON shows no light and ink-faint pip and word", () => {
-    const lit = rules().find((r) => /button\.sr-chip:disabled \.sr-lit/.test(r.sel));
+    const lit = rules().find((r) => /button\.sr-chip\[role="switch"\]:disabled \.sr-lit/.test(r.sel));
     assert.match(lit?.body ?? "", /opacity:\s*0/);
-    assert.match(css, /button\.sr-chip:disabled:is\([^)]*\) \.sr-pip\s*\{[^}]*--sr-ink-faint/);
-    assert.match(css, /button\.sr-chip:disabled:is\([^)]*\) \.sr-state\s*\{[^}]*--sr-ink-faint/);
+    assert.match(css, /button\.sr-chip\[role="switch"\]:disabled:is\([^)]*\) \.sr-pip\s*\{[^}]*--sr-ink-faint/);
+    assert.match(css, /button\.sr-chip\[role="switch"\]:disabled:is\([^)]*\) \.sr-state\s*\{[^}]*--sr-ink-faint/);
   });
   it("reduced motion lands on the glaze with no .sr-lit transition", () => {
     const rm = css.slice(css.indexOf("prefers-reduced-motion"));
     assert.match(rm, /\[data-lit="true"\] \.sr-lit\s*\{[^}]*transition:\s*none/);
+  });
+  it("the glaze reaches the hub toggle chip only: never a bare button.sr-chip (theme, font, pill, scene keep main)", () => {
+    const glaze = rules().filter((r) => /sr-lit|:disabled:is/.test(r.sel) && /sr-chip/.test(r.sel) && /on-rest|opacity:\s*0|transition:\s*none|ink-faint|opacity:\s*1/.test(r.body));
+    assert.ok(glaze.length >= 4);
+    for (const r of glaze) for (const sel of r.sel.split(",")) if (/button\.sr-chip/.test(sel)) assert.match(sel, /button\.sr-chip\[role="switch"\]/, sel.trim());
+  });
+  it("selection chips and the pill (aria-pressed or aria-checked without role=switch) get no resting-opacity rule", () => {
+    const hit = rules().filter((r) => /on-rest/.test(r.body)).flatMap((r) => r.sel.split(","));
+    assert.ok(hit.length > 0);
+    for (const sel of hit) assert.match(sel, /\[role="switch"\]/, sel.trim());
+  });
+  it("disabled ON drops its light at once: transition none", () => {
+    const lit = rules().find((r) => /\[role="switch"\]:disabled \.sr-lit/.test(r.sel));
+    assert.match(lit?.body ?? "", /transition:\s*none/);
   });
   it("one indicator: the toggle chip's dot is gone in Sunroom and the hiding rule is deleted", () => {
     const hub = readFileSync(join(process.cwd(), "src/components/kiosk/kiosk-hub.tsx"), "utf8");
