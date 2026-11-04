@@ -11,7 +11,7 @@ import { PageHead } from "@/components/strips/page-head";
 import { StripList, useHeldList, type StripSpec } from "@/components/strips/strip-list";
 import { buttonVariants } from "@/components/ui/button";
 import { useContainers, useMinecraftBackups, useMinecraftStatus } from "@/lib/client";
-import { minecraftModel, type StripId } from "@/lib/minecraft/page-model";
+import { leadFor, minecraftModel, type StripId } from "@/lib/minecraft/page-model";
 import { useNow } from "@/lib/use-now";
 
 /** Players: names only. While the strips are held (pointer or focus inside) rows stay put; a name that left reads "left" and new names wait behind "N new · show" (R5). */
@@ -88,7 +88,7 @@ export default function MinecraftPage() {
     players: { body: <PlayersDetail names={status?.players?.players ?? []} stopped={container?.state !== "running"} /> },
     pack: {
       body: status ? (
-        <PackBrowser instances={status.instances} active={status.active} onChanged={refresh} disabled={writesOff} />
+        <PackBrowser instances={status.instances} active={status.active} onChanged={refresh} disabled={writesOff} lead={leadFor(model, "pack")} />
       ) : null,
     },
     backups: {

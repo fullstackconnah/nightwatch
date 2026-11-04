@@ -62,6 +62,8 @@ const ORDER = {
   noPack: ["pack", "server", "backups", "players", "console", "log"],
 } as const satisfies Record<string, readonly StripId[]>;
 const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
+/** The full answer leads the strip the answer names, and only that one (R3). */
+export const leadFor = (m: Pick<Model, "autoTarget" | "detailLead">, id: StripId): string | null => (m.autoTarget === id ? m.detailLead : null);
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 export function minecraftModel(i: ModelInput): Model {

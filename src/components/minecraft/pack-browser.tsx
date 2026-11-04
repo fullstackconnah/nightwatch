@@ -39,12 +39,15 @@ export function PackBrowser({
   active,
   onChanged,
   disabled,
+  lead,
 }: {
   instances: McInstance[];
   active: string | null;
   onChanged: () => void;
   /** The server is not answering: pack writes are off (R-stale). */
   disabled?: boolean;
+  /** The full answer, when Pack opened by itself (R3). */
+  lead?: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -90,6 +93,7 @@ export function PackBrowser({
 
   return (
     <div className="st-stack">
+      {lead && <p className="text-sm text-ink">{lead}</p>}
       <section className="st-stack" aria-label="Install a pack">
         <h3 className="microlabel">Install a pack</h3>
         <div className="flex gap-2 flex-wrap">

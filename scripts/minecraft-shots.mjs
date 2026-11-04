@@ -134,6 +134,8 @@ const openStrip = async (page, id) => {
   await page.locator(`[data-k="open-${id}"]`).click();
   await page.waitForTimeout(120);
 };
+/** Waits for the element (isVisible({timeout}) does not wait). */
+const seen = (loc) => loc.waitFor({ state: "visible", timeout: 5_000 }).then(() => true, () => false);
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 
 /** C4, C4g, C5: the answer slot's box, the gap under its last text line, and its bottom edge. */
@@ -313,8 +315,9 @@ try {
       };
       for (const [key, chip, phrase] of STATES) {
         const { page } = await visit(s, key);
-        await measure(page, key, [chip, phrase]);
+        // Shoot first: measure() runs writesOn, which opens every strip in turn and leaves the last one open.
         await shoot(page, s, key, key === "calm" || key === "crashed");
+        await measure(page, key, [chip, phrase]);
         await page.close();
       }
       const { page, mock } = await visit(s, "calm");
@@ -442,16 +445,16 @@ try {
       await stop.click();
       mock.action = "hold";
       await page.getByRole("button", { name: "Yes, stop minecraft" }).click();
-      const flight = await page.getByText("Stopping…").first().isVisible({ timeout: 5_000 }).catch(() => false);
+      const flight = await seen(page.getByText("Stopping…").first());
       mock.release?.();
       mock.action = "fail";
       await page.waitForTimeout(400);
       await stop.waitFor({ timeout: 5_000 }).catch(() => {});
       await stop.click();
       await page.getByRole("button", { name: "Yes, stop minecraft" }).click();
-      const failed = await page.getByText("Couldn’t stop the server: boom.").isVisible({ timeout: 5_000 }).catch(() => false);
-      const retry = await page.getByRole("button", { name: "Try again" }).isVisible();
-      const dismiss = await page.getByRole("button", { name: "Dismiss" }).isVisible();
+      const failed = await seen(page.getByText("Couldn’t stop the server: boom."));
+      const retry = await seen(page.getByRole("button", { name: "Try again" }));
+      const dismiss = await seen(page.getByRole("button", { name: "Dismiss" }));
       record("C11writes", s.name, { saysPlayers: /disconnects 2 players/.test(frame), escapeCloses: closed, flight, failed, retry, dismiss });
       await shoot(page, s, "stop-failed", false);
       await page.close();

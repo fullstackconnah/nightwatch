@@ -8,7 +8,7 @@ import { ConfirmStop } from "@/components/resources/container-controls";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { postJson, type MinecraftStatusResponse } from "@/lib/client";
-import type { Model } from "@/lib/minecraft/page-model";
+import { leadFor, type Model } from "@/lib/minecraft/page-model";
 
 const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
 
@@ -93,9 +93,10 @@ export function ServerDetail({
 }) {
   const active = status?.instances.find((i) => i.slug === status.active);
   const restart = writeOf(model, "restart");
+  const lead = leadFor(model, "server");
   return (
     <div className="st-stack">
-      {model.detailLead && <p className="text-sm text-ink">{model.detailLead}</p>}
+      {lead && <p className="text-sm text-ink">{lead}</p>}
       {active ? (
         <div className="st-row">
           <span className="text-sm text-ink font-medium">{active.name}</span>

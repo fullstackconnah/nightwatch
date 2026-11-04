@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { minecraftModel, type McContainer, type Model, type ModelInput, type WriteId } from "./page-model.ts";
+import { leadFor, minecraftModel, type McContainer, type Model, type ModelInput, type WriteId } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-04T10:00:00Z");
 const pack = (slug: string, name: string) => ({
@@ -180,4 +180,13 @@ test("C4b: every fact in the answer is on screen without opening a strip, or lea
 test("the unauthorized and down models never show an address", () => {
   const m = minecraftModel(input({ status: status({ manager: "unreachable", managerDetail: "x", instances: [], active: null }) }));
   assert.doesNotMatch(JSON.stringify(m), /\b\d{1,3}(\.\d{1,3}){3}\b/);
+});
+
+test("the full answer leads only the strip the answer names (R3)", () => {
+  const nopack = minecraftModel(input({ status: status({ instances: [], active: null }) }));
+  assert.equal(leadFor(nopack, "pack"), nopack.answer);
+  assert.equal(leadFor(nopack, "server"), null);
+  const crashed = minecraftModel(input({ container: crashedC }));
+  assert.equal(leadFor(crashed, "server"), crashed.answer);
+  assert.equal(leadFor(crashed, "pack"), null);
 });
