@@ -161,7 +161,7 @@ describe("ambient.css static scans", () => {
 
   it("the radar button keeps 16 px to the first forecast cell through space tokens", () => {
     const r = all.find((x) => /data-sr-radar/.test(x.sel) && /width/.test(x.body));
-    assert.match(r?.body ?? "", /margin-inline-end:\s*calc\(var\(--sr-space-4\)\s*-\s*var\(--sr-space-2\)\)/);
+    assert.match(r?.body ?? "", /margin-inline-end:\s*calc\(var\(--sr-space-4\)\s*-\s*var\(--sr-space-1\)\)/);
   });
 
   it("layout.tsx imports ambient.css", () => {

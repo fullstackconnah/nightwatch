@@ -62,8 +62,8 @@
   height: var(--sr-hit-min);
   margin-block: -6px;
   margin-inline: -6px;
-  /* 16 px of air to the first forecast cell: the rail's own gap-2 (--sr-space-2) is already there, so add the rest. */
-  margin-inline-end: calc(var(--sr-space-4) - var(--sr-space-2));
+  /* 16 px to the first cell box (.sr-fc, measured): end margin + the rail gap-2 (8) - the cell's own -mx-1 (4) = 16, so the end margin is space-4 - space-1 (12). */
+  margin-inline-end: calc(var(--sr-space-4) - var(--sr-space-1));
 }
 
 /* ---------- Weather now and the notes that stand for a missing feed ---------- */
