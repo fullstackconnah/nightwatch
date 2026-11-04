@@ -10,7 +10,7 @@
  * no password hash, so the login page accepts any password and issues a real session cookie.
  * Both viewports run side by side, step by step, because the Orchestra settings are server state.
  * Tick sequences (hold, stall mark, reduced motion) answer /api/orchestra/status from the script via page.route and
- * trigger SWR with a focus event, so the data is exact; "active 4m ago" is the only text that follows the real clock.
+ * trigger SWR by running Playwright's page.clock (installed before goto) past the 10 s poll, so the data is exact.
  */
 
 import { chromium } from "playwright";
@@ -26,7 +26,6 @@ const VIEWPORTS = [
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
 ];
 const SLOW = 40_000; // dev-server cold compile plus 2 x 10 s polls
-const FOCUS_THROTTLE = 5300; // SWR throttles focus revalidation to 5 s
 
 mkdirSync(OUT_DIR, { recursive: true });
 const checks = {};
@@ -248,9 +247,9 @@ async function serve(page, ref) {
   await page.route("**/api/orchestra/status", (route) => route.fulfill({ json: ref.snap }));
 }
 async function tick(page) {
-  await page.waitForTimeout(FOCUS_THROTTLE);
-  const answered = page.waitForResponse((r) => r.url().includes("/api/orchestra/status"), { timeout: 20_000 });
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  // The page must have had page.clock.install() before goto: the fake clock runs past the 10 s poll, so SWR refetches.
+  const answered = page.waitForResponse((r) => r.url().includes("/api/orchestra/status"), { timeout: 15_000 }).catch(() => null);
+  await page.clock.runFor(11_000);
   await answered;
   await page.waitForTimeout(300);
 }
@@ -261,22 +260,32 @@ const geometry = (page) =>
 const transformAnimations = (page) =>
   page.evaluate(() => document.getAnimations().filter((a) => a.effect?.getKeyframes?.().some((k) => k.transform && k.transform !== "none")).length);
 
-const each = (fn) => Promise.all(sessions.map(fn));
+// One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next step runs.
+let stage = "";
+const fail = (vp, e) => record("FAIL", `${stage}@${vp}`, String(e?.message ?? e).split(/\r?\n/)[0]);
+const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
+const guarded = (label, fn) => { stage = label; return fn().catch((e) => fail("all", e)); };
 
 try {
   for (const s of sessions) await signIn(s);
 
   // 1 unconfigured (fresh stack)
+  stage = "step 1";
   await each(async (s) => { await goto(s.page, "/orchestrators", text("Orchestra is not connected")); await shoot(s, "01-unconfigured"); record("unconfigured", s.name, { h1: await s.page.locator("h1").textContent(), nothingNeedsYou: (await mainText(s.page)).includes("Nothing needs you") }); });
   // 2 settings card unset
+  stage = "step 2";
   await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "02-settings-unset", "text=Service URL >> xpath=ancestor::div[contains(@class,'panel')]"); });
 
   // 3 save URL + mock-slow through the card, then catch the loading skeleton
+  stage = "step 3";
   const first = sessions[0].page;
-  await first.getByLabel("Service URL").fill(MOCK_URL);
-  await first.getByLabel("Service token").fill("mock-slow");
-  await first.locator(".panel", { has: first.getByLabel("Service URL") }).getByRole("button", { name: "Save" }).click();
-  await first.getByText("saved").first().waitFor({ timeout: SLOW });
+  await guarded("step 3 save", async () => {
+    await first.getByLabel("Service URL").fill(MOCK_URL);
+    await first.getByLabel("Service token").fill("mock-slow");
+    await first.locator(".panel", { has: first.getByLabel("Service URL") }).getByRole("button", { name: "Save" }).click();
+    await first.getByText("saved").first().waitFor({ timeout: SLOW });
+  });
+  stage = "step 3";
   await each(async (s) => {
     await s.page.goto(`${BASE_URL}/orchestrators`, { waitUntil: "commit" });
     await s.page.locator("[aria-busy=true]").first().waitFor({ timeout: SLOW });
@@ -285,9 +294,11 @@ try {
     await strips(4)(s.page);
   });
   // 4 settings card set
+  stage = "step 4";
   await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "04-settings-set", "text=Service URL >> xpath=ancestor::div[contains(@class,'panel')]"); });
 
   // 5 ok-mixed: running, stopped, stalled and one the service could not read (the odip lane opens on first paint)
+  stage = "step 5";
   await setCfg(first, { orchestraToken: "mock-mixed" });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", strips(4));
@@ -299,8 +310,10 @@ try {
     record("sidebarLabel", s.name, s.name === "1440" ? (await s.page.locator("aside a[href='/orchestrators']").first().innerText()).trim() : null);
   });
   // 6 odip detail (open on first paint)
+  stage = "step 6";
   await each(async (s) => { await shoot(s, "06-odip-detail", "[data-row-id='lane-odip']"); });
   // 6b no session cookie: fresh context
+  stage = "step 6b";
   await each(async (s) => {
     const ctx = await browser.newContext(s.opts);
     const p = await ctx.newPage();
@@ -313,6 +326,7 @@ try {
     await ctx.close();
   });
   // 7 night-watch-orchestr (unknown) expanded -> detail error
+  stage = "step 7";
   await each(async (s) => {
     await goto(s.page, "/orchestrators", strips(4));
     await s.page.locator("[data-row-id='lane-night-watch-orchestr']").getByRole("button", { name: "Details" }).click();
@@ -322,6 +336,7 @@ try {
   });
 
   // 8 stuck: one waiting agent, a stalled one at 24 m, a quiet one at 19 m, a 26-character name
+  stage = "step 8";
   await setCfg(first, { orchestraToken: "mock-stuck" });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", strips(4));
@@ -337,6 +352,7 @@ try {
     record("stuckBadges", s.name, await texts(s.page, "[data-state-badge]"));
   });
   // 9 busy: six agents in one lane, slot 4 reads "Show 3 more", which opens Details
+  stage = "step 9";
   await setCfg(first, { orchestraToken: "mock-busy" });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", strips(3));
@@ -347,6 +363,7 @@ try {
   });
 
   // 10 all quiet (with a stopped lane), 11 partial: answered from the script so the data is exact
+  stage = "step 10";
   const quiet = snap([lane("dev", "running", [["dev-builder", 3], ["dev-reviewer", 9]]), lane("odip", "running", [["odip-builder", 2]]), lane("design", "stopped", [])]);
   const partial = snap([lane("dev", "running", [["dev-builder", 3]]), lane("odip", "running", []), { ...lane("night-watch-orchestr", "unknown", []), lastActivityAt: null, model: null, home: null }]);
   for (const [key, data] of [["10-quiet", quiet], ["11-partial", partial]]) {
@@ -365,6 +382,7 @@ try {
   }
 
   // 12 hold: lanes never move; a join and a leave wait behind the pill; the minutes stay live (C9)
+  stage = "step 12";
   await setCfg(first, { orchestraToken: "mock-mixed" });
   await each(async (s) => {
     const p = await s.context.newPage();
@@ -376,6 +394,7 @@ try {
     ]);
     const ref = { snap: at(0) };
     await serve(p, ref);
+    await p.clock.install();
     await p.goto(`${BASE_URL}/orchestrators`, { waitUntil: "domcontentloaded" });
     await strips(3)(p);
     const g0 = await geometry(p);
@@ -426,6 +445,7 @@ try {
   });
 
   // 13 mock-empty
+  stage = "step 13";
   await setCfg(first, { orchestraToken: "mock-empty" });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", text("No lanes registered"));
@@ -433,6 +453,7 @@ try {
     record("liveEmpty", s.name, await live(s.page));
   });
   // 14 wrong token
+  stage = "step 14";
   await setCfg(first, { orchestraToken: "wrong" });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", text("rejected the token"));
@@ -442,6 +463,7 @@ try {
     if (s.name === "390") record("smallTargets390", "14", await small(s.page));
   });
   // 15 stale: ok first, then the URL stops resolving, same tab
+  stage = "step 15";
   await setCfg(first, { orchestraToken: "mock-stuck", orchestraUrl: MOCK_URL });
   await each(async (s) => {
     await goto(s.page, "/orchestrators", strips(4));
@@ -463,6 +485,7 @@ try {
     record("liveStale", s.name, await live(s.page));
   });
   // 16 reload -> unreachable with nothing last-known
+  stage = "step 16";
   await each(async (s) => {
     await s.page.reload({ waitUntil: "domcontentloaded" });
     await s.page.getByText("is not answering").first().waitFor({ timeout: SLOW });
@@ -472,7 +495,7 @@ try {
     record("coldState", s.name, { band: await s.page.locator("[data-band=error]").count(), nothingNeedsYou: (await mainText(s.page)).includes("Nothing needs you") });
   });
   // 17 sidebar with AI lanes active (1440), More sheet (390)
-  {
+  await guarded("step 17", async () => {
     const d = sessions[0];
     await goto(d.page, "/orchestrators", text("is not answering"));
     await d.page.locator("aside").screenshot({ path: join(OUT_DIR, "orchestra-17-sidebar-1440-crop.png") });
@@ -484,10 +507,10 @@ try {
     await cell.click();
     await m.page.getByRole("dialog", { name: "More navigation" }).waitFor();
     await shoot(m, "17-more-sheet");
-  }
+  });
 
   // 18 reduced motion (C15): no transform animation on a tick or a tap, the fill does not transition, the dot does not pulse
-  {
+  await guarded("step 18", async () => {
     await setCfg(first, { orchestraUrl: MOCK_URL, orchestraToken: "mock-stuck" });
     const ctx = await browser.newContext({ ...VIEWPORTS[0], reducedMotion: "reduce" });
     const p = await ctx.newPage();
@@ -495,6 +518,7 @@ try {
     await signIn({ page: p });
     const ref = { snap: snap([lane("dev", "running", [["a", 19]]), lane("odip", "running", [["c", 2]])]) };
     await serve(p, ref);
+    await p.clock.install();
     await p.goto(`${BASE_URL}/orchestrators`, { waitUntil: "domcontentloaded" });
     await p.locator("[data-row-id='dev/a']").waitFor({ timeout: SLOW });
     ref.snap = snap([lane("dev", "stalled", [["a", 20], ["b", 1]], 1), lane("odip", "running", [["c", 3]])]);
@@ -506,10 +530,10 @@ try {
       transformAnimationsAfterTick: t,
       transformAnimationsAfterTap: tap,
       fillTransitionDuration: getComputedStyle(document.querySelector(".ol-fill")).transitionDuration,
-      dotAnimation: getComputedStyle(document.querySelector(".dot-unhealthy")).animationName,
+      dotAnimation: document.querySelector(".dot-unhealthy") ? getComputedStyle(document.querySelector(".dot-unhealthy")).animationName : "no dot",
     }), [afterTick, afterTap]));
     await ctx.close();
-  }
+  });
 
   record("pageErrors", "all", pageErrors);
   record("foreignRequests", "all", [...new Set(foreignRequests)]);
