@@ -360,6 +360,14 @@ body {
 .ol-page .or-sep::before {
   content: "\00B7";
 }
+@media (max-width: 767px) {
+  .ol-page .or-meta {
+    gap: 0.125rem 0.75rem;
+  }
+  .ol-page .or-sep::before {
+    content: none;
+  }
+}
 .ol-page .or-home {
   overflow-wrap: anywhere;
 }

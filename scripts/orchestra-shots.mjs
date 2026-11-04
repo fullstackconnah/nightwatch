@@ -359,6 +359,21 @@ try {
     record("designAttention", s.name, await s.page.locator("[data-row-id='lane-design'] .or-att").innerText());
     record("sentenceStuck", s.name, await s.page.locator(".or-sentence").innerText());
     record("stuckBadges", s.name, await texts(s.page, "[data-state-badge]"));
+    await guarded("step 8 detail", async () => {
+      const row = s.page.locator("[data-row-id='lane-dev']");
+      if (!(await row.getByText("in flight", { exact: false }).count())) await row.getByRole("button", { name: /details/i }).first().click();
+      await row.getByText("in flight", { exact: false }).first().waitFor({ timeout: SLOW });
+      record("detailQuietCalm", s.name, await s.page.evaluate(() => {
+        const dim = document.createElement("span"); dim.className = "text-ink-dim"; document.body.append(dim);
+        const want = getComputedStyle(dim).color; dim.remove();
+        const spans = [...document.querySelectorAll("[data-row-id='lane-dev'] li span.font-mono.text-xs")].filter((e) => /ds*(m|h)/.test(e.textContent) && !e.matches(".min-w-0"));
+        return { n: spans.length, allCalm: spans.length > 0 && spans.every((e) => getComputedStyle(e).color === want && !e.hasAttribute("data-mark")), want };
+      }));
+    });
+    record("metaSepHidden", s.name, await s.page.evaluate(() => {
+      const seps = [...document.querySelectorAll(".ol-page .or-sep")];
+      return { n: seps.length, contents: [...new Set(seps.map((e) => getComputedStyle(e, "::before").content))] };
+    }));
   });
   // 9 busy: six agents in one lane, slot 4 reads "Show 3 more", which opens Details
   stage = "step 9";

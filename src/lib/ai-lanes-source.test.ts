@@ -76,6 +76,13 @@ describe("the components", () => {
     }
   });
 
+  it("R2: the detail quiet time is calm ink-dim, with no mark (the badge is the one amber mark per agent row)", () => {
+    const line = strip.split(String.fromCharCode(10)).find((l) => l.includes("formatQuiet(r.quietMin)"));
+    assert.ok(line);
+    assert.match(line, /text-ink-dim/);
+    assert.doesNotMatch(line, /data-mark|text-warn/);
+  });
+
   it("C4/R4: no cost in the page words or anywhere in src outside tests", () => {
     for (const f of NEW_FILES) assert.ok(!/\bcost|not reported/i.test(read(f)), f);
     const hits = walk(SRC).filter((p) => /\.(ts|tsx)$/.test(p) && !/\.test\.ts$/.test(p) && /costToday/.test(readFileSync(p, "utf8")));

@@ -78,7 +78,7 @@ function DetailBody({ data, error, loading, onRetry }: {
                   <span className="flex shrink-0 items-center gap-2">
                     {r.waiting && <Badge variant="warn" data-mark="">waiting</Badge>}
                     {r.stalled && <Badge variant="warn" data-mark="">stalled</Badge>}
-                    <span data-mark={r.stalled ? "" : undefined} className={`font-mono text-xs ${r.stalled ? "text-warn" : "text-ink-dim"}`}>{formatQuiet(r.quietMin)}</span>
+                    <span className="font-mono text-xs text-ink-dim">{formatQuiet(r.quietMin)}</span>
                   </span>
                 </li>
               ))}
