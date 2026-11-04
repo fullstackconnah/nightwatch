@@ -36,6 +36,7 @@ let pageErrors = 0;
 const pageErrorMessages = {};
 let consoleErrors = 0;
 const consoleErrorMessages = {};
+const consoleErrorLog = [];
 /** True when the kiosk error boundary ("Something went wrong") is on screen: a render crash, which counts as a failure. */
 const crashed = (page) => page.getByText("Something went wrong").count().then((n) => n > 0);
 const foreign = [];
@@ -77,6 +78,9 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
     consoleErrors++;
     const t = m.text().slice(0, 200);
     consoleErrorMessages[t] = (consoleErrorMessages[t] ?? 0) + 1;
+    // page.step names the script step; url + viewport + clock-pinned tell whether setFixedTime causes a hydration mismatch
+    consoleErrorLog.push({ msg: t, page: page.url(), source: m.location().url, step: page.step ?? "load", viewport: `${viewport.width}x${viewport.height}`, fixedTime });
+
   });
   page.on("request", (r) => {
     const u = r.url();
@@ -184,33 +188,42 @@ for (const size of SIZES) {
     }
     await page.screenshot({ path: join(OUT_DIR, `controls-rest-${size.name}.png`) });
     out.rest = await page.evaluate(CONTROLS);
-    // a chip press: the sun catch should light (data-lit) and the word flips
-    const chip = page.locator("button.sr-chip").first();
+    // (a) the AC auto-off pill opens its sheet; close it with its Close button before the next step
+    page.step = "sheet";
+    const pill = page.getByRole("button", { name: /^AC auto-off/ });
+    if (await pill.count()) {
+      await pill.click();
+      if (await seen(page, "[role=dialog]", 5000)) {
+        await page.waitForTimeout(800);
+        await page.screenshot({ path: join(OUT_DIR, `controls-sheet-${size.name}.png`) });
+        out.sheet = await page.evaluate(CONTROLS);
+        // the sheet is the only place .sr-switch-track renders (SunSwitchTrack in kiosk-climate-auto-off.tsx:325); Fan/Heater are ToggleChips
+        out.sheet.switchTrack = await page.locator(".sr-switch-track").count();
+        await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+        await page.waitForSelector("[role=dialog]", { state: "detached", timeout: 5000 }).catch(() => (out.sheet.stuckOpen = true));
+      } else out.sheet = { missing: "[role=dialog]" };
+    } else out.sheet = { missing: "AC auto-off pill" };
+    // (b) a plain ToggleChip (role=switch, "Toggle <name>") flips in place: data-lit/aria-checked and the .sr-state word
+    page.step = "chip";
+    const chip = page.getByRole("switch", { name: /^Toggle / }).first();
     if (await chip.count()) {
       await chip.click();
       await page.waitForTimeout(600);
       await page.screenshot({ path: join(OUT_DIR, `controls-chip-${size.name}.png`) });
-      out.chipAfterClick = await chip.evaluate((el) => ({ lit: el.getAttribute("data-lit") ?? el.getAttribute("aria-checked"), word: el.querySelector(".sr-state")?.textContent ?? "" }));
-    }
+      out.chipAfterClick = await chip.evaluate((el) => ({ name: el.getAttribute("aria-label"), lit: el.getAttribute("data-lit") ?? el.getAttribute("aria-checked"), word: el.querySelector(".sr-state")?.textContent ?? "" }));
+    } else out.chipAfterClick = { missing: "Toggle chip" };
+    // (c) the climate modal
+    page.step = "modal";
     const expand = page.getByRole("button", { name: /Advanced controls for Living/ });
     if (await expand.count()) {
       await expand.click();
-      await seen(page, '[role=dialog]', 5000);
+      await seen(page, "[role=dialog]", 5000);
       await page.waitForTimeout(800);
       await page.screenshot({ path: join(OUT_DIR, `controls-modal-${size.name}.png`) });
       out.modal = await page.evaluate(CONTROLS);
       await page.keyboard.press("Escape");
       await page.waitForTimeout(400);
     } else out.modal = { missing: "Advanced controls for Living" };
-    const pill = page.getByRole("button", { name: /AC auto-off/ });
-    if (await pill.count()) {
-      await pill.click();
-      if (await seen(page, '[role=dialog]', 5000)) {
-        await page.waitForTimeout(800);
-        await page.screenshot({ path: join(OUT_DIR, `controls-sheet-${size.name}.png`) });
-        out.sheet = await page.evaluate(CONTROLS);
-      } else out.sheet = { missing: "[role=dialog]" };
-    } else out.sheet = { missing: "AC auto-off pill" };
     await context.close();
   });
   await guarded(`controls reduced ${size.name}`, async () => {
@@ -220,7 +233,7 @@ for (const size of SIZES) {
       await context.close();
       return;
     }
-    const chip = page.locator("button.sr-chip").first();
+    const chip = page.getByRole("switch", { name: /^Toggle / }).first();
     if (await chip.count()) await chip.click();
     await page.waitForTimeout(300);
     const running = (await page.evaluate(SCAN)).running;
@@ -231,6 +244,7 @@ for (const size of SIZES) {
 
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
+results.n16ConsoleErrorLog = consoleErrorLog;
 results.n16PageErrors = pageErrors;
 results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;
