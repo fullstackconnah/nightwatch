@@ -173,6 +173,18 @@
         "usage": "Fill: the face of a control that is on (a light, a scene, the AC power). It is the sun catching the face, in that hour's colour; at night it is a dim ember. Only for on; never for selection (that is `accent`) and never decoration."
       },
       {
+        "name": "on-rest",
+        "value": {
+          "morning": "0.18",
+          "dawn": "0.28",
+          "midday": "0.18",
+          "golden": "0.24",
+          "dusk": "0.5",
+          "night": "0.32"
+        },
+        "usage": "Opacity: how much of the `sunlit` face a chip that is on keeps once the catch has bloomed. The smallest value, in 0.02 steps from 0.16 and capped at 0.5, that puts the glaze about 10 delta-E from the off face. Chips only; round power toggles and the Switch keep the full catch."
+      },
+      {
         "name": "edge",
         "value": {
           "morning": "#4f5866",

@@ -66,6 +66,8 @@ export interface SunroomPalette {
   /** The Sunroom design-system tokens (src/lib/sunroom-tokens.json). `sunlit` and `handle` vary per stop and
    *  interpolate with the ground; the rest only switch between the day and night sets, like the ink. */
   sunlit: string;
+  /** Opacity (a number as a string) the `.sr-lit` layer settles to on a chip that is on, after the full-sunlit bloom. */
+  onRest: string;
   handle: string;
   onAccent: string;
   edge: string;
@@ -212,6 +214,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#1f2b45",
       lineBright: "#35466e",
       sunlit: "#5b4422",
+      onRest: "0.32",
       handle: "#647288",
       ...DARK_FG,
     },
@@ -254,6 +257,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#ccc8da",
       lineBright: "#b7b2c8",
       sunlit: "#ecac78",
+      onRest: "0.28",
       handle: "#727a86",
       ...LIGHT_FG,
     },
@@ -284,6 +288,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#bed0dd",
       lineBright: "#a3baca",
       sunlit: "#ecb64a",
+      onRest: "0.18",
       handle: "#777f8b",
       ...LIGHT_FG,
     },
@@ -318,6 +323,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#dce5f1",
       lineBright: "#c3cfdf",
       sunlit: "#efbd44",
+      onRest: "0.18",
       handle: "#7a818d",
       ...LIGHT_FG,
     },
@@ -348,6 +354,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#dcd8d5",
       lineBright: "#c4c0bc",
       sunlit: "#efaa45",
+      onRest: "0.24",
       handle: "#7b818a",
       ...LIGHT_FG,
     },
@@ -376,6 +383,7 @@ export const SUNROOM_STOPS: readonly {
       line: "#ddc4bb",
       lineBright: "#c8aca3",
       sunlit: "#e2a07e",
+      onRest: "0.5",
       handle: "#737986",
       ...LIGHT_FG,
     },
@@ -801,6 +809,7 @@ export function sunroomStateAt(
     line: lerpHex(a.palette.line, b.palette.line, kg),
     lineBright: lerpHex(a.palette.lineBright, b.palette.lineBright, kg),
     sunlit: lerpHex(a.palette.sunlit, b.palette.sunlit, kg),
+    onRest: String(Math.round(lerp(Number(a.palette.onRest), Number(b.palette.onRest), kg) * 1000) / 1000),
     handle: lerpHex(a.palette.handle, b.palette.handle, kg),
     ink: nearer.palette.ink,
     inkDim: nearer.palette.inkDim,

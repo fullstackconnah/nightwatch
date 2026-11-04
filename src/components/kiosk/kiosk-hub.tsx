@@ -299,7 +299,7 @@ function ToggleChip({
       <span className={cn("sr-chip-sub max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
         {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
       </span>
-      <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />
+      {!sr && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />}
       <SunChipMarks on={on} error={!!error} />
     </button>
   );
