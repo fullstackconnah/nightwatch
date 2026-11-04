@@ -122,7 +122,7 @@ export function KioskClimateTile({
   // off-theme, which also suppresses the glow layer below.
   const kioskTheme = useKioskTheme();
   // Sill DS: only heating and cooling carry a wash (the --sr-wash-* tokens) and the working glow; every other
-  // mode is the plain pane. No mode owns a colour of its own, so no new hue.
+  // mode is the plain pane. The power disc carries every mode (--sr-mode-*, via data-mode on the button).
   const modeTint: "heat" | "chill" | null =
     kioskTheme !== "sunroom" || !isOn
       ? null
@@ -306,8 +306,8 @@ export function KioskClimateTile({
           First child, -z-10 + the root's `isolate` above: same painting-order
           arrangement the streams used, so this layer sits above the tile's
           background and below its text (see the isolate comment). aria-hidden:
-          purely decorative, adds nothing a screen reader needs — the tile's
-          own mode label already says "Heat"/"Cool" in text. */}
+          purely decorative, adds nothing a screen reader needs (the tile
+          shows no mode word; only the modal names the mode). */}
       {modeTint !== null && (
         <div
           aria-hidden
@@ -322,6 +322,7 @@ export function KioskClimateTile({
           onClick={() => setMode(isOn ? "off" : (onMode as string))}
           disabled={pending}
           aria-pressed={isOn}
+          data-mode={isOn ? shownHvacMode : onMode ?? undefined}
           aria-label={`${isOn ? "Turn off" : "Turn on"} ${climate.name}`}
           title={isOn ? `Turn off ${climate.name}` : `Turn on ${climate.name}`}
           // ink-faint has no AA headroom left for an interactive control's own

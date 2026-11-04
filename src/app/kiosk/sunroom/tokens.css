@@ -73,6 +73,11 @@
   --sr-wash-ok: #19603a1a;
   --sr-wash-warn: #b7791f24;
   --sr-wash-bad: #c0392b1f;
+  --sr-mode-heat: #ed7429;
+  --sr-mode-cool: #86acea;
+  --sr-mode-dry: #86d1e7;
+  --sr-mode-fan: #9ba6b1;
+  --sr-mode-auto: #c585bf;
   --sr-ok: #19603a;
   --sr-warn: #6b4a0f;
   --sr-bad: #9d3232;

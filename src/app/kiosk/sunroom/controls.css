@@ -158,6 +158,17 @@
   transform: scale(1);
   transition: transform var(--sr-m-catch) var(--sr-m-ease-out), opacity 120ms linear;
 }
+/* AC mode colour: the power disc takes its face from the mode; an unknown or missing mode keeps sunlit. A mode change while on
+   cross-fades the face and never re-blooms (aria-pressed stays true, so the disc holds at scale 1). */
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[data-mode="heat"] { --sr-catch-face: var(--sr-mode-heat); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[data-mode="cool"] { --sr-catch-face: var(--sr-mode-cool); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[data-mode="dry"] { --sr-catch-face: var(--sr-mode-dry); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[data-mode="fan_only"] { --sr-catch-face: var(--sr-mode-fan); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn:is([data-mode="auto"], [data-mode="heat_cool"]) { --sr-catch-face: var(--sr-mode-auto); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[aria-pressed] .sr-catch { background: var(--sr-catch-face, var(--sr-sunlit)); }
+[data-kiosk-theme="sunroom"] button.sr-icon-btn[aria-pressed="true"] .sr-catch {
+  transition: transform var(--sr-m-catch) var(--sr-m-ease-out), opacity 120ms linear, background-color 180ms var(--sr-m-ease-out);
+}
 /* Glaze: a chip blooms to full sunlit, then settles to the per-stop --sr-on-rest. Chips only; round toggles and the Switch keep the full catch. */
 [data-kiosk-theme="sunroom"] button.sr-chip[role="switch"] .sr-lit {
   opacity: 1;
@@ -499,6 +510,9 @@
   [data-kiosk-theme="sunroom"] [aria-checked="true"] .sr-catch {
     transform: none;
     transition: opacity 120ms linear;
+  }
+  [data-kiosk-theme="sunroom"] button.sr-icon-btn[aria-pressed="true"] .sr-catch {
+    transition: opacity 120ms linear; /* the mode face changes instantly */
   }
   [data-kiosk-theme="sunroom"] button.sr-chip[role="switch"] .sr-lit,
   [data-kiosk-theme="sunroom"] button.sr-chip[role="switch"][aria-pressed="true"] .sr-lit,

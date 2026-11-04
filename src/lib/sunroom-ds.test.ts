@@ -152,6 +152,8 @@ function motionFailures(text: string, label: string): string[] {
       if (val === "none" || /^0s?$/.test(val)) continue;
       for (const part of val.split(/,(?![^(]*\))/)) {
         const first = part.trim().split(/\s+/)[0];
+        // the one colour fade: the AC power disc cross-fades its mode face (owner, 2026-11-04); the reduced-motion twin is still required below
+        if (first === "background-color" && /button\.sr-icon-btn\[aria-pressed="true"\] \.sr-catch$/.test(r.sel)) continue;
         if (!OK_PROPS.has(first)) out.push(`${label}${r.sel}: transitions "${first}"`);
       }
       if (!/reduced-motion/.test(r.media)) animated.push(r.sel);

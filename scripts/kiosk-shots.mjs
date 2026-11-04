@@ -65,7 +65,7 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false, climateMode = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   const page = await context.newPage();
@@ -97,7 +97,9 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
       : path.endsWith("/attention")
         ? { status: "quiet" }
         : ha && path.endsWith("/ha/states")
-          ? (rain ? RAIN_HA_STATES : HA_STATES)
+          ? climateMode
+            ? { ...HA_STATES, entities: { ...HA_STATES.entities, climates: HA_STATES.entities.climates.map((c, i) => (i === 0 ? { ...c, hvacMode: climateMode } : c)) } }
+            : (rain ? RAIN_HA_STATES : HA_STATES)
           : ha && path.endsWith("/climate-auto-off")
             ? AUTO_OFF
             : nowPlaying && path.endsWith("/nowplaying")
@@ -171,6 +173,28 @@ for (const stop of STOPS) {
     await page.screenshot({ path: join(OUT_DIR, `stop-chips-${stop}.png`), clip: { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: box.width + pad * 2, height: box.height + pad * 2 } });
     await context.close();
   });
+}
+
+// ---- AC mode colour: the Living AC power disc per mode, midday and night, cropped at 1180x820 ----
+// ac-mode-<mode>-<stop>.png for heat, cool, dry, fan_only, auto (the fixture's climate.living with hvacMode swapped per visit, see climateMode in visit());
+// ac-mode-off-remembered-<stop>.png loads ON in heat, taps the power button off (writes are mocked; the mode hold shows off) and crops the disc.
+results.acModes = {};
+for (const stop of ["midday", "night"]) {
+  for (const mode of ["heat", "cool", "dry", "fan_only", "auto", "off-remembered"]) {
+    await guarded(`ac-modes ${mode} ${stop}`, async () => {
+      const off = mode === "off-remembered";
+      const { context, page } = await visit(`${STOP_URL}&layout=standard`, { viewport: SIZES[0].viewport, weather: weatherFor(stop), ha: true, climateMode: off ? "heat" : mode });
+      const btn = page.getByRole("button", { name: /^Turn (off|on) Living/ }).first();
+      await btn.waitFor({ timeout: 8000 });
+      if (off) await btn.click();
+      await page.waitForTimeout(1200); // past the bloom or the shrink
+      const box = await btn.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+      const pad = 16;
+      await page.screenshot({ path: join(OUT_DIR, `ac-mode-${mode}-${stop}.png`), clip: { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: box.width + pad * 2, height: box.height + pad * 2 } });
+      results.acModes[`${mode}-${stop}`] = await btn.evaluate((el) => ({ dataMode: el.getAttribute("data-mode"), pressed: el.getAttribute("aria-pressed"), face: getComputedStyle(el.querySelector(".sr-catch")).backgroundColor }));
+      await context.close();
+    });
+  }
 }
 
 // ---- the dark crossing: the clone is aria-hidden, inert, and gone after the fade ----
