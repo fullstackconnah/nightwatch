@@ -1,5 +1,9 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { playChime, unlockAudio } from "@/lib/sunroom-overlays";
+
 /* THESIS: alerts move off the page (redesign-06's change #1) — no standing
    card competing with the clock for the kiosk's best real estate. Composed
    fresh in the same hairline/mono/microlabel vocabulary as
@@ -704,6 +708,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
   if (!open || isEmpty) return null;
 
   return (
+<KioskPortal>
     <div
       ref={nodeRef}
       role="dialog"
@@ -722,6 +727,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
         top: "calc(1rem + 3.5rem + 0.75rem + env(safe-area-inset-top))",
         right: "calc(1.25rem + env(safe-area-inset-right))",
       }}
+      data-sr-face="float"
       className="fixed z-(--z-toast) panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {entries.map((entry, i) => (
@@ -736,6 +742,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
         </>
       )}
     </div>
+</KioskPortal>
   );
 }
 
@@ -809,10 +816,16 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
 
   const sinceLabel = alertSinceLabel(alert.since);
   const severityText = alert.severity === "bad" ? "text-bad" : "text-warn";
+  const sunroom = useKioskTheme() === "sunroom";
+  // The chime (Sunroom only): E5 then C5 on open, at most every 30 s, silent while audio is locked.
+  useEffect(() => {
+    if (sunroom) playChime();
+  }, [sunroom]);
 
   return (
+<KioskPortal>
     <>
-      <div className="fixed inset-0 z-(--z-modal-backdrop) bg-bg/90 backdrop-blur-sm" aria-hidden />
+      <div data-sr-overlay="takeover" className="fixed inset-0 z-(--z-modal-backdrop) bg-bg/90 backdrop-blur-sm" aria-hidden />
       <div
         ref={rootRef}
         role="status"
@@ -837,14 +850,26 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
         <p className="microlabel mt-4">tap, or wait — dismisses on its own</p>
       </div>
     </>
+</KioskPortal>
   );
 }
 
 /* ── composition ─────────────────────────────────────────────────────────── */
 
+/** The first touch unlocks Web Audio so a later takeover can chime (Sunroom only). */
+function useChimeUnlock() {
+  const sunroom = useKioskTheme() === "sunroom";
+  useEffect(() => {
+    if (!sunroom) return;
+    document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
+    return () => document.removeEventListener("pointerdown", unlockAudio, { capture: true });
+  }, [sunroom]);
+}
+
 export function KioskAlerts({ onOverlayStateChange }: { onOverlayStateChange?: (open: boolean) => void }) {
   const { entries, resolved, activeTakeover, dismissTakeover, dismissAlert, dismissResolved, worstSeverity } =
     useKioskAlerts();
+  useChimeUnlock();
   const [trayOpen, setTrayOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 

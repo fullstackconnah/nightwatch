@@ -1,5 +1,8 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
+
 /* THESIS: the kitchen wants several pots on the stove at once — pasta,
    eggs, a load of laundry — tracked from anywhere in the room, not just
    from whoever is standing at the panel. A compact status-strip button is
@@ -354,6 +357,7 @@ function KioskTimersOverlay({
     closingRef.current = true;
 
     const node = dialogRef.current;
+    if (node && slideSheetOut(node, onClose)) return; // Sunroom: slide down, then close (after any guard above)
     if (originRect && node) {
       const fireClose = () => {
         if (closeFiredRef.current) return;
@@ -416,7 +420,9 @@ function KioskTimersOverlay({
   }
 
   return (
+<KioskPortal>
     <div
+      data-sr-overlay="sheet"
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 px-4 py-6 backdrop-blur-sm"
       onClick={requestClose}
       // Same gap as kiosk-pin-pad.tsx's backdrop, plus one: this backdrop
@@ -440,13 +446,15 @@ function KioskTimersOverlay({
         aria-labelledby="kiosk-timers-title"
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
+        data-sr-face="float"
         className="panel flex max-h-full w-full max-w-2xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <SunSheetGrabber panelRef={dialogRef} onDismiss={requestClose} />
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
             <TimerIcon size={15} className="text-accent" aria-hidden />
-            <h2 id="kiosk-timers-title" className="text-sm font-semibold tracking-tight">
+            <h2 id="kiosk-timers-title" data-sr-title className="text-sm font-semibold tracking-tight">
               Timers
             </h2>
           </div>
@@ -460,7 +468,7 @@ function KioskTimersOverlay({
           </button>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+        <div data-sr-sheet-body className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
           {list.length > 0 && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {list.map((t) => (
@@ -474,6 +482,7 @@ function KioskTimersOverlay({
         </div>
       </div>
     </div>
+</KioskPortal>
   );
 }
 
@@ -487,7 +496,7 @@ function TimerRing({ progress, warn }: { progress: number; warn: boolean }) {
   const offset = circumference * (1 - progress);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} className="sr-ring-track" />
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -515,7 +524,7 @@ function TimerRing({ progress, warn }: { progress: number; warn: boolean }) {
         // ring reads as continuous motion instead of stalling between beats;
         // linear because an ease here would visibly slow down right as the
         // next tick arrives to speed it back up.
-        className="transition-[stroke-dashoffset] duration-[900ms] ease-linear motion-reduce:transition-none"
+        className="sr-ring-arc transition-[stroke-dashoffset] duration-[900ms] ease-linear motion-reduce:transition-none"
       />
     </svg>
   );
@@ -540,6 +549,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
         <div
           className="absolute inset-0 flex flex-col items-center justify-center gap-0.5"
           role={finished ? "status" : undefined}
+          data-sr-live
         >
           <span
             className={cn(
@@ -550,7 +560,7 @@ function TimerCard({ timer, now }: { timer: KioskTimer; now: number }) {
             {formatRemaining(remaining)}
           </span>
           {paused && !finished && <span className="microlabel">paused</span>}
-          {finished && <span className="microlabel !text-warn">done</span>}
+          {finished && <span className="microlabel !text-warn" data-sr-tone="warn">done</span>}
         </div>
       </div>
 

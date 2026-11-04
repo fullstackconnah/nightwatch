@@ -52,6 +52,7 @@ import {
   Work_Sans,
 } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { OverlayHostProvider } from "@/components/kiosk/kiosk-overlay-host";
 
 // next/font calls are build-time macros: every argument must be a literal
 // object (no spread, no variables) or SWC rejects it with "Unexpected spread".
@@ -319,7 +320,7 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
       className={cn("kiosk-dense min-h-screen bg-bg overflow-x-clip", ...FONT_VARIABLE_CLASSES)}
       style={style}
     >
-      {children}
+      <OverlayHostProvider enabled={theme === "sunroom"}>{children}</OverlayHostProvider>
       {/* The leaks div below belongs at the END of this
           div, not the front, and for the same reason `<KioskSky />` is not
           mounted HERE at all: kiosk/layout.tsx mounts it as the FIRST element

@@ -1,5 +1,7 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+
 /* THESIS: useKioskRadar() + KioskRadarModal are a state hook and a dialog,
    deliberately separable, because WHO owns "is the radar open" matters more
    than it looks.
@@ -325,12 +327,14 @@ export function KioskRadarModal({
   const stillPreloading = okData && !preload;
 
   return (
+<KioskPortal>
     <div
       aria-hidden={false}
       // Same bg-bg/60 backdrop-blur-md as kiosk-climate.tsx's modal scrim —
       // the two modals shouldn't disagree about what a scrim is. See that
       // file's comment for the reasoning (90%+blur-sm reads as a flat black
       // wall; 60%+real blur reads as out-of-focus depth).
+      data-sr-overlay="dialog"
       className="fixed inset-0 z-(--z-modal-backdrop) flex items-center justify-center bg-bg/60 px-4 backdrop-blur-md transition-opacity motion-reduce:transition-none"
       style={{ ...transitionStyle, opacity: shown ? 1 : 0 }}
       onPointerDown={(e) => {
@@ -344,6 +348,7 @@ export function KioskRadarModal({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
+        data-sr-face="float"
         className="panel relative z-(--z-modal) w-full max-w-lg p-6 transition-[opacity,transform] motion-reduce:transition-none"
         // With an originRect, WAAPI owns the panel's entrance and exit
         // (containerExpand/-Collapse) — inline style holds constant resting
@@ -356,7 +361,7 @@ export function KioskRadarModal({
         }
       >
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h2 id={titleId} className="text-sm font-semibold tracking-tight text-ink">
+          <h2 id={titleId} data-sr-title className="text-sm font-semibold tracking-tight text-ink">
             Radar{okData ? ` · ${okData.place}` : ""}
           </h2>
           <button
@@ -369,20 +374,20 @@ export function KioskRadarModal({
           </button>
         </div>
 
-        {loading && <div className="py-16 text-center text-sm text-ink-dim">Loading radar…</div>}
+        {loading && <div data-sr-body className="py-16 text-center text-sm text-ink-dim">Loading radar…</div>}
 
         {unreachable && (
-          <div role="alert" className="py-16 text-center text-sm text-bad">
+          <div role="alert" data-sr-body className="py-16 text-center text-sm text-bad">
             Radar is unavailable right now.
           </div>
         )}
 
         {unconfigured && (
-          <div className="py-16 text-center text-sm text-ink-dim">No location configured for the radar.</div>
+          <div data-sr-body className="py-16 text-center text-sm text-ink-dim">No location configured for the radar.</div>
         )}
 
         {okData && layersFailed && (
-          <div role="alert" className="py-16 text-center text-sm text-bad">
+          <div role="alert" data-sr-body className="py-16 text-center text-sm text-bad">
             Radar imagery failed to load.
           </div>
         )}
@@ -455,5 +460,6 @@ export function KioskRadarModal({
         )}
       </div>
     </div>
+</KioskPortal>
   );
 }

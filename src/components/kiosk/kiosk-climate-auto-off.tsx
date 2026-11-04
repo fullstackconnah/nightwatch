@@ -1,5 +1,8 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
+
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Minus, Moon, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -190,6 +193,7 @@ function ClimateAutoOffSheet({
     }
 
     const node = dialogRef.current;
+    if (node && slideSheetOut(node, onClose)) return; // Sunroom: slide down, then close (after any guard above)
     if (originRect && node) {
       const fireClose = () => {
         if (closeFiredRef.current) return;
@@ -259,7 +263,9 @@ function ClimateAutoOffSheet({
     "sr-btn sr-btn-nudge sr-btn-sm kiosk-press flex h-11 w-11 items-center justify-center rounded-md border border-line text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent";
 
   return (
+<KioskPortal>
     <div
+      data-sr-overlay="sheet"
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/90 px-4 py-6 backdrop-blur-sm"
       onClick={requestClose}
       // Same gap as kiosk-timers.tsx's backdrop: a mousedown/touchdown that
@@ -282,13 +288,15 @@ function ClimateAutoOffSheet({
         aria-labelledby="kiosk-auto-off-title"
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
+        data-sr-face="float"
         className="panel flex max-h-full w-full max-w-sm flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
+        <SunSheetGrabber panelRef={dialogRef} onDismiss={requestClose} />
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <div className="flex items-center gap-2">
             <Moon size={15} className="text-accent" aria-hidden />
-            <h2 id="kiosk-auto-off-title" className="text-sm font-semibold tracking-tight">
+            <h2 id="kiosk-auto-off-title" data-sr-title className="text-sm font-semibold tracking-tight">
               AC auto-off
             </h2>
           </div>
@@ -302,7 +310,7 @@ function ClimateAutoOffSheet({
           </button>
         </div>
 
-        <div className="space-y-5 overflow-y-auto px-4 py-4">
+        <div data-sr-sheet-body className="space-y-5 overflow-y-auto px-4 py-4">
           <button
             ref={firstFocusRef}
             type="button"
@@ -370,6 +378,7 @@ function ClimateAutoOffSheet({
         </div>
       </div>
     </div>
+</KioskPortal>
   );
 }
 

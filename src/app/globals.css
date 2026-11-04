@@ -1136,6 +1136,13 @@ body {
   grid-column: 1 / span 3;
   grid-row: 2;
 }
+/* A downloads button is fixed over the header's right end: keep that corner clear so the rail shrinks instead of sitting under it.
+   Reserve = the alert badge's slot (right 1.25rem + 4.75rem) plus the button (right 6.75rem, min 3.5rem wide, count adds ~1.5rem). */
+@media (min-width: 641px) {
+  html[data-kiosk-downloads] .kiosk-hdr-grid {
+    padding-right: 12rem;
+  }
+}
 /* Below this the five-day rail and the clock band can't share a row at all,
    so the grid collapses to a plain stack and everything gets its own line —
    the phone/regression width, not a tablet one. */

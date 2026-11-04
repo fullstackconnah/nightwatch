@@ -1,5 +1,7 @@
 "use client";
 
+import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+
 /* THESIS: qBittorrent downloads get the same button+tray shape as
    kiosk-alerts.tsx (fixed corner icon, badge, anchored non-modal popover) —
    modelled on that file's vocabulary, not extended from it, because the two
@@ -342,6 +344,7 @@ export function KioskDownloadsTray({ items, open, onClose, anchorRef }: KioskDow
   if (!open || items.length === 0) return null;
 
   return (
+<KioskPortal>
     <div
       ref={nodeRef}
       role="dialog"
@@ -364,6 +367,7 @@ export function KioskDownloadsTray({ items, open, onClose, anchorRef }: KioskDow
         top: "calc(1rem + 3.5rem + 0.75rem + env(safe-area-inset-top))",
         right: "calc(1.25rem + 4.75rem + 0.75rem + env(safe-area-inset-right))",
       }}
+      data-sr-face="float"
       className="fixed z-(--z-toast) panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {items.map((item, i) => (
@@ -377,6 +381,7 @@ export function KioskDownloadsTray({ items, open, onClose, anchorRef }: KioskDow
         </div>
       ))}
     </div>
+</KioskPortal>
   );
 }
 
@@ -444,6 +449,7 @@ export function KioskDownloadsToast({ toast, onDismiss }: KioskDownloadsToastPro
   const label = toastNamesLabel(toast.items);
 
   return (
+<KioskPortal>
     <div
       ref={rootRef}
       role="status"
@@ -461,6 +467,7 @@ export function KioskDownloadsToast({ toast, onDismiss }: KioskDownloadsToastPro
         left: "50%",
         transform: "translate(-50%, 0)",
       }}
+      data-sr-face="float"
       className="fixed z-(--z-toast) panel flex w-[min(22rem,calc(100vw-2rem))] cursor-pointer flex-col gap-1.5 px-4 py-3"
     >
       <div className="flex items-center gap-2">
@@ -470,6 +477,7 @@ export function KioskDownloadsToast({ toast, onDismiss }: KioskDownloadsToastPro
       <p className="truncate text-sm text-ink">{label}</p>
       <Meter percent={aggregate * 100} label={`${label} download progress`} />
     </div>
+</KioskPortal>
   );
 }
 
@@ -491,6 +499,14 @@ export function KioskDownloads() {
   useEffect(() => {
     if (items.length === 0) setTrayOpen(false);
   }, [items.length]);
+
+  // The button is fixed over the header's right end; this flag lets the header keep that corner clear (globals.css).
+  const hasItems = items.length > 0;
+  useEffect(() => {
+    if (!hasItems) return;
+    document.documentElement.setAttribute("data-kiosk-downloads", "");
+    return () => document.documentElement.removeAttribute("data-kiosk-downloads");
+  }, [hasItems]);
 
   return (
     <>
