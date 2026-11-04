@@ -591,7 +591,7 @@ export function KioskSunroomParticles({
 
     /** True when (x, y) is inside a zone rect grown by `g` px. */
     const inGrownZone = (x: number, y: number, g: number): boolean => {
-      for (let i = 0; i < 16; i += 4) {
+      for (let i = 0; i < NZ * 4; i += 4) {
         if (x > zoneRects[i] - g && x < zoneRects[i + 2] + g && y > zoneRects[i + 1] - g && y < zoneRects[i + 3] + g) return true;
       }
       return false;

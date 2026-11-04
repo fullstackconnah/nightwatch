@@ -37,6 +37,11 @@ describe("rain zones: floor-band controls", () => {
     assert.ok([...text.matchAll(/data-rain-zone="/g)].length >= 3);
   });
 
+  it("the particles file never loops over a literal 4-slot zone count", () => {
+    const text = readFileSync(join(DIR, "kiosk-sunroom-particles.tsx"), "utf8");
+    assert.deepEqual([...text.matchAll(/i < (?:16|4).*/g)].map((m) => m[0]), []);
+  });
+
   it("every zone name used in kiosk source has a mask slot (readRects drops unknown names)", () => {
     const names = new Set<string>();
     for (const f of files) for (const m of src(f).matchAll(/data-rain-zone="([a-z-]+)"/g)) names.add(m[1]);

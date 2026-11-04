@@ -20,7 +20,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AUTO_OFF, HA_STATES, NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, ZONE, rainWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, ZONE, rainWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -65,7 +65,7 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
   const page = await context.newPage();
@@ -97,11 +97,11 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
       : path.endsWith("/attention")
         ? { status: "quiet" }
         : ha && path.endsWith("/ha/states")
-          ? HA_STATES
+          ? (rain ? RAIN_HA_STATES : HA_STATES)
           : ha && path.endsWith("/climate-auto-off")
             ? AUTO_OFF
             : nowPlaying && path.endsWith("/nowplaying")
-              ? NOW_PLAYING
+              ? (rain ? RAIN_NOW_PLAYING : NOW_PLAYING)
               : (ROUTES[path] ?? QUIET);
     return route.fulfill({ json });
   });
@@ -291,6 +291,7 @@ for (const name of Object.keys(RAIN_STATES)) {
       fixedTime: true,
       ha: true,
       nowPlaying: true,
+      rain: true,
     });
     await seen(page, '[data-rain-zone="playing"]', 15_000);
     await page.waitForTimeout(2500); // rects are re-read once a second; let the rings fill the floor
