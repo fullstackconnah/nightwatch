@@ -40,25 +40,21 @@ export function SkeletonBar({ delayMs, className }: { delayMs: number; className
   );
 }
 
-/** One band-shaped panel and two card-shaped panels, so the shape of what is arriving is itself information. */
+/** Three strip-shaped panels, each with its four slot bars, so the shape of what is arriving is itself information. No words. */
 export function OrchestraSkeleton() {
   return (
-    <div className="space-y-5" aria-busy="true" aria-label="Reading orchestra status">
-      <div className="panel p-4 space-y-3">
-        <SkeletonBar delayMs={0} className="w-1/3" />
-        <SkeletonBar delayMs={60} className="w-full" />
-        <SkeletonBar delayMs={90} className="w-2/3" />
-        <SkeletonBar delayMs={120} className="w-1/2" />
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {[0, 1].map((i) => (
-          <div key={i} className="panel p-4 space-y-3">
-            <SkeletonBar delayMs={0} className="w-1/3" />
-            <SkeletonBar delayMs={60} className="w-full" />
-            <SkeletonBar delayMs={90} className="w-2/3" />
+    <div className="mt-5 grid gap-2.5" aria-busy="true" aria-label="Reading orchestra status">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="panel space-y-3 p-4">
+          <SkeletonBar delayMs={i * 60} className="w-1/3" />
+          <SkeletonBar delayMs={i * 60 + 30} className="w-2/3" />
+          <div className="grid grid-cols-2 gap-1.5 md:grid-cols-4">
+            {[0, 1, 2, 3].map((j) => (
+              <SkeletonBar key={j} delayMs={i * 60 + j * 30} className="!h-[4.875rem]" />
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
     </div>
   );
 }

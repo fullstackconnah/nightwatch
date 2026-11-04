@@ -3,6 +3,8 @@
  * Zero dependencies. The bearer token picks the scenario:
  *
  *   mock-mixed   four orchestrators, one of each run state (default for captures)
+ *   mock-stuck   one agent waiting 7 m, one stalled at 24 m, one quiet at 19 m, a 26-character agent name
+ *   mock-busy    one lane with six agents in flight (the Show more slot)
  *   mock-empty   ok, no orchestrators registered
  *   mock-slow    mixed, after a 4 s delay (under the proxy's 5 s timeout)
  *   anything else -> 401
@@ -17,24 +19,33 @@ import { pathToFileURL } from "node:url";
 
 const at = (minAgo) => new Date(Date.now() - minAgo * 60_000).toISOString();
 
+const ag = (name, quietMin, waiting = null) => ({ name, quietMin, waiting });
+const lane = (name, title, state, activeMin, model, inFlight, stalledCount = 0, watcher = "online") => ({
+  name, title, state, lastActivityAt: activeMin === null ? null : at(activeMin), model, home: `C:/orchestrators/${name}`,
+  inFlightCount: inFlight.length, stalledCount, watcher, inFlight,
+});
+
 const SUMMARIES = [
-  {
-    name: "dev", title: "Development lane: builds, reviews and ships the day-to-day work today.", state: "running",
-    lastActivityAt: at(2), model: "claude-opus-5-5", home: "C:/orchestrators/dev", inFlightCount: 2, stalledCount: 0, watcher: "online",
-  },
-  {
-    name: "design", title: "Design briefs", state: "stopped", lastActivityAt: at(60 * 30), model: "claude-opus-5-5",
-    home: "C:/orchestrators/design", inFlightCount: 0, stalledCount: 0, watcher: "offline",
-  },
-  {
-    name: "odip", title: "ODIP delivery", state: "stalled", lastActivityAt: at(26), model: "claude-sonnet-5-5",
-    home: "C:/orchestrators/odip", inFlightCount: 3, stalledCount: 1, watcher: "busy",
-  },
-  {
-    name: "night-watch-orchestr", title: null, state: "unknown", lastActivityAt: null, model: null,
-    home: "C:/orchestrators/" + "x".repeat(43), inFlightCount: 0, stalledCount: 0, watcher: null,
-  },
+  lane("dev", "Development lane: builds, reviews and ships the day-to-day work today.", "running", 2, "claude-opus-5-5", [ag("dev-builder", 3), ag("dev-reviewer", 12)]),
+  lane("design", "Design briefs", "stopped", 60 * 30, "claude-opus-5-5", [], 0, "offline"),
+  lane("odip", "ODIP delivery", "stalled", 26, "claude-sonnet-5-5", [ag("odip-builder", 25), ag("odip-fixer", 3), ag("odip-review", null)], 1, "busy"),
+  { ...lane("night-watch-orchestr", null, "unknown", null, null, [], 0, null), home: "C:/orchestrators/" + "x".repeat(43) },
 ];
+
+const STUCK = [
+  lane("dev", "Development lane", "stalled", 24, "claude-opus-5-5", [ag("dev-reviewer", 24), ag("dev-builder", 19), ag("dev-long-agent-name-here-x", 5)], 1),
+  lane("design", "Design briefs", "running", 2, "claude-opus-5-5", [ag("design-shape", 2, { tool: "Bash", sinceMin: 7 })]),
+  lane("odip", "ODIP delivery", "running", 3, "claude-sonnet-5-5", [ag("odip-builder", 3)]),
+  lane("ops", "Operations", "stopped", 60 * 5, "claude-sonnet-5-5", [], 0, "offline"),
+];
+
+const BUSY = [
+  lane("dev", "Development lane", "running", 1, "claude-opus-5-5", ["a", "b", "c", "d", "e", "f"].map((s, i) => ag(`dev-agent-${s}`, i + 1))),
+  lane("odip", "ODIP delivery", "running", 3, "claude-sonnet-5-5", [ag("odip-builder", 3)]),
+  lane("design", "Design briefs", "stopped", 60 * 30, "claude-opus-5-5", [], 0, "offline"),
+];
+
+const SCENARIOS = { "mock-mixed": SUMMARIES, "mock-slow": SUMMARIES, "mock-stuck": STUCK, "mock-busy": BUSY, "mock-empty": [] };
 
 const CHECKPOINT = ("Plan approved; build in flight on the settings card. " + "Waiting on the fixer round. ".repeat(12)).slice(0, 300);
 
@@ -43,18 +54,13 @@ const DETAILS = {
     addDirs: ["C:/projects/personal/example-app"], plugins: ["ponytail", "impeccable"],
     checkpoint: "Reviewing the open PR; merge once CI is green.",
     sessionId: "3f2a9c1e-7b4d-4e8a-9c05-1d6f8a2b7e43",
-    inFlight: [{ name: "dev-builder", where: "C:/t/a.jsonl", quietMin: 3 }, { name: "dev-reviewer", where: "C:/t/b.jsonl", quietMin: 12 }],
   },
-  design: { addDirs: [], plugins: [], checkpoint: null, inFlight: [] },
+  design: { addDirs: [], plugins: [], checkpoint: null },
   odip: {
     addDirs: ["C:/projects/personal/example-app", "C:/projects/personal/example-tools"], plugins: ["ponytail"], checkpoint: CHECKPOINT,
-    inFlight: [
-      { name: "odip-builder", where: "C:/t/c.jsonl", quietMin: 25 },
-      { name: "odip-fixer", where: "C:/t/d.jsonl", quietMin: 3 },
-      { name: "odip-review", where: "C:/t/e.jsonl", quietMin: null },
-    ],
   },
 };
+const PLAIN = { addDirs: [], plugins: [], checkpoint: "Working through the open PRs." };
 
 const send = (res, code, body) => {
   res.writeHead(code, { "content-type": "application/json" });
@@ -65,14 +71,17 @@ const send = (res, code, body) => {
 export function createMock({ slowMs = 4000 } = {}) {
   return createServer((req, res) => {
     const token = /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1];
-    if (token !== "mock-mixed" && token !== "mock-empty" && token !== "mock-slow") return send(res, 401, { error: "unauthorized" });
+    const lanes = token && Object.hasOwn(SCENARIOS, token) ? SCENARIOS[token] : null;
+    if (!lanes) return send(res, 401, { error: "unauthorized" });
     const reply = () => {
       const path = new URL(req.url ?? "/", "http://mock").pathname;
-      if (path === "/v1/orchestrators") return send(res, 200, { orchestrators: token === "mock-empty" ? [] : SUMMARIES });
+      if (path === "/v1/orchestrators") return send(res, 200, { orchestrators: lanes });
       const name = /^\/v1\/orchestrators\/([^/]+)$/.exec(path)?.[1];
-      const summary = token === "mock-empty" ? undefined : SUMMARIES.find((s) => s.name === name);
-      if (!summary || !DETAILS[name]) return send(res, 404, { error: "not found" });
-      return send(res, 200, { ...summary, ...DETAILS[name] });
+      const summary = lanes.find((s) => s.name === name);
+      // The unknown lane has no detail (404), as before; the detail's agents carry a path, which the proxy must drop.
+      if (!summary || summary.state === "unknown") return send(res, 404, { error: "not found" });
+      const inFlight = summary.inFlight.map((a, i) => ({ ...a, where: `C:/t/${i}.jsonl` }));
+      return send(res, 200, { ...summary, ...(token === "mock-mixed" || token === "mock-slow" ? DETAILS[name] : PLAIN), inFlight });
     };
     if (token === "mock-slow") setTimeout(reply, slowMs);
     else reply();

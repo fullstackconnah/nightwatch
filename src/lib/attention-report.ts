@@ -105,7 +105,7 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
     case "backup":
       return { href: "#backup", label: "Backup detail" };
     case "orchestra":
-      return { href: "/orchestrators", label: "Open Orchestrators" };
+      return { href: "/orchestrators", label: "Open AI lanes" };
     default:
       return DISKS; // smart, mounts, disks
   }

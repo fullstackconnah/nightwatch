@@ -62,7 +62,7 @@ const GROUPS: NavGroup[] = [
       { href: "/proxy", label: "Proxy", icon: Globe },
       { href: "/git", label: "Git", icon: GitBranch },
       { href: "/hermes", label: "Hermes", icon: Bot },
-      { href: "/orchestrators", label: "Orchestra", icon: Workflow },
+      { href: "/orchestrators", label: "AI lanes", icon: Workflow },
       { href: "/kiosk", label: "Kiosk", icon: Tablet },
       { href: "/minecraft", label: "Minecraft", icon: Pickaxe },
       { href: "/settings", label: "Settings", icon: Settings },

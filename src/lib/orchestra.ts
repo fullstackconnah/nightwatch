@@ -4,6 +4,7 @@ import type {
   OrchestraSnapshot,
   OrchestraState,
   OrchestratorDetail,
+  OrchestratorInFlight,
   OrchestratorRunState,
   OrchestratorSummary,
 } from "./types/orchestra.ts";
@@ -68,6 +69,22 @@ const count = (v: unknown): number => (typeof v === "number" && Number.isFinite(
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const RUN_STATES: readonly string[] = ["running", "stopped", "stalled", "unknown"];
 
+function mapWaiting(v: unknown): OrchestratorInFlight["waiting"] {
+  const w = obj(v);
+  const tool = str(w.tool);
+  const m = w.sinceMin;
+  return tool && typeof m === "number" && Number.isFinite(m) && m >= 0 ? { tool: tool.slice(0, 64), sinceMin: m } : null;
+}
+
+/** One shape for the list and the detail: the agent path (`where`) is never copied. */
+function mapInFlight(v: unknown): OrchestratorInFlight[] {
+  return (Array.isArray(v) ? v : []).flatMap((e) => {
+    const name = str(obj(e).name);
+    const q = obj(e).quietMin;
+    return name ? [{ name, quietMin: typeof q === "number" && Number.isFinite(q) ? q : null, waiting: mapWaiting(obj(e).waiting) }] : [];
+  });
+}
+
 function mapSummary(raw: unknown): OrchestratorSummary | null {
   const r = obj(raw);
   const name = str(r.name);
@@ -83,6 +100,7 @@ function mapSummary(raw: unknown): OrchestratorSummary | null {
     inFlightCount: count(r.inFlightCount),
     stalledCount: count(r.stalledCount),
     watcher: str(r.watcher),
+    inFlight: mapInFlight(r.inFlight),
   };
 }
 
@@ -90,12 +108,7 @@ function mapDetail(raw: unknown): OrchestratorDetail | null {
   const base = mapSummary(raw);
   if (!base) return null;
   const r = obj(raw);
-  const inFlight = (Array.isArray(r.inFlight) ? r.inFlight : []).flatMap((e) => {
-    const name = str(obj(e).name);
-    const q = obj(e).quietMin;
-    return name ? [{ name, quietMin: typeof q === "number" && Number.isFinite(q) ? q : null }] : [];
-  });
-  return { ...base, addDirs: strings(r.addDirs), plugins: strings(r.plugins), checkpoint: str(r.checkpoint), sessionId: str(r.sessionId), inFlight };
+  return { ...base, addDirs: strings(r.addDirs), plugins: strings(r.plugins), checkpoint: str(r.checkpoint), sessionId: str(r.sessionId) };
 }
 
 // --- snapshots -------------------------------------------------------------------
