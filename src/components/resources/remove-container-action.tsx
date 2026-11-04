@@ -40,7 +40,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
 
   if (step === "confirm") {
     return (
-      <div className="flex items-center gap-2 flex-wrap max-md:basis-full">
+      <div key="confirm" className="nw-confirm flex items-center gap-2 flex-wrap max-md:basis-full">
         <span className="text-xs text-ink-dim">{removeConfirmText(name)}</span>
         <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
           Cancel
@@ -54,7 +54,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
 
   if (step === "error") {
     return (
-      <div role="alert" className="flex items-center gap-2 flex-wrap max-md:basis-full">
+      <div key="error" role="alert" data-kind="error" className="nw-confirm flex items-center gap-2 flex-wrap max-md:basis-full">
         <span className="text-xs text-ink">{error}</span>
         {gone ? (
           <Link href={DOCKER_LIST} className="inline-flex h-11 items-center px-3 text-xs text-ink underline underline-offset-2 md:h-7">

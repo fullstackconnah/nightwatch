@@ -114,7 +114,7 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
 
       {running && job && job.root === scanRoot && (
         <div className="flex items-center gap-2 text-ink-dim text-xs">
-          <Loader2 size={12} className="animate-spin shrink-0" aria-hidden />
+          <Loader2 size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
           <span className="font-mono tabular-nums">
             {job.progress.entriesScanned.toLocaleString()} entries scanned…
           </span>
@@ -204,7 +204,7 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
 
       {running && job && job.root === scanRoot && (
         <div className="flex items-center gap-2 text-ink-dim text-xs">
-          <Loader2 size={12} className="animate-spin shrink-0" aria-hidden />
+          <Loader2 size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
           <span className="font-mono tabular-nums">
             {job.progress.entriesScanned.toLocaleString()} entries scanned…
           </span>

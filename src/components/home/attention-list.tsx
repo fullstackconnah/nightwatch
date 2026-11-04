@@ -136,7 +136,7 @@ export function AttentionList({
           variant="ghost"
           size="sm"
           className="hm-pill"
-          style={{ visibility: pill ? "visible" : "hidden" }}
+          data-on={pill ? "" : undefined}
           tabIndex={pill ? 0 : -1}
           aria-hidden={pill ? undefined : true}
           onClick={tap}

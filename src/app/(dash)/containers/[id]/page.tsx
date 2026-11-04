@@ -251,7 +251,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                   <Icon
                     size={13}
                     className={cn(
-                      isPending && (action === "restart" ? "animate-spin" : "animate-pulse"),
+                      isPending && (action === "restart" ? "animate-spin motion-reduce:animate-none" : "animate-pulse motion-reduce:animate-none"),
                     )}
                   />{" "}
                   {label}

@@ -115,8 +115,8 @@ export function KioskNowPlaying() {
           // `overflow-hidden` rather than rounding the bar itself, so it
           // never shows square corners poking past the pill's curve.
           <div
-            className="absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
-            style={{ width: `${Math.max(0, Math.min(1, active.progress01)) * 100}%` }}
+            className="absolute inset-x-0 bottom-0 h-0.5 origin-left bg-accent transition-transform duration-1000 ease-linear motion-reduce:transition-none"
+            style={{ transform: `scaleX(${Math.max(0, Math.min(1, active.progress01))})` }}
           />
         )}
       </div>

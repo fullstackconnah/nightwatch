@@ -83,9 +83,9 @@ export function Meter({
           alone. Visually hidden: the bar itself is the intended visual. */}
       <span className="sr-only">{Math.round(p)}%</span>
       <div
-        className="h-full rounded-full transition-[width] duration-500"
+        className="h-full w-full origin-left rounded-full transition-transform duration-500 motion-reduce:transition-none"
         style={{
-          width: `${p}%`,
+          transform: `scaleX(${p / 100})`,
           background: color,
           // color-mix, not a hex-alpha suffix: `color` is a var() reference,
           // so `${color}55` used to concatenate into the literal string
@@ -129,7 +129,7 @@ export function Gauge({
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c - (p / 100) * c}
-          className="transition-[stroke-dashoffset] duration-500"
+          className="transition-[stroke-dashoffset] duration-500 motion-reduce:transition-none"
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">

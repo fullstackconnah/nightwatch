@@ -156,8 +156,8 @@ function LifeTrack({
       aria-label={`${pct}% of rated endurance used`}
     >
       <div
-        className="h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
-        style={{ width: `${swept ? pct : 0}%`, background: fill }}
+        className="h-full w-full origin-left rounded-full transition-transform duration-700 ease-out motion-reduce:transition-none"
+        style={{ transform: `scaleX(${(swept ? pct : 0) / 100})`, background: fill }}
       />
       {/* The replacement-planning line. Drawn on top of the fill so it stays legible
           once wear crosses it, which is precisely when it matters. */}
@@ -464,8 +464,8 @@ function DriveRow({ drive, swept }: { drive: DriveHealth; swept: boolean }) {
                       <span className="microlabel truncate">{t.label}</span>
                       <div className="relative h-1.5 rounded-full bg-panel-2 overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none"
-                          style={{ width: `${pct}%`, background: VERDICT_FILL[intent] }}
+                          className="h-full w-full origin-left rounded-full transition-transform duration-500 ease-out motion-reduce:transition-none"
+                          style={{ transform: `scaleX(${pct / 100})`, background: VERDICT_FILL[intent] }}
                         />
                       </div>
                       <span className={cn("font-mono text-[0.7rem] tabular-nums", VERDICT_TEXT[intent])}>
