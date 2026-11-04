@@ -15,7 +15,7 @@
  * Rain zones: rain-<state>-full.png and rain-<state>-floor.png (y 700-800) at 1280x800 for heavy-night, storm-dusk and
  * drizzle-dusk, plus light-day, drizzle-day and light-day-reduced (midday sun, the last with reduced motion; the day ones add rain-<state>-floor-pad.png, y 560-800) (the rain is in the mocked weather, no ?wx=); rainZoneCover.<state> lists the visible controls in the
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
- * PR 4 (ambient): ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
+ * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
  */
 
@@ -581,6 +581,19 @@ for (const size of SIZES) {
       await context.close();
     });
   }
+}
+// ambient.radarGap: px from the radar button's right edge to the first forecast cell's left edge in the standard layout; must be >= 16
+results.ambient.radarGap = {};
+for (const size of SIZES) {
+  await guarded(`ambient radarGap ${size.name}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    results.ambient.radarGap[size.name] = await page.evaluate(() => {
+      const b = document.querySelector("[data-sr-radar]")?.getBoundingClientRect();
+      const c = document.querySelector(".sr-fc")?.getBoundingClientRect();
+      return b && c ? Math.round((c.left - b.right) * 10) / 10 : null;
+    });
+    await context.close();
+  });
 }
 // main at rest after a 10 s idle (N17: nothing animates), glance is the default layout
 await guarded("ambient rest", async () => {

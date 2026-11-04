@@ -159,6 +159,11 @@ describe("ambient.css static scans", () => {
     assert.match(r?.body ?? "", /margin-block:\s*-/);
   });
 
+  it("the radar button keeps 16 px to the first forecast cell through space tokens", () => {
+    const r = all.find((x) => /data-sr-radar/.test(x.sel) && /width/.test(x.body));
+    assert.match(r?.body ?? "", /margin-inline-end:\s*calc\(var\(--sr-space-4\)\s*-\s*var\(--sr-space-2\)\)/);
+  });
+
   it("layout.tsx imports ambient.css", () => {
     assert.match(read("src/app/kiosk/layout.tsx"), /import "\.\/sunroom\/ambient\.css";/);
   });
