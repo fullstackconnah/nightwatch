@@ -35,6 +35,8 @@ export const FIXTURES = {
   unreachable: { ha: { status: "unreachable", detail: "connect ECONNREFUSED 10.0.0.5:8123" }, autoOff: AUTO_OFF },
   empty: { ha: ok({ lights: [], switches: [], climates: [], locks: [], sensors: [] }), autoOff: AUTO_OFF },
   calm: { ha: ok(), autoOff: AUTO_OFF },
+  acOff: { ha: ok({ climates: [ac("lounge", "Lounge AC", "off", 23), ac("bed", "Bedroom AC", "off", 22), ac("study", "Study AC", "off", 22), ac("guest", "Guest AC", "off", 22)] }), autoOff: AUTO_OFF },
+  lockDown: { ha: ok({ locks: [lock("unavailable")] }), autoOff: AUTO_OFF },
   jammed: { ha: ok({ locks: [lock("jammed")] }), autoOff: AUTO_OFF },
   deviceDown: { ha: ok({ lights: [light("hall", "Hallway", true, 60), light("lounge", "Lounge", false, null, false)] }), autoOff: AUTO_OFF },
   lowBattery: { ha: ok({ sensors: [sensor("b1", "Door sensor battery", "battery", 14, "%")] }), autoOff: AUTO_OFF },
