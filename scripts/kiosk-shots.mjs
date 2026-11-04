@@ -156,6 +156,21 @@ for (const stop of STOPS) {
     results.sixStop[stop] = (await page.evaluate(SCAN)).vars;
     await context.close();
   });
+  // the on-state glaze per stop: the controls view with the fixture's ON and OFF chips, cropped to the switches row
+  await guarded(`stop-controls ${stop}`, async () => {
+    const { context, page } = await visit(`${STOP_URL}&layout=standard`, { viewport: SIZES[0].viewport, weather: weatherFor(stop), ha: true });
+    const chip = page.getByRole("switch", { name: /^Toggle Heater/ }).first();
+    await chip.waitFor({ timeout: 8000 });
+    await page.waitForTimeout(1200); // past the catch bloom, so the chip rests on the glaze
+    await page.screenshot({ path: join(OUT_DIR, `stop-controls-${stop}.png`) });
+    const box = await chip.evaluate((el) => {
+      const r = el.parentElement.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height };
+    });
+    const pad = 24;
+    await page.screenshot({ path: join(OUT_DIR, `stop-chips-${stop}.png`), clip: { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: box.width + pad * 2, height: box.height + pad * 2 } });
+    await context.close();
+  });
 }
 
 // ---- the dark crossing: the clone is aria-hidden, inert, and gone after the fade ----
