@@ -30,6 +30,7 @@ export async function GET() {
             created: i.Created,
             inUse: usedBy.length > 0,
             usedBy,
+            stack: i.Labels?.["com.docker.compose.project"] ?? null,
           };
         })
         .sort((a, b) => b.created - a.created),
