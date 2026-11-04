@@ -344,7 +344,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-[0.7rem] text-ink-dim">
-          Connects the Orchestra page to the status service on the PC. Saved on this server; the token is never sent back to
+          Connects the AI lanes page to the status service on the PC. Saved on this server; the token is never sent back to
           the browser.
         </p>
         <Field

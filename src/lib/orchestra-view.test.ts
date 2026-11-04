@@ -1,22 +1,36 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  agentLook,
+  agentRowId,
   bandView,
-  cardBadge,
   checkpointView,
   formatQuiet,
+  holdMembers,
+  holdPillText,
   inFlightRows,
   isLive,
+  laneAttention,
+  laneBadge,
+  laneRowId,
+  laneSentence,
+  laneStuck,
+  laneTally,
   loadErrorCopy,
-  okSentence,
   orchestraAttention,
   pageKind,
+  partialBand,
+  slotLayout,
+  stallFill,
+  tallySegments,
 } from "./orchestra-view.ts";
-import type { OrchestratorSummary } from "./types/orchestra.ts";
+import type { OrchestratorInFlight, OrchestratorSummary } from "./types/orchestra.ts";
 
-const o = (state: OrchestratorSummary["state"], stalledCount = 0): OrchestratorSummary => ({
-  name: "dev", title: null, state, lastActivityAt: null, model: null, home: null, inFlightCount: 0, stalledCount, watcher: null,
+const o = (state: OrchestratorSummary["state"], stalledCount = 0, inFlight: OrchestratorInFlight[] = [], name = "dev"): OrchestratorSummary => ({
+  name, title: null, state, lastActivityAt: null, model: null, home: null, inFlightCount: inFlight.length, stalledCount, watcher: null, inFlight,
 });
+const ag = (name: string, quietMin: number | null, waiting: OrchestratorInFlight["waiting"] = null): OrchestratorInFlight => ({ name, quietMin, waiting });
+const wait = (tool: string, sinceMin: number) => ({ tool, sinceMin });
 
 describe("pageKind", () => {
   it("loading only while there is no data and no error", () => {
@@ -35,17 +49,145 @@ describe("loadErrorCopy", () => {
   });
 });
 
-describe("okSentence", () => {
-  it("counts running and appends stalled only when above zero", () => {
-    const s = okSentence([o("running"), o("stopped"), o("stalled", 2), o("unknown")]);
-    assert.equal(`${s.head}${s.stalled ? `, ${s.stalled}` : ""}${s.tail}`, "Connected. 4 orchestrators, 1 running, 2 stalled.");
-    const one = okSentence([o("running")]);
-    assert.equal(`${one.head}${one.tail}`, "Connected. 1 orchestrator, 1 running.");
-    assert.equal(one.stalled, null);
+describe("agentLook and stallFill (C8)", () => {
+  it("the boundaries 19 / 20 / 360 / 361 / null", () => {
+    assert.deepEqual([agentLook(ag("a", 19)), stallFill(19)], ["quiet", 0.95]);
+    assert.deepEqual([agentLook(ag("a", 20)), stallFill(20)], ["stalled", 1]);
+    assert.equal(agentLook(ag("a", 360)), "stalled");
+    assert.equal(agentLook(ag("a", 361)), "quiet");
+    assert.equal(stallFill(361), 1);
+    assert.deepEqual([agentLook(ag("a", null)), stallFill(null)], ["quiet", 0]);
   });
-  it("empty registry", () => {
-    const s = okSentence([]);
-    assert.equal(`${s.head}${s.tail}`, "Connected. No orchestrators registered.");
+  it("a waiting agent is waiting whatever its quiet time (OPEN-O1)", () => {
+    assert.equal(agentLook(ag("a", 2, wait("Bash", 7))), "waiting");
+    assert.equal(agentLook(ag("a", null, wait("Bash", 7))), "waiting");
+    assert.equal(agentLook(ag("a", 30, wait("Bash", 7))), "waiting");
+  });
+});
+
+describe("laneTally (R3, OPEN-O1)", () => {
+  const list = [
+    o("running", 0, [ag("a", 2), ag("b", 5)], "one"),
+    o("running", 0, [ag("c", 1, wait("Bash", 6))], "two"),
+    o("stalled", 1, [ag("d", 25)], "three"),
+    o("stopped", 0, [], "four"),
+    o("unknown", 0, [], "five"),
+  ];
+  it("a lane is stuck on a waiting agent (even under 20 m) or a stalled one; unknown is not stopped", () => {
+    assert.deepEqual(list.map(laneStuck), [false, true, true, false, false]);
+    assert.deepEqual(laneTally(list), { stuck: 2, running: 1, stopped: 1, unknown: 1, agents: 4 });
+  });
+  it("segments follow Home's order and leave out zeros", () => {
+    assert.deepEqual(tallySegments(laneTally(list)).map((s) => `${s.n} ${s.label}`), ["2 stuck", "1 running", "1 stopped", "1 not read", "4 agents in flight"]);
+    assert.deepEqual(tallySegments(laneTally([o("running", 0, [ag("a", 1)])])).map((s) => `${s.n} ${s.label}`), ["1 running", "1 agent in flight"]);
+    assert.deepEqual(tallySegments(laneTally([])), []);
+  });
+});
+
+describe("laneSentence (R3, C14)", () => {
+  it("all quiet", () => {
+    assert.equal(laneSentence([o("running", 0, [ag("a", 1), ag("b", 2)]), o("running", 0, [ag("c", 3)], "x")], { stale: false }), "Nothing needs you. 2 lanes running, 3 agents in flight.");
+    assert.equal(laneSentence([o("running", 0, [ag("a", 1)])], { stale: false }), "Nothing needs you. 1 lane running, 1 agent in flight.");
+  });
+  it("one waiting, one stalled, several", () => {
+    assert.equal(
+      laneSentence([o("running", 0, [ag("design-shape", 1, wait("Bash", 7))], "design")], { stale: false }),
+      "design needs you: design-shape has a Bash call waiting 7m, usually a permission prompt.",
+    );
+    assert.equal(laneSentence([o("stalled", 1, [ag("dev-reviewer", 24)])], { stale: false }), "dev needs you: dev-reviewer has been quiet 24m.");
+    assert.equal(
+      laneSentence([o("stalled", 1, [ag("a", 24)], "dev"), o("running", 0, [ag("b", 1, wait("Edit", 6))], "design")], { stale: false }),
+      "2 lanes need you: dev and design.",
+    );
+  });
+  it("a stuck lane with two agents needing a look says how many", () => {
+    assert.equal(laneSentence([o("stalled", 2, [ag("a", 24), ag("b", 30)])], { stale: false }), "dev needs you: 2 agents need a look.");
+  });
+  it("never says Nothing needs you when partial or stale, and is empty when stale or no lanes are known", () => {
+    const partial = laneSentence([o("running", 0, [ag("a", 1)]), o("unknown", 0, [], "u")], { stale: false });
+    assert.ok(partial && !/Nothing needs you/.test(partial));
+    assert.equal(partial, "1 lane running, 1 agent in flight. 1 could not be read.");
+    assert.equal(laneSentence([o("running")], { stale: true }), null);
+    assert.equal(laneSentence([], { stale: false }), "No lanes registered.");
+  });
+});
+
+describe("laneAttention (R3, R7)", () => {
+  it("waiting: the fix line, the agent in ink", () => {
+    const a = laneAttention(o("running", 0, [ag("design-shape", 1, wait("Bash", 7))]), false);
+    assert.deepEqual(a, { text: "design-shape · Bash call waiting 7m, usually a permission prompt. Answer it on the PC.", who: "design-shape", tone: "ink" });
+  });
+  it("stalled, several, stopped, unknown, quiet, stale", () => {
+    assert.equal(laneAttention(o("stalled", 1, [ag("r", 24)]), false).text, "r has been quiet 24m. Check its session on the PC.");
+    assert.equal(laneAttention(o("stalled", 2, [ag("r", 24), ag("s", 30)]), false).text, "2 agents need you: s, r.");
+    assert.equal(laneAttention(o("stopped"), false).text, "Stopped. Start it from the PC.");
+    assert.equal(laneAttention(o("unknown"), false).text, "Orchestra could not read this lane.");
+    assert.deepEqual(laneAttention(o("running", 0, [ag("a", 3)]), false), { text: "", who: null, tone: "dim" });
+    assert.equal(laneAttention(o("stalled", 1, [ag("r", 24)]), true).tone, "dim");
+  });
+  it("none of the copy promises a write", () => {
+    for (const l of [o("stopped"), o("unknown"), o("stalled", 1, [ag("r", 24)]), o("running", 0, [ag("a", 1, wait("Bash", 6))])]) {
+      assert.ok(!/\b(restart|start opens|click)\b/i.test(laneAttention(l, false).text.replace("Start it from the PC", "")), l.state);
+    }
+  });
+});
+
+describe("laneBadge", () => {
+  it("running ok; stuck warn with the mark; stopped and not read neutral", () => {
+    assert.deepEqual(laneBadge(o("running"), false), { text: "running", tone: "ok", mark: false, dot: "dot-running" });
+    assert.deepEqual(laneBadge(o("running", 0, [ag("a", 1, wait("Bash", 6))]), false), { text: "stuck", tone: "warn", mark: true, dot: "dot-unhealthy" });
+    assert.deepEqual(laneBadge(o("stalled", 1), false), { text: "stuck", tone: "warn", mark: true, dot: "dot-unhealthy" });
+    assert.deepEqual(laneBadge(o("stopped"), false), { text: "stopped", tone: "neutral", mark: false, dot: "dot-stopped" });
+    assert.deepEqual(laneBadge(o("unknown"), false), { text: "not read", tone: "neutral", mark: false, dot: "dot-stopped" });
+  });
+  it("stale prefixes was, goes neutral and carries no mark", () => {
+    assert.deepEqual(laneBadge(o("stalled", 1), true), { text: "was stuck", tone: "neutral", mark: false, dot: "dot-stopped" });
+  });
+});
+
+describe("partialBand", () => {
+  it("names how many lanes could not be read, only when some could not", () => {
+    assert.equal(partialBand([o("running"), o("unknown"), o("unknown")]), "2 of 3 lanes could not be read. They show as unknown, not stopped.");
+    assert.equal(partialBand([o("running")]), null);
+  });
+});
+
+describe("holdMembers and the slots (R8, C9)", () => {
+  it("ids stay constant over 6 ticks while the pill counts joins and leaves", () => {
+    const held = ["a", "b", "c"];
+    for (let tick = 0; tick < 6; tick++) {
+      const m = holdMembers(held, tick < 3 ? ["a", "b", "c"] : ["a", "c", "d"]);
+      assert.deepEqual(m.shown, held);
+      assert.deepEqual([m.fresh, m.left], tick < 3 ? [0, 0] : [1, 1]);
+    }
+  });
+  it("pill copy: joins say N new, only leaves say Update list", () => {
+    assert.equal(holdPillText({ fresh: 1, left: 0 }), "1 new · show");
+    assert.equal(holdPillText({ fresh: 2, left: 3 }), "2 new · show");
+    assert.equal(holdPillText({ fresh: 0, left: 1 }), "Update list");
+  });
+  it("four slots always: free ones fill, a fifth agent turns slot 4 into Show more", () => {
+    const kinds = (names: string[]) => slotLayout("dev", names).map((s) => s.kind);
+    assert.deepEqual(kinds(["a"]), ["agent", "free", "free", "free"]);
+    assert.deepEqual(kinds(["a", "b", "c", "d"]), ["agent", "agent", "agent", "agent"]);
+    const six = slotLayout("dev", ["a", "b", "c", "d", "e", "f"]);
+    assert.deepEqual(six.map((s) => s.kind), ["agent", "agent", "agent", "more"]);
+    assert.equal(six[3].kind === "more" && six[3].n, 3);
+  });
+  it("a held-out join that is waiting still reaches the lane's words (live data, not the held set)", () => {
+    const lane = o("running", 0, [ag("a", 1), ag("new", 1, wait("Bash", 8))]);
+    assert.equal(holdMembers(["a"], lane.inFlight.map((x) => x.name)).fresh, 1);
+    assert.match(laneAttention(lane, false).text, /^new · Bash call waiting 8m/);
+    assert.match(laneSentence([lane], { stale: false }) ?? "", /^dev needs you: new has a Bash call waiting 8m/);
+  });
+});
+
+describe("row ids (C13)", () => {
+  it("lane, agent, more and free ids are unique over a busy board", () => {
+    const lanes = [o("running", 0, ["a", "b", "c", "d", "e", "f"].map((n) => ag(n, 1)), "dev"), o("running", 0, [ag("a", 1)], "odip"), o("stopped", 0, [], "design")];
+    const ids = lanes.flatMap((l) => [laneRowId(l.name), ...slotLayout(l.name, l.inFlight.map((a) => a.name)).map((s) => s.id)]);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(agentRowId("dev", "a"), "dev/a");
   });
 });
 
@@ -70,18 +212,6 @@ describe("bandView", () => {
   });
 });
 
-describe("cardBadge", () => {
-  it("maps each state to a variant and dot", () => {
-    assert.deepEqual(cardBadge("running", false), { variant: "ok", text: "running", dot: "dot-running" });
-    assert.deepEqual(cardBadge("stalled", false), { variant: "warn", text: "stalled", dot: "dot-unhealthy" });
-    assert.deepEqual(cardBadge("stopped", false), { variant: "neutral", text: "stopped", dot: "dot-stopped" });
-    assert.deepEqual(cardBadge("unknown", false), { variant: "neutral", text: "unknown", dot: "dot-stopped" });
-  });
-  it("stale mode prefixes was and goes neutral", () => {
-    assert.deepEqual(cardBadge("stalled", true), { variant: "neutral", text: "was stalled", dot: "dot-stopped" });
-  });
-});
-
 describe("checkpointView", () => {
   it("null has its own copy", () => {
     assert.deepEqual(checkpointView(null), { text: "No checkpoint recorded.", cut: false, empty: true });
@@ -98,7 +228,7 @@ describe("checkpointView", () => {
 describe("in-flight rows", () => {
   it("stalled (>=20 and <=360 quiet minutes) first, then quietest, nulls last", () => {
     const rows = inFlightRows([
-      { name: "c", quietMin: null }, { name: "b", quietMin: 3 }, { name: "a", quietMin: 25 }, { name: "d", quietMin: 12 }, { name: "z", quietMin: 400 },
+      ag("c", null), ag("b", 3), ag("a", 25), ag("d", 12), ag("z", 400),
     ]);
     assert.deepEqual(rows.map((r) => [r.name, r.stalled]), [["a", true], ["z", false], ["d", false], ["b", false], ["c", false]]);
   });
@@ -120,7 +250,7 @@ describe("isLive", () => {
 
 describe("orchestraAttention", () => {
   const d = (name: string, quiet: (number | null)[], title: string | null = null) => ({
-    name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q })),
+    name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q, waiting: null })),
   });
 
   it("says nothing when orchestra is not configured, even with stalled agents", () => {
@@ -135,7 +265,7 @@ describe("orchestraAttention", () => {
     assert.deepEqual(orchestraAttention("ok", [d("dev", [3]), d("odip", [42], "ODIP")]), {
       headline: "agent-odip-0 has gone quiet",
       detail: "In ODIP, quiet 42m. It may be stuck.",
-      action: "Check it on the Orchestrators page.",
+      action: "Check it on the AI lanes page.",
     });
   });
 
@@ -143,7 +273,7 @@ describe("orchestraAttention", () => {
     assert.deepEqual(orchestraAttention("ok", [d("dev", [25]), d("odip", [5, 125])]), {
       headline: "2 agents have gone quiet",
       detail: "Longest: agent-odip-1 in odip, quiet 2h 5m. They may be stuck.",
-      action: "Check them on the Orchestrators page.",
+      action: "Check them on the AI lanes page.",
     });
   });
 
