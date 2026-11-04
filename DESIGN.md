@@ -472,6 +472,15 @@ Home opens with the answer, then what needs the owner, what changed, the box, an
 - **Calm and motion:** no pulse on Home (the `.hm` scope turns the house dot pulses off). Rows slide with a 420ms WAAPI FLIP only after a tap, and not at all under `prefers-reduced-motion`.
 - **Named rule, the Resting-Pointer Rule:** an element the owner is not touching never changes its height or its top while they read. Live numbers sit in fixed-width cells; things that appear or disappear keep their slot (`visibility`, not `display`).
 
+### Strips (the subject page, signature)
+A subject page with several parts opens with the answer, then one fixed strip per part. First used by `/minecraft`; Smart home and Settings follow. Built from `src/components/strips` (`PageHead`, `StripList`, `WriteAction`) with the `.st-*` classes in `globals.css`.
+- **Head:** title and a `Badge` chip, then the answer in a reserved two-line slot (clamped, `title` holds the full text; the strip the answer names leads its detail with the full sentence), then one tap-height evidence row. A notice appears only for stale or down.
+- **Strip:** a fixed state line (one line, ellipsis) and, in the head, the strip's one main write. At 64rem and up the list sits in a 24rem column beside a pane that always shows one open strip; below that the detail opens under its strip, one at a time. Disclosure is instant; only the chevron turns, and not under `prefers-reduced-motion`.
+- **Auto-open:** the strip the answer names opens on first paint and when the answer's subject changes. It waits while the pointer or focus is inside, and never closes a strip a person opened. A person's choice is kept in the URL hash.
+- **Hold:** while the pointer or focus is inside, lists hold their rows by snapshot using Home's `gate` and `pillText`. A row that left reads "left"; new rows wait behind `N new · show`, whose slot stays reserved.
+- **One write idiom (`WriteAction`):** outline trigger (the default accent only for Start), an inline frame with a `line-bright` border, `Yes, {verb}` and Cancel, a flight line, then failed with Try again and Dismiss. Danger tints only the Yes. Escape cancels and returns focus to the trigger.
+- **Calm:** a problem is a chip and a state-line tone, never a warn-coloured sentence in a calm state. Stale data turns every write off with the reason shown.
+
 ## Do's and Don'ts
 
 ### Do:

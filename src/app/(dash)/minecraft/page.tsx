@@ -1,215 +1,142 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import useSWR from "swr";
-import { ScrollText } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/input";
-import { useLifecycle } from "@/components/resources/container-controls";
-import { StatusCard } from "@/components/minecraft/status-card";
-import { PackBrowser } from "@/components/minecraft/pack-browser";
+import { useEffect, useState } from "react";
+import { BackupNowSlot, BackupsDetail } from "@/components/minecraft/backups-panel";
 import { Console } from "@/components/minecraft/console";
-import { BackupsPanel } from "@/components/minecraft/backups-panel";
-import { fetcher, useContainers, useMinecraftStatus } from "@/lib/client";
-import { cn } from "@/lib/utils";
+import { LogDetail, lastLogLine, useMinecraftLog } from "@/components/minecraft/log-detail";
+import { PackBrowser } from "@/components/minecraft/pack-browser";
+import { ServerDetail, ServerSlot } from "@/components/minecraft/status-card";
+import { PageHead } from "@/components/strips/page-head";
+import { StripList, useHeldList, type StripSpec } from "@/components/strips/strip-list";
+import { buttonVariants } from "@/components/ui/button";
+import { useContainers, useMinecraftBackups, useMinecraftStatus } from "@/lib/client";
+import { leadFor, minecraftModel, type StripId } from "@/lib/minecraft/page-model";
+import { useNow } from "@/lib/use-now";
 
-const CONFIG_SNIPPET = `{
-  "minecraft": {
-    "managerUrl": "http://192.168.1.70:8090",
-    "managerToken": "<MANAGER_TOKEN from the minecraft stack's secrets.env>",
-    "rconHost": "192.168.1.70",
-    "rconPort": 25575,
-    "rconPassword": "<rcon password>",
-    "curseforgeKey": "<optional — Modrinth search works without it>"
+/** Players: names only. While the strips are held (pointer or focus inside) rows stay put; a name that left reads "left" and new names wait behind "N new · show" (R5). */
+function PlayersDetail({ names, stopped }: { names: string[]; stopped: boolean }) {
+  const h = useHeldList(names);
+  if (names.length === 0 && h.rows.length === 0) {
+    return <p className="st-note">{stopped ? "The server is stopped, so nobody is online." : "Nobody is online."}</p>;
   }
-}`;
-
-/**
- * /minecraft — clone of ProxyUnconfigured (src/components/integrations/
- * proxy-status.tsx), pointed at the minecraft stack instead of NPM.
- */
-function MinecraftUnconfigured() {
   return (
-    <div className="panel p-4 space-y-3">
-      <div className="text-sm text-warn font-medium">Minecraft manager not configured</div>
-      <p className="text-xs text-ink-dim">
-        Add a <span className="font-mono text-ink">minecraft</span> block to{" "}
-        <span className="font-mono text-ink">data/config.json</span> — or fill it in under{" "}
-        <span className="font-mono text-ink">Settings → Integrations</span> — with the mc-manager URL/token and RCON
-        credentials. See the minecraft stack&apos;s DEPLOY.md for how mc-manager itself gets stood up.
-      </p>
-      <pre className="rounded-md bg-panel-2 border border-line px-3 py-2.5 font-mono text-xs text-ink-dim overflow-x-auto">
-        {CONFIG_SNIPPET}
-      </pre>
-    </div>
-  );
-}
-
-function statusCopy(status: "unreachable" | "unauthorized"): { headline: string; fix: string } {
-  if (status === "unreachable") {
-    return {
-      headline: "mc-manager did not respond",
-      fix: "Check the mc-manager container is running and that its managerUrl in Settings → Integrations is reachable from this container.",
-    };
-  }
-  return {
-    headline: "mc-manager rejected the request",
-    fix: "Check managerToken in Settings → Integrations matches MANAGER_TOKEN in the minecraft stack's secrets.env.",
-  };
-}
-
-function MinecraftError({ status, detail }: { status: "unreachable" | "unauthorized"; detail?: string }) {
-  const copy = statusCopy(status);
-  return (
-    <div className="panel p-4 space-y-2">
-      <div className="text-sm text-warn font-medium">{copy.headline}</div>
-      <div className="text-xs text-ink-dim">{copy.fix}</div>
-      {detail && <div className="font-mono text-xs text-ink-faint">{detail}</div>}
-    </div>
-  );
-}
-
-function MinecraftLoading() {
-  return (
-    <div className="panel p-6 text-xs text-ink-dim" aria-busy="true">
-      Connecting to mc-manager…
-    </div>
-  );
-}
-
-/**
- * Verbatim copy of the containers/[id] detail page's Logs component (see
- * that file), bound to the minecraft container's id instead of the route
- * param — no new backend, same poll-tail GET.
- */
-function Logs({ id, name }: { id: string; name: string }) {
-  const [tail, setTail] = useState(200);
-  const [paused, setPaused] = useState(false);
-  const { data, error } = useSWR<{ logs: string }>(
-    paused ? null : `/api/docker/containers/${id}/logs?tail=${tail}`,
-    fetcher,
-    { refreshInterval: 5000, keepPreviousData: true },
-  );
-  const boxRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = boxRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [data]);
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-1.5">
-          <ScrollText size={11} /> Logs
-        </CardTitle>
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/logs?c=${encodeURIComponent(name)}`}
-            className="inline-flex min-h-11 items-center text-[0.7rem] text-ink-faint hover:text-accent transition-colors whitespace-nowrap md:min-h-0"
-          >
-            open in console
-          </Link>
-          <Select
-            className="w-28 text-sm md:w-24 md:text-xs"
-            value={tail}
-            onChange={(e) => setTail(Number(e.target.value))}
-          >
-            {[100, 200, 500, 1000, 5000].map((n) => (
-              <option key={n} value={n}>
-                tail {n}
-              </option>
-            ))}
-          </Select>
-          <Button size="sm" variant={paused ? "warn" : "ghost"} onClick={() => setPaused(!paused)}>
-            {paused ? "resume" : "pause"}
-          </Button>
+    <div>
+      <div className="st-listhead">
+        <span>{names.length} online</span>
+        <button type="button" className="st-pill" style={{ visibility: h.pill ? "visible" : "hidden" }} tabIndex={h.pill ? 0 : -1} onClick={h.show}>
+          {h.pill || "0 new · show"}
+        </button>
+      </div>
+      {h.rows.map((n) => (
+        <div key={n} className="st-li" data-row-id={n} data-gone={h.gone.has(n) || !names.includes(n) ? "" : undefined}>
+          <span className="st-grow text-sm">{n}</span>
+          {(h.gone.has(n) || !names.includes(n)) && <span className="text-xs">left</span>}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div
-          ref={boxRef}
-          className="logbox [word-break:normal]! [overflow-wrap:anywhere]! bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim"
-        >
-          {error && data && <div className="text-bad">Couldn&apos;t refresh.</div>}
-          {error && !data ? <span className="text-bad">Couldn&apos;t read logs.</span> : data?.logs || "no output"}
-        </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   );
 }
 
 export default function MinecraftPage() {
-  const { data: status, error, mutate } = useMinecraftStatus();
+  const { data: status, error, mutate, isValidating } = useMinecraftStatus();
   const { data: containersData, mutate: mutateContainers } = useContainers();
+  const { data: backupData, error: backupError, isLoading: backupsLoading, mutate: mutateBackups } = useMinecraftBackups();
   const container = containersData?.containers.find((c) => c.name === "minecraft");
+  const now = useNow(true);
 
-  const lifecycle = useLifecycle(container?.id ?? "", () => {
-    void mutate();
-    void mutateContainers();
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isValidating && !error && status) setLastOkAt(Date.now());
+  }, [isValidating, error, status]);
+
+  const [tail, setTail] = useState(200);
+  const [paused, setPaused] = useState(false);
+  const [serverBusy, setServerBusy] = useState(false);
+  const log = useMinecraftLog(container?.id, tail, paused);
+  const lastLine = lastLogLine(log.data?.logs);
+
+  const model = minecraftModel({
+    status,
+    statusError: Boolean(error),
+    container: container && { state: container.state, exitCode: container.exitCode, startedAt: container.startedAt },
+    containersReady: Boolean(containersData),
+    backups: backupData?.backups,
+    backupsError: Boolean(backupError),
+    lastLine,
+    lastOkAt,
+    now,
   });
 
-  const dotClass = error
-    ? "dot-dead"
-    : !status
-      ? "dot-restarting"
-      : status.manager === "unreachable" || status.manager === "unauthorized"
-        ? "dot-dead"
-        : status.manager === "unconfigured"
-          ? "dot-stopped"
-          : container?.state === "running"
-            ? "dot-running"
-            : container?.state === "restarting"
-              ? "dot-restarting"
-              : "dot-stopped";
+  const refresh = () => {
+    void mutate();
+    void mutateContainers();
+  };
+  const enabled = (id: (typeof model.writes)[number]["id"]) => model.writes.find((w) => w.id === id)?.enabled ?? false;
+  const writesOff = !enabled("switch");
+  const active = status?.instances.find((i) => i.slug === status.active);
+  const cleanExit = container?.exitCode == null || container.exitCode === 0 || container.exitCode === 143;
+  const exited = container?.state === "exited";
+  const crashed = Boolean(active) && exited && !cleanExit;
+  const online = status?.players?.online ?? 0;
+  const target = container && { id: container.id, name: container.name };
 
-  const statusLabel = error
-    ? "unreachable"
-    : !status
-      ? "connecting"
-      : status.manager !== "ok"
-        ? status.manager
-        : (container?.state ?? "no container");
+  const parts: Record<StripId, Pick<StripSpec, "slot" | "body" | "mono">> = {
+    server: {
+      slot: <ServerSlot model={model} container={target} online={online} crashed={crashed} busy={serverBusy} onPending={setServerBusy} refresh={refresh} />,
+      body: <ServerDetail model={model} status={status} container={target} online={online} installFailed={crashed} busy={serverBusy} onPending={setServerBusy} refresh={refresh} />,
+    },
+    players: { body: <PlayersDetail names={status?.players?.players ?? []} stopped={container?.state !== "running"} /> },
+    pack: {
+      body: status ? (
+        <PackBrowser instances={status.instances} active={status.active} onChanged={refresh} disabled={writesOff} lead={leadFor(model, "pack")} />
+      ) : null,
+    },
+    backups: {
+      slot: (
+        <BackupNowSlot
+          enabled={enabled("backup-run")}
+          describedBy="mc-backup-reason"
+          onChanged={() => mutateBackups()}
+        />
+      ),
+      body: (
+        <BackupsDetail
+          backups={backupData?.backups}
+          error={Boolean(backupError)}
+          loading={backupsLoading}
+          containerState={container?.state}
+          writesOff={!enabled("restore")}
+          onChanged={() => mutateBackups()}
+        />
+      ),
+    },
+    console: { body: status ? <Console rcon={status.rcon} stale={!enabled("console-send") && status.rcon === "ok"} /> : null },
+    log: {
+      mono: true,
+      slot: container ? (
+        <Link href={`/logs?c=${encodeURIComponent(container.name)}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
+          Open in Logs
+        </Link>
+      ) : undefined,
+      body: (
+        <LogDetail
+          logs={log.data?.logs}
+          error={Boolean(log.error)}
+          tail={tail}
+          paused={paused}
+          onTail={setTail}
+          onPaused={setPaused}
+        />
+      ),
+    },
+  };
+  const strips: StripSpec[] = model.strips.map((s) => ({ ...s, ...parts[s.id] }));
 
   return (
-    <div className="space-y-5 pb-2">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Minecraft</h1>
-          <p className="text-xs text-ink-dim mt-0.5">
-            Modpack install/switch, RCON console, and world backups for the minecraft stack
-          </p>
-        </div>
-        <span className="flex items-center gap-1.5">
-          <span className={cn("dot", dotClass)} aria-hidden />
-          <span className="microlabel">{statusLabel}</span>
-        </span>
-      </header>
-
-      {error && (
-        <MinecraftError status="unreachable" detail={error.message ?? "Could not reach /api/minecraft/status."} />
-      )}
-
-      {!error && !status && <MinecraftLoading />}
-
-      {!error && status?.manager === "unconfigured" && <MinecraftUnconfigured />}
-
-      {!error && status && (status.manager === "unreachable" || status.manager === "unauthorized") && (
-        <MinecraftError status={status.manager} detail={status.managerDetail} />
-      )}
-
-      {!error && status?.manager === "ok" && (
-        <>
-          <StatusCard status={status} container={container} lifecycle={lifecycle} />
-          <PackBrowser instances={status.instances} active={status.active} onChanged={() => void mutate()} />
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <Console rcon={status.rcon} />
-            <BackupsPanel containerState={container?.state} />
-          </div>
-          {container && <Logs id={container.id} name={container.name} />}
-        </>
-      )}
+    <div className="st-page pb-2">
+      <PageHead title="Minecraft" chip={model.chip} answer={model.answer} evidence={model.evidence} link={model.link} notice={model.notice} />
+      {strips.length > 0 && <StripList strips={strips} autoTarget={model.autoTarget} />}
     </div>
   );
 }
