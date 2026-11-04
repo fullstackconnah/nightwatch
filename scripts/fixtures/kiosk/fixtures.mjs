@@ -36,6 +36,10 @@ export const RAIN_STATES = {
   "heavy-night": { stop: "night", code: "rain", label: "Heavy rain", mmHr: 12, wind: 35 },
   "storm-dusk": { stop: "dusk", sun: DUSK_SUN, code: "thunderstorm", label: "Thunderstorm", mmHr: 9, wind: 45 },
   "drizzle-dusk": { stop: "dusk", sun: DUSK_SUN, code: "drizzle", label: "Drizzle", mmHr: 0.3, wind: 8 },
+  // Day rings (slate ripples): WMO 80 maps to code showers, floor band light (about 18 rings alive). `day` crops the floor padded.
+  "light-day": { stop: "midday", code: "showers", label: "Light showers", mmHr: 1.5, wind: 12, day: true },
+  "drizzle-day": { stop: "midday", code: "drizzle", label: "Drizzle", mmHr: 0.3, wind: 8, day: true },
+  "light-day-reduced": { stop: "midday", code: "showers", label: "Light showers", mmHr: 1.5, wind: 12, day: true, reduced: true },
 };
 
 export function rainWeatherFor(state) {

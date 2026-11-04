@@ -111,19 +111,23 @@ export function sampleStreak(p: RainParams, band: WetBand, rng: () => number): S
 /* Rain marks beyond the streaks: rings on a wet floor, crowns on the forecast
    panel's top edge, a floor sheen. Index 0..3 is drizzle..heavy, 4 is storm. */
 export const PUDDLE = {
-  ringRate: { day: [6, 14, 26, 40, 48], dark: [8, 16, 26, 40, 48] },
+  ringRate: { day: [12, 20, 26, 40, 48], dark: [8, 16, 26, 40, 48] },
   crownRate: [2, 5, 9, 14, 18],
   ringLife: { day: 0.9, dark: 1.4 },
   ringR: { day: [10, 24], dark: [14, 30] }, // base + span x u, before perspective
-  ringKind: { day: 2.0, dark: 2.2 }, // shader sigma = 0.09 + (kind - 2) x 0.1
-  ringAlpha: { day: 0.6, dark: 0.5 },
-  ringShadowAlpha: 0.12, // day only
+  ringKind: { day: 2.2, dark: 2.2 }, // shader sigma = 0.09 + (kind - 2) x 0.1
+  ringAlpha: { day: 0.45, dark: 0.5 }, // day: slate ink; the one number to change if the rings read faint
+  ringCrestDy: -1.2, // px; up, so the crest sits on the ring's near edge
+  ringCrestAlpha: 0.35, // day only: the white crest on a ring's near edge
   crownAlpha: { day: 0.3, dark: 0.4 },
   crownLife: 0.35,
   crownRadius: 2.2,
   crownFloor: 0.3,
   sheenAlpha: { day: 0.1, dark: 0.06 },
   sheenFloor: { day: 1, dark: 0 }, // a daytime lightening needs no mask
+  // The reduced-motion still: by day a slate wet band (a darkening, counted in the gate's still stack); dark as the sheen.
+  stillSheenAlpha: { day: 0.12, dark: 0.06 },
+  stillSheenFloor: { day: 1, dark: 0 },
   streakShare: 0.6,
   // Day is 0.3, not the shape brief's 0.5: a wet dawn ground (inkDim base 5.0) drops to 4.29 at 0.5.
   streakFloor: { day: 0.3, dark: 0.5 },
@@ -141,11 +145,14 @@ export interface PuddleParams {
   ringRSpan: number;
   ringKind: number;
   ringAlpha: number;
-  ringShadow: boolean;
+  ringCrest: boolean;
+  ringCrestAlpha: number;
   crownRate: number;
   crownAlpha: number;
   sheenAlpha: number;
   sheenFloor: number;
+  stillSheenAlpha: number;
+  stillSheenFloor: number;
   streakCount: number;
   streakFloor: number;
 }
@@ -163,11 +170,14 @@ export function puddleParams(band: WetBand, storm: boolean, isDark: boolean, w: 
     ringRSpan: PUDDLE.ringR[m][1] * s,
     ringKind: PUDDLE.ringKind[m],
     ringAlpha: PUDDLE.ringAlpha[m],
-    ringShadow: !isDark,
+    ringCrest: !isDark,
+    ringCrestAlpha: PUDDLE.ringCrestAlpha,
     crownRate: PUDDLE.crownRate[i] * area,
     crownAlpha: PUDDLE.crownAlpha[m],
     sheenAlpha: PUDDLE.sheenAlpha[m],
     sheenFloor: PUDDLE.sheenFloor[m],
+    stillSheenAlpha: PUDDLE.stillSheenAlpha[m],
+    stillSheenFloor: PUDDLE.stillSheenFloor[m],
     streakCount: Math.round(PUDDLE.streakShare * rainParams(band, 0, w, h).count),
     streakFloor: storm && isDark ? PUDDLE.streakFloorStormDark : PUDDLE.streakFloor[m],
   };

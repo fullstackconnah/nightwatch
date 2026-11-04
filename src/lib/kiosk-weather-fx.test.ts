@@ -251,7 +251,7 @@ describe("puddle line", () => {
     const get = (b: WetBand, storm: boolean, dark: boolean) => puddleParams(b, storm, dark, 1280, 800);
     assert.deepEqual(BANDS.map((b) => get(b, false, false).streakCount), [44, 89, 152, 240]);
     assert.equal(get("heavy", true, false).streakCount, 240);
-    assert.deepEqual([...BANDS.map((b) => get(b, false, false).ringRate), get("heavy", true, false).ringRate], [6, 14, 26, 40, 48]);
+    assert.deepEqual([...BANDS.map((b) => get(b, false, false).ringRate), get("heavy", true, false).ringRate], [12, 20, 26, 40, 48]);
     assert.deepEqual([...BANDS.map((b) => get(b, false, true).ringRate), get("heavy", true, true).ringRate], [8, 16, 26, 40, 48]);
     assert.deepEqual([...BANDS.map((b) => get(b, false, true).crownRate), get("heavy", true, true).crownRate], [2, 5, 9, 14, 18]);
     assert.equal(get("heavy", false, false).ringLife, 0.9);
@@ -262,6 +262,22 @@ describe("puddle line", () => {
     assert.deepEqual([get("light", false, false).sheenAlpha, get("light", false, false).sheenFloor], [0.1, 1]);
     assert.deepEqual([get("light", false, true).sheenAlpha, get("light", false, true).sheenFloor], [0.06, 0]);
     assert.equal(get("heavy", true, true).ringKind, 2.2);
+    assert.equal(get("heavy", false, false).ringKind, 2.2);
+  });
+  it("day rings are slate at 0.45 with a white crest; night has none", () => {
+    const day = puddleParams("light", false, false, 1280, 800);
+    const night = puddleParams("light", false, true, 1280, 800);
+    assert.equal(day.ringAlpha, 0.45);
+    assert.equal(night.ringAlpha, 0.5);
+    assert.deepEqual([day.ringCrest, day.ringCrestAlpha], [true, 0.35]);
+    assert.equal(night.ringCrest, false);
+    assert.equal(PUDDLE.ringCrestDy, -1.2);
+  });
+  it("the reduced-motion still is a slate sheen at 0.12 by day, the dark sheen at night", () => {
+    const day = puddleParams("light", false, false, 1280, 800);
+    const night = puddleParams("light", false, true, 1280, 800);
+    assert.deepEqual([day.stillSheenAlpha, day.stillSheenFloor], [0.12, 1]);
+    assert.deepEqual([night.stillSheenAlpha, night.stillSheenFloor], [0.06, 0]);
   });
   it("storm rings alive fit the pool", () => {
     const p = puddleParams("heavy", true, true, 1280, 800);
