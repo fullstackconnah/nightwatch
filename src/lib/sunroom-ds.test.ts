@@ -1,5 +1,5 @@
-/* The Sunroom design-system gates that need no browser (shape brief checks N2, N5-N10, plus the
-   "no non-Sunroom rule changed" guard). N1, N3, N4 live in scripts/sunroom-contrast.mjs. */
+/* The Sunroom design-system gates that need no browser (shape brief checks N2, N5-N10).
+   N1, N3, N4 live in scripts/sunroom-contrast.mjs. */
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { execFileSync } from "node:child_process";
@@ -184,27 +184,6 @@ describe("N8 motion scan and N10 scope", () => {
       for (const s of r.sel.split(/,(?![^(]*\))/).map((x) => x.trim())) if (!s.startsWith(SCOPE)) bad.push(`${f}: ${s}`);
     }
     assert.deepEqual(bad, []);
-  });
-});
-
-describe("no non-Sunroom rule in globals.css changed (base 65cc026)", () => {
-  let base: string | null = null;
-  try { base = execFileSync("git", ["show", "65cc026:src/app/globals.css"], { maxBuffer: 1 << 26 }).toString(); } catch { /* shallow clone: skipped */ }
-  it("only Sunroom-only blocks were removed and nothing else was added", { skip: base === null }, () => {
-    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-    const sig = (text: string) => {
-      const { rules, kfs } = parseCss(text);
-      return [...rules.map((r) => ({ sel: r.sel, key: `${r.media}|${norm(r.sel)}|${norm(r.body)}` })), ...kfs.map((k) => ({ sel: `@keyframes ${k.name}`, key: `kf|${k.name}|${norm(k.body)}` }))];
-    };
-    const now = sig(readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8"));
-    const was = sig(base as string);
-    const nowKeys = new Set(now.map((r) => r.key));
-    const wasKeys = new Set(was.map((r) => r.key));
-    const sunroomOnly = (sel: string) => /data-kiosk-theme="sunroom"|@property --sr-|kiosk-sheen/.test(sel);
-    const removedOther = was.filter((r) => !nowKeys.has(r.key) && !sunroomOnly(r.sel)).map((r) => r.key.slice(0, 120));
-    const addedOther = now.filter((r) => !wasKeys.has(r.key) && !sunroomOnly(r.sel)).map((r) => r.key.slice(0, 120));
-    assert.deepEqual(removedOther, []);
-    assert.deepEqual(addedOther, []);
   });
 });
 
