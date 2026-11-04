@@ -209,7 +209,8 @@ const fx = JSON.parse(
 const out = { flash: f.FLASH_PEAK_ALPHA, glow: f.FLASH_GLOW_HEX, bands: {} };
 for (const [name, band, storm] of [["drizzle","drizzle",false],["light","light",false],["moderate","moderate",false],["heavy","heavy",false],["storm","heavy",true]]) {
   const r = f.rainParams(band, 0, 1280, 800);
-  out.bands[name] = { alpha: r.alphaNear, floor: { day: f.puddleParams(band, storm, false, 1280, 800).streakFloor, dark: f.puddleParams(band, storm, true, 1280, 800).streakFloor }, storm };
+  out.bands[name] = { alpha: r.alphaNear, floor: { day: f.puddleParams(band, storm, false, 1280, 800).streakFloor, dark: f.puddleParams(band, storm, true, 1280, 800).streakFloor }, storm,
+    still: Object.fromEntries([["day", false], ["dark", true]].map(([m, d]) => { const q = f.puddleParams(band, storm, d, 1280, 800); return [m, [q.stillSheenAlpha, q.stillSheenFloor]]; })) };
 }
 console.log(JSON.stringify(out));`,
     ],
@@ -252,6 +253,32 @@ for (let i = 0; i < SUNROOM_STOPS.length; i++) {
 }
 console.log(`  ${rainChecked} cells checked, worst ${rainWorst.c.toFixed(2)} (${rainWorst.label}); largest flash step ${maxFlashStep.toFixed(3)}`);
 if (maxFlashStep > 0.05) failures.push(`flash luminance step ${maxFlashStep.toFixed(3)} is over 0.05`);
+
+/* Reduced motion: the still frame is the sheen alone (no streak, no flash, no rings). By day it is a slate
+ * darkening, unmasked (floor 1), so it is counted here; at dusk and night it is the dark sheen at floor 0. */
+let stillChecked = 0;
+let stillWorst = null;
+for (let i = 0; i < SUNROOM_STOPS.length; i++) {
+  for (const k of [0, 0.5]) {
+    const st = sunroomStateAt(i + k, { cloud01: 1, rain01: 1 });
+    if (st.crossing) continue;
+    const mode = st.isDark ? "dark" : "day";
+    const bg = hexRgb(st.palette.bg);
+    for (const ink of ["ink", "inkDim"]) {
+      if (contrastRgb(hexRgb(st.palette[ink]), bg) < AA) continue;
+      for (const [name, b] of Object.entries(fx.bands)) {
+        const [a, fl] = b.still[mode];
+        const px = blend(bg, st.isDark ? glowRgb : dayStreak, a * fl);
+        const c = contrastRgb(hexRgb(st.palette[ink]), px);
+        stillChecked++;
+        if (!stillWorst || c < stillWorst.c) stillWorst = { c, label: `${SUNROOM_STOPS[i].name}+${k} ${ink} ${name}` };
+        if (c < AA) failures.push(`rain still: ${SUNROOM_STOPS[i].name}+${k} wet ${ink} ${name} = ${c.toFixed(2)}`);
+      }
+    }
+  }
+}
+console.log(`  ${stillChecked} still cells checked, worst ${stillWorst.c.toFixed(2)} (${stillWorst.label})`);
+if (stillChecked < 6 * 2 * 5) failures.push(`rain still pass is vacuous: ${stillChecked} cells`);
 
 /* Not a contrast gate, but a cheap guard on the thing the whole design rests
  * on: if the shadow's horizontal offset does not actually change sign across

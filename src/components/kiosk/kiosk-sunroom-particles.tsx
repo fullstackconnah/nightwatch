@@ -598,8 +598,10 @@ export function KioskSunroomParticles({
     };
 
     /** The wet-floor sheen quad: full width, 0.70H to H, clear at the top. */
-    const putSheen = (q: PuddleParams, isDark: boolean) =>
-      putQuad(0, height * 0.7, width, height, isDark ? nightInk : whiteInk, 0, q.sheenAlpha, 4, q.sheenFloor);
+    const putSheen = (q: PuddleParams, isDark: boolean, still = false) =>
+      still
+        ? putQuad(0, height * 0.7, width, height, isDark ? nightInk : dayInk, 0, q.stillSheenAlpha, 4, q.stillSheenFloor)
+        : putQuad(0, height * 0.7, width, height, isDark ? nightInk : whiteInk, 0, q.sheenAlpha, 4, q.sheenFloor);
 
     const flushPuddle = () => {
       if (pq > 0) {
@@ -615,7 +617,7 @@ export function KioskSunroomParticles({
     const stepPuddle = (dt: number, q: PuddleParams, isDark: boolean, timed: boolean) => {
       const t0 = timed ? performance.now() : 0;
       const sc = Math.min(width / 1280, height / 800);
-      const mark = isDark ? nightInk : whiteInk;
+      const mark = isDark ? nightInk : dayInk;
       pq = 0;
       putSheen(q, isDark);
 
@@ -652,16 +654,16 @@ export function KioskSunroomParticles({
         }
         const rx = ringR[i] * (1 - (1 - p) * (1 - p)) + 1.5;
         const ry = 0.3 * rx + 1;
-        const fall = (1 - p) * Math.sqrt(1 - p);
-        if (q.ringShadow) {
+        // One fade for day and night: a soft attack, then a linear fade.
+        const fall = Math.min(1, p / 0.08) * (1 - p);
+        if (q.ringCrest) {
           const sx = rx * 0.86;
           const sy = 0.26 * sx + 1;
-          const cy = ringY[i] + 1.2;
-          const a = PUDDLE.ringShadowAlpha * fall;
-          putQuad(ringX[i] - sx, cy - sy, ringX[i] + sx, cy + sy, dayInk, a, a, q.ringKind, 0);
+          const cy = ringY[i] + PUDDLE.ringCrestDy;
+          const a = q.ringCrestAlpha * fall;
+          putQuad(ringX[i] - sx, cy - sy, ringX[i] + sx, cy + sy, whiteInk, a, a, q.ringKind, 0);
         }
-        // Day: white, fading as it opens. Dusk and night: a 110 ms soft attack, then a linear fade.
-        const a = isDark ? q.ringAlpha * Math.min(1, p / 0.08) * (1 - p) : q.ringAlpha * fall;
+        const a = q.ringAlpha * fall;
         putQuad(ringX[i] - rx, ringY[i] - ry, ringX[i] + rx, ringY[i] + ry, mark, a, a, q.ringKind, 0);
       }
 
@@ -757,7 +759,7 @@ export function KioskSunroomParticles({
       gustGeo.setDrawRange(0, 0);
       flashMesh.visible = false;
       pq = 0;
-      if (p.band !== "none") putSheen(getPuddle(p.band, p.storm, p.isDark), p.isDark);
+      if (p.band !== "none") putSheen(getPuddle(p.band, p.storm, p.isDark), p.isDark, true);
       flushPuddle();
       updateMist(performance.now(), 0, true);
       renderer.render(scene, camera);

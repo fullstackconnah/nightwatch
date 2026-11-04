@@ -13,7 +13,7 @@
  * PR 2 (controls): controls.<size>.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord}, controls.reduced.<size>.n14Running,
  * controls.seen (the climate tile and chips rendered). States: rest, modal (climate), sheet (auto-off).
  * Rain zones: rain-<state>-full.png and rain-<state>-floor.png (y 700-800) at 1280x800 for heavy-night, storm-dusk and
- * drizzle-dusk (the rain is in the mocked weather, no ?wx=); rainZoneCover.<state> lists the visible controls in the
+ * drizzle-dusk, plus light-day, drizzle-day and light-day-reduced (midday sun, the last with reduced motion; the day ones add rain-<state>-floor-pad.png, y 560-800) (the rain is in the mocked weather, no ?wx=); rainZoneCover.<state> lists the visible controls in the
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
  */
 
@@ -331,11 +331,14 @@ for (const name of Object.keys(RAIN_STATES)) {
       ha: true,
       nowPlaying: true,
       rain: true,
+      reduced: !!RAIN_STATES[name].reduced,
     });
     await seen(page, '[data-rain-zone="playing"]', 15_000);
-    await page.waitForTimeout(2500); // rects are re-read once a second; let the rings fill the floor
+    await page.waitForTimeout(RAIN_STATES[name].day ? 4000 : 2500); // rects are re-read once a second; let the rings fill the floor (a day ring lives 0.9 s: about 13 alive by then)
     await page.screenshot({ path: join(OUT_DIR, `rain-${name}-full.png`) });
     await page.screenshot({ path: join(OUT_DIR, `rain-${name}-floor.png`), clip: { x: 0, y: 700, width: 1280, height: 100 } });
+    // Day states: a padded crop of the whole ring band (0.75H = y 600) so the slate rings and crests read at pixel size.
+    if (RAIN_STATES[name].day) await page.screenshot({ path: join(OUT_DIR, `rain-${name}-floor-pad.png`), clip: { x: 0, y: 560, width: 1280, height: 240 } });
     results.rainZoneCover[name] = await page.evaluate(RAIN_ZONE_COVER);
     await context.close();
   });
