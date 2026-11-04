@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { BackupTile } from "@/components/resources/backup-tile";
 import { useHost } from "@/lib/client";
 import { formatRate } from "@/lib/format";
+import { homeLanesText } from "@/lib/orchestra-view";
 import { useOrchestraStatus } from "@/lib/use-orchestra";
 import { cn } from "@/lib/utils";
 
@@ -54,10 +55,7 @@ function Lanes() {
   const { data } = useOrchestraStatus();
   let text = "checking…";
   if (data?.status === "ok") {
-    const by = (s: string) => data.orchestrators.filter((o) => o.state === s).length;
-    text = [by("stalled") && `${by("stalled")} stuck`, `${by("running")} running`, by("stopped") && `${by("stopped")} stopped`]
-      .filter(Boolean)
-      .join(", ");
+    text = homeLanesText(data.orchestrators);
   } else if (data) text = "not reachable";
   return (
     <Link href="/orchestrators" className="hm-lanes" data-feature="orchestra-link">
