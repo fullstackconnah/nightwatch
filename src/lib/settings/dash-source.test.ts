@@ -52,6 +52,14 @@ test("K12: the settings PUT route merges through mergeDashPut and refuses with 4
   assert.ok(put.indexOf("status: 400") > -1 && put.indexOf("status: 400") < put.indexOf("saveConfig("), "400 return before saveConfig(");
 });
 
+test("O1/F1: GET and the PUT reply both go through sanitizeConfig, which strips widget secrets with publicWidgets(", () => {
+  const r = read("app/api/settings/route.ts");
+  const fn = r.slice(r.indexOf("function sanitizeConfig("), r.indexOf("function sanitizeConfig(") + 400);
+  assert.ok(fn.includes("widgets: publicWidgets(config.widgets"), "sanitizeConfig calls publicWidgets(");
+  assert.ok(r.includes("config: sanitizeConfig(config)"), "GET body uses sanitizeConfig");
+  assert.ok(r.includes("config: sanitizeConfig(merged.next)"), "PUT reply uses sanitizeConfig");
+});
+
 test("F1: a good Hermes daemon save re-seeds the drafts from the stored values", () => {
   const h = read("components/settings/settings-hermes.tsx");
   const i = h.indexOf('postJson("/api/settings/hermes-daemon"');

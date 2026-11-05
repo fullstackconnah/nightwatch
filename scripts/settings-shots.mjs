@@ -35,7 +35,7 @@ const STATES = [
   ["loading", "loading", "Loading", "Loading settings", null],
   ["loadError", "load-error", "Not loaded", "couldn’t load", null],
   ["calm", "calm", "Ready", "integrations are set up", null],
-  ["partial", "partial", "Ready", "of 6 integrations are set up", null],
+  ["partial", "partial", "Ready", "of 7 integrations are set up", null],
   ["none", "none", "Not set up", "No integrations are set up", null],
   ["noPassword", "no-password", "Sign-in off", "No login password", "access"],
   ["hermesKeyMissing", "hermes-key-missing", "Needs a key", "no OpenRouter key is saved", "hermes"],
@@ -230,6 +230,29 @@ await guarded("dashboard", () =>
     record("S no horizontal scroll", `dashboard@${s.name}`, (await overflow(page)) <= 0);
     await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" }); // the fixed bottom nav hid the 390 widget row
     await shot(page, s, "dashboard");
+    await page.close();
+  }),
+);
+
+// ---- O1: a widget with a saved key opens write-only: masked view, no value anywhere in the page or any /api/settings body ----
+const FIXTURE_SECRET = "wsecret-fixture"; // never in a fixture; with BASE_URL on a real stack seeded with it this check bites
+await guarded("widget-secret", () =>
+  each(async (s) => {
+    const bodies = [];
+    const onResponse = (r) => { if (new URL(r.url()).pathname === "/api/settings") bodies.push(r.text().catch(() => "")); };
+    s.context.on("response", onResponse); // on the context, so the page's first GET is seen without a reload
+    const { page } = await visit(s, "calm");
+    s.context.off("response", onResponse);
+    await openStrip(page, "dashboard");
+    await page.getByRole("button", { name: "edit", exact: true }).first().click();
+    await page.getByPlaceholder("http://homelab.local:8989").waitFor({ timeout: SLOW }); // the widget editor's own field; getByText("API key") also hit hidden "<api key>" copy
+    record("O1 saved key shows the masked view", `widget-secret@${s.name}`, await page.getByRole("button", { name: "Replace" }).first().isVisible());
+    record("O1 no password input holds a value", `widget-secret@${s.name}`, await page.evaluate(() => [...document.querySelectorAll("input[type=password]")].every((i) => i.value === "")));
+    record("O1 no fixture secret in the page", `widget-secret@${s.name}`, !(await page.content()).includes(FIXTURE_SECRET));
+    record("O1 no fixture secret in any /api/settings body", `widget-secret@${s.name}`, (await Promise.all(bodies)).every((b) => !b.includes(FIXTURE_SECRET)));
+    record("S no horizontal scroll", `widget-secret@${s.name}`, (await overflow(page)) <= 0);
+    await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+    await shot(page, s, "widget-secret");
     await page.close();
   }),
 );
