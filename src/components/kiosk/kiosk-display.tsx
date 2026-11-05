@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import { WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
-import { applyWxPreview } from "@/lib/kiosk-weather-fx";
+import { applyWxPreview, conditionWord } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -690,12 +690,13 @@ export function KioskNightOverlay({
         <div className="flex items-center gap-2">
           <Icon size={20} className="text-ink-faint" aria-hidden />
           <span className="font-mono text-lg text-ink-dim">{Math.round(current.tempC)}°</span>
-          <span className="text-sm text-ink-faint">{current.label}</span>
+          <span className="text-sm text-ink-faint">{conditionWord(current.label)}</span>
         </div>
       )}
 
       <button
         type="button"
+        data-sr-admin
         onClick={(e) => {
           e.stopPropagation();
           onAdminClick(e.currentTarget.getBoundingClientRect());

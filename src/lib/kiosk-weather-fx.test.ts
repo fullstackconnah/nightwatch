@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  conditionWord,
   FLASH_PEAK_ALPHA,
   PUDDLE,
   WX_PRESETS,
@@ -428,5 +429,13 @@ describe("kiosk-shots fixtures", () => {
     for (const p of FETCHED) assert.ok(p in ROUTES, p);
     // answered inline by visit(): weather and attention always, ha/states and climate-auto-off (kiosk-hub.tsx:56, use-climate-auto-off.ts:27) with ha:true
     assert.ok(HA_STATES.entities.climates.length && AUTO_OFF.enabled);
+  });
+});
+
+describe("conditionWord", () => {
+  it("is lowercase in every period, night included", () => {
+    assert.equal(conditionWord(WX_PRESETS["clear-night"].label), "clear");
+    assert.equal(conditionWord(WX_PRESETS.off.label), "clear");
+    assert.equal(conditionWord("Partly cloudy"), "partly cloudy");
   });
 });

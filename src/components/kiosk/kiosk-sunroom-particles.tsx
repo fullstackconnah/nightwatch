@@ -342,8 +342,8 @@ export function KioskSunroomParticles({
     scene.add(puddleMesh);
 
     /* Zone rects (glance text) and the forecast panel, read from the DOM tags
-       `data-rain-zone` / `data-rain-panel`. Same-named elements are unioned (the
-       outlook and briefing share the "sentence" zone). Re-read on mount, on
+       `data-rain-zone` / `data-rain-panel`. Same-named elements are unioned (every
+       widget in the glance centre column shares the "sentence" zone). Re-read on mount, on
        container resize, on a prop change and then at most once a second from the
        frame loop, so tags that appear late (weather data), vanish or move
        (glance <-> full) are picked up within a second. */
