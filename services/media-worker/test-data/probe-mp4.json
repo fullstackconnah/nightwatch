@@ -1,0 +1,9 @@
+{
+  "streams": [
+    { "index": 0, "codec_name": "h264", "profile": "Main", "codec_type": "video", "width": 1280, "height": 720,
+      "pix_fmt": "yuv420p", "bit_rate": "6000000", "disposition": { "attached_pic": 0 } },
+    { "index": 1, "codec_name": "aac", "codec_type": "audio", "channels": 2, "bit_rate": "128000", "tags": { "language": "eng" } },
+    { "index": 2, "codec_name": "mov_text", "codec_type": "subtitle", "tags": { "language": "eng" } }
+  ],
+  "format": { "format_name": "mov,mp4,m4a,3gp,3g2,mj2", "duration": "100.000000", "size": "78125000", "bit_rate": "6250000" }
+}

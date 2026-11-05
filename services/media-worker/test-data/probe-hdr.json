@@ -1,0 +1,10 @@
+{
+  "streams": [
+    { "index": 0, "codec_name": "hevc", "profile": "Main 10", "codec_type": "video", "width": 3840, "height": 2160,
+      "pix_fmt": "yuv420p10le", "field_order": "progressive", "color_transfer": "smpte2084", "color_primaries": "bt2020",
+      "disposition": { "attached_pic": 0 }, "tags": { "BPS": "30000000" },
+      "side_data_list": [ { "side_data_type": "Mastering display metadata" } ] },
+    { "index": 1, "codec_name": "truehd", "codec_type": "audio", "channels": 8, "tags": { "language": "eng" } }
+  ],
+  "format": { "format_name": "matroska,webm", "duration": "3600.000000", "size": "13500000000", "bit_rate": "30000000" }
+}

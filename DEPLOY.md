@@ -237,6 +237,12 @@ scope** — everything comes from bind mounts that already existed.
   they ever appear; the page renders what is actually there — `bond0` over
   `enp4s0`, `docker0`, seven `br-*` bridges and ~24 veths.
 
+## Media worker
+
+- It is its own stack (`services/media-worker/compose.yaml`), so a dashboard deploy never restarts it mid-encode.
+- Copy `.env.example` to `.env` beside the compose file and fill the placeholders: `MEDIA_WORKER_TOKEN` (32+ characters, the same value goes into nightwatch Settings), `MEDIA_WORKER_BIND` (the server's LAN address), `PUID`, `PGID`, `TZ`.
+- It publishes port 8091 on `MEDIA_WORKER_BIND` only. There is **no Nginx Proxy Manager route**, by design; never add one.
+
 ## Rollback
 
 ```sh
