@@ -26,6 +26,7 @@ const calm = () => ({
     npm: { configured: true, updatedAt: ago(9) },
     forgejo: { configured: true, updatedAt: ago(9) },
     github: { configured: true, updatedAt: ago(9) },
+    media: { configured: true, updatedAt: ago(9) },
     minecraft: { configured: true, updatedAt: ago(5), curseforgeKeySet: true, rconPasswordSet: true },
     hermes: { openrouterConfigured: true, anthropicConfigured: true },
   },
@@ -35,7 +36,7 @@ const calm = () => ({
 
 const none = () => {
   const f = calm();
-  for (const k of ["homeassistant", "npm", "forgejo", "github", "minecraft"]) f.integrations[k] = { configured: false };
+  for (const k of ["homeassistant", "npm", "forgejo", "github", "media", "minecraft"]) f.integrations[k] = { configured: false };
   f.integrations.minecraft = { configured: false };
   f.system = { ...f.system, voiceConfigured: false, mcpTokenConfigured: false, kioskPinConfigured: false, oidcClientSecretConfigured: false };
   f.hermesDaemon.updatedAt = null;
