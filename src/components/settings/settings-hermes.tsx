@@ -316,10 +316,6 @@ function HermesDaemonCard() {
     }
   }, [daemon, seeded]);
 
-  const commandsReady = Boolean(
-    (daemon?.discordBotTokenConfigured || botTokenDraft.trim()) && channelId.trim() && allowedUserIds.trim(),
-  );
-
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -412,7 +408,7 @@ function HermesDaemonCard() {
                 >
                   <Input value={allowedUserIds} onChange={(e) => setAllowedUserIds(e.target.value)} placeholder="111…, 222…" />
                 </Field>
-                <p id="discord-commands-hint" className={cn("text-[0.7rem]", commandsReady ? "text-ink-faint" : "text-warn/80")}>
+                <p id="discord-commands-hint" className="text-[0.7rem] text-ink-faint">
                   Bot token, channel ID and at least one allowed user ID are all required before Discord
                   commands work — the webhook alone only covers outbound digests/alerts.
                 </p>
@@ -426,7 +422,7 @@ function HermesDaemonCard() {
                 <HaSwitchControl on={dryRun} onToggle={() => setDryRun((v) => !v)} label="Dry run" />
               </div>
               {dryRun && (
-                <p className="text-[0.7rem] text-warn/80 -mt-2">
+                <p className="text-[0.7rem] text-ink-dim -mt-2">
                   Dry run is on — reports print to logs, not Discord.
                 </p>
               )}

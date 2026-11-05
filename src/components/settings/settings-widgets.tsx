@@ -51,7 +51,7 @@ function WidgetEditor({
           </Select>
         </Field>
         <Field label="Service URL" required className="col-span-2">
-          <Input placeholder="http://192.168.1.70:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
+          <Input placeholder="http://homelab.local:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
         </Field>
         <Field label="API key">
           <Input type="password" value={w.key ?? ""} onChange={(e) => set({ key: e.target.value || undefined })} />

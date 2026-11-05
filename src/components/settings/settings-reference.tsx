@@ -1,6 +1,6 @@
 "use client";
 
-/* THESIS: two read-only reference panels documenting decisions made
+/* THESIS: two read-only reference panels (the label convention ends the Dashboard strip, the scopes end Access) documenting decisions made
    elsewhere (compose labels, socket-proxy env) so the owner never has to go
    spelunking in DEPLOY.md or a compose file to remember the shape of a
    label or which scopes are live. Static text, no fetch — this is memory,
@@ -10,7 +10,6 @@
 
 import { useState } from "react";
 import { Copy, Check } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
 export function CopyButton({ value, label }: { value: string; label: string }) {
@@ -54,29 +53,27 @@ const LABEL_LINES: { line: string; note: string }[] = [
   { line: "jellyfin.key=<api key>", note: "Dashboard → API Keys" },
 ];
 
-function LabelConventionPanel() {
+export function LabelConventionPanel() {
   const text = LABEL_LINES.map((l) => l.line).join("\n");
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Label convention</CardTitle>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="microlabel">Label convention</h3>
         <CopyButton value={text} label="label convention" />
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <p className="text-[0.7rem] text-ink-dim">
-          Docker labels on a container&apos;s compose service — the dashboard reads them on the next
-          container poll, nothing here to restart.
-        </p>
-        <dl className="space-y-1.5">
-          {LABEL_LINES.map((l) => (
-            <div key={l.line}>
-              <dt className="font-mono text-[0.7rem] text-ink-dim break-all">{l.line}</dt>
-              <dd className="text-[0.65rem] text-ink-faint">{l.note}</dd>
-            </div>
-          ))}
-        </dl>
-      </CardContent>
-    </Card>
+      </div>
+      <p className="text-[0.7rem] text-ink-dim">
+        Docker labels on a container&apos;s compose service — the dashboard reads them on the next
+        container poll, nothing here to restart.
+      </p>
+      <dl className="space-y-1.5">
+        {LABEL_LINES.map((l) => (
+          <div key={l.line}>
+            <dt className="font-mono text-[0.7rem] text-ink-dim break-all">{l.line}</dt>
+            <dd className="text-[0.65rem] text-ink-faint">{l.note}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }
 
@@ -94,52 +91,26 @@ const SCOPE_GROUPS: { label: string; value: "granted" | "denied"; text: string; 
   { label: "never granted", value: "denied", text: "EXEC=1  BUILD=1" },
 ];
 
-function ScopesPanel() {
+export function ScopesPanel() {
   const text = SCOPE_GROUPS.map((g) => `# ${g.label}\n${g.text}`).join("\n");
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Socket-proxy scopes</CardTitle>
-        <CopyButton value={text} label="socket-proxy scopes" />
-      </CardHeader>
-      <CardContent className="space-y-3">
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-[0.7rem] text-ink-dim">
           What this dashboard may ask the Docker socket proxy for. A new scope is a deliberate,
-          user-approved decision — never a default flip.
+          user-approved decision — never a default flip. Edited in compose files, never here.
         </p>
-        <div className="space-y-2">
-          {SCOPE_GROUPS.map((g) => (
-            <div key={g.label}>
-              <div className={cn("microlabel", g.value === "granted" ? "!text-ok" : "!text-bad")}>
-                {g.label}
-              </div>
-              <div className={cn("font-mono text-[0.7rem] break-all", g.value === "granted" ? "text-ink-dim" : "text-bad")}>
-                {g.text}
-              </div>
-              {g.note && <div className="text-[0.65rem] text-ink-faint mt-0.5">{g.note}</div>}
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-export function SettingsReference() {
-  return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="microlabel !text-accent">Reference</h2>
-        <p className="text-[0.7rem] text-ink-dim mt-0.5">
-          Decided elsewhere, read here — edited in compose files and DEPLOY.md, never in this UI.
-        </p>
+        <CopyButton value={text} label="socket-proxy scopes" />
       </div>
-      <div className="grid md:grid-cols-2 gap-3">
-        <LabelConventionPanel />
-        <ScopesPanel />
+      <div className="space-y-2">
+        {SCOPE_GROUPS.map((g) => (
+          <div key={g.label}>
+            <div className={cn("microlabel", g.value === "granted" && "!text-ok")}>{g.label}</div>
+            <div className="font-mono text-[0.7rem] break-all text-ink-dim">{g.text}</div>
+            {g.note && <div className="text-[0.65rem] text-ink-faint mt-0.5">{g.note}</div>}
+          </div>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }

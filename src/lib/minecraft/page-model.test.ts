@@ -48,7 +48,7 @@ test("unconfigured: no strips, says what is missing, links to Settings", () => {
   assert.deepEqual(m.chip, { tone: "neutral", label: "Not connected" });
   assert.equal(m.answer, "Minecraft isn’t connected yet.");
   assert.equal(m.evidence, "Add the mc-manager address and token in Settings → Integrations.");
-  assert.deepEqual(m.link, { href: "/settings#integrations", label: "Open Settings" });
+  assert.deepEqual(m.link, { href: "/settings#minecraft", label: "Open Settings" });
   assert.deepEqual(m.strips, []);
   assert.deepEqual(enabled(m), []);
 });
@@ -57,7 +57,7 @@ test("token rejected: warn, Server opens, only Start/Stop/Restart work", () => {
   const m = minecraftModel(input({ status: status({ manager: "unauthorized", instances: [], active: null, players: null, rcon: "unconfigured" }) }));
   assert.deepEqual(m.chip, { tone: "warn", label: "Token rejected" });
   assert.equal(m.answer, "mc-manager rejected the token. Check it in Settings → Integrations.");
-  assert.deepEqual(m.link, { href: "/settings#integrations", label: "Open Settings" });
+  assert.deepEqual(m.link, { href: "/settings#minecraft", label: "Open Settings" });
   assert.equal(m.autoTarget, "server");
   assert.deepEqual(enabled(m), ["pause", "restart", "stop"]);
 });

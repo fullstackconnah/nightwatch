@@ -19,7 +19,7 @@ import { Field, Input } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import type { AppConfig } from "@/lib/config";
 
-function isCustomized(cfg: AppConfig, name: string): boolean {
+export function isCustomized(cfg: AppConfig, name: string): boolean {
   return Boolean(
     cfg.urls[name] ||
       cfg.icons[name] ||
