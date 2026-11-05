@@ -115,6 +115,8 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
     return route.fulfill({ json });
   });
   await page.goto(url, { waitUntil: "domcontentloaded" });
+  // Hide the Next dev indicator (the round "N" badge) from every capture; next.config is untouched.
+  await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
   await seen(page, '[data-kiosk-theme="sunroom"]');
   await page.waitForTimeout(1200);
   if (await crashed(page)) (results.crashed ??= []).push(`${url} ${viewport.width}x${viewport.height}`);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   conditionWord,
+  isNightGlyph,
   FLASH_PEAK_ALPHA,
   PUDDLE,
   WX_PRESETS,
@@ -429,6 +430,16 @@ describe("kiosk-shots fixtures", () => {
     for (const p of FETCHED) assert.ok(p in ROUTES, p);
     // answered inline by visit(): weather and attention always, ha/states and climate-auto-off (kiosk-hub.tsx:56, use-climate-auto-off.ts:27) with ha:true
     assert.ok(HA_STATES.entities.climates.length && AUTO_OFF.enabled);
+  });
+});
+
+describe("isNightGlyph", () => {
+  it("is the moon only for a clear sky with the sun down", () => {
+    const night = applyWxPreview(undefined, "clear-night", null) as { sun?: { elevationDeg: number }; current?: { code?: string } };
+    assert.equal(isNightGlyph("clear", night.sun), true);
+    assert.equal(isNightGlyph("clear", { elevationDeg: 35 }), false);
+    assert.equal(isNightGlyph("clear", undefined), false);
+    assert.equal(isNightGlyph("rain", { elevationDeg: -30 }), false);
   });
 });
 

@@ -309,6 +309,11 @@ export function flashPeakDeltaL(groundHex: string, alpha: number): number {
   return Math.abs(relLum(blended) - relLum(g));
 }
 
+/** A clear sky reads as a moon, not a sun, once the sun is down (elevation below the horizon). */
+export function isNightGlyph(code: string, sun?: { elevationDeg: number }): boolean {
+  return code === "clear" && !!sun && sun.elevationDeg < 0;
+}
+
 /** Weather condition word as the kiosk shows it: lowercase in every period (the night look used to keep the API's capital). */
 export function conditionWord(label: string): string {
   return label.toLowerCase();

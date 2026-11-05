@@ -34,6 +34,7 @@ import {
   CloudSun,
   Droplets,
   type LucideIcon,
+  Moon,
   Newspaper,
   Sun,
   Sunrise,
@@ -42,7 +43,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import { WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
-import { applyWxPreview, conditionWord } from "@/lib/kiosk-weather-fx";
+import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -163,6 +164,8 @@ interface WeatherOk {
   current: WeatherCurrent;
   days: WeatherDay[];
   rain?: WeatherRain;
+  /** Same payload as KioskWeatherOk.sun; only the night glyph reads it here. */
+  sun?: { elevationDeg: number };
 }
 
 type WeatherResponse =
@@ -181,6 +184,11 @@ export const WEATHER_ICON: Record<WeatherIconKey, LucideIcon> = {
   showers: CloudRainWind,
   thunderstorm: CloudLightning,
 };
+
+/** The glyph for the current reading: the moon for a clear sky with the sun down, else WEATHER_ICON. */
+export function currentGlyph(code: WeatherIconKey, sun?: { elevationDeg: number }): LucideIcon {
+  return isNightGlyph(code, sun) ? Moon : WEATHER_ICON[code];
+}
 
 /* The interval is imported, the RESPONSE TYPE is not, deliberately.
    SWR dedupes by key only while every subscriber's interval agrees, so that
@@ -673,7 +681,7 @@ export function KioskNightOverlay({
   const date = now === 0 ? null : new Date(now);
   const weather = useWeatherView();
   const current = weather.ok?.current ?? null;
-  const Icon = current ? WEATHER_ICON[current.code] : null;
+  const Icon = current ? currentGlyph(current.code, weather.ok?.sun) : null;
   const night = date ? formatWallClock(date) : null;
 
   return (
@@ -701,7 +709,7 @@ export function KioskNightOverlay({
           e.stopPropagation();
           onAdminClick(e.currentTarget.getBoundingClientRect());
         }}
-        className="absolute right-3 top-3 h-11 rounded-md px-4 text-xs text-ink-faint outline-none hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+        className="absolute right-3 top-3 h-11 rounded-md px-4 text-[15px] text-ink-faint outline-none hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
       >
         Admin
       </button>
