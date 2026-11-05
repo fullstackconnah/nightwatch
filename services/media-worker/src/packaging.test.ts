@@ -1,7 +1,7 @@
 // Source-text checks on the files that ship the worker: compose, Dockerfile, ignore files, CI.
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -134,7 +134,7 @@ describe("source rules", () => {
     const WRITERS = ["state.ts", "fsguard.ts", "swap.ts", "disk.ts", "clips.ts"];
     const WRITES = /\b(writeFile(Sync)?|appendFile(Sync)?|rename(Sync)?|unlink(Sync)?|rm(Sync)?|rmdir(Sync)?|mkdir(Sync)?|copyFile(Sync)?|truncate(Sync)?|symlink(Sync)?|link(Sync)?|createWriteStream|openSync|utimes(Sync)?|chmod(Sync)?|chown(Sync)?)\b/;
     const offenders = files(fileURLToPath(new URL("src/", WORKER)))
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith("testkit.ts") && !WRITERS.some((w) => f.endsWith(w)))
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith("testkit.ts") && !WRITERS.includes(basename(f)))
       .filter((f) => readFileSync(f, "utf8").split(/\r?\n/).some((l) => WRITES.test(l.replace(/\/\*.*$/, "").replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, ""))));
     assert.deepEqual(offenders, []);
   });

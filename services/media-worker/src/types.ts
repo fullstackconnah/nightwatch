@@ -102,7 +102,7 @@ export interface Job {
   outputBytes?: number;
   progress?: { pct: number; fps: number | null; etaSec: number | null };
   failedCheck?:
-    | "probe" | "duration" | "streams" | "decode" | "frames" | "saving"
+    | "probe" | "duration" | "streams" | "decode" | "frames" | "saving" | "small-saving"
     | "source-changed" | "disk" | "restart" | "encoder" | "swap";
   /** Seconds shorter (duration) or percent saved (saving), for the page copy. */
   failedValue?: number;

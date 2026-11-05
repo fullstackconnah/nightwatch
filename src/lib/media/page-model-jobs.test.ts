@@ -131,9 +131,10 @@ test("row: a job past the worker's recent list still shows its state", () => {
 });
 
 test("every failed check has plain words", () => {
-  const checks = ["probe", "duration", "streams", "decode", "frames", "saving", "source-changed", "disk", "restart", "encoder", "swap"] as const;
+  const checks = ["probe", "duration", "streams", "decode", "frames", "saving", "small-saving", "source-changed", "disk", "restart", "encoder", "swap"] as const;
   for (const c of checks) assert.match(failedWords({ failedCheck: c, failedValue: 3 }), /^[a-z]/, c);
   assert.equal(failedWords({ failedCheck: "duration", failedValue: 3 }), "the new file is 3 s shorter");
+  assert.equal(failedWords({ failedCheck: "small-saving", failedValue: 0.5 * 1024 ** 3 }), "it saved only 0.5 GB, too little to keep");
   assert.equal(failedWords({ failedCheck: "source-changed" }), "the source file changed during compression");
   assert.equal(failedWords({}), "something went wrong");
 });

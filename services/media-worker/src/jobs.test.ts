@@ -53,6 +53,10 @@ describe("enqueue rules (B2, B8)", { skip: SKIP_OFF_LINUX }, () => {
     assert.throws(() => make({ ready: () => ({ ready: false, reason: "Hold folder missing or not writable" }) }).q.enqueueOne("movies/a.mkv"), /unavailable: Hold folder/);
   });
 
+  it("the off switch refuses even when the drive is ready", () => {
+    assert.throws(() => make({ enabled: false, ready: () => ({ ready: true }) as ReturnType<QueueOpts["ready"]> }).q.enqueueOne("movies/a.mkv"), (e: unknown) => e instanceof JobError && e.status === 409);
+  });
+
   it("a path outside movies/ and tv/ is a 400; a lean file is a 409 'not compressible'", () => {
     const { q } = make();
     assert.throws(() => q.enqueueOne("music/Decoy/decoy.mkv"), (e: unknown) => e instanceof JobError && e.status === 400);
