@@ -10,11 +10,11 @@
  * State fixtures mock GET /api/settings and the container list from scripts/fixtures/settings/fixtures.mjs (placeholders
  * only); the write routes answer from the mock. Time is page.clock (installed before goto); the zone is pinned.
  *
- * Checks written: C1 height, C2 inventory (partial: see inventory.json), C2c no write before Yes, C3 sentinels,
+ * Checks written: C1 height, C2 inventory (the 98 spec kinds as probes, see inventory.json), RF refresh-failed, SF save-failed, C2c no write before Yes, C3 sentinels,
  * C5s auto-open on paint, C6 calm paint, C7 answer slot, C9 drafts, C11 deep link, C12 targets / motion / errors,
  * C14 page errors and foreign requests.
  * Captures, per width: calm, partial, none, loading, load-error, refresh-failed, save-failed, no-password,
- * hermes-key-missing, unsaved-draft.
+ * hermes-key-missing, unsaved-draft: a padded crop of the open strip (else the head); plus one full page per width for calm.
  */
 
 import { chromium } from "playwright";
@@ -103,8 +103,14 @@ async function visit(s, key, { hash = "", reduced = false, real = false } = {}) 
     });
     await page.route(/\/api\/settings\/(integrations|system|password)$/, (route) => {
       mock.posts.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
-      return fx.saveStatus ? json(route, { error: "upstream said 10.0.0.5 refused" }, fx.saveStatus) : json(route, { ok: true });
+      if (fx.saveStatus) return json(route, { error: "upstream said 10.0.0.5 refused" }, fx.saveStatus);
+      // A7 needs a revealed token: the generate call answers with a placeholder.
+      return json(route, route.request().postData()?.includes("generateMcpToken") ? { ok: true, generatedMcpToken: "0".repeat(48) } : { ok: true });
     });
+    await page.route("**/api/hermes/local-models", (route) => json(route, { reachable: false, detail: "ollama not reachable (placeholder)", models: [] }));
+    await page.route("**/api/hermes/openrouter-models", (route) =>
+      json(route, { status: "ok", cachedAt: new Date(NOW).toISOString(), models: [{ id: "vendor/model", name: "Vendor Model", promptPrice: 0.000001, completionPrice: 0.000002, contextLength: 128000 }] }),
+    );
   }
   await page.clock.install({ time: NOW });
   try {
@@ -131,7 +137,19 @@ const openStrip = async (page, id) => {
 };
 const isOpen = (page, id) => page.locator(`[data-k="open-${id}"]`).getAttribute("aria-expanded").then((v) => v === "true");
 const visibleBody = (page) => page.locator(".st-pane > div:not([hidden]), .st-body:not([hidden])");
-const shot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: s.name === "390" });
+const fullShot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-full-${s.name}.png`), fullPage: true });
+/** Padded crop (24 px) of the open strip (1440: the detail pane; 390: its row and body), else of the chip and answer. */
+async function shot(page, s, name) {
+  const open = await page.evaluate(() => document.querySelector('[data-k^="open-"][aria-expanded="true"]')?.getAttribute("data-k")?.slice(5) ?? null);
+  const sels = open ? (s.name === "1440" ? ["#st-pane"] : [`[data-k="open-${open}"]`, `#st-body-${open}`]) : ["[data-feature=chip]", "[data-feature=answer]"];
+  const clip = await page.evaluate(([list, pad]) => {
+    const r = list.map((q) => document.querySelector(q)?.getBoundingClientRect()).filter((b) => b && b.width > 0);
+    if (!r.length) return null;
+    const x = Math.max(0, Math.min(...r.map((b) => b.left)) + scrollX - pad), y = Math.max(0, Math.min(...r.map((b) => b.top)) + scrollY - pad);
+    return { x, y, width: Math.min(innerWidth - x, Math.max(...r.map((b) => b.right)) + scrollX + pad - x), height: Math.max(...r.map((b) => b.bottom)) + scrollY + pad - y };
+  }, [sels, 24]);
+  await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: true, ...(clip && { clip }) });
+}
 
 /** Computed bad or warn hue on visible text, fill or border, hidden bodies excluded (C6). */
 const paint = (page) =>
@@ -183,10 +201,38 @@ for (const [key, name, chip, phrase, open] of STATES) {
       if (open) record("C5s auto-open names the strip", `${name}@${s.name}`, await isOpen(page, open));
       if (s.name === "390") record("C12 targets under 44 px", name, (await small(page)).join("|") || "ok");
       await shot(page, s, name);
+      if (key === "calm") await fullShot(page, s, name);
       await page.close();
     }),
   );
 }
+
+// ---- refresh-failed: a later GET fails (SWR refetches on focus after its 5 s throttle); save-failed: a draft meets a 500 ----
+await guarded("refresh-failed", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "refreshFailed");
+    await page.waitForTimeout(5300);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await page.waitForFunction(() => /Couldn’t refresh/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 15_000 });
+    const main = await page.locator("main").innerText();
+    record("RF notice says the refresh failed and keeps the loaded data", s.name, main.includes("showing what loaded") && main.includes("integrations are set up"));
+    record("RF no host or raw error", s.name, !/\b\d{1,3}(\.\d{1,3}){3}\b|ECONNREFUSED/.test(main));
+    await shot(page, s, "refresh-failed");
+    await page.close();
+  }),
+);
+await guarded("save-failed", () =>
+  each(async (s) => {
+    const { page, mock } = await visit(s, "saveFailed", { hash: "#minecraft" });
+    await page.getByLabel("Manager URL").fill("http://homelab.local:9999");
+    await visibleBody(page).getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForTimeout(800);
+    const main = await page.locator("main").innerText();
+    record("SF one save sent, error shown without the upstream host", s.name, mock.posts.length === 1 && !/\b\d{1,3}(\.\d{1,3}){3}\b/.test(main) && (await visibleBody(page).locator(".text-bad").count()) > 0);
+    await shot(page, s, "save-failed");
+    await page.close();
+  }),
+);
 
 // ---- C1: calm at 390 with nothing open fits one screen above the bottom bar; C5s calm opens nothing at 390, Access at 1440 ----
 await guarded("C1", () =>
@@ -300,23 +346,34 @@ await guarded("C11", () =>
   }),
 );
 
-// ---- C2: inventory (partial list in inventory.json): every kind is found by accessible name once its strip is open ----
+// ---- C2: inventory (inventory.json: the 98 spec kinds as probes): each is found and visible once its strip is open and its steps ran ----
+// Entries with steps get a fresh page; the rest share one per fixture. `none` entries have no stable selector and are listed, not probed.
+const probe = (body, k) => {
+  const scope = k.scope ? body.locator(k.scope) : body;
+  const exact = Boolean(k.exact);
+  const loc = { label: () => scope.getByLabel(k.name, { exact }), button: () => scope.getByRole("button", { name: k.name, exact }), css: () => scope.locator(k.name), placeholder: () => scope.getByPlaceholder(k.name) }[k.by]();
+  return (k.nth === undefined ? loc : loc.nth(k.nth)).evaluateAll((els) => els.some((e) => e.getClientRects().length > 0));
+};
 await guarded("C2", () =>
   each(async (s) => {
-    const inv = JSON.parse(readFileSync(new URL("./fixtures/settings/inventory.json", import.meta.url), "utf8"));
-    const { page } = await visit(s, "calm");
+    const inv = JSON.parse(readFileSync(new URL("./fixtures/settings/inventory.json", import.meta.url), "utf8")).filter((k) => k.width === "both" || k.width === s.name);
     const missing = [];
-    let total = 0;
-    for (const k of inv) {
-      if (k.width !== "both" && k.width !== s.name) continue;
-      total += 1;
+    const noSelector = inv.filter((k) => k.none).map((k) => k.id);
+    const shared = {};
+    for (const k of inv.filter((k) => !k.none)) {
+      const page = k.steps.length ? (await visit(s, k.fixture)).page : (shared[k.fixture] ??= (await visit(s, k.fixture)).page);
       await openStrip(page, k.strip);
-      const body = visibleBody(page);
-      const found = (await body.getByLabel(k.name, { exact: false }).count()) + (await body.getByRole("button", { name: k.name }).count()) + (await body.getByText(k.name, { exact: false }).count());
-      if (!found) missing.push(k.id);
+      const body = page.locator(s.name === "1440" ? "#st-pane" : `#st-body-${k.strip}`);
+      for (const st of k.steps) {
+        if (Array.isArray(st)) await body.getByLabel(st[0]).fill(st[1]);
+        else await body.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
+        await page.waitForTimeout(150);
+      }
+      if (!(await probe(body, k).catch(() => false))) missing.push(k.id);
+      if (k.steps.length) await page.close();
     }
-    record("C2 inventory found", s.name, { found: total - missing.length, of: total, missing });
-    await page.close();
+    for (const p of Object.values(shared)) await p.close();
+    record("C2 inventory found", s.name, { found: inv.length - noSelector.length - missing.length, of: inv.length - noSelector.length, missing, noSelector });
   }),
 );
 
@@ -340,14 +397,19 @@ if (process.env.SENTINELS) {
       ["homeassistant", "Long-lived access token"], ["npm", "Admin password"], ["forgejo", "Access token"], ["github", "Personal access token"],
       ["minecraft", "Manager token"], ["minecraft", "CurseForge API key"], ["minecraft", "RCON password"],
       ["access", "Kiosk PIN"], ["access", "Client secret"], ["access", "Service token"],
+      // Hermes model keys sit in the first Save form, the Discord pair in the second (page order).
+      ["hermes", "OpenRouter API key", "first"], ["hermes", "Anthropic API key", "first"], ["hermes", "Webhook URL", "last"], ["hermes", "Bot token", "last"],
     ];
-    for (const [strip, label] of fields) {
+    for (const [strip, label, which = "last"] of fields) {
       await openStrip(page, strip);
       const body = visibleBody(page);
       const replace = body.getByRole("group", { name: label }).getByRole("button", { name: "Replace" });
       if (await replace.count()) await replace.click();
       await body.getByLabel(label).fill(label === "Kiosk PIN" ? "86420" : `NWSENTINEL-${label.replace(/\W+/g, "-")}`);
-      await body.getByRole("button", { name: "Save" }).last().click();
+      // Access holds four forms, so its Save is the one inside the field's own subsection.
+      const sub = { "Kiosk PIN": "System", "Client secret": "SSO / OIDC", "Service token": "Orchestra" }[label];
+      const saves = (sub ? body.locator(`section:has(> div > h3:text-is("${sub}"))`) : body).getByRole("button", { name: "Save", exact: true });
+      await (which === "first" ? saves.first() : saves.last()).click();
       await page.waitForTimeout(800);
     }
     await page.reload({ waitUntil: "domcontentloaded" });
