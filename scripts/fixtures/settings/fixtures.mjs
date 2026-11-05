@@ -84,4 +84,4 @@ export const FIXTURES = {
 };
 
 // A plain-words list of the containers the Dashboard strip counts (names only).
-export const CONTAINERS = { containers: ["sonarr", "radarr", "jellyfin"].map((name) => ({ id: name, name, state: "running", status: "Up 2 days", image: "example/" + name, ports: [], labels: {} })) };
+export const CONTAINERS = { containers: ["sonarr", "radarr", "jellyfin"].map((name) => ({ id: name, name, state: "running", status: "Up 2 days", image: "example/" + name, ports: [], labels: {} })), groups: [], counts: { total: 3, running: 3, paused: 0, stopped: 0, restarting: 0, unhealthy: 0 } };

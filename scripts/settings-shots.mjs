@@ -67,7 +67,17 @@ for (const s of sessions) {
     if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
   }
 }
-const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
+const live = {}; // the newest page per width, so a failed check can save what the page looked like
+async function failShot(s, e) {
+  fail(s.name, e);
+  const page = live[s.name];
+  if (!page || page.isClosed()) return;
+  const tag = `${stage}@${s.name}`;
+  diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => "unreadable") };
+  await page.screenshot({ path: join(OUT_DIR, `${stage}-FAIL-${s.name}.png`), fullPage: true }).catch(() => {});
+  await page.close().catch(() => {});
+}
+const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => failShot(s, e))));
 
 /** C14: page errors, and any request that leaves the page's own origin. */
 function watch(page, name) {
@@ -87,6 +97,7 @@ async function visit(s, key, { hash = "", reduced = false, real = false } = {}) 
   const page = await (reduced ? s.reducedContext : s.context).newPage();
   const mock = { posts: [], gets: 0 };
   watch(page, s.name);
+  live[s.name] = page;
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
   if (!real) {
     await page.route("**/api/docker/containers", (route) => json(route, CONTAINERS));
@@ -128,6 +139,8 @@ async function visit(s, key, { hash = "", reduced = false, real = false } = {}) 
   return { page, mock };
 }
 
+/** The editable input for a label: a configured secret shows a masked group with the same label until Replace is pressed. */
+const field = (scope, label) => scope.locator("input").and(scope.getByLabel(label));
 const text = (page, sel) => page.locator(sel).first().innerText();
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openStrip = async (page, id) => {
@@ -224,7 +237,7 @@ await guarded("refresh-failed", () =>
 await guarded("save-failed", () =>
   each(async (s) => {
     const { page, mock } = await visit(s, "saveFailed", { hash: "#minecraft" });
-    await page.getByLabel("Manager URL").fill("http://homelab.local:9999");
+    await field(page, "Manager URL").fill("http://homelab.local:9999");
     await visibleBody(page).getByRole("button", { name: "Save", exact: true }).click();
     await page.waitForTimeout(800);
     const main = await page.locator("main").innerText();
@@ -306,8 +319,8 @@ await guarded("C7", () =>
 await guarded("C9", () =>
   each(async (s) => {
     const { page } = await visit(s, "calm", { hash: "#minecraft" });
-    const field = page.getByLabel("Manager URL");
-    await field.fill("http://homelab.local:9999");
+    const url = field(page, "Manager URL");
+    await url.fill("http://homelab.local:9999");
     await page.waitForTimeout(150);
     record("C9 chip Unsaved", s.name, (await text(page, "[data-feature=chip]")).trim() === "Unsaved");
     record("C9 answer names Minecraft", s.name, (await text(page, "[data-feature=answer]")).includes("Minecraft"));
@@ -316,7 +329,7 @@ await guarded("C9", () =>
     await openStrip(page, "hermes");
     await page.locator('[data-k="open-minecraft"]').click();
     if (!(await isOpen(page, "minecraft"))) await page.locator('[data-k="open-minecraft"]').click();
-    record("C9 value kept", s.name, (await page.getByLabel("Manager URL").inputValue()) === "http://homelab.local:9999");
+    record("C9 value kept", s.name, (await field(page, "Manager URL").inputValue()) === "http://homelab.local:9999");
     await page.close();
   }),
 );
@@ -365,7 +378,7 @@ await guarded("C2", () =>
       await openStrip(page, k.strip);
       const body = page.locator(s.name === "1440" ? "#st-pane" : `#st-body-${k.strip}`);
       for (const st of k.steps) {
-        if (Array.isArray(st)) await body.getByLabel(st[0]).fill(st[1]);
+        if (Array.isArray(st)) await field(body, st[0]).fill(st[1]);
         else await body.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
         await page.waitForTimeout(150);
       }
@@ -405,7 +418,7 @@ if (process.env.SENTINELS) {
       const body = visibleBody(page);
       const replace = body.getByRole("group", { name: label }).getByRole("button", { name: "Replace" });
       if (await replace.count()) await replace.click();
-      await body.getByLabel(label).fill(label === "Kiosk PIN" ? "86420" : `NWSENTINEL-${label.replace(/\W+/g, "-")}`);
+      await field(body, label).fill(label === "Kiosk PIN" ? "86420" : `NWSENTINEL-${label.replace(/\W+/g, "-")}`);
       // Access holds four forms, so its Save is the one inside the field's own subsection.
       const sub = { "Kiosk PIN": "System", "Client secret": "SSO / OIDC", "Service token": "Orchestra" }[label];
       const saves = (sub ? body.locator(`section:has(> div > h3:text-is("${sub}"))`) : body).getByRole("button", { name: "Save", exact: true });
