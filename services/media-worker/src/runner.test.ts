@@ -65,8 +65,13 @@ function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfi
 describe("parseProgress (B3)", () => {
   it("42.0% from a sample block, with fps and an eta from speed", () => {
     const block = "frame=250\nfps=25.0\nout_time_us=42000000\nspeed=2.0x\nprogress=continue\n";
-    assert.deepEqual(parseProgress(block, 100), { pct: 42, fps: 25, etaSec: 29 });
-    assert.equal(parseProgress("out_time_us=N/A\nprogress=continue\n", 100), null);
+    assert.deepEqual(parseProgress(block, 100, 24), { pct: 42, fps: 25, etaSec: 29 });
+  });
+
+  it("out_time_us=N/A: falls back to frame / source fps; null without a source fps", () => {
+    const block = "frame=2400\nfps=30\nout_time_us=N/A\nspeed=N/A\nprogress=continue\n";
+    assert.deepEqual(parseProgress(block, 1000, 24), { pct: 10, fps: 30, etaSec: 720 });
+    assert.equal(parseProgress(block, 1000, null), null);
   });
 });
 
