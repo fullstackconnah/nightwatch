@@ -162,10 +162,13 @@ const job = (n, path, state, extra = {}) => ({
 });
 const idle = { compressEnabled: true, compressReady: true, current: null, queue: [], recent: [] };
 /** Patches `job: {id, state}` onto the named files in every title detail; titles stay shared otherwise. */
-const withJobFiles = (jobs, jobsBody = idle) => {
+/** `settled`: paths of movies the worker has already rescanned after their job (verdict ok), so the head, strips and summary drop them (F8). `heldBytes`: originals held for Undo (F5). */
+const withJobFiles = (jobs, jobsBody = idle, { settled = [], heldBytes = 0 } = {}) => {
   const byPath = new Map(jobs.map((j) => [j.path, { id: j.id, state: j.state }]));
   const patch = (f) => (byPath.has(f.path) ? { ...f, job: byPath.get(f.path) } : f);
-  const base = ok(titleSet);
+  const rescanned = (f) => (settled.includes(f.path) ? { ...f, verdict: { kind: "ok", ratio: f.verdict.ratio ?? null, reason: "Already compressed" } } : f);
+  const sets = titleSet.map((t) => (t.detail.kind === "movie" && settled.includes(t.files[0].path) ? movie(t.detail.name, rescanned(t.files[0])) : t));
+  const base = ok(sets, { disk: { sizeBytes: gb(4000), freeBytes: gb(1500), heldBytes } });
   const titles = Object.fromEntries(
     Object.entries(base.titles).map(([id, d]) => [id, { ...d, ...(d.files ? { files: d.files.map(patch) } : {}), ...(d.seasons ? { seasons: d.seasons.map((s) => ({ ...s, files: s.files.map(patch) })) } : {}) }]),
   );
@@ -183,15 +186,15 @@ export const JOB_FIXTURES = {
   queued: withJobFiles([job(1, P.alien, "queued")], { ...idle, queue: [job(1, P.alien, "queued")] }),
   encoding: withJobFiles([running("encoding", 42)], { ...idle, current: running("encoding", 42) }),
   verifying: withJobFiles([running("verifying", 100)], { ...idle, current: running("verifying", 100) }),
-  doneHeld: withJobFiles([heldDone], { ...idle, recent: [heldDone] }),
+  doneHeld: withJobFiles([heldDone], { ...idle, recent: [heldDone] }, { settled: [P.alien], heldBytes: gb(5) }),
   undone: withJobFiles([job(2, P.alien, "undone", { finishedAt: iso(NOW - HOUR) })], { ...idle, recent: [job(2, P.alien, "undone", { finishedAt: iso(NOW - HOUR) })] }),
   failedCheck: withJobFiles([failed("saving", { failedValue: 4 })], { ...idle, recent: [failed("saving", { failedValue: 4 })] }),
   failedDisk: withJobFiles([failed("disk", { error: "Needs 10.5 GB free to compress this file; 3.2 GB is free." })], { ...idle, recent: [failed("disk", { error: "Needs 10.5 GB free to compress this file; 3.2 GB is free." })] }),
   cancelled: withJobFiles([job(4, P.alien, "cancelled", { finishedAt: iso(NOW - HOUR) })], { ...idle, recent: [job(4, P.alien, "cancelled", { finishedAt: iso(NOW - HOUR) })] }),
-  purged: withJobFiles([job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5) })], { ...idle, recent: [job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5) })] }),
+  purged: withJobFiles([job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5), heldUntil: iso(NOW - DAY) })], { ...idle, recent: [job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5), heldUntil: iso(NOW - DAY) })] }, { settled: [P.alien] }),
   sourceChanged: withJobFiles([failed("source-changed")], { ...idle, recent: [failed("source-changed")] }),
-  jellyfinFailed: withJobFiles([{ ...heldDone, jellyfin: "failed" }], { ...idle, recent: [{ ...heldDone, jellyfin: "failed" }] }),
+  jellyfinFailed: withJobFiles([{ ...heldDone, jellyfin: "failed" }], { ...idle, recent: [{ ...heldDone, jellyfin: "failed" }] }, { settled: [P.alien], heldBytes: gb(5) }),
   titleQueueMany: withJobFiles(queuedMany, { ...idle, queue: queuedMany }),
   cancelAll: withJobFiles([running("encoding", 10), job(6, P.blade, "queued")], { ...idle, current: running("encoding", 10), queue: [job(6, P.blade, "queued")] }),
-  alreadyCompressed: withJobFiles([job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa })], { ...idle, recent: [job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa })] }),
+  alreadyCompressed: withJobFiles([job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa, sourceBytes: gb(2), outputBytes: gb(1.2) })], { ...idle, recent: [job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa, sourceBytes: gb(2), outputBytes: gb(1.2) })] }, { settled: [P.casa], heldBytes: gb(1.2) }),
 };

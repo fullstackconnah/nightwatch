@@ -227,9 +227,15 @@ async function main() {
     undo: (p) => p.getByRole("button", { name: /^Undo compressing/ }).first().click(),
     batch: (p) => p.getByRole("button", { name: /^Compress (\d+ suggested|the 200)/ }).first().click(),
     cancelall: (p) => p.getByRole("button", { name: /^Cancel all/ }).first().click(),
+    // F2: the write-failure flight: the worker answers the POST with its B6 507 body, so the sentence under "Couldn’t compress" is the real one.
+    fail507: async (p) => {
+      await p.route("**/api/media/jobs**", (route) => (route.request().method() === "POST" ? json(route, { error: "Needs 32.0 GB free to compress this file; 3.2 GB is free. Space from compressed files comes back when their originals are deleted on 10 Nov." }, 507) : route.fallback()));
+      await p.getByRole("button", { name: /^Compress Alien/ }).first().click();
+      await p.getByRole("button", { name: /^Yes, compress/ }).click();
+    },
   };
   const JOB_STATES = [
-    ["compress-off-calibration", "compressOffCalibration", "Compress queue", null],
+    ["compress-off-calibration", "compressOffCalibration", OPEN.movie, null],
     ["not-ready", "notReady", OPEN.movie, null],
     ["compress-confirm", "compressConfirm", OPEN.movie, "compress"],
     ["queued", "queued", "Compress queue", null],
@@ -239,13 +245,15 @@ async function main() {
     ["undo-confirm", "doneHeld", OPEN.movie, "undo"],
     ["undone", "undone", OPEN.movie, null],
     ["failed-check", "failedCheck", OPEN.movie, null],
-    ["failed-disk-507", "failedDisk", OPEN.movie, null],
+    ["failed-check-disk", "failedDisk", OPEN.movie, null],
+    ["failed-disk-507", "compressConfirm", OPEN.movie, "fail507"],
     ["cancelled", "cancelled", OPEN.movie, null],
     ["purged", "purged", OPEN.movie, null],
     ["source-changed", "sourceChanged", OPEN.movie, null],
     ["jellyfin-failed-note", "jellyfinFailed", OPEN.movie, null],
     ["title-queue-many", "titleQueueMany", OPEN.show, null],
     ["batch-confirm", "compressConfirm", OPEN.show, "batch"],
+    ["queue-cancel-align", "cancelAll", "Compress queue", null],
     ["cancel-all-confirm", "cancelAll", "Compress queue", "cancelall"],
     ["already-compressed", "alreadyCompressed", "movies/Casablanca (1942)", null],
   ];
@@ -256,6 +264,7 @@ async function main() {
       try {
         ({ page } = await visit(s, key));
         await openByName(page, nameOf(open));
+        if (name === "compress-off-calibration") await page.evaluate(() => window.scrollTo(0, 0)); // F1: the page head in frame
         if (action) {
           await ACTIONS[action](page);
           await page.waitForTimeout(300);
@@ -266,9 +275,14 @@ async function main() {
         // B1: the act column lines up down the rows and stays inside them (1440 only; the stack at 390 has no columns).
         if (s.name === "1440" && !action) {
           const acts = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
-            els.map((el) => [el.querySelector(".md-act"), el]).filter(([a]) => a?.querySelector("button")).map(([a, row]) => ({ left: a.getBoundingClientRect().left, out: a.getBoundingClientRect().right > row.getBoundingClientRect().right + 1 })),
+            els.map((el) => [el.querySelector(".md-act"), el]).filter(([a]) => a?.querySelector("button")).map(([a, row]) => ({ right: a.getBoundingClientRect().right, out: a.getBoundingClientRect().right > row.getBoundingClientRect().right + 1 })),
           );
-          if (acts.length) record("B1 act column left edge spread at most 1 px, inside the row", name, { n: acts.length, ok: acts.every((a) => !a.out) && Math.max(...acts.map((a) => a.left)) - Math.min(...acts.map((a) => a.left)) <= 1 });
+          if (acts.length) record("B1 act column right edge spread at most 1 px, inside the row", name, { n: acts.length, ok: acts.every((a) => !a.out) && Math.max(...acts.map((a) => a.right)) - Math.min(...acts.map((a) => a.right)) <= 1 });
+        }
+        // F7: a queued job's Cancel and the running one's share a right edge in the queue detail.
+        if (name === "queue-cancel-align") {
+          const rights = await page.locator("[data-feature=queue-current] button, [data-feature=queue-row] button").evaluateAll((els) => els.filter((el) => /^(Stop compressing|Remove )/.test(el.getAttribute("aria-label") ?? "")).map((el) => el.getBoundingClientRect().right));
+          record("F7 running and queued Cancel share a right edge (1 px)", `${name}@${s.name}`, { rights: rights.map((x) => Number(x.toFixed(1))), ok: rights.length >= 2 && Math.max(...rights) - Math.min(...rights) <= 1 });
         }
         // B3: the bar's fill is scaleX(pct).
         if (name === "encoding") {
@@ -417,10 +431,10 @@ async function main() {
     const { page } = await visit(s, "normal");
     await openByName(page, nameOf(OPEN.show));
     const cols = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
-      els.map((el) => ["md-name", "md-size", "md-res", "md-codec", "md-rate", "md-word", "md-act"].map((c) => el.querySelector(`.${c}`)?.getBoundingClientRect().left ?? -1)),
+      els.map((el) => ["md-name", "md-size", "md-res", "md-codec", "md-rate", "md-word", ...(el.querySelector(".md-act button") ? ["md-act"] : [])].map((c) => el.querySelector(`.${c}`)?.getBoundingClientRect().left ?? -1)), // L4: an empty act is display:none, so it has no edge
     );
     const increasing = cols.every((r) => r.every((x, i) => i === 0 || x > r[i - 1]));
-    const spread = cols[0]?.map((_, i) => Math.max(...cols.map((r) => r[i])) - Math.min(...cols.map((r) => r[i]))) ?? [];
+    const spread = Array.from({ length: 7 }, (_, i) => { const v = cols.map((r) => r[i]).filter((x) => x !== undefined); return v.length ? Math.max(...v) - Math.min(...v) : 0; });
     record("C12 columns increasing, spread at most 1 px", s.name, { increasing, spread: spread.map((x) => Number(x.toFixed(1))), ok: increasing && spread.every((x) => x <= 1) });
     await page.close();
   });

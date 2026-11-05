@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Job, JobsResponse, LibraryResponse, MediaFile } from "../../../services/media-worker/src/types.ts";
-import { batchPlan, compressSay, dayLabel, etaText, failedWords, fileRow, jobText, mediaModel, rowJobs, type ModelInput } from "./page-model.ts";
+import { batchPlan, compressSay, suggestedFiles, titleSummary, dayLabel, etaText, failedWords, fileRow, jobText, mediaModel, rowJobs, type ModelInput } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-05T09:30:00Z");
 const GIB = 1024 ** 3;
@@ -222,4 +222,18 @@ test("batch: counts suggested files, skips those already queued or done, caps at
   assert.equal(big?.label, "Compress the 200 largest");
   assert.equal(big?.paths.length, 200);
   assert.equal(batchPlan([files[3]]), null);
+});
+
+test("F3: the summary row reads \"1 file · could save\" for one file, \"3 files · 2 could save\" for three", () => {
+  assert.equal(titleSummary([file()]), "1 file · could save ~4.0 GB");
+  const ok = file(undefined, { path: "tv/S/o.mkv", verdict: { kind: "ok", ratio: null, reason: "Small file" } });
+  assert.equal(titleSummary([file(), file(undefined, { path: "tv/S/b.mkv" }), ok]), "3 files · 2 could save ~8.0 GB");
+  assert.equal(titleSummary([ok]), "1 file · nothing to compress");
+});
+
+test("F8/S9: files whose job is done, held or purged are not suggested, in the summary or the batch", () => {
+  const files = [file(), file({ id: "d", state: "done" }, { path: "a" }), file({ id: "p", state: "purged" }, { path: "b" }), file({ id: "f", state: "failed" }, { path: "c" })];
+  assert.deepEqual(suggestedFiles(files).map((f) => f.path), [files[0].path, "c"]);
+  assert.equal(titleSummary(files), "4 files · 2 could save ~8.0 GB");
+  assert.equal(batchPlan([files[1], files[2]]), null);
 });

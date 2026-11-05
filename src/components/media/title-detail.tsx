@@ -7,7 +7,7 @@ import { FileAct } from "@/components/media/file-act";
 import { WriteAction } from "@/components/strips/write-action";
 import { Button } from "@/components/ui/button";
 import { ApiError, fetcher, postJson } from "@/lib/client";
-import { batchPlan, fileRow, mediaBytes, seasonHead, type RowJobs } from "@/lib/media/page-model";
+import { batchPlan, fileRow, seasonHead, titleSummary, type RowJobs } from "@/lib/media/page-model";
 
 const GONE = "This title is gone since the last scan. Rescan to refresh the list.";
 const DOWN = "Couldn’t load the files. The media worker didn’t answer.";
@@ -94,15 +94,13 @@ export function TitleDetail({ titleId, kind, scannedAt, rj, off, jobsSig, onChan
   // A season's name ascending, "Other" last.
   const seasons = [...(data.seasons ?? [])].sort((a, b) => (a.name === "Other" ? 1 : b.name === "Other" ? -1 : a.name.localeCompare(b.name, "en", { numeric: true })));
   const files = data.files ?? seasons.flatMap((s) => s.files);
-  const savers = files.filter((f) => f.verdict.kind === "compress");
-  const save = savers.reduce((n, f) => n + (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0), 0);
   const plan = rj && rj.enabled && rj.ready ? batchPlan(files) : null;
 
   return (
     <div className="st-stack">
       <div className="st-row">
         <p className="st-note">
-          {files.length} {files.length === 1 ? "file" : "files"} · {savers.length > 0 ? `${savers.length} could save ~${mediaBytes(save)}` : "nothing to compress"}
+          {titleSummary(files)}
         </p>
         {plan && (
           <WriteAction

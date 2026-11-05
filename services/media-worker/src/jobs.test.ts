@@ -10,6 +10,8 @@ import { SKIP_OFF_LINUX, tempDir } from "./testkit.ts";
 import type { MediaFile } from "./types.ts";
 
 const GB = 2 ** 30;
+/** pump() calls run() one microtask after it sets running; let it start before reading `started`. */
+const tick = () => new Promise<void>((r) => setImmediate(r));
 let root: string;
 let stateDir: string;
 
@@ -57,10 +59,11 @@ describe("enqueue rules (B2, B8)", { skip: SKIP_OFF_LINUX }, () => {
     assert.throws(() => q.enqueueOne("movies/lean.mkv"), (e: unknown) => e instanceof JobError && e.status === 409 && /not compressible/i.test(e.message));
   });
 
-  it("starts the first job only; a queued path is refused a second time", () => {
+  it("starts the first job only; a queued path is refused a second time", async () => {
     const { q, started } = make();
     const j = q.enqueueOne("movies/a.mkv");
     q.enqueueOne("movies/b.mkv");
+    await tick();
     assert.equal(started.length, 1);
     assert.equal(started[0], j.id);
     assert.throws(() => q.enqueueOne("movies/b.mkv"), /Already queued/);
@@ -86,11 +89,12 @@ describe("enqueue rules (B2, B8)", { skip: SKIP_OFF_LINUX }, () => {
 });
 
 describe("batch (S4, D16)", { skip: SKIP_OFF_LINUX }, () => {
-  it("3 paths give 3 jobs under one batchId, one running; batch cancel cancels them all", () => {
+  it("3 paths give 3 jobs under one batchId, one running; batch cancel cancels them all", async () => {
     const { q, started, kills } = make();
     const b = q.enqueueBatch(["movies/a.mkv", "movies/b.mkv", "movies/c.mkv"]);
     assert.equal(b.jobs.length, 3);
     assert.ok(b.jobs.every((j) => j.batchId === b.batchId));
+    await tick();
     assert.equal(started.length, 1);
     q.patch(started[0], { state: "encoding" });
     q.cancelBatch(b.batchId);
@@ -186,7 +190,7 @@ describe("boot recovery (M2, N4)", () => {
 });
 
 describe("recovery and purge only when the drive is ready (F1, F5, F6)", () => {
-  it("F1: not ready at boot, ready later: the first enqueue re-queues the old record first", { skip: SKIP_OFF_LINUX }, () => {
+  it("F1: not ready at boot, ready later: the first enqueue re-queues the old record first", { skip: SKIP_OFF_LINUX }, async () => {
     const first = make();
     seed(first.q, "enc-late", "encoding");
     let up = false;
@@ -199,6 +203,7 @@ describe("recovery and purge only when the drive is ready (F1, F5, F6)", () => {
     assert.equal(again.get("enc-late")?.state, "encoding");
     up = true;
     again.enqueueOne("movies/b.mkv");
+    await tick();
     assert.equal(started[0], "enc-late");
     assert.equal(again.get("enc-late")?.attempts, 1);
   });

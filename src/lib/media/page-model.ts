@@ -169,7 +169,7 @@ function libraryModel(i: ModelInput): Model {
       filterCounts,
       showFilter: d.titles.length > 0,
       filterEmpty: strips.length === 0 && d.titles.length > 0 && i.filter !== "all" ? FILTER_WORDS[i.filter] : null,
-      disk: `Disk: ${mediaBytes(d.disk.freeBytes)} free of ${mediaBytes(d.disk.sizeBytes)}${d.disk.heldBytes > 0 ? ` · ${mediaBytes(d.disk.heldBytes)} of originals held` : ""}`,
+      disk: `Disk: ${mediaBytes(d.disk.freeBytes)} free of ${mediaBytes(d.disk.sizeBytes)}${d.disk.heldBytes > 0 ? ` · ${mediaBytes(d.disk.heldBytes)} held for Undo` : ""}`,
     };
   };
 
@@ -421,11 +421,19 @@ export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | nul
   return { ...row, act: { kind: "compress", path: f.path, name, say: compressSay(f) } };
 }
 
-const NOT_AGAIN = new Set(["queued", "encoding", "verifying", "swapping", "done"]);
+const NOT_AGAIN = new Set(["queued", "encoding", "verifying", "swapping", "done", "purged"]);
+/** Files Compress may still offer: the verdict says compress and no job is active, held or purged (S9). */
+export const suggestedFiles = (files: MediaFile[]) => files.filter((f) => f.verdict.kind === "compress" && !(f.job && NOT_AGAIN.has(f.job.state)));
+/** The summary row of a title: "1 file · could save ~x" (one file), "3 files · 2 could save ~x". */
+export function titleSummary(files: MediaFile[]): string {
+  const sv = suggestedFiles(files);
+  const save = sv.reduce((n, f) => n + (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0), 0);
+  return `${plural(files.length, "file")} · ${sv.length === 0 ? "nothing to compress" : `${files.length === 1 ? "" : `${sv.length} `}could save ~${mediaBytes(save)}`}`;
+}
 const savingOf = (f: MediaFile) => (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0);
 /** The suggested files of a title that the batch button would queue: the largest savings first, at most 200. */
 export function batchPlan(files: MediaFile[]): { label: string; say: string; yes: string; flight: string; paths: string[] } | null {
-  const all = files.filter((f) => f.verdict.kind === "compress" && !(f.job && NOT_AGAIN.has(f.job.state)));
+  const all = suggestedFiles(files);
   if (all.length === 0) return null;
   const pick = [...all].sort((a, b) => savingOf(b) - savingOf(a)).slice(0, 200);
   const k = pick.length;

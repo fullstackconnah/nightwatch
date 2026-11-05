@@ -9,8 +9,9 @@ import type { Health, JobsResponse, TitleDetail } from "./types.ts";
 import type { VerdictInput } from "./verdict.ts";
 
 const GB = 2 ** 30;
+// durationSec 1, not 3600: a 900 KB fixture at 12000 kbps for an hour estimates no saving, so the verdict is "Saving too small" (409).
 const probe = async (_abs: string, st: FileStat): Promise<VerdictInput> => ({
-  ...st, durationSec: 3600, container: "matroska", videoStreams: 1, attachments: 0, audio: [{ codec: "aac", channels: 2, lang: "eng" }],
+  ...st, durationSec: 1, container: "matroska", videoStreams: 1, attachments: 0, audio: [{ codec: "aac", channels: 2, lang: "eng" }],
   subs: [], video: { codec: "h264", profile: null, width: 1920, height: 1080, res: "1080p", kbps: st.name.startsWith("Lean") ? 1000 : 12000,
     kbpsSource: "stream", tenBit: false, hdr: null, wideColour: false, interlaced: false },
 });
