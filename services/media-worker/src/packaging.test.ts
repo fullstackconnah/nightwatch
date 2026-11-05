@@ -119,7 +119,7 @@ describe("source rules", () => {
     const WRITES = /\b(writeFile(Sync)?|appendFile(Sync)?|rename(Sync)?|unlink(Sync)?|rm(Sync)?|rmdir(Sync)?|mkdir(Sync)?|copyFile(Sync)?|truncate(Sync)?|symlink(Sync)?|link(Sync)?|createWriteStream|openSync|utimes(Sync)?|chmod(Sync)?|chown(Sync)?)\b/;
     const offenders = files(fileURLToPath(new URL("src/", WORKER)))
       .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith("testkit.ts") && !f.endsWith("state.ts"))
-      .filter((f) => readFileSync(f, "utf8").split("\n").some((l) => WRITES.test(l.replace(/\/\*.*$/, "").replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, ""))));
+      .filter((f) => readFileSync(f, "utf8").split(/\r?\n/).some((l) => WRITES.test(l.replace(/\/\*.*$/, "").replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, ""))));
     assert.deepEqual(offenders, []);
   });
 

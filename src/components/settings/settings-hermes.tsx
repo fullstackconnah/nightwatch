@@ -20,6 +20,7 @@ import { Field, Input, Label, Select } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { HaSwitchControl } from "@/components/integrations/ha-toggle";
 import { fetcher, postJson } from "@/lib/client";
+import { useFormReport } from "@/components/settings/form-report";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
@@ -300,6 +301,23 @@ function HermesDaemonCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const d = daemon;
+  useFormReport("hermes-daemon", {
+    dirty:
+      seeded && !!d
+        ? webhookDraft !== "" || botTokenDraft !== "" ||
+          channelId !== (d.discordChannelId ?? "") ||
+          allowedUserIds !== (d.discordAllowedUserIds ?? []).join(", ") ||
+          dryRun !== (d.dryRun ?? false) ||
+          digestHour !== (d.digestHour ?? 9) ||
+          digestMinute !== (d.digestMinute ?? 0) ||
+          pipelineEnabled !== (d.pipelineEnabled ?? false) ||
+          pipelineBudget !== (d.pipelineDailyBudgetUsd != null ? String(d.pipelineDailyBudgetUsd) : "") ||
+          pipelineModel !== (d.pipelineModel ?? "") ||
+          pipelineModelHard !== (d.pipelineModelHard ?? "")
+        : false,
+    error,
+  });
 
   useEffect(() => {
     if (daemon && !seeded) {
@@ -342,6 +360,7 @@ function HermesDaemonCard() {
       }
       await postJson("/api/settings/hermes-daemon", body);
       await mutate();
+      setSeeded(false); // reload the drafts from the stored (server-normalised) values
       setWebhookDraft("");
       setBotTokenDraft("");
       setSaveVersion((v) => v + 1);
@@ -523,6 +542,11 @@ export function SettingsHermes() {
       setSeeded(true);
     }
   }, [data, seeded]);
+
+  useFormReport("hermes-model", {
+    dirty: seeded && (tier !== (data?.config.hermes?.tier ?? "local") || model !== (data?.config.hermes?.model ?? "") || openrouterKey !== "" || anthropicKey !== ""),
+    error,
+  });
 
   const hermesStatus = data?.integrations.hermes;
   const lastSaved = data?.meta.hermesModelUpdatedAt ?? null;

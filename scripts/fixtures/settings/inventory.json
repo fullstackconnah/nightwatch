@@ -79,7 +79,7 @@
   {"id":"D12","strip":"hermes","by":"button","name":"Save","width":"both","fixture":"calm","steps":[],"nth":1,"exact":true},
   {"id":"W1","strip":"dashboard","by":"button","name":"Add widget","width":"both","fixture":"calm","steps":[]},
   {"id":"W2","strip":"dashboard","by":"button","name":"edit","width":"both","fixture":"calm","steps":[],"exact":true},
-  {"id":"W3","strip":"dashboard","by":"css","name":"(trash icon button)","width":"both","fixture":"calm","steps":[],"none":"the delete button is an icon with no accessible name or data attribute"},
+  {"id":"W3","strip":"dashboard","by":"button","name":"Delete sonarr widget","width":"both","fixture":"calm","steps":[]},
   {"id":"W4","strip":"dashboard","by":"label","name":"Container","width":"both","fixture":"calm","steps":["Add widget"]},
   {"id":"W5","strip":"dashboard","by":"label","name":"Type","width":"both","fixture":"calm","steps":["Add widget"],"exact":true},
   {"id":"W6","strip":"dashboard","by":"label","name":"Service URL","width":"both","fixture":"calm","steps":["Add widget"]},
