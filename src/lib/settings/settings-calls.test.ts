@@ -54,6 +54,8 @@ test("icon-only delete buttons carry an accessible name", () => {
 
 test("O1 polish: Clear saves the stored widget, not the editor draft", () => {
   const w = readFileSync(join(SRC, "components/settings/settings-widgets.tsx"), "utf8");
-  assert.match(w, /onSave\(\{ \.\.\.widget, \[clear\]: true \}\)/);
+  assert.match(w, /onClear\(\{ \.\.\.widget, \[clear\]: true \}\)/);
+  // Clear must not go through the wrapper that closes the editor (and drops the draft).
+  assert.match(w, /onClear=\{onSave\}/);
   assert.doesNotMatch(w, /onSave\(\{ \.\.\.w, \[f\]: undefined/);
 });
