@@ -67,6 +67,7 @@ describe("enqueue rules (B2, B8)", { skip: SKIP_OFF_LINUX }, () => {
     assert.equal(started.length, 1);
     assert.equal(started[0], j.id);
     assert.throws(() => q.enqueueOne("movies/b.mkv"), /Already queued/);
+    q.patch(j.id, { state: "encoding" }); // the real runner does this first (runner.ts:94); the fake run doesn't
     assert.equal(q.snapshot({ enabled: true, ready: true }).queue.length, 1);
   });
 
