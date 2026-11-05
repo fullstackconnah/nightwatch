@@ -9,7 +9,7 @@ import {
   publicHost,
   type AppConfig,
 } from "@/lib/config";
-import { mergeDashPut } from "@/lib/settings/dash-put";
+import { mergeDashPut, publicWidgets } from "@/lib/settings/dash-put";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { publicSystem } from "@/lib/orchestra-settings";
@@ -25,8 +25,7 @@ interface IntegrationStatus {
 }
 
 /**
- * Strips every secret value (widget-attached secrets excepted — those are
- * pre-existing behaviour for the widget editor and out of scope here) from a
+ * Strips every secret value (widget key/password included, O1) from a
  * config before it is allowed anywhere near a response body. `token`/`password`/
  * `*ApiKey` fields become `undefined`, which JSON.stringify simply omits — the
  * client-side AppConfig type is still satisfied (those fields are optional)
@@ -35,6 +34,7 @@ interface IntegrationStatus {
 function sanitizeConfig(config: AppConfig): AppConfig {
   return {
     ...config,
+    widgets: publicWidgets(config.widgets ?? []),
     homeassistant: config.homeassistant
       ? { url: config.homeassistant.url, updatedAt: config.homeassistant.updatedAt }
       : config.homeassistant,

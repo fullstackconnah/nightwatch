@@ -23,6 +23,11 @@ export interface WidgetInstance {
   key?: string;
   username?: string;
   password?: string;
+  /** Wire-only (never stored): the browser sees these instead of key/password, and sends clear* to remove one. */
+  keySet?: boolean;
+  passwordSet?: boolean;
+  clearKey?: boolean;
+  clearPassword?: boolean;
   /** generic only: path appended to url */
   endpoint?: string;
   /** generic only */
