@@ -16,7 +16,7 @@ export const NICE = ["nice", "-n", "19", "ionice", "-c", "3"];
 export const FFPROBE_ARGS = [
   "-v", "error",
   "-show_entries",
-  "format=duration,size,bit_rate,format_name:stream=index,codec_type,codec_name,profile,width,height,pix_fmt,field_order,color_transfer,color_primaries,r_frame_rate,avg_frame_rate,bit_rate,channels,disposition:stream_tags=BPS,BPS-eng,language:stream_side_data=side_data_type",
+  "format=duration,size,bit_rate,format_name:stream=index,codec_type,codec_name,profile,width,height,pix_fmt,field_order,color_transfer,color_primaries,r_frame_rate,avg_frame_rate,bit_rate,channels:stream_disposition=attached_pic:stream_tags=BPS,BPS-eng,language:stream_side_data=side_data_type",
   "-of", "json",
 ];
 
@@ -107,18 +107,25 @@ export function parseProbe(json: unknown, st: FileStat): VerdictInput {
   };
 }
 
+/** A short fixed reason: never the command line or an absolute path. */
+export function probeReason(err: { killed?: boolean; stderr?: unknown }, abs: string): string {
+  if (err.killed) return "ffprobe timed out";
+  const line = String(err.stderr ?? "").split("\n")[0].split(abs).join("").trim().slice(0, 120);
+  return line ? `ffprobe failed: ${line}` : "ffprobe failed";
+}
+
 /** Runs ffprobe (60 s limit). Never throws: a failure becomes probeError. */
 export function probeFile(
   abs: string, st: FileStat, opts: { prefix?: string[]; timeoutMs?: number } = {},
 ): Promise<VerdictInput> {
   const [cmd, ...pre] = [...(opts.prefix ?? NICE), "ffprobe"];
   return new Promise((resolve) => {
-    execFile(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: opts.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
-      if (err) return resolve(probeFailure(st, err.message.split("\n")[0]));
+    execFile(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: opts.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return resolve(probeFailure(st, probeReason({ killed: err.killed, stderr }, abs)));
       try {
         resolve(parseProbe(JSON.parse(stdout), st));
       } catch {
-        resolve(probeFailure(st, "ffprobe returned unreadable output"));
+        resolve(probeFailure(st, "Not a media file"));
       }
     });
   });

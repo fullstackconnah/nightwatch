@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { bucketRes, parseProbe, probeFile, type FileStat } from "./probe.ts";
+import { bucketRes, parseProbe, probeFile, probeReason, type FileStat } from "./probe.ts";
 import { needFfmpeg, SKIP_OFF_LINUX, tempDir } from "./testkit.ts";
 
 const data = (name: string) => JSON.parse(readFileSync(new URL(`../test-data/${name}`, import.meta.url), "utf8"));
@@ -126,6 +126,27 @@ describe("bucketRes", () => {
     [1920, 800, "1080p"], [1280, 536, "720p"], [3840, 1600, "2160p"],
   ];
   for (const [w, h, res] of cases) it(`${w}x${h} is ${res}`, () => assert.equal(bucketRes(w, h), res));
+});
+
+describe("probeReason", () => {
+  it("is short, fixed and free of the path", () => {
+    assert.equal(probeReason({ killed: true }, "/mnt/media/a.mkv"), "ffprobe timed out");
+    assert.equal(probeReason({ stderr: "/mnt/media/a.mkv: Invalid data found\nmore" }, "/mnt/media/a.mkv"), "ffprobe failed: : Invalid data found");
+    assert.equal(probeReason({ stderr: "x".repeat(500) }, "/p").length, "ffprobe failed: ".length + 120);
+    assert.equal(probeReason({}, "/p"), "ffprobe failed");
+  });
+});
+
+describe("probeFile failure text", () => {
+  const run = (script: string, timeoutMs?: number) =>
+    probeFile("/mnt/media/secret/a.mkv", st(), { prefix: [process.execPath, "-e", script], timeoutMs });
+  it("holds a short reason, never the command line or the path", async () => {
+    const f = await run('process.stderr.write(process.argv.at(-1) + ": Invalid data\\nx"); process.exit(1)');
+    assert.equal(f.probeError, "ffprobe failed: : Invalid data");
+  });
+  it("says timed out when the limit kills it", async () => {
+    assert.equal((await run("setTimeout(() => {}, 5000)", 200)).probeError, "ffprobe timed out");
+  });
 });
 
 describe("probeFile (real ffprobe)", { skip: SKIP_OFF_LINUX }, () => {

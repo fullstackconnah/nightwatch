@@ -115,6 +115,33 @@ describe("scan", { skip: SKIP_OFF_LINUX }, () => {
     assert.deepEqual(counter.calls, ["movies/Loose.mp4"]);
   });
 
+  it("fails the scan and keeps the cache when tv/ cannot be read", async () => {
+    const s = scanner();
+    await scan(s);
+    rmSync(join(root, "tv"), { recursive: true });
+    await scan(s);
+    assert.equal(s.state().state, "failed");
+    assert.equal(Object.keys(s.files()).length, 6);
+  });
+
+  it("re-judges cache hits without a re-probe, and probes a probeError again", async () => {
+    let env: Record<string, string | undefined> = ENV;
+    const s = scanner({ env: new Proxy({}, { get: (_t, k) => env[k as string] }) as typeof env });
+    await scan(s);
+    const f = "movies/Loose.mp4";
+    assert.equal(s.files()[f].verdict.kind, "compress");
+    env = { MEDIA_WORKER_TEST_THRESHOLDS: undefined };
+    counter.calls = [];
+    await scan(s);
+    assert.equal(counter.calls.length, 0);
+    assert.notEqual(s.files()[f].verdict.kind, "compress");
+
+    s.files()[f].probeError = "ffprobe timed out";
+    await scan(s);
+    assert.deepEqual(counter.calls, [f]);
+    assert.equal(s.files()[f].probeError, undefined);
+  });
+
   it("survives a reload from scan.json", async () => {
     const s = scanner();
     await scan(s);

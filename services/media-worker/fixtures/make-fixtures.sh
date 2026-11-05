@@ -18,7 +18,7 @@ H264="-c:v libx264 -preset ultrafast -pix_fmt yuv420p"
 
 mkdir -p "$OUT/movies/Big Film (2001)" "$OUT/movies/Scope Film (2010)" "$OUT/movies/Lean Film (2015)" \
   "$OUT/movies/Phone Film (2018)" "$OUT/movies/Old Film (1999)" "$OUT/movies/HDR Film (2020)" \
-  "$OUT/movies/Laced (2003)" "$OUT/movies/Broken (2000)" \
+  "$OUT/movies/Laced (2003)" "$OUT/movies/Broken (2000)" "$OUT/movies/Cover Film (2012)" \
   "$OUT/tv/Test Show/Season 01" "$OUT/tv/Test Show/Season 02" "$OUT/music/Decoy"
 
 printf '1\n00:00:00,000 --> 00:00:03,000\nHello\n' > "$T/sub.srt"
@@ -57,6 +57,12 @@ ff $(video 1920x1080) $tone -t 6 -vf setparams=color_primaries=bt2020:color_trc=
 # shellcheck disable=SC2046
 ff $(video 1920x1080) $tone -t 6 -vf interlace=scan=tff $H264 -flags +ilme+ildct -field_order tt $(cbr 8M) \
   -c:a aac -b:a 64k "$OUT/movies/Laced (2003)/Laced.mkv"
+
+# compress: an attached PNG cover must not count as a second video stream
+# shellcheck disable=SC2046
+ff $(video 600x900) -frames:v 1 "$T/cover.png"
+# shellcheck disable=SC2046
+ff $(video 1920x1080) $tone -i "$T/cover.png" -t 6 -map 0:v -map 1:a -map 2   $H264 $(cbr 20M) -c:a aac -b:a 64k -c:v:1 png -disposition:v:1 attached_pic "$OUT/movies/Cover Film (2012)/Cover Film.mp4"
 
 # compress: two 720p episodes
 for e in 01 02; do

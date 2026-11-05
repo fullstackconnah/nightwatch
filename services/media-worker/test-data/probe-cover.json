@@ -1,11 +1,54 @@
 {
   "streams": [
-    { "index": 0, "codec_name": "mjpeg", "codec_type": "video", "width": 600, "height": 900,
-      "pix_fmt": "yuvj420p", "disposition": { "attached_pic": 1 } },
-    { "index": 1, "codec_name": "h264", "codec_type": "video", "width": 1920, "height": 1080,
-      "pix_fmt": "yuv420p", "bit_rate": "5000000", "disposition": { "attached_pic": 0 } },
-    { "index": 2, "codec_name": "aac", "codec_type": "audio", "channels": 2, "tags": { "language": "eng" } },
-    { "index": 3, "codec_name": "ttf", "codec_type": "attachment" }
+    {
+      "index": 0,
+      "codec_name": "h264",
+      "codec_type": "video",
+      "width": 1920,
+      "height": 1080,
+      "bit_rate": "13768004",
+      "disposition": {
+        "attached_pic": 0
+      },
+      "tags": {
+        "language": "und"
+      }
+    },
+    {
+      "index": 1,
+      "codec_name": "aac",
+      "codec_type": "audio",
+      "bit_rate": "70052",
+      "disposition": {
+        "attached_pic": 0
+      },
+      "tags": {
+        "language": "und"
+      }
+    },
+    {
+      "index": 2,
+      "codec_name": "png",
+      "codec_type": "video",
+      "width": 600,
+      "height": 900,
+      "disposition": {
+        "attached_pic": 1
+      }
+    },
+    {
+      "index": 3,
+      "codec_name": "ttf",
+      "codec_type": "attachment",
+      "disposition": {
+        "attached_pic": 0
+      }
+    }
   ],
-  "format": { "format_name": "matroska,webm", "duration": "600.000000", "size": "400000000", "bit_rate": "5333333" }
+  "format": {
+    "format_name": "mov,mp4,m4a,3gp,3g2,mj2",
+    "duration": "2.000000",
+    "size": "3527284",
+    "bit_rate": "14109136"
+  }
 }

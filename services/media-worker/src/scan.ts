@@ -66,7 +66,9 @@ export function createScanner(opts: ScannerOpts): Scanner {
       try {
         entries = await readdir(posix.join(opts.mediaRoot, rel), { withFileTypes: true });
       } catch (e) {
-        if (!(top && (e as NodeJS.ErrnoException).code === "ENOENT")) state.skipped++;
+        // A missing movies/ or tv/ is a failed scan (the old cache stays), never an empty library.
+        if (top) throw e;
+        state.skipped++;
         return;
       }
       for (const entry of entries) {
@@ -90,6 +92,8 @@ export function createScanner(opts: ScannerOpts): Scanner {
     return found;
   }
 
+  const judge = (p: VerdictInput, path: string) => verdict(p, path.startsWith("movies/") ? "film" : "tv", thresholds(opts.env));
+
   async function run(): Promise<void> {
     try {
       const found = await walk();
@@ -99,8 +103,8 @@ export function createScanner(opts: ScannerOpts): Scanner {
 
       const todo = found.filter((f) => {
         const c = files[f.path];
-        const same = c && c.bytes === f.bytes && c.mtimeMs === f.mtimeMs && c.nlink === f.nlink;
-        if (same) state.filesDone++;
+        const same = c && c.bytes === f.bytes && c.mtimeMs === f.mtimeMs && c.nlink === f.nlink && !c.probeError;
+        if (same) { state.filesDone++; files[f.path] = { ...c, verdict: judge(c, f.path) }; }
         return !same;
       });
 
@@ -111,7 +115,7 @@ export function createScanner(opts: ScannerOpts): Scanner {
           const { abs, ...st } = todo[next++];
           try {
             const p = await opts.probe(abs, st);
-            files[st.path] = { ...p, verdict: verdict(p, st.path.startsWith("movies/") ? "film" : "tv", thresholds(opts.env)) };
+            files[st.path] = { ...p, verdict: judge(p, st.path) };
           } catch {
             state.skipped++;
           }

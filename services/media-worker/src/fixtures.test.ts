@@ -37,6 +37,7 @@ describe("fixtures", { skip: SKIP_OFF_LINUX }, () => {
     ["movies/Old Film (1999)/Old Film.avi", "cant", "AVI can't hold HEVC here"],
     ["movies/HDR Film (2020)/HDR Film.mkv", "skip", "HDR10"],
     ["movies/Laced (2003)/Laced.mkv", "skip", "Interlaced"],
+    ["movies/Cover Film (2012)/Cover Film.mp4", "compress"],
     ["movies/Broken (2000)/Broken.mkv", "skip", "Couldn't read this file"],
     ["tv/Test Show/Season 01/Test Show S01E01.mkv", "compress"],
     ["tv/Test Show/Season 01/Test Show S01E02.mkv", "compress"],
@@ -52,6 +53,10 @@ describe("fixtures", { skip: SKIP_OFF_LINUX }, () => {
 
   it("the scope film is judged in the 1080p bucket", () => {
     assert.equal(scanner.files()["movies/Scope Film (2010)/Scope Film.mkv"].video?.res, "1080p");
+  });
+
+  it("the cover film has one video stream", () => {
+    assert.equal(scanner.files()["movies/Cover Film (2012)/Cover Film.mp4"].videoStreams, 1);
   });
 
   it("the big film keeps two audio languages and a subtitle", () => {
