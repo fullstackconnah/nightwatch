@@ -91,7 +91,7 @@ export function Field({
   const labelNode = (
     <Label htmlFor={id} className={cn(action && "mb-0", labelClassName)}>
       {label}
-      {required && <span className="text-warn"> *</span>}
+      {required && <span className="text-ink-dim"> *</span>}
     </Label>
   );
 

@@ -2,59 +2,65 @@
 
 /* THESIS: "Access" answers one question — who and what can reach this box —
    by putting the login gate beside the four doors that were previously
-   invisible from the UI (MCP, kiosk, SSO, Dockge). GOAL A turned three of
-   those from read-only env status into config-editable cards: System
-   (MCP token + kiosk PIN), Change password, and SSO — each POSTing to
-   POST /api/settings/system (or /api/settings/password for the password
-   card), which persists into config.json's `system` block and wins over the
-   matching env var on the next request (systemSetting() in
-   src/lib/config.ts). The original SystemAccessPanel stays as the honest
-   "what's actually in effect right now" status board (config OR env, never
-   which one), Dockge link included, since that answer doesn't change just
-   because the value can now also live in config.json. OWN-WORLD: same Card
-   grammar (title + note + badge), SecretField's write-only masked
-   treatment, same Save placement as settings-integrations.tsx. */
+   invisible from the UI (MCP, kiosk, SSO, Dockge). It is one strip's detail on
+   the Strips pattern, so the page owns the frame and these are subheads, not
+   cards: Login password, Change password, System (MCP token + kiosk PIN), SSO,
+   Orchestra, then System access (what is actually in effect right now, config
+   OR env, never which) and the API key scopes. Each form POSTs to
+   /api/settings/system (or /api/settings/password), which persists into
+   config.json's `system` block and wins over the matching env var on the next
+   request (systemSetting() in src/lib/config.ts). Secrets stay write-only via
+   SecretField. Each form reports its draft and last error upward
+   (useFormReport) so the page head can name them. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, RefreshCw, Save } from "lucide-react";
+import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
-import { CopyButton } from "@/components/settings/settings-reference";
-import { ClearControl, SecretField, useSettingsFull, type ClearStep, type SettingsFullResponse } from "@/components/settings/settings-integrations";
+import { plainReason } from "@/lib/settings/page-model";
+import { useFormReport } from "@/components/settings/form-report";
+import { CopyButton, ScopesPanel } from "@/components/settings/settings-reference";
+import { ClearAction, SecretField, type SettingsFullResponse } from "@/components/settings/settings-integrations";
 
-function AuthPanel({ data }: { data: SettingsFullResponse | undefined }) {
-  const configured = data?.meta.authConfigured ?? false;
+type Data = SettingsFullResponse | undefined;
+type Mutate = () => Promise<unknown>;
+
+/** A subhead inside the Access detail; the first one has no rule above it. */
+function Sub({ title, badge, first, children }: { title: string; badge?: ReactNode; first?: boolean; children: ReactNode }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Login password</CardTitle>
-        {configured ? (
-          <Badge variant="ok">password set</Badge>
-        ) : (
-          <Badge variant="bad">no password — login disabled outside dev</Badge>
-        )}
-      </CardHeader>
-      <CardContent className="text-[0.7rem] text-ink-dim space-y-1.5">
-        <p>
-          Checked against a bcrypt hash — either set once via{" "}
-          <span className="font-mono text-accent">npm run hash-password -- &apos;pass&apos;</span> and{" "}
-          <span className="font-mono">ADMIN_PASSWORD_HASH</span> in the compose file, or rotated any time
-          from the <span className="text-ink">Change password</span> card below. A config value set there
-          wins on login; the environment hash stays as a fallback, so a bad config value can never lock
-          you out as long as the env hash still verifies.
-        </p>
-        <p>The dashboard should also sit behind an NPM access list — two layers, always.</p>
-      </CardContent>
-    </Card>
+    <section className={first ? "space-y-3" : "space-y-3 pt-4 mt-4 border-t border-line/50"}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="microlabel">{title}</h3>
+        {badge}
+      </div>
+      {children}
+    </section>
   );
 }
 
-function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }) {
+function AuthPanel({ data }: { data: Data }) {
+  return (
+    <div className="text-[0.7rem] text-ink-dim space-y-1.5">
+      <p>
+        Checked against a bcrypt hash — either set once via{" "}
+        <span className="font-mono text-accent">npm run hash-password -- &apos;pass&apos;</span> and{" "}
+        <span className="font-mono">ADMIN_PASSWORD_HASH</span> in the compose file, or rotated any time
+        from the <span className="text-ink">Change password</span> form below. A config value set there
+        wins on login; the environment hash stays as a fallback, so a bad config value can never lock
+        you out as long as the env hash still verifies.
+      </p>
+      <p>The dashboard should also sit behind an NPM access list — two layers, always.</p>
+      {data && !data.meta.authConfigured && <p className="text-bad">No password is set, so login is disabled outside dev.</p>}
+    </div>
+  );
+}
+
+function ChangePasswordCard({ data }: { data: Data }) {
   const configured = data?.meta.authConfigured ?? false;
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -66,6 +72,7 @@ function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }
   const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
   const tooShort = next.length > 0 && next.length < 8;
   const canSubmit = configured && current.length > 0 && next.length >= 8 && next === confirm && !saving;
+  useFormReport("password", { dirty: current !== "" || next !== "" || confirm !== "", error });
 
   async function handleSave() {
     setSaving(true);
@@ -78,61 +85,55 @@ function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
     }
   }
 
+  if (!configured) {
+    return (
+      <p className="text-[0.7rem] text-ink-dim">
+        No admin password is configured yet — set <span className="font-mono">ADMIN_PASSWORD_HASH</span> in
+        the environment first (<span className="font-mono text-accent">npm run hash-password</span>), then
+        it can be rotated from here.
+      </p>
+    );
+  }
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Change password</CardTitle>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        Requires the current password. The new one is bcrypt-hashed and stored in config.json —
+        nothing here is ever echoed back.
+      </p>
+      <Field label="Current password" required>
+        <Input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+      </Field>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field
+          label="New password"
+          required
+          hint={!tooShort ? "at least 8 characters" : undefined}
+          error={tooShort ? "New password needs at least 8 characters." : undefined}
+        >
+          <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
+        </Field>
+        <Field
+          label="Confirm new password"
+          required
+          error={mismatch && !tooShort ? "Passwords don't match." : undefined}
+        >
+          <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+        </Field>
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
         <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {configured ? (
-          <>
-            <p className="text-[0.7rem] text-ink-dim">
-              Requires the current password. The new one is bcrypt-hashed and stored in config.json —
-              nothing here is ever echoed back.
-            </p>
-            <Field label="Current password" required>
-              <Input type="password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
-            </Field>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field
-                label="New password"
-                required
-                hint={!tooShort ? "at least 8 characters" : undefined}
-                error={tooShort ? "New password needs at least 8 characters." : undefined}
-              >
-                <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
-              </Field>
-              <Field
-                label="Confirm new password"
-                required
-                error={mismatch && !tooShort ? "Passwords don't match." : undefined}
-              >
-                <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
-              </Field>
-            </div>
-            <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-              {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-              <Button size="sm" disabled={!canSubmit} onClick={handleSave}>
-                <Save size={13} /> Save
-              </Button>
-            </div>
-          </>
-        ) : (
-          <p className="text-[0.7rem] text-ink-dim">
-            No admin password is configured yet — set <span className="font-mono">ADMIN_PASSWORD_HASH</span> in
-            the environment first (<span className="font-mono text-accent">npm run hash-password</span>), then
-            it can be rotated from here.
-          </p>
-        )}
-      </CardContent>
-    </Card>
+        <Button size="sm" disabled={!canSubmit} onClick={handleSave}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -141,7 +142,7 @@ function ChangePasswordCard({ data }: { data: SettingsFullResponse | undefined }
  *  POST /api/settings/system. Regenerating the MCP token also re-syncs
  *  hermes-settings.json's nightwatchMcpToken server-side (GOAL B's sync
  *  rule) — nothing to do here beyond calling the same route. */
-function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const mcpConfigured = data?.system.mcpTokenConfigured ?? false;
   const pinConfigured = data?.system.kioskPinConfigured ?? false;
   const mcpEndpoint = data?.meta.mcpEndpoint;
@@ -151,25 +152,21 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
   const [pinDraft, setPinDraft] = useState("");
   const [saveVersion, setSaveVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  useFormReport("system", { dirty: Boolean(mcpDraft.trim() || pinDraft.trim()), error });
 
-  async function handleGenerate() {
-    setGenerating(true);
+  /** Throws on failure so the WriteAction frame shows the reason (K10: nothing is sent before Yes). */
+  async function generate() {
     setError(null);
     try {
-      const res = (await postJson("/api/settings/system", { generateMcpToken: true })) as {
-        generatedMcpToken?: string;
-      };
+      const res = (await postJson("/api/settings/system", { generateMcpToken: true })) as { generatedMcpToken?: string };
       await mutate();
       setMcpDraft("");
       setSaveVersion((v) => v + 1);
       setRevealedToken(res.generatedMcpToken ?? null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "generate failed");
-    } finally {
-      setGenerating(false);
+      throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
   }
 
@@ -187,95 +184,94 @@ function SystemConfigCard({ data, mutate }: { data: SettingsFullResponse | undef
       setRevealedToken(null);
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>System</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-[0.7rem] text-ink-dim">
-          A value saved here wins over its matching environment variable on the next request — no restart
-          needed.
-        </p>
+    <div className="space-y-4">
+      <p className="text-[0.7rem] text-ink-dim">
+        A value saved here wins over its matching environment variable on the next request — no restart
+        needed.
+      </p>
 
-        <div>
-          <SecretField
-            key={saveVersion}
-            label="MCP token"
-            action={
-              <Button type="button" size="sm" variant="outline" disabled={generating} onClick={handleGenerate}>
-                <RefreshCw size={12} className={generating ? "animate-spin motion-reduce:animate-none" : undefined} />
-                Generate
-              </Button>
-            }
-            configured={mcpConfigured}
-            updatedAt={updatedAt}
-            draft={mcpDraft}
-            onDraftChange={setMcpDraft}
-            placeholder="paste a token, or use Generate for a random 48-hex one"
-          />
-          {revealedToken && (
-            <div className="mt-2 space-y-1">
-              <p className="text-[0.7rem] text-warn/80">
-                Shown once — copy it now. It won&apos;t be shown again after you leave this page.
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 min-w-0 truncate rounded-md border border-line bg-bg px-2.5 py-2 font-mono text-[0.7rem] text-ink">
-                  {revealedToken}
-                </code>
-                <CopyButton value={revealedToken} label="MCP token" />
-              </div>
-            </div>
-          )}
-          {mcpConfigured && mcpEndpoint && (
-            <p className="mt-1.5 font-mono text-[0.65rem] text-ink-faint break-all">
-              claude mcp add nightwatch --transport http {mcpEndpoint} -H &quot;Authorization: Bearer
-              $MCP_TOKEN&quot;
-            </p>
-          )}
-        </div>
-
+      <div>
         <SecretField
-          key={`pin-${saveVersion}`}
-          label="Kiosk PIN"
-          configured={pinConfigured}
+          key={saveVersion}
+          label="MCP token"
+          action={
+            <WriteAction
+              label="Generate"
+              icon={<RefreshCw size={12} />}
+              primary
+              confirm={mcpConfigured}
+              say="Makes a new MCP token. Clients using the old one stop working until you give them the new one."
+              yes="Yes, generate"
+              flight="Generating…"
+              failure="Couldn’t generate a token"
+              run={generate}
+            />
+          }
+          configured={mcpConfigured}
           updatedAt={updatedAt}
-          draft={pinDraft}
-          onDraftChange={setPinDraft}
-          placeholder="4-8 digits"
-          describedBy="kiosk-pin-hint"
+          draft={mcpDraft}
+          onDraftChange={setMcpDraft}
+          placeholder="paste a token, or use Generate for a random 48-hex one"
         />
-        <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
-          {pinConfigured ? "Clear it and save to fall back to KIOSK_PIN in the environment." : "No PIN set — kiosk elevation stays locked until you save one."}
-        </p>
-
-        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-          <Button size="sm" disabled={saving || (!mcpDraft.trim() && !pinDraft.trim())} onClick={handleSave}>
-            <Save size={13} /> Save
-          </Button>
-        </div>
-
-        <div className="pt-3 border-t border-line/50 space-y-1">
-          <p className="text-[0.65rem] text-ink-faint">
-            <span className="font-mono">NODE_EXTRA_CA_CERTS</span> and <span className="font-mono">SESSION_SECRET</span> stay
-            environment-only — both are process-start values a live config write can&apos;t retroactively apply
-            (the Node TLS trust store, and already-signed session tokens).
+        {revealedToken && (
+          <div className="mt-2 space-y-1">
+            <p className="text-[0.7rem] text-ink-faint">
+              Shown once — copy it now. It won&apos;t be shown again after you leave this page.
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 truncate rounded-md border border-line bg-bg px-2.5 py-2 font-mono text-[0.7rem] text-ink">
+                {revealedToken}
+              </code>
+              <CopyButton value={revealedToken} label="MCP token" />
+            </div>
+          </div>
+        )}
+        {mcpConfigured && mcpEndpoint && (
+          <p className="mt-1.5 font-mono text-[0.65rem] text-ink-faint break-all">
+            claude mcp add nightwatch --transport http {mcpEndpoint} -H &quot;Authorization: Bearer
+            $MCP_TOKEN&quot;
           </p>
-        </div>
-      </CardContent>
-    </Card>
+        )}
+      </div>
+
+      <SecretField
+        key={`pin-${saveVersion}`}
+        label="Kiosk PIN"
+        configured={pinConfigured}
+        updatedAt={updatedAt}
+        draft={pinDraft}
+        onDraftChange={setPinDraft}
+        placeholder="4-8 digits"
+        describedBy="kiosk-pin-hint"
+      />
+      <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
+        {pinConfigured ? "Clear it and save to fall back to KIOSK_PIN in the environment." : "No PIN set — kiosk elevation stays locked until you save one."}
+      </p>
+
+      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        <Button size="sm" disabled={saving || (!mcpDraft.trim() && !pinDraft.trim())} onClick={handleSave}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
+
+      <p className="text-[0.65rem] text-ink-faint">
+        <span className="font-mono">NODE_EXTRA_CA_CERTS</span> and <span className="font-mono">SESSION_SECRET</span> stay
+        environment-only — both are process-start values a live config write can&apos;t retroactively apply
+        (the Node TLS trust store, and already-signed session tokens).
+      </p>
+    </div>
   );
 }
 
-function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
-  const configured = data?.meta.orchestraConfigured ?? false;
+function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const stored = data?.config.system?.orchestraUrl ?? "";
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
@@ -284,7 +280,6 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [clearStep, setClearStep] = useState<ClearStep>("idle");
   const [urlError, setUrlError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -295,11 +290,12 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
   }, [data, seeded, stored]);
 
   const changed = url.trim() !== stored || token.trim() !== "";
+  useFormReport("orchestra", { dirty: seeded && changed, error });
 
   async function handleSave() {
     setError(null);
     if (url.trim() && !/^https?:\/\/\S+$/.test(url.trim())) {
-      setUrlError("Enter a full address, for example http://192.0.2.10:7420.");
+      setUrlError("Enter a full address, for example http://homelab.local:7420.");
       return;
     }
     setSaving(true);
@@ -310,84 +306,74 @@ function OrchestraSettingsCard({ data, mutate }: { data: SettingsFullResponse | 
       await postJson("/api/settings/system", body);
       resetOrchestraStatus(); // a new service must not show the old one's last-known cards
       await mutate();
+      setSeeded(false);
       setToken("");
       setSaveVersion((v) => v + 1);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 400 ? e.message : `Couldn't save${e instanceof Error && e.message ? `: ${e.message}` : "."}`);
+      setError(e instanceof ApiError && e.status === 400 ? plainReason(e.message) : `Couldn't save${e instanceof Error && e.message ? `: ${plainReason(e.message)}` : "."}`);
     } finally {
       setSaving(false);
     }
   }
 
+  /** Throws on failure so the WriteAction frame shows the reason. */
   async function handleClear() {
-    setClearStep("busy");
-    setError(null);
     try {
       await postJson("/api/settings/system", { clearOrchestraToken: true });
       resetOrchestraStatus();
       await mutate();
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      setError(`Couldn't clear the token${e instanceof Error && e.message ? `: ${e.message}` : "."}`);
-    } finally {
-      setClearStep("idle");
+      throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
   }
 
   return (
-    <Card className="self-start">
-      <CardHeader>
-        <CardTitle>Orchestra</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          Connects the AI lanes page to the status service on the PC. Saved on this server; the token is never sent back to
-          the browser.
-        </p>
-        <Field
-          label="Service URL"
-          hint="The PC's LAN address and port, exactly as the service binds them. The service refuses any other host name."
-          error={urlError}
-        >
-          <Input placeholder="http://192.0.2.10:7420" value={url} onChange={(e) => { setUrl(e.target.value); setUrlError(null); }} />
-        </Field>
-        <SecretField
-          key={saveVersion}
-          label="Service token"
-          configured={Boolean(data?.meta.orchestraTokenSet)}
-          updatedAt={data?.system.updatedAt}
-          draft={token}
-          onDraftChange={setToken}
-        />
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          {data?.meta.orchestraTokenSet ? (
-            <ClearControl
-              step={clearStep}
-              setStep={setClearStep}
-              label="Orchestra"
-              message="Remove the saved Orchestra token? You'll need to enter it again to reconnect."
-              onConfirm={handleClear}
-            />
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
-            <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
-              <Save size={13} /> Save
-            </Button>
-          </div>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        Connects the AI lanes page to the status service on the PC. Saved on this server; the token is never sent back to
+        the browser.
+      </p>
+      <Field
+        label="Service URL"
+        hint="The PC's LAN address and port, exactly as the service binds them. The service refuses any other host name."
+        error={urlError}
+      >
+        <Input placeholder="http://homelab.local:7420" value={url} onChange={(e) => { setUrl(e.target.value); setUrlError(null); }} />
+      </Field>
+      <SecretField
+        key={saveVersion}
+        label="Service token"
+        configured={Boolean(data?.meta.orchestraTokenSet)}
+        updatedAt={data?.system.updatedAt}
+        draft={token}
+        onDraftChange={setToken}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {data?.meta.orchestraTokenSet ? (
+          <ClearAction
+            say="Removes the saved Orchestra token. The AI lanes page can't reach it until you enter one again."
+            failure="Couldn’t clear the token"
+            run={handleClear}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+          <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
+            <Save size={13} /> Save
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
-function SsoCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const secretConfigured = data?.system.oidcClientSecretConfigured ?? false;
   const [issuer, setIssuer] = useState("");
   const [clientId, setClientId] = useState("");
@@ -404,6 +390,11 @@ function SsoCard({ data, mutate }: { data: SettingsFullResponse | undefined; mut
       setSeeded(true);
     }
   }, [data, seeded]);
+  const sys = data?.config.system;
+  useFormReport("sso", {
+    dirty: seeded && (issuer !== (sys?.oidcIssuer ?? "") || clientId !== (sys?.oidcClientId ?? "") || clientSecret !== ""),
+    error,
+  });
 
   async function handleSave() {
     setSaving(true);
@@ -413,53 +404,63 @@ function SsoCard({ data, mutate }: { data: SettingsFullResponse | undefined; mut
       if (clientSecret.trim()) body.oidcClientSecret = clientSecret.trim();
       await postJson("/api/settings/system", body);
       await mutate();
+      setSeeded(false);
       setClientSecret("");
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>SSO / OIDC</CardTitle>
-        {data?.meta.ssoConfigured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          Adds a &quot;Sign in with SSO&quot; option on the login page once all three are set. For a
-          self-signed issuer, <span className="font-mono">NODE_EXTRA_CA_CERTS</span> must still be set in
-          the environment — it&apos;s a process-start trust setting this page can&apos;t override.
-        </p>
-        <Field label="Issuer">
-          <Input placeholder="http://192.168.1.70:9091" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
-        </Field>
-        <Field label="Client ID">
-          <Input placeholder="nightwatch" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-        </Field>
-        <SecretField
-          key={saveVersion}
-          label="Client secret"
-          configured={secretConfigured}
-          updatedAt={data?.system.updatedAt}
-          draft={clientSecret}
-          onDraftChange={setClientSecret}
-        />
-        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-          <Button size="sm" disabled={saving} onClick={handleSave}>
-            <Save size={13} /> Save
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        Adds a &quot;Sign in with SSO&quot; option on the login page once all three are set. For a
+        self-signed issuer, <span className="font-mono">NODE_EXTRA_CA_CERTS</span> must still be set in
+        the environment — it&apos;s a process-start trust setting this page can&apos;t override.
+      </p>
+      <Field label="Issuer">
+        <Input placeholder="http://homelab.local:9091" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
+      </Field>
+      <Field label="Client ID">
+        <Input placeholder="nightwatch" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+      </Field>
+      <SecretField
+        key={saveVersion}
+        label="Client secret"
+        configured={secretConfigured}
+        updatedAt={data?.system.updatedAt}
+        draft={clientSecret}
+        onDraftChange={setClientSecret}
+      />
+      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        <Button size="sm" disabled={saving} onClick={handleSave}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
+    </div>
   );
 }
 
-function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined }) {
+function AccessRow({ name, badge, last, action, children }: { name: string; badge?: ReactNode; last?: boolean; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className={`flex items-start justify-between gap-2 ${last ? "" : "pb-3 border-b border-line/50"}`}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-medium text-ink">{name}</span>
+          {badge}
+        </div>
+        <div className="mt-1 text-[0.7rem] text-ink-dim">{children}</div>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function SystemAccessPanel({ data }: { data: Data }) {
   const meta = data?.meta;
   const mcpOn = meta?.mcpEnabled ?? false;
   const mcpEndpoint = meta?.mcpEndpoint;
@@ -468,165 +469,113 @@ function SystemAccessPanel({ data }: { data: SettingsFullResponse | undefined })
   const hermesOn = meta?.hermesApiConfigured ?? false;
   const ssoOn = meta?.ssoConfigured ?? false;
   const ssoIssuerHost = meta?.ssoIssuerHost;
+  const open = "shrink-0 inline-flex min-h-11 min-w-11 items-center justify-center gap-1 text-xs text-accent hover:underline md:min-h-0 md:min-w-0";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>System access</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          What else can reach this box, quietly — checked here, in effect right now regardless of whether
-          it came from the cards above or the environment.
-        </p>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        What else can reach this box, quietly — checked here, in effect right now regardless of whether
+        it came from the forms above or the environment.
+      </p>
 
-        {/* MCP server */}
-        <div className="flex items-start justify-between gap-2 pb-3 border-b border-line/50">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-ink">MCP server</span>
-              {mcpOn ? <Badge variant="ok">enabled</Badge> : <Badge variant="neutral">disabled</Badge>}
-            </div>
-            {mcpOn ? (
-              <p className="mt-1 font-mono text-[0.7rem] text-ink-dim break-all">{mcpEndpoint}</p>
-            ) : (
-              <p className="mt-1 text-[0.7rem] text-ink-dim">
-                Set an MCP token on the System card above (or <span className="font-mono">MCP_TOKEN</span> in
-                the environment) to enable <span className="font-mono">/api/mcp</span>.
-              </p>
-            )}
-          </div>
-          {mcpOn && mcpEndpoint && <CopyButton value={mcpEndpoint} label="MCP endpoint" />}
-        </div>
+      <AccessRow
+        name="MCP server"
+        badge={mcpOn ? <Badge variant="ok">enabled</Badge> : <Badge variant="neutral">disabled</Badge>}
+        action={mcpOn && mcpEndpoint ? <CopyButton value={mcpEndpoint} label="MCP endpoint" /> : undefined}
+      >
+        {mcpOn ? (
+          <span className="font-mono break-all">{mcpEndpoint}</span>
+        ) : (
+          <>
+            Set an MCP token in System above (or <span className="font-mono">MCP_TOKEN</span> in
+            the environment) to enable <span className="font-mono">/api/mcp</span>.
+          </>
+        )}
+      </AccessRow>
 
-        {/* Hermes API */}
-        <div className="flex items-start justify-between gap-2 pb-3 border-b border-line/50">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-ink">Hermes API</span>
-              {hermesOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">disabled</Badge>}
-            </div>
-            <p className="mt-1 text-[0.7rem] text-ink-dim">
-              {hermesOn
-                ? "Ops daemon control wired up."
-                : "Set the Hermes API URL and token in the Hermes section's Daemon card (or HERMES_API_URL / HERMES_API_TOKEN in the environment) to enable the /hermes control page."}
-            </p>
-          </div>
-          <Link
-            href="/hermes"
-            className="shrink-0 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-          >
+      <AccessRow
+        name="Hermes API"
+        badge={hermesOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">disabled</Badge>}
+        action={
+          <Link href="/hermes" className={open}>
             Open <ExternalLink size={12} />
           </Link>
-        </div>
+        }
+      >
+        {hermesOn
+          ? "Ops daemon control wired up."
+          : "Set the Hermes API URL and token in the Hermes section's Daemon card (or HERMES_API_URL / HERMES_API_TOKEN in the environment) to enable the /hermes control page."}
+      </AccessRow>
 
-        {/* SSO / Authelia */}
-        <div className="flex items-start justify-between gap-2 pb-3 border-b border-line/50">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-ink">SSO / Authelia</span>
-              {ssoOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-            </div>
-            <p className="mt-1 text-[0.7rem] text-ink-dim">
-              {ssoOn ? (
-                <>
-                  OIDC sign-in via <span className="font-mono text-ink-dim">{ssoIssuerHost}</span>.
-                </>
-              ) : (
-                <>Fill in the SSO card above to add a &quot;Sign in with SSO&quot; option on the login page.</>
-              )}
-            </p>
-          </div>
-        </div>
+      <AccessRow name="SSO / Authelia" badge={ssoOn ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}>
+        {ssoOn ? (
+          <>
+            OIDC sign-in via <span className="font-mono">{ssoIssuerHost}</span>.
+          </>
+        ) : (
+          <>Fill in the SSO form above to add a &quot;Sign in with SSO&quot; option on the login page.</>
+        )}
+      </AccessRow>
 
-        {/* Kiosk mode */}
-        <div className="flex items-center justify-between gap-2 pb-3 border-b border-line/50">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-ink">Kiosk mode</span>
-              {customPin ? <Badge variant="ok">custom PIN</Badge> : <Badge variant="warn">no PIN</Badge>}
-            </div>
-            <p className="mt-1 text-[0.7rem] text-ink-dim">
-              {customPin
-                ? "Custom PIN set on the System card above."
-                : "No PIN configured — elevation is refused. Set one on the System card above."}
-            </p>
-          </div>
-          <Link
-            href="/kiosk"
-            className="shrink-0 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-          >
+      <AccessRow
+        name="Kiosk mode"
+        badge={customPin ? <Badge variant="ok">custom PIN</Badge> : <Badge variant="neutral">no PIN</Badge>}
+        action={
+          <Link href="/kiosk" className={open}>
             Open <ExternalLink size={12} />
           </Link>
-        </div>
+        }
+      >
+        {customPin ? "Custom PIN set in System above." : "No PIN configured — elevation is refused. Set one in System above."}
+      </AccessRow>
 
-        {/* Dockge */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-ink">Stacks · Dockge</span>
-            <p className="mt-1 text-[0.7rem] text-ink-dim">
-              Manages the compose stacks this dashboard reads from — not this app&apos;s auth.
-            </p>
-          </div>
-          {dockgeUrl && (
-            <a
-              href={dockgeUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="shrink-0 inline-flex items-center gap-1 text-xs text-accent hover:underline"
-            >
+      <AccessRow
+        name="Stacks · Dockge"
+        last
+        action={
+          dockgeUrl ? (
+            <a href={dockgeUrl} target="_blank" rel="noreferrer" className={open}>
               Open <ExternalLink size={12} />
             </a>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AccessSkeleton() {
-  return (
-    <div className="grid md:grid-cols-2 gap-3">
-      {["Login password", "Change password", "System", "SSO / OIDC", "System access"].map((label, i) => (
-        <div key={label} className="panel p-4 space-y-3">
-          <div className="microlabel">{label}</div>
-          <div
-            className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none"
-            style={{ animationDelay: `${i * 90}ms` }}
-          />
-          <div
-            className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none w-2/3"
-            style={{ animationDelay: `${i * 90 + 90}ms` }}
-          />
-        </div>
-      ))}
+          ) : undefined
+        }
+      >
+        Manages the compose stacks this dashboard reads from — not this app&apos;s auth.
+      </AccessRow>
     </div>
   );
 }
 
-export function SettingsAccess() {
-  const { data, error, mutate } = useSettingsFull();
-
+/** The Access strip's detail: six subheads in a fixed order, then the API key scopes. */
+export function AccessBody({ data, mutate }: { data: Data; mutate: Mutate }) {
+  const configured = data?.meta.authConfigured ?? false;
   return (
-    <section className="space-y-3">
-      <div>
-        <h2 className="microlabel !text-accent">Access</h2>
-        <p className="text-[0.7rem] text-ink-dim mt-0.5">
-          What can reach this dashboard, and what it quietly leaves open.
-        </p>
-      </div>
-      {error && <div className="panel p-4 text-xs text-bad">Could not load settings — {error.message}</div>}
-      {!error && !data && <AccessSkeleton />}
-      {data && (
-        <div className="grid md:grid-cols-2 gap-3">
-          <AuthPanel data={data} />
-          <ChangePasswordCard data={data} />
-          <SystemConfigCard data={data} mutate={mutate} />
-          <SsoCard data={data} mutate={mutate} />
-          <OrchestraSettingsCard data={data} mutate={mutate} />
-          <SystemAccessPanel data={data} />
-        </div>
-      )}
-    </section>
+    <div>
+      <Sub
+        first
+        title="Login password"
+        badge={configured ? <Badge variant="ok">password set</Badge> : <Badge variant="bad">no password</Badge>}
+      >
+        <AuthPanel data={data} />
+      </Sub>
+      <Sub title="Change password">
+        <ChangePasswordCard data={data} />
+      </Sub>
+      <Sub title="System">
+        <SystemConfigCard data={data} mutate={mutate} />
+      </Sub>
+      <Sub title="SSO / OIDC" badge={data?.meta.ssoConfigured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}>
+        <SsoCard data={data} mutate={mutate} />
+      </Sub>
+      <Sub title="Orchestra" badge={data?.meta.orchestraConfigured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}>
+        <OrchestraSettingsCard data={data} mutate={mutate} />
+      </Sub>
+      <Sub title="System access">
+        <SystemAccessPanel data={data} />
+      </Sub>
+      <Sub title="API key scopes">
+        <ScopesPanel />
+      </Sub>
+    </div>
   );
 }

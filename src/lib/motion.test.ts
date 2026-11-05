@@ -93,6 +93,11 @@ test("#4 both saved badges are always rendered and fade", () => {
   assert.doesNotMatch(src, /\{saved && <Badge/);
 });
 
+test("F3 the Dashboard saved badge is out of the flow", () => {
+  const src = read("app/(dash)/settings/page.tsx");
+  assert.match(src, /className="relative space-y-5">\s*<Badge[^>]*nw-fade absolute -top-8 right-0/);
+});
+
 test("#5 and F7: the segment button presses, and both press scales release under reduced motion", () => {
   const seg = read("components/ui/segment-button.tsx");
   assert.match(seg, /active:scale-\[0\.98\]/);

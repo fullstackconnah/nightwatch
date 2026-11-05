@@ -40,7 +40,16 @@ function useWide(): boolean {
  * its strip, one at a time. The strip the answer names opens by itself (R4); a person's choice is kept in the URL hash
  * and never closed by the page. Disclosure is instant; only the chevron turns.
  */
-export function StripList({ strips, autoTarget }: { strips: StripSpec[]; autoTarget: OpenTarget | "keep" }) {
+export function StripList({
+  strips,
+  autoTarget,
+  keepMounted = false,
+}: {
+  strips: StripSpec[];
+  autoTarget: OpenTarget | "keep";
+  /** Every body stays mounted and a closed one is `hidden`, so a form keeps its draft (Settings). Off for the rest. */
+  keepMounted?: boolean;
+}) {
   const wide = useWide();
   const [held, setHeld] = useState(false);
   const [state, setState] = useState<OpenState>({ open: null, by: null });
@@ -112,8 +121,8 @@ export function StripList({ strips, autoTarget }: { strips: StripSpec[]; autoTar
                   </button>
                   {s.slot && <div className="st-slot">{s.slot}</div>}
                 </div>
-                {on && !wide && (
-                  <div className="st-body" id={`st-body-${s.id}`}>
+                {(on || keepMounted) && !wide && (
+                  <div className="st-body" id={`st-body-${s.id}`} hidden={!on}>
                     {s.body}
                   </div>
                 )}
@@ -129,7 +138,13 @@ export function StripList({ strips, autoTarget }: { strips: StripSpec[]; autoTar
                   <h2>{sel.title}</h2>
                   <span>{sel.state}</span>
                 </header>
-                {sel.body}
+                {keepMounted
+                  ? ordered.map((s) => (
+                      <div key={s.id} hidden={s.id !== sel.id}>
+                        {s.body}
+                      </div>
+                    ))
+                  : sel.body}
               </>
             )}
           </section>

@@ -1,50 +1,54 @@
 "use client";
 
-/* THESIS: Settings accreted section by section (auth, then integrations,
-   then hermes, then widgets/tiles) with each addition copying whatever
-   idiom was nearest rather than a shared one. This pass ranks that into five
-   deliberate sections — Access, Integrations, Hermes, Dashboard, Reference —
-   ordered by what the single owner actually reaches for: the gate first,
-   then the services this app calls, then the model that drives hermes, then
-   the bulk container-tuning work, then read-only reference material last.
-   A sticky quick-jump rail (settings-section-nav.tsx) makes that order
-   navigable instead of just scrollable. Every panel now shares one grammar —
-   Card title + note + status badge, SecretField's write-only masked
-   treatment, the same Save placement — via settings-access.tsx,
-   settings-integrations.tsx, settings-hermes.tsx, settings-widgets.tsx,
-   settings-tiles.tsx and settings-reference.tsx. This file only owns the
-   config draft, the PUT, and section order. */
+/* Settings on the strips pattern: the head says whether anything needs you, nine strips each hold one area's forms
+   (Access, six integrations, Hermes, Dashboard). The page owns the tile draft and the widget/tile writes (3b gives
+   those the strip treatment); every other form reports its draft and last error up through useFormReport. */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { PageHead } from "@/components/strips/page-head";
+import { StripList, type StripSpec } from "@/components/strips/strip-list";
 import { putJson, useContainers } from "@/lib/client";
 import type { AppConfig, WidgetInstance } from "@/lib/config";
-import { SettingsIntegrations, useSettingsFull } from "@/components/settings/settings-integrations";
+import { legacyStripHash, settingsModel, type FormId, type FormState, type StripId } from "@/lib/settings/page-model";
+import { useNow } from "@/lib/use-now";
+import { FormReportProvider } from "@/components/settings/form-report";
+import { AccessBody } from "@/components/settings/settings-access";
 import { SettingsHermes, SettingsHermesDaemon } from "@/components/settings/settings-hermes";
-import { SettingsAccess } from "@/components/settings/settings-access";
+import {
+  ForgejoPanel,
+  GithubPanel,
+  HomeAssistantPanel,
+  MinecraftPanel,
+  NpmPanel,
+  VoiceCard,
+  useSettingsFull,
+} from "@/components/settings/settings-integrations";
+import { LabelConventionPanel } from "@/components/settings/settings-reference";
+import { SettingsTiles, isCustomized } from "@/components/settings/settings-tiles";
 import { SettingsWidgets } from "@/components/settings/settings-widgets";
-import { SettingsTiles } from "@/components/settings/settings-tiles";
-import { SettingsReference } from "@/components/settings/settings-reference";
-import { SettingsSectionNav, type SettingsSection } from "@/components/settings/settings-section-nav";
-
-const SECTIONS: SettingsSection[] = [
-  { id: "access", label: "Access" },
-  { id: "integrations", label: "Integrations" },
-  { id: "hermes", label: "Hermes" },
-  { id: "dashboard", label: "Dashboard" },
-  { id: "reference", label: "Reference" },
-];
 
 export default function SettingsPage() {
-  const { data, mutate } = useSettingsFull();
+  const { data, error, mutate } = useSettingsFull((at) => setLoadedAt(at));
   const { data: containersData } = useContainers(30000);
+  const now = useNow(true);
   const [tileDraft, setTileDraft] = useState<AppConfig | null>(null);
-  const [saved, setSaved] = useState(false);
   const [savingTiles, setSavingTiles] = useState(false);
+  const [forms, setForms] = useState<Partial<Record<FormId, FormState>>>({});
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const report = useCallback((id: FormId, s: FormState) => {
+    setForms((f) => (f[id]?.dirty === s.dirty && f[id]?.error === s.error ? f : { ...f, [id]: s }));
+  }, []);
 
   useEffect(() => {
     if (data && !tileDraft) setTileDraft(data.config);
   }, [data, tileDraft]);
+  useEffect(() => {
+    const h = legacyStripHash(window.location.hash);
+    if (h !== window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search + h);
+  }, []);
 
   const containerNames = (containersData?.containers ?? []).map((c) => c.name).sort();
 
@@ -79,43 +83,36 @@ export default function SettingsPage() {
     }
   }
 
-  const cfg = tileDraft;
+  const tiles =
+    data && containersData
+      ? { customized: containerNames.filter((n) => isCustomized(data.config, n)).length, total: containerNames.length }
+      : null;
+  const model = settingsModel({ data, loadError: error ? error.message : null, loadedAt, forms, tiles, now });
 
-  return (
-    <div className="space-y-6 max-w-5xl">
-      <header className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Settings</h1>
-          <p className="text-xs text-ink-dim mt-0.5">
-            Stored in <span className="font-mono">{data?.meta.dataDir}/config.json</span> — survives restarts, never in git.
-          </p>
-        </div>
-        {saved && <Badge variant="ok">saved</Badge>}
-      </header>
-
-      <SettingsSectionNav sections={SECTIONS} />
-
-      <div id="access" className="scroll-mt-20">
-        <SettingsAccess />
-      </div>
-
-      <div id="integrations" className="scroll-mt-20">
-        <SettingsIntegrations />
-      </div>
-
-      <div id="hermes" className="scroll-mt-20 space-y-5">
+  const lead = (id: StripId, body: React.ReactNode) => (
+    <>
+      {model.autoTarget === id && model.detailLead && <p className="st-note">{model.detailLead}</p>}
+      {body}
+    </>
+  );
+  const panel = { data, mutate };
+  const bodies: Record<StripId, React.ReactNode> = {
+    access: <AccessBody {...panel} />,
+    homeassistant: <HomeAssistantPanel {...panel} />,
+    npm: <NpmPanel {...panel} />,
+    forgejo: <ForgejoPanel {...panel} />,
+    github: <GithubPanel {...panel} />,
+    minecraft: <MinecraftPanel {...panel} />,
+    voice: <VoiceCard {...panel} />,
+    hermes: (
+      <div className="space-y-5">
         <SettingsHermes />
         <SettingsHermesDaemon />
       </div>
-
-      <div id="dashboard" className="scroll-mt-20 space-y-5">
-        <div>
-          <h2 className="microlabel !text-accent">Dashboard</h2>
-          <p className="text-[0.7rem] text-ink-dim mt-0.5">
-            How containers present on the Overview — widgets pull live stats, tiles control grouping,
-            links and visibility.
-          </p>
-        </div>
+    ),
+    dashboard: (
+      <div className="relative space-y-5">
+        <Badge variant="ok" className="nw-fade absolute -top-8 right-0" data-on={saved ? "" : undefined}>saved</Badge>
         <SettingsWidgets
           widgets={data?.config.widgets ?? []}
           types={data?.meta.widgetTypes ?? ["generic"]}
@@ -123,20 +120,21 @@ export default function SettingsPage() {
           onSave={saveWidget}
           onDelete={deleteWidget}
         />
-        {cfg && (
-          <SettingsTiles
-            cfg={cfg}
-            containerNames={containerNames}
-            onChange={setTileDraft}
-            onSave={saveTiles}
-            saving={savingTiles}
-          />
+        {tileDraft && (
+          <SettingsTiles cfg={tileDraft} containerNames={containerNames} onChange={setTileDraft} onSave={saveTiles} saving={savingTiles} />
         )}
+        <LabelConventionPanel />
       </div>
+    ),
+  };
+  const strips: StripSpec[] = model.strips.map((s) => ({ ...s, body: lead(s.id, bodies[s.id]) }));
 
-      <div id="reference" className="scroll-mt-20">
-        <SettingsReference />
+  return (
+    <FormReportProvider value={report}>
+      <div className="st-page pb-2">
+        <PageHead title="Settings" chip={model.chip} answer={model.answer} evidence={model.evidence} notice={model.notice} />
+        {strips.length > 0 && <StripList strips={strips} autoTarget={model.autoTarget} keepMounted />}
       </div>
-    </div>
+    </FormReportProvider>
   );
 }

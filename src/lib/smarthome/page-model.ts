@@ -56,7 +56,7 @@ export interface Model {
 
 const STALE_MS = 30_000;
 const PAUSED = "Controls are paused while the page shows old data.";
-const SETTINGS = { href: "/settings#integrations", label: "Open Settings" };
+const SETTINGS = { href: "/settings#homeassistant", label: "Open Settings" };
 const TITLES: Record<StripId, string> = { climate: "Climate", lock: "Lock", lights: "Lights", switches: "Switches", sensors: "Sensors" };
 const ORDER = {
   default: ["climate", "lock", "lights", "switches", "sensors"],

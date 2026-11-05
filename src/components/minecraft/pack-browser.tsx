@@ -118,7 +118,7 @@ export function PackBrowser({
 
         {search?.curseforge === "no-key" && (
           <p className="st-note">
-            CurseForge search needs an API key. Add it in <Link href="/settings" className="underline">Settings</Link>.
+            CurseForge search needs an API key. Add it in <Link href="/settings#minecraft" className="underline">Settings</Link>.
           </p>
         )}
 

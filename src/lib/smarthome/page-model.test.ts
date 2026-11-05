@@ -59,7 +59,7 @@ test("unconfigured: says what is missing, links to Settings, no strips", () => {
   const m = smarthomeModel(input({ ha: { status: "unconfigured", detail: "no block" } }));
   assert.deepEqual(m.chip, { tone: "neutral", label: "Not connected" });
   assert.equal(m.answer, "Home Assistant isn’t connected yet.");
-  assert.deepEqual(m.link, { href: "/settings#integrations", label: "Open Settings" });
+  assert.deepEqual(m.link, { href: "/settings#homeassistant", label: "Open Settings" });
   assert.deepEqual(m.strips, []);
   assert.deepEqual(enabled(m), []);
 });
@@ -79,7 +79,7 @@ test("unauthorized: warn, links to Settings, no detail, nothing writable", () =>
   const m = smarthomeModel(input({ ha: { status: "unauthorized", detail: "401 from 192.0.2.5" } }));
   assert.deepEqual(m.chip, { tone: "warn", label: "Token rejected" });
   assert.equal(m.answer, "Home Assistant rejected the access token. Check it in Settings → Integrations.");
-  assert.deepEqual(m.link, { href: "/settings#integrations", label: "Open Settings" });
+  assert.deepEqual(m.link, { href: "/settings#homeassistant", label: "Open Settings" });
   assert.doesNotMatch(JSON.stringify(m), /192\.0\.2\.5/);
   assert.deepEqual(enabled(m), []);
 });

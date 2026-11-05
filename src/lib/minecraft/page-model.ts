@@ -55,7 +55,7 @@ export interface Model {
 
 const STALE_MS = 30_000;
 const STARTING_MS = 5 * 60_000;
-const SETTINGS = { href: "/settings#integrations", label: "Open Settings" };
+const SETTINGS = { href: "/settings#minecraft", label: "Open Settings" };
 const TITLES: Record<StripId, string> = { server: "Server", players: "Players", pack: "Pack", backups: "Backups", console: "Console", log: "Log" };
 const ORDER = {
   default: ["server", "players", "pack", "backups", "console", "log"],

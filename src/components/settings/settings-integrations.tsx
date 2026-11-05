@@ -7,20 +7,24 @@
    semantics are read-modify-write through POST /api/settings/integrations,
    which spreads the rest of config.json untouched (see that route's own
    comment for why this isn't routed through the general settings PUT).
-   OWN-WORLD: nightwatch console — .panel hairlines, mono secrets, microlabel
-   captions, inline two-step confirm for the destructive "Clear" action
-   (never a browser confirm()), same as reclaim-shared.tsx. */
+   Each panel is one strip's detail on the Strips pattern: the page owns the
+   frame, the state line and the answer, so a panel is just its form. Each
+   reports its draft and last error upward (useFormReport) so the head can
+   say "Unsaved" or "Not saved". Clear is the pattern's one write idiom
+   (WriteAction), never a browser confirm(). */
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { Save, Trash2 } from "lucide-react";
+import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Label } from "@/components/ui/input";
 import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import type { AppConfig } from "@/lib/config";
+import { plainReason } from "@/lib/settings/page-model";
+import { useFormReport } from "@/components/settings/form-report";
 
 // ---------------------------------------------------------------------------
 // Wire type for GET /api/settings. Richer than src/lib/client.ts's own
@@ -90,14 +94,12 @@ export interface SettingsFullResponse {
   };
 }
 
-export function useSettingsFull() {
-  return useSWR<SettingsFullResponse>("/api/settings", fetcher);
+export function useSettingsFull(onLoaded?: (at: number) => void) {
+  return useSWR<SettingsFullResponse>("/api/settings", fetcher, { onSuccess: () => onLoaded?.(Date.now()) });
 }
 
 // ---------------------------------------------------------------------------
-// Shared bits: the masked secret field and the inline two-step "Clear".
-
-export type ClearStep = "idle" | "confirm" | "busy";
+// Shared bits: the masked secret field and the "Clear" write.
 
 export function SecretField({
   label,
@@ -218,49 +220,31 @@ export function SecretField({
   );
 }
 
-export function ClearControl({
-  step,
-  setStep,
-  onConfirm,
-  label,
-  message,
-}: {
-  step: ClearStep;
-  setStep: (s: ClearStep) => void;
-  onConfirm: () => void;
-  label: string;
-  message?: string;
-}) {
-  if (step === "confirm") {
-    return (
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[0.7rem] text-ink-dim">
-          {message ?? <>Remove the {label} connection? You&apos;ll need to re-enter its credentials to reconnect.</>}
-        </span>
-        <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
-          Cancel
-        </Button>
-        <Button size="sm" variant="danger" onClick={onConfirm}>
-          Confirm
-        </Button>
-      </div>
-    );
-  }
+/** Clear: an outlined trigger, one plain question, then "Yes, clear". The request fires only on Yes (K10); `run`
+ *  throws on failure so the frame shows it with Try again. */
+export function ClearAction({ say, failure, run }: { say: string; failure: string; run: () => Promise<void> }) {
   return (
-    <Button size="sm" variant="ghost" disabled={step === "busy"} onClick={() => setStep("confirm")}>
-      <Trash2 size={13} /> Clear
-    </Button>
+    <WriteAction
+      label="Clear"
+      icon={<Trash2 size={13} />}
+      say={say}
+      yes="Yes, clear"
+      danger
+      flight="Clearing…"
+      failure={failure}
+      run={run}
+    />
   );
 }
+const clearSay = (x: string) => `Removes the saved ${x} connection. ${x} stops working until you enter its credentials again.`;
 
 /** Posts one { [key]: patch | null } body to /api/settings/integrations and
  *  revalidates the shared /api/settings SWR cache on success. Local to each
  *  panel — nothing here is shared state, so four panels can save/clear
  *  independently without racing each other's in-flight request. */
-function useIntegrationWrite(mutate: () => Promise<unknown>) {
+function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [clearStep, setClearStep] = useState<ClearStep>("idle");
 
   /** Returns whether the save actually succeeded — callers use this to decide
    *  whether it's safe to clear a typed secret draft. Clearing unconditionally
@@ -271,35 +255,30 @@ function useIntegrationWrite(mutate: () => Promise<unknown>) {
     try {
       await postJson("/api/settings/integrations", { [key]: patch });
       await mutate();
+      reseed?.(); // the server trims and defaults values, so reload the fields from what it stored
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save — check the values and try again");
+      setError(e instanceof Error && e.message ? plainReason(e.message) : "Couldn't save — check the values and try again");
       return false;
     } finally {
       setSaving(false);
     }
   }
 
-  /** Same success/failure contract as save() — a cleared block also flips
-   *  `configured` back to false, and the caller uses the return value to
-   *  decide whether to remount its SecretField(s) so a stale masked view
-   *  doesn't linger after the secret it was describing is gone. */
-  async function clear(key: string): Promise<boolean> {
-    setClearStep("busy");
-    setError(null);
+  /** Throws on failure, so ClearAction's frame shows the reason; the caller
+   *  then remounts its SecretField(s) so a stale masked view doesn't linger
+   *  after the secret it was describing is gone. */
+  async function clear(key: string): Promise<void> {
     try {
       await postJson("/api/settings/integrations", { [key]: null });
       await mutate();
-      setClearStep("idle");
-      return true;
+      reseed?.();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't remove the connection — try again");
-      setClearStep("idle");
-      return false;
+      throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
   }
 
-  return { saving, error, clearStep, setClearStep, save, clear };
+  return { saving, error, save, clear };
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +311,7 @@ function UrlTokenPanel({
   // back to the masked view too, not just a first-time save (`configured`
   // flipping false->true only covers the latter).
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, clearStep, setClearStep, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -340,66 +319,107 @@ function UrlTokenPanel({
       setSeeded(true);
     }
   }, [data, seeded, integrationKey]);
+  useFormReport(integrationKey, { dirty: seeded && (url !== (data?.config[integrationKey]?.url ?? "") || token !== ""), error });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">{hint}</p>
-        <Field label="URL" required>
-          <Input placeholder={urlPlaceholder} value={url} onChange={(e) => setUrl(e.target.value)} />
-        </Field>
-        <SecretField
-          key={saveVersion}
-          label={secretLabel}
-          configured={configured}
-          updatedAt={status?.updatedAt}
-          draft={token}
-          onDraftChange={setToken}
-        />
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          {configured ? (
-            <ClearControl
-              step={clearStep}
-              setStep={setClearStep}
-              label={title}
-              onConfirm={async () => {
-                const ok = await clear(integrationKey);
-                if (ok) setSaveVersion((v) => v + 1);
-              }}
-            />
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            <Button
-              size="sm"
-              disabled={saving || !url.trim()}
-              onClick={async () => {
-                const ok = await save(integrationKey, { url, token: token || undefined });
-                if (ok) {
-                  setToken("");
-                  setSaveVersion((v) => v + 1);
-                }
-              }}
-            >
-              <Save size={13} /> Save
-            </Button>
-          </div>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">{hint}</p>
+      <Field label="URL" required>
+        <Input placeholder={urlPlaceholder} value={url} onChange={(e) => setUrl(e.target.value)} />
+      </Field>
+      <SecretField
+        key={saveVersion}
+        label={secretLabel}
+        configured={configured}
+        updatedAt={status?.updatedAt}
+        draft={token}
+        onDraftChange={setToken}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say={clearSay(title)}
+            failure="Couldn’t remove the connection"
+            run={async () => {
+              await clear(integrationKey);
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || !url.trim()}
+            onClick={async () => {
+              const ok = await save(integrationKey, { url, token: token || undefined });
+              if (ok) {
+                setToken("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+type PanelProps = { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> };
+
+export function HomeAssistantPanel({ data, mutate }: PanelProps) {
+  return (
+    <UrlTokenPanel
+      title="Home Assistant"
+      integrationKey="homeassistant"
+      urlPlaceholder="http://homelab.local:8123"
+      secretLabel="Long-lived access token"
+      hint="Profile (bottom-left in HA) → Security → Long-Lived Access Tokens → Create Token."
+      data={data}
+      mutate={mutate}
+    />
+  );
+}
+
+export function ForgejoPanel({ data, mutate }: PanelProps) {
+  return (
+    <UrlTokenPanel
+      title="Forgejo"
+      integrationKey="forgejo"
+      urlPlaceholder="http://homelab.local:3010"
+      secretLabel="Access token"
+      hint={
+        <>
+          Settings → Applications → Generate New Token, read scopes only.
+          {data?.config.forgejo?.url && (
+            <>
+              {" "}
+              <a
+                href={`${data.config.forgejo.url.replace(/\/+$/, "")}/user/settings/applications`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent hover:underline"
+              >
+                open Forgejo&apos;s token page
+              </a>
+            </>
+          )}
+        </>
+      }
+      data={data}
+      mutate={mutate}
+    />
   );
 }
 
 // ---------------------------------------------------------------------------
 // NPM: url + email (not secret) + password (secret).
 
-function NpmPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+export function NpmPanel({ data, mutate }: PanelProps) {
   const status = data?.integrations.npm;
   const configured = status?.configured ?? false;
   const [url, setUrl] = useState("");
@@ -407,7 +427,7 @@ function NpmPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mu
   const [password, setPassword] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, clearStep, setClearStep, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -416,139 +436,127 @@ function NpmPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mu
       setSeeded(true);
     }
   }, [data, seeded]);
+  useFormReport("npm", { dirty: seeded && (url !== (data?.config.npm?.url ?? "") || email !== (data?.config.npm?.email ?? "") || password !== ""), error });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Nginx Proxy Manager</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          The admin login itself — NPM only exposes its API to an authenticated admin, no separate token to mint.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="URL" required>
-            <Input placeholder="http://192.168.1.70:81" value={url} onChange={(e) => setUrl(e.target.value)} />
-          </Field>
-          <Field label="Admin email" required>
-            <Input placeholder="admin@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        The admin login itself — NPM only exposes its API to an authenticated admin, no separate token to mint.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="URL" required>
+          <Input placeholder="http://homelab.local:81" value={url} onChange={(e) => setUrl(e.target.value)} />
+        </Field>
+        <Field label="Admin email" required>
+          <Input placeholder="admin@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        </Field>
+      </div>
+      <SecretField
+        key={saveVersion}
+        label="Admin password"
+        configured={configured}
+        updatedAt={status?.updatedAt}
+        draft={password}
+        onDraftChange={setPassword}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say={clearSay("NPM")}
+            failure="Couldn’t remove the connection"
+            run={async () => {
+              await clear("npm");
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || !url.trim() || !email.trim()}
+            onClick={async () => {
+              const ok = await save("npm", { url, email, password: password || undefined });
+              if (ok) {
+                setPassword("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
         </div>
-        <SecretField
-          key={saveVersion}
-          label="Admin password"
-          configured={configured}
-          updatedAt={status?.updatedAt}
-          draft={password}
-          onDraftChange={setPassword}
-        />
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          {configured ? (
-            <ClearControl
-              step={clearStep}
-              setStep={setClearStep}
-              label="NPM"
-              onConfirm={async () => {
-                const ok = await clear("npm");
-                if (ok) setSaveVersion((v) => v + 1);
-              }}
-            />
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            <Button
-              size="sm"
-              disabled={saving || !url.trim() || !email.trim()}
-              onClick={async () => {
-                const ok = await save("npm", { url, email, password: password || undefined });
-                if (ok) {
-                  setPassword("");
-                  setSaveVersion((v) => v + 1);
-                }
-              }}
-            >
-              <Save size={13} /> Save
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 // GitHub: a bare PAT, no URL/email of its own.
 
-function GithubPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+export function GithubPanel({ data, mutate }: PanelProps) {
   const status = data?.integrations.github;
   const configured = status?.configured ?? false;
   const [token, setToken] = useState("");
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, clearStep, setClearStep, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate);
+  useFormReport("github", { dirty: token !== "", error });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>GitHub</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          Read-only PAT for the local→cloud mirror sync visualizer.{" "}
-          <a
-            href="https://github.com/settings/tokens"
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent hover:underline"
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        Read-only PAT for the local→cloud mirror sync visualizer.{" "}
+        <a
+          href="https://github.com/settings/tokens"
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent hover:underline"
+        >
+          github.com/settings/tokens
+        </a>{" "}
+        — repo read scope covers it.
+      </p>
+      <SecretField
+        key={saveVersion}
+        label="Personal access token"
+        configured={configured}
+        updatedAt={status?.updatedAt}
+        draft={token}
+        onDraftChange={setToken}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say={clearSay("GitHub")}
+            failure="Couldn’t remove the connection"
+            run={async () => {
+              await clear("github");
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || (!configured && !token.trim())}
+            onClick={async () => {
+              const ok = await save("github", { token: token || undefined });
+              if (ok) {
+                setToken("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
           >
-            github.com/settings/tokens
-          </a>{" "}
-          — repo read scope covers it.
-        </p>
-        <SecretField
-          key={saveVersion}
-          label="Personal access token"
-          configured={configured}
-          updatedAt={status?.updatedAt}
-          draft={token}
-          onDraftChange={setToken}
-        />
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          {configured ? (
-            <ClearControl
-              step={clearStep}
-              setStep={setClearStep}
-              label="GitHub"
-              onConfirm={async () => {
-                const ok = await clear("github");
-                if (ok) setSaveVersion((v) => v + 1);
-              }}
-            />
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            <Button
-              size="sm"
-              disabled={saving || (!configured && !token.trim())}
-              onClick={async () => {
-                const ok = await save("github", { token: token || undefined });
-                if (ok) {
-                  setToken("");
-                  setSaveVersion((v) => v + 1);
-                }
-              }}
-            >
-              <Save size={13} /> Save
-            </Button>
-          </div>
+            <Save size={13} /> Save
+          </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -557,7 +565,7 @@ function GithubPanel({ data, mutate }: { data: SettingsFullResponse | undefined;
 // an optional CurseForge search key. Three secrets, mirroring NPM's
 // url+non-secret+secret shape but with an extra host/port pair for RCON.
 
-function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
+export function MinecraftPanel({ data, mutate }: PanelProps) {
   const status = data?.integrations.minecraft;
   const configured = status?.configured ?? false;
   const [managerUrl, setManagerUrl] = useState("");
@@ -568,7 +576,7 @@ function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefin
   const [rconPassword, setRconPassword] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, clearStep, setClearStep, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -578,100 +586,105 @@ function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefin
       setSeeded(true);
     }
   }, [data, seeded]);
+  const mc = data?.config.minecraft;
+  useFormReport("minecraft", {
+    dirty:
+      seeded &&
+      (managerUrl !== (mc?.managerUrl ?? "") ||
+        rconHost !== (mc?.rconHost ?? "") ||
+        rconPort !== (mc?.rconPort ? String(mc.rconPort) : "") ||
+        managerToken !== "" ||
+        curseforgeKey !== "" ||
+        rconPassword !== ""),
+    error,
+  });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Minecraft</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          mc-manager runs in the minecraft stack; token is <span className="font-mono">MANAGER_TOKEN</span> in its
-          secrets.env. CurseForge key is optional — Modrinth search works without it.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Manager URL" required>
-            <Input
-              placeholder="http://192.168.1.70:8090"
-              value={managerUrl}
-              onChange={(e) => setManagerUrl(e.target.value)}
-            />
-          </Field>
-          <Field label="RCON host">
-            <Input placeholder="192.168.1.70" value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
-          </Field>
-          <Field label="RCON port">
-            <Input placeholder="25575" value={rconPort} onChange={(e) => setRconPort(e.target.value)} />
-          </Field>
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        mc-manager runs in the minecraft stack; token is <span className="font-mono">MANAGER_TOKEN</span> in its
+        secrets.env. CurseForge key is optional — Modrinth search works without it.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Manager URL" required>
+          <Input
+            placeholder="http://homelab.local:8090"
+            value={managerUrl}
+            onChange={(e) => setManagerUrl(e.target.value)}
+          />
+        </Field>
+        <Field label="RCON host">
+          <Input placeholder="homelab.local" value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
+        </Field>
+        <Field label="RCON port">
+          <Input placeholder="25575" value={rconPort} onChange={(e) => setRconPort(e.target.value)} />
+        </Field>
+      </div>
+      <SecretField
+        key={`manager-${saveVersion}`}
+        label="Manager token"
+        configured={configured}
+        updatedAt={status?.updatedAt}
+        draft={managerToken}
+        onDraftChange={setManagerToken}
+      />
+      <SecretField
+        key={`curseforge-${saveVersion}`}
+        label="CurseForge API key"
+        configured={Boolean(status?.curseforgeKeySet)}
+        updatedAt={status?.updatedAt}
+        draft={curseforgeKey}
+        onDraftChange={setCurseforgeKey}
+        placeholder="optional — leave blank to skip"
+      />
+      <SecretField
+        key={`rcon-${saveVersion}`}
+        label="RCON password"
+        configured={Boolean(status?.rconPasswordSet)}
+        updatedAt={status?.updatedAt}
+        draft={rconPassword}
+        onDraftChange={setRconPassword}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say={clearSay("Minecraft")}
+            failure="Couldn’t remove the connection"
+            run={async () => {
+              await clear("minecraft");
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || !managerUrl.trim()}
+            onClick={async () => {
+              const ok = await save("minecraft", {
+                managerUrl,
+                rconHost,
+                rconPort: Number(rconPort) || undefined,
+                managerToken: managerToken || undefined,
+                curseforgeKey: curseforgeKey || undefined,
+                rconPassword: rconPassword || undefined,
+              });
+              if (ok) {
+                setManagerToken("");
+                setCurseforgeKey("");
+                setRconPassword("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
         </div>
-        <SecretField
-          key={`manager-${saveVersion}`}
-          label="Manager token"
-          configured={configured}
-          updatedAt={status?.updatedAt}
-          draft={managerToken}
-          onDraftChange={setManagerToken}
-        />
-        <SecretField
-          key={`curseforge-${saveVersion}`}
-          label="CurseForge API key"
-          configured={Boolean(status?.curseforgeKeySet)}
-          updatedAt={status?.updatedAt}
-          draft={curseforgeKey}
-          onDraftChange={setCurseforgeKey}
-          placeholder="optional — leave blank to skip"
-        />
-        <SecretField
-          key={`rcon-${saveVersion}`}
-          label="RCON password"
-          configured={Boolean(status?.rconPasswordSet)}
-          updatedAt={status?.updatedAt}
-          draft={rconPassword}
-          onDraftChange={setRconPassword}
-        />
-        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-          {configured ? (
-            <ClearControl
-              step={clearStep}
-              setStep={setClearStep}
-              label="Minecraft"
-              onConfirm={async () => {
-                const ok = await clear("minecraft");
-                if (ok) setSaveVersion((v) => v + 1);
-              }}
-            />
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-            <Button
-              size="sm"
-              disabled={saving || !managerUrl.trim()}
-              onClick={async () => {
-                const ok = await save("minecraft", {
-                  managerUrl,
-                  rconHost,
-                  rconPort: Number(rconPort) || undefined,
-                  managerToken: managerToken || undefined,
-                  curseforgeKey: curseforgeKey || undefined,
-                  rconPassword: rconPassword || undefined,
-                });
-                if (ok) {
-                  setManagerToken("");
-                  setCurseforgeKey("");
-                  setRconPassword("");
-                  setSaveVersion((v) => v + 1);
-                }
-              }}
-            >
-              <Save size={13} /> Save
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -683,8 +696,7 @@ function MinecraftPanel({ data, mutate }: { data: SettingsFullResponse | undefin
 // backs GET /api/voice/status (surfaced here as data.system.voiceConfigured
 // so this card doesn't need a second fetch for the same value).
 
-function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; mutate: () => Promise<unknown> }) {
-  const configured = data?.system.voiceConfigured ?? false;
+export function VoiceCard({ data, mutate }: PanelProps) {
   const [serverUrl, setServerUrl] = useState("");
   const [ttsUrl, setTtsUrl] = useState("");
   const [sttModel, setSttModel] = useState("");
@@ -705,6 +717,17 @@ function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; m
       setSeeded(true);
     }
   }, [data, seeded]);
+  const sys = data?.config.system;
+  useFormReport("voice", {
+    dirty:
+      seeded &&
+      (serverUrl !== (sys?.voiceServerUrl ?? "") ||
+        ttsUrl !== (sys?.voiceTtsUrl ?? "") ||
+        sttModel !== (sys?.voiceSttModel ?? "") ||
+        ttsModel !== (sys?.voiceTtsModel ?? "") ||
+        ttsVoice !== (sys?.voiceTtsVoice ?? "")),
+    error,
+  });
 
   async function handleSave() {
     setSaving(true);
@@ -718,124 +741,46 @@ function VoiceCard({ data, mutate }: { data: SettingsFullResponse | undefined; m
         voiceTtsVoice: ttsVoice,
       });
       await mutate();
+      setSeeded(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "save failed");
+      setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Voice</CardTitle>
-        {configured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-[0.7rem] text-ink-dim">
-          STT/TTS speech server for the mic on the dashboard and the kiosk voice panel. Wins over{" "}
-          <span className="font-mono">VOICE_SERVER_URL</span> and friends when set here.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Server URL">
-            <Input placeholder="http://192.168.1.70:8970" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
-          </Field>
-          <Field label="TTS URL (optional — defaults to server URL)">
-            <Input placeholder="http://192.168.1.70:8971" value={ttsUrl} onChange={(e) => setTtsUrl(e.target.value)} />
-          </Field>
-          <Field label="STT model">
-            <Input placeholder="leave blank for the server's default" value={sttModel} onChange={(e) => setSttModel(e.target.value)} />
-          </Field>
-          <Field label="TTS model">
-            <Input placeholder="leave blank for the server's default" value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} />
-          </Field>
-          <Field label="TTS voice">
-            <Input placeholder="leave blank for the server's default" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} />
-          </Field>
-        </div>
-        <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-          {saved && <Badge variant="ok">saved</Badge>}
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-          <Button size="sm" disabled={saving} onClick={handleSave}>
-            <Save size={13} /> Save
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function IntegrationsSkeleton() {
-  return (
-    <div className="grid md:grid-cols-2 gap-3">
-      {["Home Assistant", "Nginx Proxy Manager", "Forgejo", "GitHub", "Minecraft", "Voice"].map((label, i) => (
-        <div key={label} className="panel p-4 space-y-3">
-          <div className="microlabel">{label}</div>
-          <div className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none" style={{ animationDelay: `${i * 90}ms` }} />
-          <div className="h-8 rounded bg-panel-2 animate-pulse motion-reduce:animate-none w-2/3" style={{ animationDelay: `${i * 90 + 90}ms` }} />
-        </div>
-      ))}
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        STT/TTS speech server for the mic on the dashboard and the kiosk voice panel. Wins over{" "}
+        <span className="font-mono">VOICE_SERVER_URL</span> and friends when set here.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <Field label="Server URL">
+          <Input placeholder="http://homelab.local:8970" value={serverUrl} onChange={(e) => setServerUrl(e.target.value)} />
+        </Field>
+        <Field label="TTS URL (optional — defaults to server URL)">
+          <Input placeholder="http://homelab.local:8971" value={ttsUrl} onChange={(e) => setTtsUrl(e.target.value)} />
+        </Field>
+        <Field label="STT model">
+          <Input placeholder="leave blank for the server's default" value={sttModel} onChange={(e) => setSttModel(e.target.value)} />
+        </Field>
+        <Field label="TTS model">
+          <Input placeholder="leave blank for the server's default" value={ttsModel} onChange={(e) => setTtsModel(e.target.value)} />
+        </Field>
+        <Field label="TTS voice">
+          <Input placeholder="leave blank for the server's default" value={ttsVoice} onChange={(e) => setTtsVoice(e.target.value)} />
+        </Field>
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+        {saved && <Badge variant="ok">saved</Badge>}
+        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        <Button size="sm" disabled={saving} onClick={handleSave}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
     </div>
-  );
-}
-
-export function SettingsIntegrations() {
-  const { data, error, mutate } = useSettingsFull();
-
-  return (
-    <section className="space-y-3">
-      <h2 className="microlabel !text-accent">Integrations</h2>
-      {error && (
-        <div className="panel p-4 text-xs text-bad">Could not load settings — {error.message}</div>
-      )}
-      {!error && !data && <IntegrationsSkeleton />}
-      {data && (
-        <div className="grid md:grid-cols-2 gap-3">
-          <UrlTokenPanel
-            title="Home Assistant"
-            integrationKey="homeassistant"
-            urlPlaceholder="http://192.168.1.70:8123"
-            secretLabel="Long-lived access token"
-            hint="Profile (bottom-left in HA) → Security → Long-Lived Access Tokens → Create Token."
-            data={data}
-            mutate={mutate}
-          />
-          <NpmPanel data={data} mutate={mutate} />
-          <UrlTokenPanel
-            title="Forgejo"
-            integrationKey="forgejo"
-            urlPlaceholder="http://192.168.1.70:3010"
-            secretLabel="Access token"
-            hint={
-              <>
-                Settings → Applications → Generate New Token, read scopes only.
-                {data.config.forgejo?.url && (
-                  <>
-                    {" "}
-                    <a
-                      href={`${data.config.forgejo.url.replace(/\/+$/, "")}/user/settings/applications`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-accent hover:underline"
-                    >
-                      open Forgejo's token page
-                    </a>
-                  </>
-                )}
-              </>
-            }
-            data={data}
-            mutate={mutate}
-          />
-          <GithubPanel data={data} mutate={mutate} />
-          <MinecraftPanel data={data} mutate={mutate} />
-          <VoiceCard data={data} mutate={mutate} />
-        </div>
-      )}
-    </section>
   );
 }
