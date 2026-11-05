@@ -59,6 +59,8 @@ export interface RunnerOpts {
   th: Thresholds;
   prefix?: string[];
   graceMs?: number;
+  /** Test seam: the re-probe at job start. */
+  probe?: typeof ffprobeJson;
   now?: () => Date;
   log?: (line: string) => void;
   /** After a swap: tell Jellyfin and re-probe. Returns the Jellyfin outcome. */
@@ -98,7 +100,7 @@ export function createRunner(o: RunnerOpts) {
     try {
       if (!pathOk(rec)) throw new Error("path rule");
       st = lstatSync(rec.abs);
-      json = await ffprobeJson(rec.abs, { prefix });
+      json = await (o.probe ?? ffprobeJson)(rec.abs, { prefix });
     } catch {
       return void fail(rec, "source-changed", { startedAt: t0, error: "The source file can't be read" });
     }
@@ -107,6 +109,8 @@ export function createRunner(o: RunnerOpts) {
     if (v.kind !== "compress") return void fail(rec, "source-changed", { startedAt: t0, error: v.reason });
     if (!enoughFor(o.statfs, o.mediaRoot, st.size)) return void fail(rec, "disk", { startedAt: t0 });
 
+    // H1: a cancel can land while the re-probe above is awaited; do not overwrite it with `encoding`.
+    if (q.get(id)?.state !== "queued") return;
     q.patch(id, {
       state: "encoding", startedAt: t0, crf: v.crf, sourceBytes: st.size, srcIno: st.ino, srcSize: st.size,
       srcMtimeMs: st.mtimeMs, srcMode: st.mode, progress: { pct: 0, fps: null, etaSec: null },
@@ -121,6 +125,7 @@ export function createRunner(o: RunnerOpts) {
     let buf = "";
     let errText = "";
     let diskAbort = false;
+    let progressWarned = false;
     child.stdout.on("data", (d: Buffer) => {
       buf += d;
       let i;
@@ -128,7 +133,10 @@ export function createRunner(o: RunnerOpts) {
         const end = buf.indexOf("\n", i) + 1;
         const p = parseProgress(buf.slice(0, end), input.durationSec, srcFps);
         buf = buf.slice(end);
-        if (p) q.patch(id, { progress: p });
+        if (p) {
+          // H4: progress is advisory; a full or read-only state volume must not kill the worker.
+          try { q.patch(id, { progress: p }); } catch (e) { if (!progressWarned) { progressWarned = true; o.log?.(`progress for ${id} not saved: ${(e as Error).message}`); } }
+        }
         if (freeBytes(o.statfs, o.mediaRoot) < DISK_ABORT_BYTES && !diskAbort) { diskAbort = true; signal(id, "SIGTERM"); }
       }
     });

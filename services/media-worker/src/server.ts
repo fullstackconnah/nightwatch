@@ -217,7 +217,18 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const c = loadConfig();
   startServer(c).then(
-    (r) => console.log(`media-worker ${VERSION} listening on port ${r.port}`),
+    (r) => {
+      console.log(`media-worker ${VERSION} listening on port ${r.port}`);
+      // H2: docker stop sends SIGTERM; stop the encode cleanly. A second signal exits at once.
+      let closing = false;
+      const onSignal = () => {
+        if (closing) process.exit(1);
+        closing = true;
+        r.close().then(() => process.exit(0), () => process.exit(1));
+      };
+      process.on("SIGTERM", onSignal);
+      process.on("SIGINT", onSignal);
+    },
     (e: Error) => { console.error(e.message); process.exit(1); },
   );
 }

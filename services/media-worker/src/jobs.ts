@@ -71,7 +71,7 @@ export interface QueueOpts {
 export function createQueue(opts: QueueOpts) {
   const now = opts.now ?? (() => new Date());
   const file = join(opts.stateDir, "jobs.json");
-  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file)?.jobs ?? [];
+  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
   const uid = "uid" in opts ? opts.uid : process.getuid?.();
   let running: { id: string; done: Promise<void> } | null = null;
   let closed = false;
@@ -108,7 +108,7 @@ export function createQueue(opts: QueueOpts) {
       .then(() => opts.run(next))
       .catch((e: Error) => {
         opts.log?.(`job ${next.id} crashed: ${e.message}`);
-        patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() });
+        try { patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() }); } catch (e2) { opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`); }
       })
       .finally(() => { running = null; pump(); });
     running = { id: next.id, done };

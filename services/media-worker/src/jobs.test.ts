@@ -123,6 +123,17 @@ describe("cancel", { skip: SKIP_OFF_LINUX }, () => {
   });
 });
 
+describe("pump crash handler (H4)", { skip: SKIP_OFF_LINUX }, () => {
+  it("a patch that throws inside the crash handler is logged, not an unhandled rejection", async () => {
+    const logs: string[] = [];
+    let q!: ReturnType<typeof make>["q"];
+    ({ q } = make({ log: (l) => logs.push(l), run: async () => { q.all().splice(0); throw new Error("boom"); } }));
+    q.enqueueOne("movies/a.mkv");
+    await tick(); await tick(); await tick();
+    assert.ok(logs.some((l) => /crashed: boom/.test(l)) && logs.some((l) => /not marked failed/.test(l)), logs.join("|"));
+  });
+});
+
 describe("hold clock and purge (B5)", () => {
   it("purge goes by heldUntil, never by file mtime", () => {
     const { q, ready } = make();
