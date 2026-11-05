@@ -37,6 +37,8 @@ export interface Scanner {
   /** Starts a scan; false when one is already running. */
   start(): boolean;
   whenIdle(): Promise<void>;
+  /** Re-probes one file after a swap or Undo, so the library shows its new codec and size at once. */
+  refreshFile(rel: string): Promise<void>;
 }
 
 const hasVideoExt = (name: string) => VIDEO_EXT.has(name.slice(name.lastIndexOf(".") + 1).toLowerCase());
@@ -146,6 +148,18 @@ export function createScanner(opts: ScannerOpts): Scanner {
       return true;
     },
     whenIdle: () => running,
+    async refreshFile(rel) {
+      const abs = posix.join(opts.mediaRoot, rel);
+      try {
+        const s = await lstat(abs);
+        const st = { path: rel, name: posix.basename(rel), bytes: s.size, mtimeMs: s.mtimeMs, nlink: s.nlink };
+        const p = await opts.probe(abs, st);
+        files[rel] = { ...p, verdict: judge(p, rel) };
+        flush();
+      } catch (e) {
+        opts.log?.(`refresh of one file failed: ${(e as Error).name}`);
+      }
+    },
   };
 }
 

@@ -2,12 +2,18 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { pathToFileURL } from "node:url";
 import { bearerOk, MIN_TOKEN_LENGTH } from "./auth.ts";
 import { loadConfig, VERSION } from "./config.ts";
+import { checkReady, dirsFor, realStatfs, type Statfs } from "./disk.ts";
+import { createGuard } from "./fsguard.ts";
+import { JobError, createQueue } from "./jobs.ts";
+import { createJellyfin } from "./jellyfin.ts";
 import { buildLibrary, readDisk, titleDetail } from "./library.ts";
 import { resolveMediaPath } from "./paths.ts";
 import { probeFile, type FileStat } from "./probe.ts";
 import { createScanner, scheduleNightly, type Scanner } from "./scan.ts";
+import { createRunner } from "./runner.ts";
 import { thresholds } from "./sweet-spot.ts";
-import type { Health } from "./types.ts";
+import { realFs } from "./swap.ts";
+import type { Health, MediaFile, TitleDetail } from "./types.ts";
 import type { VerdictInput } from "./verdict.ts";
 
 const BODY_CAP = 16 * 1024;
@@ -27,6 +33,9 @@ export interface ServerOpts {
   log?: (line: string) => void;
   now?: () => Date;
   scanner?: Scanner;
+  /** Test seams: no nice/ionice prefix, a fake statfs. */
+  prefix?: string[];
+  statfs?: Statfs;
 }
 
 export interface RunningServer {
@@ -71,25 +80,75 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
   const scanner = opts.scanner ?? createScanner({
     mediaRoot: opts.mediaRoot, stateDir: opts.stateDir, probe: opts.probe ?? probeFile, now: opts.now, env, log,
   });
-  const health: Health = {
-    ok: true, version: VERSION, compressEnabled: false, compressReady: false, reason: "Read-only worker",
+  const compressEnabled = env.MEDIA_COMPRESS_ENABLED === "1";
+  const statfs = opts.statfs ?? realStatfs;
+  const dirs = dirsFor(opts.mediaRoot);
+  const guard = createGuard(dirs);
+  const jellyfin = createJellyfin(env, log);
+  const readiness = () => {
+    if (!compressEnabled) return { ready: false, reason: "Compress is off until calibration is done" };
+    const r = checkReady(opts.mediaRoot);
+    return { ready: r.ready, ...(r.reason ? { reason: r.reason } : {}) };
+  };
+  const runner = createRunner({
+    dirs, guard, fs: realFs, statfs, mediaRoot: opts.mediaRoot, th: scaled, prefix: opts.prefix, now: opts.now, log,
+    afterSwap: async (rec) => {
+      const j = await jellyfin.refresh(rec.path);
+      await scanner.refreshFile(rec.path);
+      return j;
+    },
+  });
+  const queue = createQueue({
+    stateDir: opts.stateDir, mediaRoot: opts.mediaRoot, dirs, guard, fs: realFs, statfs, enabled: compressEnabled,
+    ready: readiness, lookup: (p) => scanner.files()[p], run: (r) => runner.run(r), kill: (id, why) => runner.kill(id, why),
+    afterChange: async (rec) => { await jellyfin.refresh(rec.path); await scanner.refreshFile(rec.path); },
+    now: opts.now, log, tz: env.TZ,
+  });
+  runner.bind(queue);
+  if (compressEnabled && readiness().ready) queue.recoverOnce();
+  const purgeTimer = setInterval(() => {
+    if (compressEnabled && readiness().ready) { queue.recoverOnce(); queue.purgeDue(); }
+  }, 3_600_000);
+  purgeTimer.unref();
+  const health = (): Health => {
+    const r = readiness();
+    return { ok: true, version: VERSION, compressEnabled, compressReady: r.ready, ...(r.reason ? { reason: r.reason } : {}) };
+  };
+  const withJob = (f: MediaFile): MediaFile => {
+    const job = queue.jobFor(f.path);
+    return job ? { ...f, job } : f;
+  };
+  const decorate = (d: TitleDetail): TitleDetail => ({
+    ...d,
+    ...(d.files ? { files: d.files.map(withJob) } : {}),
+    ...(d.seasons ? { seasons: d.seasons.map((s) => ({ ...s, files: s.files.map(withJob) })) } : {}),
+  });
+  const jsonBody = async (req: IncomingMessage, res: ServerResponse): Promise<unknown | undefined> => {
+    const body = await readBody(req);
+    if (body === null) {
+      res.setHeader("connection", "close");
+      res.on("finish", () => req.destroy());
+      send(res, 413, { error: "Request body too large" });
+      return undefined;
+    }
+    try { return body.trim() ? JSON.parse(body) : {}; } catch { send(res, 400, { error: "Body must be JSON" }); return undefined; }
   };
 
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://worker");
-      if (req.method === "GET" && url.pathname === "/health") return send(res, 200, health);
+      if (req.method === "GET" && url.pathname === "/health") return send(res, 200, health());
       if (!bearerOk(req.headers.authorization, opts.token)) return send(res, 401, { error: "unauthorized" });
 
       if (req.method === "GET" && url.pathname === "/library") {
-        return send(res, 200, buildLibrary(scanner.files(), scanner.state(), scanner.scannedAt(), readDisk(opts.mediaRoot)));
+        return send(res, 200, buildLibrary(scanner.files(), scanner.state(), scanner.scannedAt(), { ...readDisk(opts.mediaRoot, statfs as never), heldBytes: queue.heldBytes() }));
       }
       if (req.method === "GET" && url.pathname === "/title") {
         const id = url.searchParams.get("id");
         const resolved = resolveMediaPath(id, opts.mediaRoot);
         if ("error" in resolved) return send(res, resolved.status, { error: resolved.error });
         const detail = titleDetail(scanner.files(), id as string);
-        return detail ? send(res, 200, detail) : send(res, 404, { error: "Unknown title" });
+        return detail ? send(res, 200, decorate(detail)) : send(res, 404, { error: "Unknown title" });
       }
       if (req.method === "POST" && url.pathname === "/scan") {
         const body = await readBody(req);
@@ -104,8 +163,30 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
         if (!scanner.start()) return send(res, 409, { error: "A scan is already running" });
         return send(res, 202, scanner.state());
       }
+
+      if (url.pathname === "/jobs" || url.pathname.startsWith("/jobs/")) {
+        if (req.method === "GET" && url.pathname === "/jobs") {
+          const r = readiness();
+          return send(res, 200, queue.snapshot({ enabled: compressEnabled, ready: r.ready, ...(r.reason ? { reason: r.reason } : {}) }));
+        }
+        if (req.method === "POST" && url.pathname === "/jobs") {
+          const body = await jsonBody(req, res);
+          if (body === undefined) return;
+          const b = body as { path?: unknown; paths?: unknown };
+          if (b && Array.isArray(b.paths)) return send(res, 201, queue.enqueueBatch(b.paths));
+          if (b && "path" in b) return send(res, 201, queue.enqueueOne(b.path));
+          return send(res, 400, { error: "Send path or paths" });
+        }
+        const m = /^\/jobs\/(?:batch\/([\w-]+)|([\w-]+))\/(cancel|undo)$/.exec(url.pathname);
+        if (req.method === "POST" && m) {
+          if (m[1] && m[3] === "cancel") return send(res, 200, { jobs: queue.cancelBatch(m[1]) });
+          if (m[2] && m[3] === "cancel") return send(res, 200, queue.cancel(m[2]));
+          if (m[2] && m[3] === "undo") return send(res, 200, await queue.undo(m[2]));
+        }
+      }
       return send(res, 404, { error: "not found" });
     } catch (e) {
+      if (e instanceof JobError) return send(res, e.status, { error: e.message });
       log(`request failed: ${(e as Error).message}`);
       if (!res.headersSent) send(res, 500, { error: "internal error" });
     }
@@ -122,6 +203,8 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
         server, scanner, port: typeof addr === "object" && addr ? addr.port : 0,
         close: async () => {
           nightly?.stop();
+          clearInterval(purgeTimer);
+          await queue.stop();
           server.closeAllConnections();
           await new Promise<void>((r) => server.close(() => r()));
           await scanner.whenIdle();

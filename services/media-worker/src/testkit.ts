@@ -46,9 +46,9 @@ export async function start(over: Partial<ServerOpts> = {}): Promise<Started> {
 }
 
 /** True when ffmpeg is there. Missing: CI fails ("CI must install ffmpeg"), a local run skips. */
-export function needFfmpeg(t: { skip(msg?: string): void }): boolean {
+export function needFfmpeg(t: object): boolean {
   if (!ffmpegMissing()) return true;
   assert.ok(!process.env.CI, "CI must install ffmpeg");
-  t.skip("ffmpeg is not installed");
+  (t as { skip?(msg?: string): void }).skip?.("ffmpeg is not installed");
   return false;
 }

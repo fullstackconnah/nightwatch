@@ -144,3 +144,57 @@ export const FIXTURES = {
 
 /** The title ids each state opens, by capture. */
 export const OPEN = { long: "tv/" + longName, movie: "movies/Alien (1979)", show: "tv/A  B", verdicts: "tv/Severance", missing: "movies/Gone (2001)" };
+
+
+/* PR B: the jobs answers and the files that carry a job. Each key is one capture state of the Compress flow. */
+const P = {
+  alien: "movies/Alien (1979)/Alien.mkv",
+  blade: "movies/Blade Runner (1982)/Blade Runner.mkv",
+  heat: "movies/Heat (1995)/Heat.mkv",
+  psycho: "movies/Psycho (1960)/Psycho.mkv",
+  casa: "movies/Casablanca (1942)/Casablanca.mkv",
+  sev: "tv/Severance/Season 1/S01E01.mkv",
+};
+const DAY = 24 * HOUR;
+const iso = (ms) => new Date(ms).toISOString();
+const job = (n, path, state, extra = {}) => ({
+  id: `job-${String(n).padStart(8, "0")}`, path, state, createdAt: iso(NOW - HOUR), crf: 23, sourceBytes: gb(12), attempts: 1, ...extra,
+});
+const idle = { compressEnabled: true, compressReady: true, current: null, queue: [], recent: [] };
+/** Patches `job: {id, state}` onto the named files in every title detail; titles stay shared otherwise. */
+/** `settled`: paths of movies the worker has already rescanned after their job (verdict ok), so the head, strips and summary drop them (F8). `heldBytes`: originals held for Undo (F5). */
+const withJobFiles = (jobs, jobsBody = idle, { settled = [], heldBytes = 0 } = {}) => {
+  const byPath = new Map(jobs.map((j) => [j.path, { id: j.id, state: j.state }]));
+  const patch = (f) => (byPath.has(f.path) ? { ...f, job: byPath.get(f.path) } : f);
+  const rescanned = (f) => (settled.includes(f.path) ? { ...f, verdict: { kind: "ok", ratio: f.verdict.ratio ?? null, reason: "Already compressed" } } : f);
+  const sets = titleSet.map((t) => (t.detail.kind === "movie" && settled.includes(t.files[0].path) ? movie(t.detail.name, rescanned(t.files[0])) : t));
+  const base = ok(sets, { disk: { sizeBytes: gb(4000), freeBytes: gb(1500), heldBytes } });
+  const titles = Object.fromEntries(
+    Object.entries(base.titles).map(([id, d]) => [id, { ...d, ...(d.files ? { files: d.files.map(patch) } : {}), ...(d.seasons ? { seasons: d.seasons.map((s) => ({ ...s, files: s.files.map(patch) })) } : {}) }]),
+  );
+  return { library: base.library, titles, jobs: { worker: "ok", data: jobsBody } };
+};
+const running = (state, pct) => job(1, P.alien, state, { startedAt: iso(NOW - 600_000), progress: { pct, fps: 41, etaSec: 4800 } });
+const heldDone = job(2, P.alien, "done", { finishedAt: iso(NOW - 2 * DAY), outputBytes: gb(5), heldUntil: iso(NOW + 5 * DAY), jellyfin: "told" });
+const failed = (check, extra = {}) => job(3, P.alien, "failed", { finishedAt: iso(NOW - HOUR), failedCheck: check, ...extra });
+const queuedMany = Array.from({ length: 6 }, (_, i) => job(10 + i, `tv/A  B/Season 1/E${String(i + 1).padStart(2, "0")}.mkv`, "queued", { createdAt: iso(NOW - 600_000 + i) }));
+
+export const JOB_FIXTURES = {
+  compressOffCalibration: withJobFiles([], { ...idle, compressEnabled: false, compressReady: false, reason: "Off until calibration" }),
+  notReady: withJobFiles([], { ...idle, compressReady: false, reason: "Hold folder missing or not writable" }),
+  compressConfirm: withJobFiles([]),
+  queued: withJobFiles([job(1, P.alien, "queued")], { ...idle, queue: [job(1, P.alien, "queued")] }),
+  encoding: withJobFiles([running("encoding", 42)], { ...idle, current: running("encoding", 42) }),
+  verifying: withJobFiles([running("verifying", 100)], { ...idle, current: running("verifying", 100) }),
+  doneHeld: withJobFiles([heldDone], { ...idle, recent: [heldDone] }, { settled: [P.alien], heldBytes: gb(5) }),
+  undone: withJobFiles([job(2, P.alien, "undone", { finishedAt: iso(NOW - HOUR) })], { ...idle, recent: [job(2, P.alien, "undone", { finishedAt: iso(NOW - HOUR) })] }),
+  failedCheck: withJobFiles([failed("saving", { failedValue: 4 })], { ...idle, recent: [failed("saving", { failedValue: 4 })] }),
+  failedDisk: withJobFiles([failed("disk", { error: "Needs 10.5 GB free to compress this file; 3.2 GB is free." })], { ...idle, recent: [failed("disk", { error: "Needs 10.5 GB free to compress this file; 3.2 GB is free." })] }),
+  cancelled: withJobFiles([job(4, P.alien, "cancelled", { finishedAt: iso(NOW - HOUR) })], { ...idle, recent: [job(4, P.alien, "cancelled", { finishedAt: iso(NOW - HOUR) })] }),
+  purged: withJobFiles([job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5), heldUntil: iso(NOW - DAY) })], { ...idle, recent: [job(5, P.alien, "purged", { finishedAt: iso(NOW - 8 * DAY), outputBytes: gb(5), heldUntil: iso(NOW - DAY) })] }, { settled: [P.alien] }),
+  sourceChanged: withJobFiles([failed("source-changed")], { ...idle, recent: [failed("source-changed")] }),
+  jellyfinFailed: withJobFiles([{ ...heldDone, jellyfin: "failed" }], { ...idle, recent: [{ ...heldDone, jellyfin: "failed" }] }, { settled: [P.alien], heldBytes: gb(5) }),
+  titleQueueMany: withJobFiles(queuedMany, { ...idle, queue: queuedMany }),
+  cancelAll: withJobFiles([running("encoding", 10), job(6, P.blade, "queued")], { ...idle, current: running("encoding", 10), queue: [job(6, P.blade, "queued")] }),
+  alreadyCompressed: withJobFiles([job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa, sourceBytes: gb(2), outputBytes: gb(1.2) })], { ...idle, recent: [job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa, sourceBytes: gb(2), outputBytes: gb(1.2) })] }, { settled: [P.casa], heldBytes: gb(1.2) }),
+};

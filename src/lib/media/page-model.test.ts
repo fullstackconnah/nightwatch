@@ -180,6 +180,8 @@ test("a fetch that fails before any success is the worker-down page, not a crash
 
 test("disk line, with held originals only when there are some", () => {
   assert.equal(model().disk, "Disk: 2.70 TB free of 7.28 TB");
+  const held = lib({ disk: { sizeBytes: 8 * 1024 ** 4, freeBytes: 3 * 1024 ** 4, heldBytes: 7 * 1024 ** 3 } });
+  assert.equal(model(body(held)).disk, "Disk: 3.00 TB free of 8.00 TB · 7.0 GB held for Undo");
   assert.equal(model().showFilter, true);
   assert.equal(model({ body: { worker: "unconfigured" }, last: null }).showFilter, false);
 });

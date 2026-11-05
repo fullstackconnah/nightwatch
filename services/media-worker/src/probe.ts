@@ -130,3 +130,14 @@ export function probeFile(
     });
   });
 }
+
+/** ffprobe's raw JSON for one file, or a rejection with a short reason (the runner re-probes at job start, M4). */
+export function ffprobeJson(abs: string, opts: { prefix?: string[]; timeoutMs?: number } = {}): Promise<unknown> {
+  const [cmd, ...pre] = [...(opts.prefix ?? NICE), "ffprobe"];
+  return new Promise((resolve, reject) => {
+    execFile(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: opts.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(probeReason({ killed: err.killed, stderr }, abs)));
+      try { resolve(JSON.parse(stdout)); } catch { reject(new Error("Not a media file")); }
+    });
+  });
+}
