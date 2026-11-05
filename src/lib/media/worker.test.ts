@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, describe, it } from "node:test";
 import { createKioskElevationToken, createSessionToken, isRequestAuthenticated } from "../auth.ts";
 import { kioskMayCall } from "../kiosk-access.ts";
-import { libraryResponse, scanResponse, titleResponse } from "./routes.ts";
+import { cancelBatchResponse, cancelResponse, enqueueResponse, jobsResponse, libraryResponse, safeReason, scanResponse, titleResponse, undoResponse } from "./routes.ts";
 import { MediaWorkerClient, mediaWorkerCredentials } from "./worker.ts";
 
 const TOKEN = "t".repeat(40);
@@ -170,6 +170,75 @@ describe("shared types (M1)", () => {
       for (const line of src.split("\n").filter((l) => /services\//.test(l) && /from/.test(l))) {
         assert.match(line, /^import type .* from "(\.\.\/)+services\/media-worker\/src\/types\.ts";$/);
       }
+    }
+  });
+});
+
+describe("jobs routes (B9)", () => {
+  const JOB = "abcdef12-3456";
+  it("GET passes the worker data through; down gives worker:unreachable", async () => {
+    const r = await jobsResponse(ok());
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).worker, "ok");
+    assert.equal((await (await jobsResponse(dead())).json()).worker, "unreachable");
+  });
+
+  it("enqueue sends one path or a batch; a bad body is a 400 with no fetch", async () => {
+    lastUrl = "";
+    assert.equal((await enqueueResponse(null, ok())).status, 400);
+    assert.equal((await enqueueResponse({ paths: [] }, ok())).status, 400);
+    assert.equal((await enqueueResponse({ paths: Array.from({ length: 201 }, (_, i) => `movies/${i}.mkv`) }, ok())).status, 400);
+    assert.equal((await enqueueResponse({ paths: ["movies/a.mkv", 3] }, ok())).status, 400);
+    assert.equal(lastUrl, "");
+    assert.equal((await enqueueResponse({ path: "movies/a.mkv" }, ok())).status, 201);
+    assert.equal(lastUrl, "/jobs");
+    assert.equal((await enqueueResponse({ paths: ["movies/a.mkv", "tv/b.mkv"] }, ok())).status, 201);
+  });
+
+  it("a worker 409 keeps its plain sentence; a reason with a path or address is replaced by fixed words", async () => {
+    mode = "409";
+    const safe = await enqueueResponse({ path: "movies/a.mkv" }, ok());
+    assert.equal(safe.status, 409);
+    assert.equal((await safe.json()).error, "A scan is already running");
+    mode = "404";
+    const leaky = await enqueueResponse({ path: "movies/a.mkv" }, ok());
+    mode = "ok";
+    assert.equal(leaky.status, 404);
+    assert.doesNotMatch(await text(leaky), /mnt|10\.0\.0/);
+  });
+
+  it("safeReason keeps an apostrophe, refuses a slash, a colon, a backslash and an address", () => {
+    const wrap = (e: string) => `Media worker returned HTTP 409: ${JSON.stringify({ error: e })}`;
+    assert.equal(safeReason(wrap("Not compressible. It's already small.")), "Not compressible. It's already small.");
+    for (const bad of ["see /mnt/x", "disk: full", `a${String.fromCharCode(92)}b`,"host 10.1.2.3 down", "<b>", ""]) assert.equal(safeReason(wrap(bad)), null, bad);
+    const disk = "Needs 10.5 GB free to compress this file; 3.2 GB is free. Space from compressed files comes back when their originals are deleted on 12 Nov.";
+    assert.equal(safeReason(wrap(disk)), disk);
+    assert.equal(safeReason("Media worker returned HTTP 409."), null);
+    assert.equal(safeReason(wrap("x".repeat(201))), null);
+  });
+
+  it("cancel, batch cancel and undo validate the id before any fetch, then forward it", async () => {
+    lastUrl = "";
+    for (const f of [cancelResponse, cancelBatchResponse, undoResponse]) {
+      for (const bad of [null, "", "short", "../library", "a/b/c/d/e/f/g/h", "UPPERCASE-ID"]) assert.equal((await f(bad, ok())).status, 400, String(bad));
+    }
+    assert.equal(lastUrl, "");
+    assert.equal((await cancelResponse(JOB, ok())).status, 200);
+    assert.equal(lastUrl, `/jobs/${JOB}/cancel`);
+    assert.equal((await undoResponse(JOB, ok())).status, 200);
+    assert.equal(lastUrl, `/jobs/${JOB}/undo`);
+    assert.equal((await cancelBatchResponse(JOB, ok())).status, 200);
+    assert.equal(lastUrl, `/jobs/batch/${JOB}/cancel`);
+  });
+
+  it("a worker 401 is a 502; the kiosk may call none of them", async () => {
+    mode = "401";
+    const r = await undoResponse(JOB, ok());
+    mode = "ok";
+    assert.equal(r.status, 502);
+    for (const [m, p] of [["GET", "/api/media/jobs"], ["POST", "/api/media/jobs"], ["POST", `/api/media/jobs/${JOB}/cancel`], ["POST", `/api/media/jobs/${JOB}/undo`], ["POST", `/api/media/jobs/batch/${JOB}/cancel`]] as const) {
+      assert.equal(kioskMayCall(m, p), false, p);
+      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), m, p), false, p);
     }
   });
 });

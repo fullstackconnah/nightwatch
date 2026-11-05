@@ -103,7 +103,9 @@ export interface Job {
   progress?: { pct: number; fps: number | null; etaSec: number | null };
   failedCheck?:
     | "probe" | "duration" | "streams" | "decode" | "frames" | "saving"
-    | "source-changed" | "disk" | "restart" | "encoder";
+    | "source-changed" | "disk" | "restart" | "encoder" | "swap";
+  /** Seconds shorter (duration) or percent saved (saving), for the page copy. */
+  failedValue?: number;
   error?: string;
   heldUntil?: string;
   jellyfin?: "told" | "failed" | "off";

@@ -3620,15 +3620,25 @@ body {
 .md-word[data-kind="compress"] { color: var(--color-ink); font-weight: 600; }
 .md-line { grid-area: line; margin: 0; font-size: 0.7rem; color: var(--color-ink-dim); }
 .md-line-facts { color: var(--color-ink-faint); }
+.md-act { grid-area: act; justify-self: end; display: flex; gap: 0.375rem; align-items: center; }
+.md-act:empty { display: none; }
+.md-word[data-kind="active"] { color: var(--color-accent); font-weight: 600; }
+.md-word[data-kind="bad"] { color: var(--color-bad, var(--color-ink)); font-weight: 600; }
+/* The queue's progress bar: a 4 px track with a bar scaled from the left. */
+.md-bar { height: 4px; border-radius: 2px; background: var(--color-line, rgba(127, 127, 127, 0.25)); overflow: hidden; }
+.md-bar > span { display: block; height: 100%; background: var(--color-accent); transform-origin: left center; transition: transform 300ms var(--ease-calm); }
+.md-qrow { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 0.75rem; font-size: 0.75rem; }
+.md-qrow .md-name { flex: 1 1 12rem; }
+@media (prefers-reduced-motion: reduce) { .md-bar > span { transition: none; } }
 @media (min-width: 64rem) {
   .md-page .st-pane { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
   .st-wide .md-cols, .st-wide .md-file {
-    display: grid; grid-template-columns: minmax(0, 1fr) 4.75rem 4rem 3.5rem 5.5rem 7.5rem; column-gap: 0.75rem;
+    display: grid; grid-template-columns: minmax(0, 1fr) 4.75rem 4rem 3.5rem 5.5rem 7.5rem auto; column-gap: 0.75rem;
   }
   .st-wide .md-cols { text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.65rem; }
   .st-wide .md-cols span:nth-child(2), .st-wide .md-cols span:nth-child(5) { text-align: right; }
   .st-wide .md-file {
-    grid-template-areas: "name size res codec rate word" ". line line line line line";
+    grid-template-areas: "name size res codec rate word act" ". line line line line line line";
     contain-intrinsic-size: auto 3.5rem; align-items: baseline;
   }
   .st-wide .md-facts { display: contents; }

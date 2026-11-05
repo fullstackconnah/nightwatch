@@ -2,7 +2,7 @@
  * strips (filtered, in a frozen order) and how often to ask again. Words follow section 5 of the media shape brief.
  * It reads only the worker's contract (type-only import) and never shows an address, a path or a raw error. */
 import { ageText } from "../home.ts";
-import type { LibraryResponse, MediaFile, TitleSummary } from "../../../services/media-worker/src/types.ts";
+import type { Job, JobsResponse, LibraryResponse, MediaFile, TitleSummary } from "../../../services/media-worker/src/types.ts";
 
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 export type Filter = "all" | "movie" | "show" | "save";
@@ -12,7 +12,11 @@ export interface Order {
   scannedAt: string | null;
   ids: string[];
 }
+/** What GET /api/media/jobs answers: the worker's status, and its data when ok. */
+export type JobsBody = { worker: "ok"; data: JobsResponse } | { worker: "unconfigured" | "unauthorized" | "unreachable" };
 export interface ModelInput {
+  /** The latest jobs answer (null or absent while unknown or down); only used with live library data. */
+  jobs?: JobsResponse | null;
   /** The latest answer; undefined before the first one or while the dashboard's own fetch fails. */
   body: LibraryBody | undefined;
   /** The dashboard's own fetch is failing right now (SWR keeps the last good data in `last`). */
@@ -35,7 +39,7 @@ export interface Model {
   notice: string | null;
   link: { href: string; label: string } | null;
   action: { shown: boolean; enabled: boolean; reason: string | null };
-  autoTarget: null | "keep";
+  autoTarget: null | "keep" | "queue";
   strips: MediaStrip[];
   /** strip id back to the title id (the strip id is a hash-safe token, the title id can hold anything). */
   idOf: Record<string, string>;
@@ -46,6 +50,10 @@ export interface Model {
   showFilter: boolean;
   filterCounts: Record<Filter, number>;
   filterEmpty: string | null;
+  /** The Compress queue strip's detail (null when the strip is not shown). */
+  queue: QueueView | null;
+  /** "Cancel all" in the queue strip's head, when 2 or more jobs are queued or running. */
+  cancelAll: { say: string; ids: string[] } | null;
 }
 
 const GIB = 1024 ** 3;
@@ -92,7 +100,7 @@ function arrange(titles: TitleSummary[], data: LibraryResponse, firstScan: boole
 
 const FILTER_WORDS: Record<Exclude<Filter, "all">, string> = { movie: "No movies.", show: "No shows.", save: "No titles could save space." };
 
-export function mediaModel(i: ModelInput): Model {
+function libraryModel(i: ModelInput): Model {
   const { body, now } = i;
   const base: Model = {
     chip: { tone: "neutral", label: "Checking" },
@@ -111,6 +119,8 @@ export function mediaModel(i: ModelInput): Model {
     showFilter: false,
     filterCounts: { all: 0, movie: 0, show: 0, save: 0 },
     filterEmpty: null,
+    queue: null,
+    cancelAll: null,
   };
   const head = (o: Partial<Model>): Model => ({ ...base, ...o });
 
@@ -248,13 +258,37 @@ export interface FileRow {
   cells: { name: string; size: string; res: string; codec: string; rate: string };
   word: "Compress" | "OK" | "Skipped" | "Can’t compress";
   line: { facts: string; text: string };
-  /** The per-file action, added with compression (PR A3). */
-  act: null;
+  /** The per-file write, when there is one. */
+  act: RowAct | null;
+  /** Lets the row style its word: a running or failed job, or Compress dimmed until calibration. */
+  tone: "active" | "bad" | "dim" | null;
+}
+
+export type RowAct =
+  | { kind: "compress"; path: string; name: string; say: string }
+  | { kind: "cancel"; id: string; name: string; confirm: boolean }
+  | { kind: "undo"; id: string; name: string }
+  | { kind: "retry"; path: string; name: string; say: string };
+
+/** What a file row needs of the jobs answer. */
+export interface RowJobs {
+  enabled: boolean;
+  ready: boolean;
+  reason?: string;
+  byId: Map<string, Job>;
+  /** Jobs ahead of this queued one (the running job counts). */
+  ahead: (id: string) => number;
+}
+export function rowJobs(j: JobsResponse | null | undefined): RowJobs | null {
+  if (!j) return null;
+  const all = [...(j.current ? [j.current] : []), ...j.queue, ...j.recent];
+  const order = [...(j.current ? [j.current] : []), ...j.queue].map((x) => x.id);
+  return { enabled: j.compressEnabled, ready: j.compressReady, reason: j.reason, byId: new Map(all.map((x) => [x.id, x])), ahead: (id) => Math.max(0, order.indexOf(id)) };
 }
 
 const WORD = { compress: "Compress", ok: "OK", skip: "Skipped", cant: "Can’t compress" } as const;
 
-export function fileRow(f: MediaFile, kind: "movie" | "show"): FileRow {
+function verdictRow(f: MediaFile, kind: "movie" | "show"): FileRow {
   const v = f.video;
   const rate = !v || v.kbps === null ? "—" : `${v.kbpsSource === "estimated" ? "~" : ""}${mbit(v.kbps)}`;
   const facts = v ? [`${v.width}×${v.height}`, ...(v.hdr ? [v.hdr] : []), ...(v.tenBit ? ["10-bit"] : []), ...(v.interlaced ? ["Interlaced"] : [])].join(" · ") : "";
@@ -273,10 +307,214 @@ export function fileRow(f: MediaFile, kind: "movie" | "show"): FileRow {
     word: WORD[f.verdict.kind],
     line: { facts, text },
     act: null,
+    tone: null,
   };
 }
 
 export function seasonHead(s: { name: string; bytes: number; files: MediaFile[] }): { name: string; right: string } {
   const save = s.files.reduce((n, f) => n + (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0), 0);
   return { name: s.name, right: `${mediaBytes(s.bytes)} · ${plural(s.files.length, "file")} · ${save > 0 ? `could save ~${mediaBytes(save)}` : "nothing to compress"}` };
+}
+
+// ---- jobs (PR B): the row states of section 5b, the queue strip and the batch button ----
+
+const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const SYDNEY = "Australia/Sydney";
+/** "12 Nov", in Sydney time like the worker's own sentences. */
+export function dayLabel(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", timeZone: SYDNEY });
+}
+/** "45 s", "12 min", "1 h 20 min". */
+export function etaText(sec: number): string {
+  if (sec < 90) return `${Math.max(1, Math.round(sec))} s`;
+  const min = Math.round(sec / 60);
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${min % 60} min`;
+}
+
+const FAILED: Record<NonNullable<Job["failedCheck"]>, (v?: number) => string> = {
+  probe: () => "the new file couldn’t be read",
+  duration: (v) => `the new file is ${v ?? 0} s shorter`,
+  streams: () => "an audio or subtitle track went missing",
+  decode: () => "the new file has decode errors",
+  frames: () => "the frame count changed",
+  saving: (v) => `it saved only ${v ?? 0}%`,
+  "source-changed": () => "the source file changed during compression",
+  disk: () => "the disk got too full",
+  restart: () => "the worker restarted twice",
+  encoder: () => "the encoder stopped with an error",
+  swap: () => "the swap was interrupted",
+};
+export const failedWords = (j: Pick<Job, "failedCheck" | "failedValue">) => (j.failedCheck ? FAILED[j.failedCheck](j.failedValue) : "something went wrong");
+
+type JobLite = Pick<Job, "id" | "state"> & Partial<Job>;
+const savedOf = (j: JobLite) => (j.outputBytes !== undefined && j.sourceBytes !== undefined ? mediaBytes(Math.max(0, j.sourceBytes - j.outputBytes)) : null);
+const JELLY = " Jellyfin will pick up the change at its next library scan.";
+
+/** One job as a word, a line and a tone; the file row and the queue strip both print it. */
+export function jobText(j: JobLite, ahead = 0): { word: string; line: string; tone: FileRow["tone"] } {
+  const saved = savedOf(j);
+  const until = j.heldUntil ? dayLabel(j.heldUntil) : null;
+  switch (j.state) {
+    case "queued":
+      return { word: "Queued", line: ahead > 0 ? `${ahead} ahead` : "next", tone: null };
+    case "encoding": {
+      const p = j.progress;
+      const parts = [`${Math.round(p?.pct ?? 0)}%`, ...(p?.fps ? [`${Math.round(p.fps)} fps`] : []), ...(p?.etaSec != null ? [`about ${etaText(p.etaSec)} left`] : [])];
+      return { word: "Compressing", line: parts.join(" · "), tone: "active" };
+    }
+    case "verifying":
+      return { word: "Checking", line: "Checking the new file…", tone: "active" };
+    case "swapping":
+      return { word: "Swapping", line: "Swapping in the new file…", tone: "active" };
+    case "done":
+      return {
+        word: "Compressed",
+        line: `${saved ? `Saved ${saved}. ` : ""}${until ? `Original kept until ${until}.` : "Original kept for 7 days."}${j.jellyfin === "off" || j.jellyfin === "failed" ? JELLY : ""}`,
+        tone: null,
+      };
+    case "undone":
+      return { word: "Restored", line: "Original restored.", tone: null };
+    case "failed":
+      return { word: "Failed", line: `Kept the original: ${failedWords(j)}.`, tone: "bad" };
+    case "cancelled":
+      return { word: "Cancelled", line: "Cancelled. The original is unchanged.", tone: null };
+    case "purged":
+      return { word: "Compressed", line: `${saved ? `Saved ${saved}. ` : ""}Original deleted${until ? ` ${until}` : ""}.`, tone: null };
+  }
+}
+
+/** The question for one Compress (shape brief section 5c). */
+export function compressSay(f: MediaFile): string {
+  if (f.verdict.kind !== "compress") return "";
+  const est = f.bytes - f.verdict.estSavingBytes;
+  const pct = Math.round((f.verdict.estSavingBytes / f.bytes) * 100);
+  return `Compresses ${f.name} from ${mediaBytes(f.bytes)} to about ${mediaBytes(est)} (about ${pct}% smaller) at about ${mbit(f.verdict.targetKbps)}. The original is kept for 7 days after it’s done; Undo puts it back.`;
+}
+
+/** A file row: the job's state first, then the verdict. Without `rj` (jobs unknown) it is the plain verdict row. */
+export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | null, opts: { dismissed?: boolean } = {}): FileRow {
+  const row = verdictRow(f, kind);
+  if (!rj) return row;
+  const name = f.name;
+  const known: JobLite | null = f.job ? (rj.byId.get(f.job.id) ?? { id: f.job.id, state: f.job.state }) : null;
+  const job = known && !(opts.dismissed && known.state === "failed") ? known : null;
+  if (job) {
+    const t = jobText(job, rj.ahead(job.id));
+    const base: FileRow = { ...row, word: t.word as FileRow["word"], line: { facts: "", text: t.line }, tone: t.tone };
+    switch (job.state) {
+      case "queued":
+        return { ...base, act: { kind: "cancel", id: job.id, name, confirm: false } };
+      case "encoding":
+      case "verifying":
+        return { ...base, act: { kind: "cancel", id: job.id, name, confirm: true } };
+      case "done":
+        return { ...base, act: { kind: "undo", id: job.id, name } };
+      case "failed":
+        return { ...base, act: { kind: "retry", path: f.path, name, say: compressSay(f) } };
+      default:
+        return base;
+    }
+  }
+  if (f.verdict.kind !== "compress") return row;
+  if (!rj.enabled) return { ...row, tone: "dim", line: { ...row.line, text: `${row.line.text} · Compress turns on after calibration` } };
+  if (!rj.ready) return { ...row, line: { facts: "", text: `Compress is unavailable: ${rj.reason ?? "the worker isn’t ready"}` } };
+  return { ...row, act: { kind: "compress", path: f.path, name, say: compressSay(f) } };
+}
+
+const NOT_AGAIN = new Set(["queued", "encoding", "verifying", "swapping", "done"]);
+const savingOf = (f: MediaFile) => (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0);
+/** The suggested files of a title that the batch button would queue: the largest savings first, at most 200. */
+export function batchPlan(files: MediaFile[]): { label: string; say: string; yes: string; flight: string; paths: string[] } | null {
+  const all = files.filter((f) => f.verdict.kind === "compress" && !(f.job && NOT_AGAIN.has(f.job.state)));
+  if (all.length === 0) return null;
+  const pick = [...all].sort((a, b) => savingOf(b) - savingOf(a)).slice(0, 200);
+  const k = pick.length;
+  const size = pick.reduce((n, f) => n + f.bytes, 0);
+  const save = pick.reduce((n, f) => n + savingOf(f), 0);
+  return {
+    label: all.length > 200 ? "Compress the 200 largest" : `Compress ${k} suggested`,
+    say: `Compresses ${plural(k, "file")} from ${mediaBytes(size)} to about ${mediaBytes(size - save)} (saves about ${mediaBytes(save)}). They run one at a time; each original is kept for 7 days after it’s done, and Undo puts it back.`,
+    yes: `Yes, compress ${k}`,
+    flight: `Adding ${k} files…`,
+    paths: pick.map((f) => f.path),
+  };
+}
+
+export interface QueueLine {
+  id: string;
+  name: string;
+  word: string;
+  line: string;
+  tone: FileRow["tone"];
+  pct: number | null;
+  /** Cancel for a queued (no question) or running (question) job. */
+  cancel: "ask" | "now" | null;
+}
+export interface QueueView {
+  current: QueueLine | null;
+  queued: QueueLine[];
+  recent: QueueLine[];
+}
+
+function queueLine(j: Job, ahead: number): QueueLine {
+  const t = jobText(j, ahead);
+  const running = j.state === "encoding" || j.state === "verifying";
+  return {
+    id: j.id,
+    name: fileName(j.path),
+    word: t.word,
+    line: t.line,
+    tone: t.tone,
+    pct: j.state === "encoding" ? Math.max(0, Math.min(100, j.progress?.pct ?? 0)) : null,
+    cancel: j.state === "queued" ? "now" : running ? "ask" : null,
+  };
+}
+
+const QUEUE_ID = "queue";
+/** The jobs answer layered over the library model: the queue strip, the Compressing chip, the queued count. */
+function withJobs(m: Model, i: ModelInput): Model {
+  const j = i.jobs;
+  if (!j || i.body?.worker !== "ok" || m.stale) return m;
+  const waiting = j.queue.length;
+  const busy = j.current !== null || waiting > 0;
+  const rj = rowJobs(j) as RowJobs;
+  const queue: QueueView = {
+    current: j.current ? queueLine(j.current, 0) : null,
+    queued: j.queue.map((q) => queueLine(q, rj.ahead(q.id))),
+    recent: j.recent.map((r) => queueLine(r, 0)),
+  };
+  const lastSaved = j.recent.find((r) => r.state === "done" && savedOf(r));
+  const state = j.current
+    ? `Compressing ${fileName(j.current.path)} · ${Math.round(j.current.progress?.pct ?? 0)}%`
+    : waiting > 0
+      ? `${waiting} queued`
+      : !j.compressEnabled
+        ? "Off until calibration"
+        : `Nothing queued${lastSaved ? ` · last saved ${savedOf(lastSaved)}` : ""}`;
+  const show = busy || j.recent.length > 0 || !j.compressEnabled;
+  const strip: MediaStrip = { id: QUEUE_ID, title: "Compress queue", state, tone: null };
+  const strips = !show ? m.strips : busy ? [strip, ...m.strips] : [...m.strips, strip];
+  const active = (j.current ? 1 : 0) + waiting;
+  const cancelAll =
+    active >= 2
+      ? {
+          ids: [...j.queue.map((q) => q.id), ...(j.current ? [j.current.id] : [])],
+          say: j.current
+            ? `Stops compressing ${fileName(j.current.path)} and removes ${plural(waiting, "queued file")}. Every original stays as it is.`
+            : `Removes ${plural(waiting, "queued file")}. Every original stays as it is.`,
+        }
+      : null;
+  const out: Model = { ...m, strips, queue: show ? queue : null, cancelAll, evidence: waiting > 0 ? `${m.evidence} · ${waiting} queued` : m.evidence };
+  if (j.current) {
+    out.chip = { tone: "ok", label: "Compressing" };
+    out.answer = `Compressing ${fileName(j.current.path)}: ${Math.round(j.current.progress?.pct ?? 0)}%.${waiting > 0 ? ` ${waiting} more queued.` : ""}`;
+    out.autoTarget = QUEUE_ID;
+  } else if (waiting > 0 && j.compressEnabled && !j.compressReady) {
+    out.chip = { tone: "warn", label: "Compress unavailable" };
+  }
+  return out;
+}
+
+export function mediaModel(i: ModelInput): Model {
+  return withJobs(libraryModel(i), i);
 }

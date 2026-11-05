@@ -12,6 +12,9 @@
  * Checks (shape brief section 8): C1 clipped text, C2 answer lines, C3 tap targets, C4 hash round trip and ids, C5 reduced
  * motion, C6 page errors and foreign requests, C7 calm paint, C9 row counts, C10 no host or raw error, C11 sticky pane,
  * C12 columns, C13 wrapping, C14 fetches, C16 scale, C18 writes in stale and worker-down, C20 live.
+ * PR B adds the Compress states (JOB_STATES below) and the B checks: B1 act column alignment at 1440, B2 act tap targets (C3 at 390),
+ * B3 progress bar scaleX, B4 the bar follows the next poll, B5 reduced-motion bar, B6 writes off in stale and worker-down,
+ * B7 queue strip present; the leak check C10 and the crash check S2 run on every Compress state too.
  * Captures: loading, unconfigured, token-rejected, worker-down, first-scan, scanning-with-data, scan-failed, empty, normal,
  * title-open-movie, title-open-show, file-row-verdicts, stale, nothing-to-compress, filter-save, detail-failed,
  * worker-down-with-data, long-values, scale-130, live-normal.
@@ -20,7 +23,10 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { FIXTURES, NOW, OPEN } from "./fixtures/media/fixtures.mjs";
+import { FIXTURES, JOB_FIXTURES, NOW, OPEN } from "./fixtures/media/fixtures.mjs";
+
+const FX = { ...FIXTURES, ...JOB_FIXTURES };
+const IDLE_JOBS = { compressEnabled: true, compressReady: true, current: null, queue: [], recent: [] };
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -70,7 +76,7 @@ function watch(page, name) {
 
 /** Opens /media with the fixture's answers; `live` skips the mocks. Returns the page and the request counters. */
 async function visit(s, key, { hash = "", live = false, reduced = false } = {}) {
-  const fx = FIXTURES[key];
+  const fx = FX[key];
   const page = await (reduced ? s.reducedContext : s.context).newPage();
   const count = { library: 0, title: 0 };
   watch(page, s.name);
@@ -86,6 +92,7 @@ async function visit(s, key, { hash = "", live = false, reduced = false } = {}) 
       return d ? json(route, d) : json(route, { error: "This title is gone since the last scan." }, id === OPEN.missing ? 404 : 502);
     });
     await page.route("**/api/media/scan", (route) => json(route, { ok: true }, 202));
+    await page.route("**/api/media/jobs**", (route) => (route.request().method() === "GET" ? json(route, fx.jobs ?? { worker: "ok", data: IDLE_JOBS }) : json(route, { ok: true }, 201)));
   }
   await page.clock.install({ time: NOW });
   try {
@@ -214,6 +221,100 @@ async function main() {
     }
   });
 
+  // PR B: the Compress states. [capture, fixture, strip to open, action to click]
+  const ACTIONS = {
+    compress: (p) => p.getByRole("button", { name: /^Compress Alien/ }).first().click(),
+    undo: (p) => p.getByRole("button", { name: /^Undo compressing/ }).first().click(),
+    batch: (p) => p.getByRole("button", { name: /^Compress (\d+ suggested|the 200)/ }).first().click(),
+    cancelall: (p) => p.getByRole("button", { name: /^Cancel all/ }).first().click(),
+  };
+  const JOB_STATES = [
+    ["compress-off-calibration", "compressOffCalibration", "Compress queue", null],
+    ["not-ready", "notReady", OPEN.movie, null],
+    ["compress-confirm", "compressConfirm", OPEN.movie, "compress"],
+    ["queued", "queued", "Compress queue", null],
+    ["encoding", "encoding", "Compress queue", null],
+    ["verifying", "verifying", "Compress queue", null],
+    ["done-held-undo", "doneHeld", OPEN.movie, null],
+    ["undo-confirm", "doneHeld", OPEN.movie, "undo"],
+    ["undone", "undone", OPEN.movie, null],
+    ["failed-check", "failedCheck", OPEN.movie, null],
+    ["failed-disk-507", "failedDisk", OPEN.movie, null],
+    ["cancelled", "cancelled", OPEN.movie, null],
+    ["purged", "purged", OPEN.movie, null],
+    ["source-changed", "sourceChanged", OPEN.movie, null],
+    ["jellyfin-failed-note", "jellyfinFailed", OPEN.movie, null],
+    ["title-queue-many", "titleQueueMany", OPEN.show, null],
+    ["batch-confirm", "compressConfirm", OPEN.show, "batch"],
+    ["cancel-all-confirm", "cancelAll", "Compress queue", "cancelall"],
+    ["already-compressed", "alreadyCompressed", "movies/Casablanca (1942)", null],
+  ];
+  await each(async (s) => {
+    for (const [name, key, open, action] of JOB_STATES) {
+      const { page } = await visit(s, key);
+      await openByName(page, nameOf(open));
+      if (action) {
+        await ACTIONS[action](page);
+        await page.waitForTimeout(300);
+      }
+      await perState(page, name, s.name);
+      // B7: the queue strip exists whenever it should.
+      if (open === "Compress queue") record("B7 queue strip present", `${name}@${s.name}`, (await stripByName(page, "Compress queue").count()) === 1 ? "ok" : "missing");
+      // B1: the act column lines up down the rows and stays inside them (1440 only; the stack at 390 has no columns).
+      if (s.name === "1440" && !action) {
+        const acts = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
+          els.map((el) => [el.querySelector(".md-act"), el]).filter(([a]) => a?.querySelector("button")).map(([a, row]) => ({ left: a.getBoundingClientRect().left, out: a.getBoundingClientRect().right > row.getBoundingClientRect().right + 1 })),
+        );
+        if (acts.length) record("B1 act column left edge spread at most 1 px, inside the row", name, { n: acts.length, ok: acts.every((a) => !a.out) && Math.max(...acts.map((a) => a.left)) - Math.min(...acts.map((a) => a.left)) <= 1 });
+      }
+      // B3: the bar's fill is scaleX(pct).
+      if (name === "encoding") {
+        const m = await page.locator(".md-bar > span").first().evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+        record("B3 bar scaleX (0.42)", `${name}@${s.name}`, { scale: Number(m.toFixed(2)), ok: Math.abs(m - 0.42) < 0.01 });
+      }
+      await shot(page, name, s.name);
+      await page.close();
+    }
+  });
+
+  // B4 the bar follows the next poll (5 s while a job runs); B5 reduced motion drops its transition.
+  await each(async (s) => {
+    const { page } = await visit(s, "encoding");
+    await openByName(page, "Compress queue");
+    const next = JOB_FIXTURES.encoding.jobs.data;
+    await page.route("**/api/media/jobs**", (route) => json(route, { worker: "ok", data: { ...next, current: { ...next.current, progress: { ...next.current.progress, pct: 80 } } } }));
+    await page.clock.fastForward(6_000);
+    await page.waitForTimeout(600);
+    const m = await page.locator(".md-bar > span").first().evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a).catch(() => -1);
+    record("B4 bar follows the next poll (0.8)", s.name, { scale: Number(m.toFixed(2)), ok: Math.abs(m - 0.8) < 0.02 });
+    await page.close();
+    const r = await visit(s, "encoding", { reduced: true });
+    await openByName(r.page, "Compress queue");
+    record("B5 reduced-motion bar transition (0)", s.name, await r.page.locator(".md-bar > span").first().evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration)));
+    await r.page.close();
+  });
+
+  // B6: with the worker down or the data stale, every Compress, Undo and Cancel button is off.
+  await each(async (s) => {
+    for (const [name, label, answer] of [
+      ["worker-down", "Worker down", (route) => json(route, { worker: "unreachable" })],
+      ["stale", "Stale", (route) => json(route, { error: "bad gateway" }, 502)],
+    ]) {
+      const { page } = await visit(s, "doneHeld");
+      await openByName(page, nameOf(OPEN.movie));
+      await page.route("**/api/media/library", answer);
+      await page.clock.fastForward(310_000);
+      try {
+        await page.waitForFunction((l) => document.querySelector("[data-feature=chip]")?.textContent.trim() === l, label, { timeout: 10_000 });
+        const buttons = page.locator("main button:not([disabled])").filter({ hasText: /^(Compress|Try again|Undo|Cancel)/ });
+        record("B6 enabled Compress, Undo or Cancel buttons (0)", `${name}@${s.name}`, await buttons.count());
+      } catch (e) {
+        record("B6 state reached", `${name}@${s.name}`, `chip never read ${label}`);
+      }
+      await page.close();
+    }
+  });
+
   // Worker-down-with-data is the last good answer under a dead worker; stale is the same under a failing one. Writes stay off in both.
   const chipIs = (page, label) =>
     page.waitForFunction((l) => document.querySelector("[data-feature=chip]")?.textContent.trim() === l, label, { timeout: 10_000 });
@@ -308,7 +409,7 @@ async function main() {
     const { page } = await visit(s, "normal");
     await openByName(page, nameOf(OPEN.show));
     const cols = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
-      els.map((el) => ["md-name", "md-size", "md-res", "md-codec", "md-rate", "md-word"].map((c) => el.querySelector(`.${c}`)?.getBoundingClientRect().left ?? -1)),
+      els.map((el) => ["md-name", "md-size", "md-res", "md-codec", "md-rate", "md-word", "md-act"].map((c) => el.querySelector(`.${c}`)?.getBoundingClientRect().left ?? -1)),
     );
     const increasing = cols.every((r) => r.every((x, i) => i === 0 || x > r[i - 1]));
     const spread = cols[0]?.map((_, i) => Math.max(...cols.map((r) => r[i])) - Math.min(...cols.map((r) => r[i]))) ?? [];

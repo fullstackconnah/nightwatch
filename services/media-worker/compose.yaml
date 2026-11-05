@@ -12,12 +12,21 @@ services:
     environment:
       - MEDIA_WORKER_TOKEN=${MEDIA_WORKER_TOKEN:?set MEDIA_WORKER_TOKEN in .env}
       - TZ=${TZ:-Australia/Sydney}
+      # Compress is off until the owner has calibrated: the owner turns it on in .env by hand (value 1), never here.
+      - MEDIA_COMPRESS_ENABLED=${MEDIA_COMPRESS_ENABLED:-}
+      # Optional: with no key the worker skips the Jellyfin refresh.
+      - JELLYFIN_URL=${JELLYFIN_URL:-}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:-}
+      - JELLYFIN_ROOTS=${JELLYFIN_ROOTS:-}
     # LAN only: no reverse-proxy route exists for this port.
     ports:
       - "${MEDIA_WORKER_BIND:?set MEDIA_WORKER_BIND in .env}:8091:8091"
     volumes:
-      - /mnt/media:/mnt/media:ro
+      # Read-write since PR B (swap and hold); the worker only writes inside /mnt/media/.nightwatch and to the files it compresses.
+      - /mnt/media:/mnt/media
       - ./state:/state
     cpus: "8"
     cpu_shares: 256
     mem_limit: 4g
+    # A SIGTERM kills the encode and removes its .part; boot recovery re-queues it.
+    stop_grace_period: 30s

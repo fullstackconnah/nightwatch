@@ -24,9 +24,21 @@ describe("compose files", () => {
   const test = read(REPO, "docker-compose.test.yml");
   const prod = read(REPO, "docker-compose.yml");
 
-  it("live stack mounts /mnt/media read-only, in one bind", () => {
+  it("live stack mounts /mnt/media read-write (PR B), in one bind", () => {
     const binds = live.split("\n").filter((l) => /^\s+- \/mnt\/media/.test(l));
-    assert.deepEqual(binds.map((l) => l.trim()), ["- /mnt/media:/mnt/media:ro"]);
+    assert.deepEqual(binds.map((l) => l.trim()), ["- /mnt/media:/mnt/media"]);
+  });
+
+  it("Compress stays off in production until calibration: MEDIA_COMPRESS_ENABLED is not set in compose or .env.example", () => {
+    // Only a pass-through that defaults to empty: the owner adds MEDIA_COMPRESS_ENABLED=1 to the server's own .env.
+    assert.doesNotMatch(live, /MEDIA_COMPRESS_ENABLED=1/);
+    assert.match(live, /- MEDIA_COMPRESS_ENABLED=\$\{MEDIA_COMPRESS_ENABLED:-\}/);
+    assert.doesNotMatch(read(WORKER, ".env.example"), /^MEDIA_COMPRESS_ENABLED=/m);
+  });
+
+  it("live stack gives the worker 30 s to stop an encode, and passes the Jellyfin settings through from .env", () => {
+    assert.match(live, /^\s+stop_grace_period: 30s$/m);
+    for (const k of ["JELLYFIN_URL", "JELLYFIN_API_KEY", "JELLYFIN_ROOTS"]) assert.match(live, new RegExp(`- ${k}=\\$\\{${k}:-\\}`));
   });
 
   it("live stack never sets the test-threshold variable (N1, N11)", () => {
@@ -42,10 +54,12 @@ describe("compose files", () => {
     assert.match(live, /\.\/state:\/state/);
   });
 
-  it("test stack: read-only mount, internal network, no ports, placeholder token", () => {
+  it("test stack: read-write fixtures mount, Compress on, no Jellyfin, internal network, no ports, placeholder token", () => {
     const block = serviceBlock(test, "media-worker");
     assert.match(block, /build: \.\/services\/media-worker/);
-    assert.match(block, /- \.\/test-media:\/mnt\/media:ro/);
+    assert.match(block, /- \.\/test-media:\/mnt\/media$/m);
+    assert.match(block, /MEDIA_COMPRESS_ENABLED=1/);
+    assert.doesNotMatch(block, /JELLYFIN/);
     assert.match(block, /MEDIA_WORKER_TEST_THRESHOLDS=1/);
     assert.match(block, /MEDIA_WORKER_TOKEN=test-media-worker-token-not-secret-000000/);
     assert.match(block, /- internal/);
@@ -93,7 +107,8 @@ describe("image and ignore files", () => {
 
   it(".env.example holds placeholders only", () => {
     const env = read(WORKER, ".env.example");
-    for (const key of ["MEDIA_WORKER_TOKEN", "MEDIA_WORKER_BIND", "PUID", "PGID"]) assert.match(env, new RegExp(`^${key}=$`, "m"));
+    for (const key of ["MEDIA_WORKER_TOKEN", "MEDIA_WORKER_BIND", "PUID", "PGID", "JELLYFIN_URL", "JELLYFIN_API_KEY"]) assert.match(env, new RegExp(`^${key}=$`, "m"));
+    assert.match(env, /^JELLYFIN_ROOTS=movies=\/media\/movies,tv=\/media\/tv$/m);
     assert.match(env, /^TZ=Australia\/Sydney$/m);
   });
 
@@ -115,10 +130,11 @@ describe("source rules", () => {
     return out;
   };
 
-  it("only state.ts writes to disk (the media mount is read-only by construction)", () => {
+  it("only the Compress modules write to disk, and only fsguard.ts deletes (B5)", () => {
+    const WRITERS = ["state.ts", "fsguard.ts", "swap.ts", "disk.ts", "clips.ts"];
     const WRITES = /\b(writeFile(Sync)?|appendFile(Sync)?|rename(Sync)?|unlink(Sync)?|rm(Sync)?|rmdir(Sync)?|mkdir(Sync)?|copyFile(Sync)?|truncate(Sync)?|symlink(Sync)?|link(Sync)?|createWriteStream|openSync|utimes(Sync)?|chmod(Sync)?|chown(Sync)?)\b/;
     const offenders = files(fileURLToPath(new URL("src/", WORKER)))
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith("testkit.ts") && !f.endsWith("state.ts"))
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith("testkit.ts") && !WRITERS.some((w) => f.endsWith(w)))
       .filter((f) => readFileSync(f, "utf8").split(/\r?\n/).some((l) => WRITES.test(l.replace(/\/\*.*$/, "").replace(/\/\/.*$/, "").replace(/^\s*\*.*$/, ""))));
     assert.deepEqual(offenders, []);
   });

@@ -62,8 +62,8 @@ services:
     labels:
       - dashboard.enable=false
 
-  # Read-only media worker over synthetic clips (make fixtures with services/media-worker/fixtures/make-fixtures.sh
-  # into ./test-media). Internal network only, no ports. MEDIA_WORKER_TEST_THRESHOLDS shrinks the size floors
+  # Media worker over synthetic clips (make fixtures with services/media-worker/fixtures/make-fixtures.sh
+  # into ./test-media; read-write because Compress swaps files, MEDIA_COMPRESS_ENABLED=1, no Jellyfin). Internal network only, no ports. MEDIA_WORKER_TEST_THRESHOLDS shrinks the size floors
   # so tiny clips can be flagged; the live stack never sets it. In Settings use http://media-worker:8091 and
   # the placeholder token below.
   media-worker:
@@ -73,9 +73,10 @@ services:
     environment:
       - MEDIA_WORKER_TOKEN=test-media-worker-token-not-secret-000000
       - MEDIA_WORKER_TEST_THRESHOLDS=1
+      - MEDIA_COMPRESS_ENABLED=1
       - TZ=Australia/Sydney
     volumes:
-      - ./test-media:/mnt/media:ro
+      - ./test-media:/mnt/media
     networks:
       - internal
     labels:

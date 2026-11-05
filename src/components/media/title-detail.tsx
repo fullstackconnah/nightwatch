@@ -1,17 +1,28 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import type { MediaFile, TitleDetail as TitleDetailData } from "../../../services/media-worker/src/types";
+import { FileAct } from "@/components/media/file-act";
+import { WriteAction } from "@/components/strips/write-action";
 import { Button } from "@/components/ui/button";
-import { ApiError, fetcher } from "@/lib/client";
-import { fileRow, mediaBytes, seasonHead } from "@/lib/media/page-model";
+import { ApiError, fetcher, postJson } from "@/lib/client";
+import { batchPlan, fileRow, mediaBytes, seasonHead, type RowJobs } from "@/lib/media/page-model";
 
 const GONE = "This title is gone since the last scan. Rescan to refresh the list.";
 const DOWN = "Couldn’t load the files. The media worker didn’t answer.";
 
 /** One file: one DOM, two grid layouts (columns at 1440, a stack at 390); the grids are the media block in globals.css. */
-function FileRow({ file, kind }: { file: MediaFile; kind: "movie" | "show" }) {
-  const r = fileRow(file, kind);
+interface JobProps {
+  rj: RowJobs | null;
+  /** Writes are off while the page shows old data. */
+  off: boolean;
+  onChanged: () => void;
+}
+
+function FileRow({ file, kind, rj, off, onChanged }: { file: MediaFile; kind: "movie" | "show" } & JobProps) {
+  const [dismissed, setDismissed] = useState(false);
+  const r = fileRow(file, kind, rj, { dismissed });
   const estimated = r.cells.rate.startsWith("~");
   return (
     <li className="st-li md-file" data-feature="file-row" data-verdict={file.verdict.kind}>
@@ -27,9 +38,10 @@ function FileRow({ file, kind }: { file: MediaFile; kind: "movie" | "show" }) {
           {r.cells.rate}
         </span>
       </span>
-      <span className="md-word" data-kind={file.verdict.kind}>
+      <span className="md-word" data-kind={r.tone === "active" || r.tone === "bad" ? r.tone : file.verdict.kind}>
         {r.word}
       </span>
+      <span className="md-act">{r.act && <FileAct act={r.act} off={off} onChanged={onChanged} onDismiss={() => setDismissed(true)} />}</span>
       <p className="md-line">
         {r.line.facts && <span className="md-line-facts">{r.line.facts}</span>}
         {r.line.facts && r.line.text && " · "}
@@ -39,15 +51,23 @@ function FileRow({ file, kind }: { file: MediaFile; kind: "movie" | "show" }) {
   );
 }
 
-const COLS = ["File", "Size", "Res", "Codec", "Bitrate", "Verdict"];
+const COLS = ["File", "Size", "Res", "Codec", "Bitrate", "Verdict", ""];
 
 /** The opened title's files. Fetched once per open (and per scan); the library poll never fetches a title. */
-export function TitleDetail({ titleId, kind, scannedAt }: { titleId: string; kind: "movie" | "show"; scannedAt: string | null }) {
+export function TitleDetail({ titleId, kind, scannedAt, rj, off, jobsSig, onChanged }: { titleId: string; kind: "movie" | "show"; scannedAt: string | null; jobsSig: string } & JobProps) {
   const { data, error, isLoading, mutate } = useSWR<TitleDetailData>(
     ["/api/media/title", titleId, scannedAt],
     ([url, id]: [string, string, string | null]) => fetcher(`${url}?id=${encodeURIComponent(id)}`),
     { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false, shouldRetryOnError: false },
   );
+  // A job moved on: the files carry the job they belong to, so read them again (the list stays put meanwhile).
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) first.current = false;
+    else void mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobsSig]);
+  const job = { rj, off, onChanged };
 
   if (error) {
     return (
@@ -76,6 +96,7 @@ export function TitleDetail({ titleId, kind, scannedAt }: { titleId: string; kin
   const files = data.files ?? seasons.flatMap((s) => s.files);
   const savers = files.filter((f) => f.verdict.kind === "compress");
   const save = savers.reduce((n, f) => n + (f.verdict.kind === "compress" ? f.verdict.estSavingBytes : 0), 0);
+  const plan = rj && rj.enabled && rj.ready ? batchPlan(files) : null;
 
   return (
     <div className="st-stack">
@@ -83,6 +104,27 @@ export function TitleDetail({ titleId, kind, scannedAt }: { titleId: string; kin
         <p className="st-note">
           {files.length} {files.length === 1 ? "file" : "files"} · {savers.length > 0 ? `${savers.length} could save ~${mediaBytes(save)}` : "nothing to compress"}
         </p>
+        {plan && (
+          <WriteAction
+            label={plan.label}
+            say={plan.say}
+            yes={plan.yes}
+            flight={plan.flight}
+            failure="Couldn’t add the files"
+            disabled={off}
+            triggerClassName="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
+            run={async () => {
+              try {
+                await postJson("/api/media/jobs", { paths: plan.paths });
+              } catch (e) {
+                const s = e instanceof ApiError ? e.message : "The media worker didn’t answer.";
+                throw new Error(s.charAt(0).toLowerCase() + s.slice(1));
+              }
+              onChanged();
+              await mutate();
+            }}
+          />
+        )}
       </div>
       <div className="st-listhead md-cols" aria-hidden>
         {COLS.map((c) => (
@@ -92,7 +134,7 @@ export function TitleDetail({ titleId, kind, scannedAt }: { titleId: string; kin
       {data.files && (
         <ul className="md-files" role="list">
           {data.files.map((f) => (
-            <FileRow key={f.path} file={f} kind={kind} />
+            <FileRow key={f.path} file={f} kind={kind} {...job} />
           ))}
         </ul>
       )}
@@ -106,7 +148,7 @@ export function TitleDetail({ titleId, kind, scannedAt }: { titleId: string; kin
             </div>
             <ul className="md-files" role="list">
               {s.files.map((f) => (
-                <FileRow key={f.path} file={f} kind={kind} />
+                <FileRow key={f.path} file={f} kind={kind} {...job} />
               ))}
             </ul>
           </section>
