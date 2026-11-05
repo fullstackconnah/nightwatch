@@ -111,8 +111,8 @@ export default function SettingsPage() {
       </div>
     ),
     dashboard: (
-      <div className="space-y-5">
-        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+      <div className="relative space-y-5">
+        <Badge variant="ok" className="nw-fade absolute -top-8 right-0" data-on={saved ? "" : undefined}>saved</Badge>
         <SettingsWidgets
           widgets={data?.config.widgets ?? []}
           types={data?.meta.widgetTypes ?? ["generic"]}

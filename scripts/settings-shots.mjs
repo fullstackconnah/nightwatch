@@ -151,10 +151,9 @@ const openStrip = async (page, id) => {
 const isOpen = (page, id) => page.locator(`[data-k="open-${id}"]`).getAttribute("aria-expanded").then((v) => v === "true");
 const visibleBody = (page) => page.locator(".st-pane > div:not([hidden]), .st-body:not([hidden])");
 const fullShot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-full-${s.name}.png`), fullPage: true });
-/** Padded crop (24 px) of the open strip (1440: the detail pane; 390: its row and body), else of the chip and answer. */
+/** Padded crop (24 px): 390 the head down to the strip list (its open body included); 1440 the head, list and detail pane as one box. */
 async function shot(page, s, name) {
-  const open = await page.evaluate(() => document.querySelector('[data-k^="open-"][aria-expanded="true"]')?.getAttribute("data-k")?.slice(5) ?? null);
-  const sels = open ? (s.name === "1440" ? ["#st-pane"] : [`[data-k="open-${open}"]`, `#st-body-${open}`]) : ["[data-feature=chip]", "[data-feature=answer]"];
+  const sels = ["[data-feature=head]", "[data-feature=strips]", ...(s.name === "1440" ? ["#st-pane"] : [])];
   const clip = await page.evaluate(([list, pad]) => {
     const r = list.map((q) => document.querySelector(q)?.getBoundingClientRect()).filter((b) => b && b.width > 0);
     if (!r.length) return null;
@@ -219,6 +218,18 @@ for (const [key, name, chip, phrase, open] of STATES) {
     }),
   );
 }
+
+// ---- dashboard strip open: the hidden saved badge takes no space (F3) ----
+await guarded("dashboard", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm");
+    await openStrip(page, "dashboard");
+    record("F3 saved badge out of flow", `dashboard@${s.name}`, await page.evaluate(() => { const b = [...document.querySelectorAll("#st-body-dashboard .nw-fade, #st-pane .nw-fade")].find((e) => e.textContent.trim() === "saved"); return Boolean(b) && getComputedStyle(b).position === "absolute"; }));
+    record("S no horizontal scroll", `dashboard@${s.name}`, (await overflow(page)) <= 0);
+    await shot(page, s, "dashboard");
+    await page.close();
+  }),
+);
 
 // ---- refresh-failed: a later GET fails (SWR refetches on focus after its 5 s throttle); save-failed: a draft meets a 500 ----
 await guarded("refresh-failed", () =>

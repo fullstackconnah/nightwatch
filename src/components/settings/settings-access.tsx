@@ -469,7 +469,7 @@ function SystemAccessPanel({ data }: { data: Data }) {
   const hermesOn = meta?.hermesApiConfigured ?? false;
   const ssoOn = meta?.ssoConfigured ?? false;
   const ssoIssuerHost = meta?.ssoIssuerHost;
-  const open = "shrink-0 inline-flex items-center gap-1 text-xs text-accent hover:underline";
+  const open = "shrink-0 inline-flex min-h-11 min-w-11 items-center justify-center gap-1 text-xs text-accent hover:underline md:min-h-0 md:min-w-0";
 
   return (
     <div className="space-y-3">
