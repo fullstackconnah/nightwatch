@@ -14,22 +14,39 @@ import type { Job } from "./types.ts";
 import { verdict } from "./verdict.ts";
 import { verifyOutput } from "./verify.ts";
 
+/** Source video frame rate from the probe JSON (first non-cover-art video stream), or null. */
+export function srcFpsOf(json: unknown): number | null {
+  const streams = (json as { streams?: Array<Record<string, unknown>> } | null)?.streams ?? [];
+  const v = streams.find((s) => s.codec_type === "video" && !(s.disposition as { attached_pic?: number } | undefined)?.attached_pic);
+  for (const r of [v?.avg_frame_rate, v?.r_frame_rate]) {
+    const [n, d] = String(r ?? "").split("/").map(Number);
+    const f = n / (d ?? 1);
+    if (Number.isFinite(f) && f > 0) return f;
+  }
+  return null;
+}
+
 /** One `-progress` block (`key=value` lines up to `progress=`) to the numbers the page shows. */
-export function parseProgress(block: string, durationSec: number | null): NonNullable<Job["progress"]> | null {
+export function parseProgress(block: string, durationSec: number | null, srcFps: number | null): NonNullable<Job["progress"]> | null {
   const kv: Record<string, string> = {};
   for (const line of block.split("\n")) {
     const i = line.indexOf("=");
     if (i > 0) kv[line.slice(0, i).trim()] = line.slice(i + 1).trim();
   }
-  const us = Number(kv.out_time_us);
-  if (!Number.isFinite(us) || us < 0 || !durationSec) return null;
+  const frame = Number(kv.frame);
+  const usOk = Number.isFinite(Number(kv.out_time_us)) && Number(kv.out_time_us) >= 0;
+  const haveFps = srcFps != null && srcFps > 0;
+  // Files with PGS subtitles report out_time_us=N/A; fall back to frames over the source rate.
+  const sec = usOk ? Number(kv.out_time_us) / 1e6 : Number.isFinite(frame) && haveFps ? frame / srcFps : null;
+  if (sec == null || !durationSec) return null;
   const speed = Number.parseFloat(kv.speed ?? "");
   const fps = Number(kv.fps);
-  const left = Math.max(0, durationSec - us / 1e6);
+  const left = Math.max(0, durationSec - sec);
+  const byFps = Number.isFinite(frame) && fps > 0 && haveFps ? Math.max(0, (durationSec * srcFps - frame) / fps) : null;
   return {
-    pct: Math.min(100, Math.round((us / 1e6 / durationSec) * 1000) / 10),
+    pct: Math.min(100, Math.round((sec / durationSec) * 1000) / 10),
     fps: Number.isFinite(fps) && fps > 0 ? Math.round(fps * 10) / 10 : null,
-    etaSec: speed > 0 ? Math.round(left / speed) : null,
+    etaSec: speed > 0 ? Math.round(left / speed) : byFps != null ? Math.round(byFps) : null,
   };
 }
 
@@ -100,6 +117,7 @@ export function createRunner(o: RunnerOpts) {
     const argv = encodeArgs({ src: rec.abs, out: plan.part, container: input.container, streams: streamInfos(json), crf: v.crf, prefix });
     const child = spawn(argv[0], argv.slice(1), { detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     track(id)(child);
+    const srcFps = srcFpsOf(json);
     let buf = "";
     let errText = "";
     let diskAbort = false;
@@ -108,7 +126,7 @@ export function createRunner(o: RunnerOpts) {
       let i;
       while ((i = buf.search(/progress=\w+\n/)) >= 0) {
         const end = buf.indexOf("\n", i) + 1;
-        const p = parseProgress(buf.slice(0, end), input.durationSec);
+        const p = parseProgress(buf.slice(0, end), input.durationSec, srcFps);
         buf = buf.slice(end);
         if (p) q.patch(id, { progress: p });
         if (freeBytes(o.statfs, o.mediaRoot) < DISK_ABORT_BYTES && !diskAbort) { diskAbort = true; signal(id, "SIGTERM"); }
