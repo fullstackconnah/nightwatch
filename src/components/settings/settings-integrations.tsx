@@ -716,7 +716,7 @@ export function MediaPanel({ data, mutate }: PanelProps) {
   return (
     <div className="space-y-3">
       <p className="text-[0.7rem] text-ink-dim">
-        The media worker runs on the PC that holds the library. Its address and token are kept on the server and never shown here.
+        The media worker runs on the PC that holds the library. Its token is kept on the server and never shown here.
       </p>
       <Field label="Worker URL" required>
         <Input placeholder="http://worker.example.invalid:8091" value={workerUrl} onChange={(e) => setWorkerUrl(e.target.value)} />

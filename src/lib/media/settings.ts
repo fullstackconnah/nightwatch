@@ -14,3 +14,6 @@ export function mergeMedia(patch: { workerUrl?: unknown; workerToken?: unknown }
   if (!workerToken) return { error: "Media needs the worker token" };
   return { media: { workerUrl, workerToken, updatedAt: now } };
 }
+
+/** What GET /api/settings may carry: the URL and when it changed, never the token. */
+export const mediaPublic = (m: MediaBlock | undefined) => (m ? { workerUrl: m.workerUrl, updatedAt: m.updatedAt } : m);

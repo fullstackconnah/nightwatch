@@ -34,7 +34,7 @@ const STATES = [
   ["loading", "loading", "Checking", null],
   ["unconfigured", "unconfigured", "Not connected", null],
   ["token-rejected", "tokenRejected", "Token rejected", null],
-  ["worker-down", "workerDown", "Not answering", null],
+  ["worker-down", "workerDown", "Worker down", null],
   ["first-scan", "firstScan", "Scanning", null],
   ["scanning-with-data", "scanning", null, null],
   ["scan-failed", "scanFailed", null, null],
@@ -43,13 +43,12 @@ const STATES = [
   ["title-open-movie", "normal", null, OPEN.movie],
   ["title-open-show", "normal", null, OPEN.show],
   ["file-row-verdicts", "normal", null, OPEN.verdicts],
-  ["stale", "stale", null, null],
   ["nothing-to-compress", "nothingToCompress", null, null],
   ["detail-failed", "detailFailed", null, OPEN.movie],
   ["long-values", "longValues", null, OPEN.show],
   ["scale-130", "scale130", null, null],
 ];
-const WRITE_STATES = new Set(["stale", "worker-down"]);
+const WRITE_STATES = new Set(["stale", "worker-down", "worker-down-with-data"]);
 
 const results = {};
 const diag = {};
@@ -154,7 +153,7 @@ const audit = (page) =>
       const sides = ["Top", "Right", "Bottom", "Left"].filter((d) => parseFloat(cs[`border${d}Width`]) > 0).map((d) => cs[`border${d}Color`]);
       if ([cs.color, cs.backgroundColor, ...sides].some(isDanger)) painted.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`);
       const r = el.getBoundingClientRect();
-      const byDesign = el.closest(".st-state") || cs.textOverflow === "ellipsis" || el.dataset.feature === "answer" || el.hasAttribute("title");
+      const byDesign = el.closest(".st-state") || cs.textOverflow === "ellipsis" || el.dataset.feature === "answer" || el.hasAttribute("title") || el.classList.contains("sr-only");
       if (r.width > 0 && el.scrollWidth > el.clientWidth + 1 && cs.overflowX !== "visible" && !byDesign) clipped.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`);
     }
     const ids = [...document.querySelectorAll("[data-row-id]")].map((e) => e.dataset.rowId);
@@ -170,6 +169,12 @@ const LEAK = /\b\d{1,3}(\.\d{1,3}){3}\b|\/mnt\/|:\d{4,5}\b|https?:\/\/|ffmpeg|Er
 
 /** The per-state checks every captured state gets. */
 async function perState(page, name, vp) {
+  // S2: a crashed page must never pass a check vacuously.
+  if (await page.getByText("Something went wrong").isVisible().catch(() => false)) {
+    record("S2 page not crashed", `${name}@${vp}`, "crashed");
+    diag[`crashed:${name}@${vp}`] = page.consoleErrors.slice(0, 10);
+    return { clipped: 1, clippedSample: ["crashed"], lines: 0, dup: 0, badId: 0 };
+  }
   const a = await audit(page);
   record("C1 clipped text", `${name}@${vp}`, a.clipped ? { n: a.clipped, sample: a.clippedSample } : 0);
   if (vp === "390") record("C2 answer lines", name, a.lines <= 2 ? a.lines : `${a.lines} lines`);
@@ -209,15 +214,27 @@ async function main() {
     }
   });
 
-  // Stale and worker-down with data keep their writes off: worker-down-with-data is the last good answer under a dead worker.
+  // Worker-down-with-data is the last good answer under a dead worker; stale is the same under a failing one. Writes stay off in both.
+  const chipIs = (page, label) =>
+    page.waitForFunction((l) => document.querySelector("[data-feature=chip]")?.textContent.trim() === l, label, { timeout: 10_000 });
   await each(async (s) => {
-    const { page } = await visit(s, "normal");
-    await page.route("**/api/media/library", (route) => json(route, { worker: "unreachable" }));
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await page.waitForTimeout(500);
-    await perState(page, "worker-down", s.name);
-    await shot(page, "worker-down-with-data", s.name);
-    await page.close();
+    for (const [name, label, answer] of [
+      ["worker-down-with-data", "Worker down", (route) => json(route, { worker: "unreachable" })],
+      ["stale", "Stale", (route) => json(route, { error: "bad gateway" }, 502)],
+    ]) {
+      const { page } = await visit(s, "normal");
+      await page.route("**/api/media/library", answer);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      try {
+        await chipIs(page, label);
+        await perState(page, name, s.name);
+        await shot(page, name, s.name);
+      } catch (e) {
+        record("C18 state reached", `${name}@${s.name}`, `chip never read ${label}`);
+        await diagnose(page, name, s.name);
+      }
+      await page.close();
+    }
   });
 
   // C9 filters, C7 calm paint, C14 fetches, C4 hash round trip.
@@ -333,7 +350,8 @@ async function main() {
     const { page } = await visit(s, "liveNormal", { live: true });
     const rows = await page.locator("[data-row-id]").count();
     const text = await page.locator("main").innerText();
-    record("C20 live: 9 strips, no Decoy", s.name, { rows, decoy: /Decoy/.test(text) });
+    if ((await page.locator("[data-feature=chip]").innerText()).trim() === "Not connected") record("C20 live: 9 strips, no Decoy", s.name, "live stack not connected");
+    else record("C20 live: 9 strips, no Decoy", s.name, { rows, decoy: /Decoy/.test(text) });
     await shot(page, "live-normal", s.name);
     await page.close();
   });

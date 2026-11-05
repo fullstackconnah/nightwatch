@@ -43,7 +43,8 @@ const movie = (name, f) => ({ detail: { ...summary(`movies/${name}`, "movie", na
 const season = (name, files) => ({ name, bytes: sum(files), files });
 const show = (name, seasons) => {
   const all = seasons.flatMap((s) => s.files);
-  return { detail: { ...summary(`tv/${name}`, "show", name, all), seasons }, files: all };
+  const { files: _count, ...base } = summary(`tv/${name}`, "show", name, all); // the worker sends no `files` for a show
+  return { detail: { ...base, seasons }, files: all };
 };
 
 /** Normal: 12 titles (9 movies, 3 shows), 7 of them could save space. */

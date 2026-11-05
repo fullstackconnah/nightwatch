@@ -12,6 +12,7 @@ import {
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { publicSystem } from "@/lib/orchestra-settings";
+import { mediaPublic } from "@/lib/media/settings";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 
@@ -51,9 +52,7 @@ function sanitizeConfig(config: AppConfig): AppConfig {
           updatedAt: config.minecraft.updatedAt,
         }
       : config.minecraft,
-    media: config.media
-      ? { workerUrl: config.media.workerUrl, updatedAt: config.media.updatedAt }
-      : config.media,
+    media: mediaPublic(config.media),
     hermes: config.hermes ? { tier: config.hermes.tier, model: config.hermes.model } : config.hermes,
     // system: only the fields the settings page's System/Voice/SSO cards
     // render as plain editable text (URLs, model/voice names, the OIDC

@@ -291,3 +291,17 @@ test("season head: size, files and the saving", () => {
   assert.deepEqual(seasonHead({ name: "Season 01", bytes: 5 * GIB, files }), { name: "Season 01", right: "5.0 GB · 2 files · could save ~1.0 GB" });
   assert.equal(seasonHead({ name: "Season 02", bytes: GIB, files: [file()] }).right, "1.0 GB · 1 file · nothing to compress");
 });
+
+// M1: the fixtures must hold the worker's contract (a show's detail has seasons and no `files`), or the detail crashes.
+import { FIXTURES } from "../../../scripts/fixtures/media/fixtures.mjs";
+test("every fixture title detail matches the worker's shape and its rows build", () => {
+  for (const fx of Object.values(FIXTURES) as { titles?: Record<string, any> }[]) {
+    for (const d of Object.values(fx.titles ?? {})) {
+      if (d.kind === "show") assert.equal(d.files, undefined, `${d.id}: a show detail has no files`);
+      const files = d.files ?? d.seasons.flatMap((s: any) => s.files);
+      assert.ok(Array.isArray(files), d.id);
+      for (const s of d.seasons ?? []) seasonHead(s);
+      for (const f of files) fileRow(f, d.kind);
+    }
+  }
+});
