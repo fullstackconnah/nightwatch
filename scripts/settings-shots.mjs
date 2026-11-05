@@ -289,10 +289,12 @@ await guarded("C1", () =>
   each(async (s) => {
     const { page } = await visit(s, "calm");
     if (s.name === "390") {
+      // Measure at the end of the page: the fixed bar overlays the page top, so a scroll-0 reading mixes page and viewport coordinates.
       const m = await page.evaluate(() => {
+        scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
         const list = document.querySelector("[data-feature=strips]")?.getBoundingClientRect();
         const bar = [...document.querySelectorAll("nav, [data-bottom-bar]")].map((e) => e.getBoundingClientRect()).filter((r) => r.top > innerHeight / 2).sort((a, b) => a.top - b.top)[0];
-        return { bottom: Math.round((list?.bottom ?? 0) + scrollY), barTop: Math.round(bar?.top ?? innerHeight), scrollHeight: document.documentElement.scrollHeight };
+        return { bottom: Math.round(list?.bottom ?? 0), barTop: Math.round(bar?.top ?? innerHeight), scrollHeight: document.documentElement.scrollHeight };
       });
       record("C1 list above the bottom bar", "390", { ...m, ok: m.bottom <= m.barTop });
       record("C1 page scrollHeight", "390", { value: m.scrollHeight, ok: m.scrollHeight <= 940 });

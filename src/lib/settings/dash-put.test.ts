@@ -87,3 +87,26 @@ test("O1: secrets follow the widget id when widgets are re-ordered or added; wir
   assert.deepEqual(next.widgets.map((w) => [w.id, w.key]), [["w2", "wsecret-456"], ["w3", undefined], ["w1", "wsecret-123"]]);
   assert.ok(!JSON.stringify(next.widgets).includes("keySet"));
 });
+
+const sec = (id: string | undefined, over: Record<string, unknown> = {}) =>
+  ({ id, container: "a", type: "sonarr", url: "http://host-a:8989/x", ...over });
+const store = (...w: unknown[]) => ({ ...current, widgets: w }) as unknown as AppConfig;
+
+test("O1 polish: a duplicate or missing widget id inherits no stored secret", () => {
+  const cfg = store({ ...sec("w1"), key: "k1" }, { ...sec("w2"), key: "k2" });
+  const dup = ok(mergeDashPut(cfg, { widgets: [sec("w1"), sec("w1")] }));
+  assert.deepEqual(dup.widgets.map((w) => w.key), [undefined, undefined]);
+  const none = ok(mergeDashPut(cfg, { widgets: [sec(undefined), sec("")] }));
+  assert.deepEqual(none.widgets.map((w) => w.key), [undefined, undefined]);
+});
+
+test("O1 polish: a secret does not follow the widget to a new origin or type", () => {
+  const cfg = store({ ...sec("w1"), key: "k1", password: "p1" });
+  const run = (over: Record<string, unknown>) => ok(mergeDashPut(cfg, { widgets: [sec("w1", over)] })).widgets[0];
+  assert.equal(run({ url: "http://host-b:8989/x" }).key, undefined);
+  assert.equal(run({ url: "http://host-a:9999/x" }).password, undefined);
+  assert.equal(run({ type: "radarr" }).key, undefined);
+  assert.equal(run({ url: "http://host-a:8989/other" }).key, "k1");
+  assert.equal(run({ url: "http://host-a:8989/other" }).password, "p1");
+  assert.equal(run({ url: "http://host-b:8989/x", key: "new" }).key, "new");
+});

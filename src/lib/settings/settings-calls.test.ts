@@ -51,3 +51,9 @@ test("icon-only delete buttons carry an accessible name", () => {
   assert.match(w, /ariaLabel=\{`Delete \$\{w\.container\} widget`\}/);
   assert.match(w, /aria-label=\{`Remove field \$\{f\.label \|\| f\.path\}`\}/);
 });
+
+test("O1 polish: Clear saves the stored widget, not the editor draft", () => {
+  const w = readFileSync(join(SRC, "components/settings/settings-widgets.tsx"), "utf8");
+  assert.match(w, /onSave\(\{ \.\.\.widget, \[clear\]: true \}\)/);
+  assert.doesNotMatch(w, /onSave\(\{ \.\.\.w, \[f\]: undefined/);
+});

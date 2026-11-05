@@ -44,7 +44,7 @@ function WidgetEditor({
             say={`Removes the saved ${label.toLowerCase()} from this widget. It stops working until you enter one again.`}
             failure={`Couldn’t clear the ${label.toLowerCase()}`}
             run={async () => {
-              if (!(await onSave({ ...w, [f]: undefined, [clear]: true }))) throw new Error("the widget wasn’t saved");
+              if (!(await onSave({ ...widget, [clear]: true }))) throw new Error("the widget wasn’t saved");
             }}
           />
         </div>
