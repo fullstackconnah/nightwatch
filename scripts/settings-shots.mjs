@@ -74,7 +74,7 @@ async function failShot(s, e) {
   if (!page || page.isClosed()) return;
   const tag = `${stage}@${s.name}`;
   diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => "unreadable") };
-  await page.screenshot({ path: join(OUT_DIR, `${stage}-FAIL-${s.name}.png`), fullPage: true }).catch(() => {});
+  await page.screenshot({ path: join(OUT_DIR, `${stage.replace(/[^\w@-]+/g, "_")}-FAIL-${s.name}.png`), fullPage: true }).catch(() => {});
   await page.close().catch(() => {});
 }
 const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => failShot(s, e))));
@@ -418,7 +418,7 @@ if (process.env.SENTINELS) {
       stage = `C3:${strip}:${label}`;
       await openStrip(page, strip);
       const body = visibleBody(page);
-      const replace = body.getByRole("group", { name: label }).getByRole("button", { name: "Replace" });
+      const replace = body.getByRole("group", { name: label }).locator("xpath=following-sibling::button[1]");
       if (await replace.count()) await replace.click();
       await field(body, label).fill(label === "Kiosk PIN" ? "86420" : `NWSENTINEL-${label.replace(/\W+/g, "-")}`);
       // Access holds four forms, so its Save is the one inside the field's own subsection.
