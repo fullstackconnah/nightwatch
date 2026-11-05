@@ -1,0 +1,23 @@
+# Media worker: its own stack, so a dashboard deploy never restarts it mid-encode.
+# Copy .env.example to .env next to this file and fill it in; the LAN address lives only there.
+name: media-worker
+
+services:
+  media-worker:
+    build: .
+    container_name: media-worker
+    restart: unless-stopped
+    # The owner of the media folders, so any file the worker writes later keeps the right owner.
+    user: "${PUID:?set PUID in .env}:${PGID:?set PGID in .env}"
+    environment:
+      - MEDIA_WORKER_TOKEN=${MEDIA_WORKER_TOKEN:?set MEDIA_WORKER_TOKEN in .env}
+      - TZ=${TZ:-Australia/Sydney}
+    # LAN only: no reverse-proxy route exists for this port.
+    ports:
+      - "${MEDIA_WORKER_BIND:?set MEDIA_WORKER_BIND in .env}:8091:8091"
+    volumes:
+      - /mnt/media:/mnt/media:ro
+      - ./state:/state
+    cpus: "8"
+    cpu_shares: 256
+    mem_limit: 4g

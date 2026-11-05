@@ -1,0 +1,11 @@
+{
+  "streams": [
+    { "index": 0, "codec_name": "mjpeg", "codec_type": "video", "width": 600, "height": 900,
+      "pix_fmt": "yuvj420p", "disposition": { "attached_pic": 1 } },
+    { "index": 1, "codec_name": "h264", "codec_type": "video", "width": 1920, "height": 1080,
+      "pix_fmt": "yuv420p", "bit_rate": "5000000", "disposition": { "attached_pic": 0 } },
+    { "index": 2, "codec_name": "aac", "codec_type": "audio", "channels": 2, "tags": { "language": "eng" } },
+    { "index": 3, "codec_name": "ttf", "codec_type": "attachment" }
+  ],
+  "format": { "format_name": "matroska,webm", "duration": "600.000000", "size": "400000000", "bit_rate": "5333333" }
+}
