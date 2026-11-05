@@ -5,12 +5,19 @@ export function publicWidgets(widgets: WidgetInstance[]): WidgetInstance[] {
   return widgets.map(({ key, password, ...w }) => ({ ...w, keySet: Boolean(key), passwordSet: Boolean(password) }));
 }
 
+const origin = (u: unknown) => {
+  try { return new URL(String(u)).origin; } catch { return String(u); }
+};
+
 /** Per widget id: an empty or missing secret keeps the stored one, a value replaces it, clearKey/clearPassword removes it. */
 function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unknown[] {
   return incoming.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
     const { keySet: _k, passwordSet: _p, clearKey, clearPassword, ...w } = raw as WidgetInstance;
-    const old = stored.find((x) => x.id === w.id);
+    // A stored secret follows only an unambiguous id, and only while the type and url origin are unchanged.
+    const unique = typeof w.id === "string" && w.id !== "" && incoming.filter((r) => (r as WidgetInstance | null)?.id === w.id).length === 1;
+    const found = unique ? stored.find((x) => x.id === w.id) : undefined;
+    const old = found && found.type === w.type && origin(found.url) === origin(w.url) ? found : undefined;
     for (const [f, clear] of [["key", clearKey], ["password", clearPassword]] as const) {
       const v = w[f];
       if (clear) delete w[f];
