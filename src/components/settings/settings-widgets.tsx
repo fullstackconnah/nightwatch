@@ -70,7 +70,7 @@ function WidgetEditor({
             ))}
           </Select>
         </Field>
-        <Field label="Service URL" required className="col-span-2">
+        <Field label="Service URL" required className="sm:col-span-2">
           <Input placeholder="http://homelab.local:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
         </Field>
         {secret("key", "API key", w.keySet, "clearKey")}
@@ -82,14 +82,14 @@ function WidgetEditor({
         </div>
         {generic && (
           <>
-            <Field label="Endpoint (appended to URL, or absolute)" className="col-span-2">
+            <Field label="Endpoint (appended to URL, or absolute)" className="sm:col-span-2">
               <Input placeholder="/api/stats" value={w.endpoint ?? ""} onChange={(e) => set({ endpoint: e.target.value || undefined })} />
             </Field>
             {/* A <label> element would be lying here: this captions a repeating
                 group of field rows, not one control, so there is nothing for it
                 to be `for`. It's a group caption wired by aria-labelledby —
                 same treatment settings-hermes.tsx gives its Tier/Model rows. */}
-            <div className="col-span-2" role="group" aria-labelledby="widget-fields-label">
+            <div className="sm:col-span-2" role="group" aria-labelledby="widget-fields-label">
               <div className="flex items-center justify-between mb-1.5">
                 <span id="widget-fields-label" className="microlabel">
                   Fields (label + JSON dot-path)
