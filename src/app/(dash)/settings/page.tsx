@@ -5,11 +5,12 @@
    those the strip treatment); every other form reports its draft and last error up through useFormReport. */
 
 import { useCallback, useEffect, useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { PageHead } from "@/components/strips/page-head";
 import { StripList, type StripSpec } from "@/components/strips/strip-list";
 import { putJson, useContainers } from "@/lib/client";
 import type { AppConfig, WidgetInstance } from "@/lib/config";
-import { settingsModel, type FormId, type FormState, type StripId } from "@/lib/settings/page-model";
+import { legacyStripHash, settingsModel, type FormId, type FormState, type StripId } from "@/lib/settings/page-model";
 import { useNow } from "@/lib/use-now";
 import { FormReportProvider } from "@/components/settings/form-report";
 import { AccessBody } from "@/components/settings/settings-access";
@@ -28,13 +29,14 @@ import { SettingsTiles, isCustomized } from "@/components/settings/settings-tile
 import { SettingsWidgets } from "@/components/settings/settings-widgets";
 
 export default function SettingsPage() {
-  const { data, error, mutate } = useSettingsFull();
+  const { data, error, mutate } = useSettingsFull((at) => setLoadedAt(at));
   const { data: containersData } = useContainers(30000);
   const now = useNow(true);
   const [tileDraft, setTileDraft] = useState<AppConfig | null>(null);
   const [savingTiles, setSavingTiles] = useState(false);
   const [forms, setForms] = useState<Partial<Record<FormId, FormState>>>({});
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  const [saved, setSaved] = useState(false);
 
   const report = useCallback((id: FormId, s: FormState) => {
     setForms((f) => (f[id]?.dirty === s.dirty && f[id]?.error === s.error ? f : { ...f, [id]: s }));
@@ -44,8 +46,9 @@ export default function SettingsPage() {
     if (data && !tileDraft) setTileDraft(data.config);
   }, [data, tileDraft]);
   useEffect(() => {
-    if (data) setLoadedAt(Date.now());
-  }, [data]);
+    const h = legacyStripHash(window.location.hash);
+    if (h !== window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search + h);
+  }, []);
 
   const containerNames = (containersData?.containers ?? []).map((c) => c.name).sort();
 
@@ -53,6 +56,8 @@ export default function SettingsPage() {
     await putJson("/api/settings", config);
     await mutate();
     setTileDraft(config);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   }
 
   async function saveWidget(w: WidgetInstance) {
@@ -107,6 +112,7 @@ export default function SettingsPage() {
     ),
     dashboard: (
       <div className="space-y-5">
+        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
         <SettingsWidgets
           widgets={data?.config.widgets ?? []}
           types={data?.meta.widgetTypes ?? ["generic"]}

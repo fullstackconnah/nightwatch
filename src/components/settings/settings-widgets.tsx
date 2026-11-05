@@ -95,7 +95,7 @@ function WidgetEditor({
                       <option key={fm}>{fm}</option>
                     ))}
                   </Select>
-                  <Button size="icon" variant="ghost" onClick={() => set({ fields: w.fields!.filter((_, j) => j !== i) })}>
+                  <Button size="icon" variant="ghost" aria-label={`Remove field ${f.label || f.path}`} onClick={() => set({ fields: w.fields!.filter((_, j) => j !== i) })}>
                     <Trash2 size={13} />
                   </Button>
                 </div>
@@ -175,7 +175,7 @@ export function SettingsWidgets({
             <span className="text-sm font-medium min-w-0 truncate">{w.container}</span>
             <span className="font-mono text-xs text-ink-faint flex-1 min-w-0 truncate">{w.url}</span>
             <Button size="sm" variant="ghost" onClick={() => setEditing(w)}>edit</Button>
-            <Button size="icon" variant="ghost" onClick={() => onDelete(w.id)}>
+            <Button size="icon" variant="ghost" aria-label={`Delete widget ${w.container}`} onClick={() => onDelete(w.id)}>
               <Trash2 size={13} />
             </Button>
           </div>

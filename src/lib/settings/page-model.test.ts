@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { nextOpen } from "../strips.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
-import { plainReason, settingsModel, type FormId, type ModelInput, type StripId } from "./page-model.ts";
+import { legacyStripHash, plainReason, settingsModel, type FormId, type ModelInput, type StripId } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-05T10:00:00Z");
 const DAY = 86_400_000;
@@ -291,4 +291,16 @@ test("writes are on in every loaded state and off while there is nothing loaded"
     assert.equal(settingsModel(i).writable, true);
   }
   assert.equal(model({ data: undefined }).writable, false);
+});
+
+test("load error: the notice carries the retry line and the evidence adds no second one", () => {
+  const m = model({ data: undefined, loadError: "Unauthorized", loadedAt: null });
+  assert.equal(m.evidence, "");
+});
+
+test("N1: old anchors open the strips that now hold them", () => {
+  assert.equal(legacyStripHash("#integrations"), "#homeassistant");
+  assert.equal(legacyStripHash("#reference"), "#dashboard");
+  assert.equal(legacyStripHash("#hermes"), "#hermes");
+  assert.equal(legacyStripHash(""), "");
 });

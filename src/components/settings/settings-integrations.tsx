@@ -94,8 +94,8 @@ export interface SettingsFullResponse {
   };
 }
 
-export function useSettingsFull() {
-  return useSWR<SettingsFullResponse>("/api/settings", fetcher);
+export function useSettingsFull(onLoaded?: (at: number) => void) {
+  return useSWR<SettingsFullResponse>("/api/settings", fetcher, { onSuccess: () => onLoaded?.(Date.now()) });
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +242,7 @@ const clearSay = (x: string) => `Removes the saved ${x} connection. ${x} stops w
  *  revalidates the shared /api/settings SWR cache on success. Local to each
  *  panel — nothing here is shared state, so four panels can save/clear
  *  independently without racing each other's in-flight request. */
-function useIntegrationWrite(mutate: () => Promise<unknown>) {
+function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -255,6 +255,7 @@ function useIntegrationWrite(mutate: () => Promise<unknown>) {
     try {
       await postJson("/api/settings/integrations", { [key]: patch });
       await mutate();
+      reseed?.(); // the server trims and defaults values, so reload the fields from what it stored
       return true;
     } catch (e) {
       setError(e instanceof Error && e.message ? plainReason(e.message) : "Couldn't save — check the values and try again");
@@ -271,6 +272,7 @@ function useIntegrationWrite(mutate: () => Promise<unknown>) {
     try {
       await postJson("/api/settings/integrations", { [key]: null });
       await mutate();
+      reseed?.();
     } catch (e) {
       throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
@@ -309,7 +311,7 @@ function UrlTokenPanel({
   // back to the masked view too, not just a first-time save (`configured`
   // flipping false->true only covers the latter).
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -425,7 +427,7 @@ export function NpmPanel({ data, mutate }: PanelProps) {
   const [password, setPassword] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -574,7 +576,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
   const [rconPassword, setRconPassword] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [saveVersion, setSaveVersion] = useState(0);
-  const { saving, error, save, clear } = useIntegrationWrite(mutate);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
 
   useEffect(() => {
     if (data && !seeded) {
@@ -739,6 +741,7 @@ export function VoiceCard({ data, mutate }: PanelProps) {
         voiceTtsVoice: ttsVoice,
       });
       await mutate();
+      setSeeded(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {

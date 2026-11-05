@@ -68,6 +68,9 @@ const FORM_IDS = Object.keys(FORMS) as FormId[];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 const TIER = { local: "Local", openrouter: "OpenRouter", anthropic: "Anthropic" } as const;
 
+/** Old anchors map to the strip that now holds them (an old bookmark). */
+export const legacyStripHash = (hash: string): string => ({ "#integrations": "#homeassistant", "#reference": "#dashboard" } as Record<string, string>)[hash] ?? hash;
+
 /** A save error as one plain phrase: a message holding an address, a URL, a host:port or a long detail is replaced (rule 4). */
 export function plainReason(raw: string): string {
   const s = raw.replace(/\s+/g, " ").trim().replace(/\.$/, "");
@@ -86,7 +89,7 @@ export function settingsModel(i: ModelInput): Model {
   const { data, now } = i;
   if (!data) {
     return i.loadError !== null
-      ? head({ tone: "warn", label: "Not loaded" }, `Settings couldn’t load: ${plainReason(i.loadError)}. Nothing here can change until they do.`, "Check that the dashboard is running, then reload.", { notice: "Trying again on its own." })
+      ? head({ tone: "warn", label: "Not loaded" }, `Settings couldn’t load: ${plainReason(i.loadError)}. Nothing here can change until they do.`, "", { notice: "Trying again on its own." })
       : head({ tone: "neutral", label: "Loading" }, "Loading settings…", "First load usually takes a second.");
   }
 

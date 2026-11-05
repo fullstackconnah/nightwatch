@@ -207,7 +207,7 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
               icon={<RefreshCw size={12} />}
               primary
               confirm={mcpConfigured}
-              say="Makes a new MCP token. The old one stops working, and anything using it needs the new one."
+              say="Makes a new MCP token. Clients using the old one stop working until you give them the new one."
               yes="Yes, generate"
               flight="Generating…"
               failure="Couldn’t generate a token"
@@ -306,6 +306,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
       await postJson("/api/settings/system", body);
       resetOrchestraStatus(); // a new service must not show the old one's last-known cards
       await mutate();
+      setSeeded(false);
       setToken("");
       setSaveVersion((v) => v + 1);
       setSaved(true);
@@ -353,7 +354,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {data?.meta.orchestraTokenSet ? (
           <ClearAction
-            say="Removes the saved Orchestra token. You'll need to enter it again to reconnect."
+            say="Removes the saved Orchestra token. The AI lanes page can't reach it until you enter one again."
             failure="Couldn’t clear the token"
             run={handleClear}
           />
@@ -403,6 +404,7 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       if (clientSecret.trim()) body.oidcClientSecret = clientSecret.trim();
       await postJson("/api/settings/system", body);
       await mutate();
+      setSeeded(false);
       setClientSecret("");
       setSaveVersion((v) => v + 1);
     } catch (e) {
