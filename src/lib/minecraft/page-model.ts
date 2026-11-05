@@ -73,7 +73,7 @@ const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 
 export function minecraftModel(i: ModelInput): Model {
   const { status, container: c, now } = i;
-  const age = i.lastOkAt === null ? 0 : now - i.lastOkAt;
+  const age = i.lastOkAt === null ? 0 : Math.max(0, now - i.lastOkAt);
   const done = (m: Omit<Model, "writes" | "detailLead">, writes: Model["writes"] = ALL_WRITES.map((id) => ({ id, enabled: false, reason: null }))): Model => ({
     ...m,
     detailLead: typeof m.autoTarget === "string" && m.autoTarget !== "keep" ? m.answer : null,

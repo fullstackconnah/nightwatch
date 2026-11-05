@@ -113,7 +113,7 @@ test("F1-F4, F8: the bar fills scale, and reduced motion drops the transition", 
     "components/charts.tsx",
     "components/resources/process-table.tsx",
     "components/resources/drive-health.tsx",
-    "components/integrations/ha-lights.tsx",
+    "components/smarthome/devices.tsx",
     "components/kiosk/kiosk-now-playing.tsx",
   ]) {
     const src = read(f);

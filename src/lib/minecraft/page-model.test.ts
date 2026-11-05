@@ -222,3 +222,7 @@ test("noPackNote: only when mc-manager answered and listed no active pack", () =
   assert.equal(noPackNote(status({ manager: "unauthorized", instances: [], active: null })), null);
   assert.equal(noPackNote(undefined), null);
 });
+
+test("a last answer in the future (clock skew) reads 0 s, never a negative age", () => {
+  assert.doesNotMatch(JSON.stringify(minecraftModel(input({ lastOkAt: NOW + 5000 }))), /-\d+ s/);
+});

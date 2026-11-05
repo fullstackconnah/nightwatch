@@ -76,7 +76,8 @@ export function StripList({ strips, autoTarget }: { strips: StripSpec[]; autoTar
     window.history.replaceState(null, "", closing ? window.location.pathname + window.location.search : `#${id}`);
   }
 
-  const open = wide ? (state.open ?? ordered[0]?.id ?? null) : state.open;
+  // An open id that names no strip here (nextOpen's wide fallback is Minecraft's "server") shows the first strip.
+  const open = wide ? (ordered.some((x) => x.id === state.open) ? state.open : (ordered[0]?.id ?? null)) : state.open;
   const sel = ordered.find((s) => s.id === open);
   return (
     <HeldContext.Provider value={held}>

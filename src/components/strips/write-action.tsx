@@ -8,7 +8,7 @@ type Phase = "idle" | "asking" | "flight" | "failed";
 /**
  * The strips pattern's one write idiom: an outlined trigger, an inline frame that asks once ("Yes, {verb}", Cancel),
  * the flight line, then done (the trigger returns) or failed (the reason, Try again, Dismiss). Danger tints only the
- * Yes. Escape cancels; Yes takes focus when the frame opens. `confirm={false}` skips the question (Start, Back up).
+ * Yes. Escape cancels; Yes takes focus when the frame opens (Cancel when autoCancelMs is set). `confirm={false}` skips the question (Start, Back up).
  */
 export function WriteAction({
   label,
@@ -25,6 +25,8 @@ export function WriteAction({
   describedBy,
   run,
   onPending,
+  onActive,
+  autoCancelMs,
   renderAsk,
 }: {
   label: string;
@@ -45,6 +47,10 @@ export function WriteAction({
   run: () => Promise<void>;
   /** Lets a list hold its other writes while one is in flight. */
   onPending?: (pending: boolean) => void;
+  /** True from the question until the write is done or dismissed; lets a pair of writes show one frame at a time. */
+  onActive?: (active: boolean) => void;
+  /** The question cancels itself after this long (a lock is a door: Smart home's 4 s). */
+  autoCancelMs?: number;
   /** Replaces the default question (the shared ConfirmStop). */
   renderAsk?: (p: { onYes: () => void; onCancel: () => void }) => ReactNode;
 }) {
@@ -52,6 +58,7 @@ export function WriteAction({
   const [reason, setReason] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
+  const frame = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (phase === "idle" && refocus.current) {
       refocus.current = false;
@@ -82,6 +89,21 @@ export function WriteAction({
     setPhase("idle");
   };
 
+  // Timer-only: focus goes back to the trigger only if it was inside the frame; a failure stays until dismissed.
+  useEffect(() => {
+    if (phase !== "asking" || !autoCancelMs) return;
+    const t = setTimeout(() => {
+      if (frame.current?.contains(document.activeElement)) refocus.current = true;
+      setPhase("idle");
+    }, autoCancelMs);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, autoCancelMs]);
+  useEffect(() => {
+    onActive?.(phase !== "idle");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   if (phase === "idle") {
     return (
       <Button
@@ -102,6 +124,7 @@ export function WriteAction({
     return (
       <div
         key="confirm"
+        ref={frame}
         // ConfirmStop (renderAsk) already grows in; both would compound the .97 scale.
         className={renderAsk ? "st-frame" : "st-frame nw-confirm"}
         onKeyDown={(e) => {
@@ -117,10 +140,10 @@ export function WriteAction({
           <>
             <p className="st-say">{say}</p>
             <div className="st-acts">
-              <Button size="sm" variant="ghost" onClick={cancel}>
+              <Button autoFocus={!!autoCancelMs} size="sm" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
-              <Button autoFocus size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
+              <Button autoFocus={!autoCancelMs} size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
                 {yes}
               </Button>
             </div>
@@ -144,7 +167,7 @@ export function WriteAction({
         {failure}: {reason}.
       </p>
       <div className="st-acts">
-        <Button size="sm" variant="outline" onClick={() => void go()}>
+        <Button size="sm" variant="outline" onClick={() => (autoCancelMs ? setPhase("asking") : void go())}>
           Try again
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setPhase("idle")}>

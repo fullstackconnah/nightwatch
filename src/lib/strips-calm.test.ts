@@ -29,13 +29,18 @@ test("C15n: the strip page-head tones only reach the chip (Badge) and the state 
   assert.match(src, /<Badge variant=/);
 });
 
-test("C16: no PROPOSED badge in strips or minecraft components", () => {
-  for (const d of [join("components", "strips"), join("components", "minecraft")]) {
+test("C16: no PROPOSED badge in strips, minecraft or smarthome components", () => {
+  for (const d of [join("components", "strips"), join("components", "minecraft"), join("components", "smarthome")]) {
     assert.deepEqual(lines(d).filter(({ l }) => /proposed/i.test(l)), []);
   }
 });
 
 test("R6: the minecraft components keep warn out of rest styles (pause is an outline)", () => {
   const hits = lines(join("components", "minecraft")).filter(({ l }) => /variant=\{[^}]*"warn"|variant="warn"|text-warn/.test(l));
+  assert.deepEqual(hits.map((h) => `${h.f}:${h.n}`), []);
+});
+
+test("C15n: smarthome paints warn or bad only for a fact that is wrong (a battery, a jammed or silent device, a failed write)", () => {
+  const hits = lines(join("components", "smarthome")).filter(({ l }) => /variant="warn"|bg-(bad|warn)\b|border-(bad|warn)\b/.test(l));
   assert.deepEqual(hits.map((h) => `${h.f}:${h.n}`), []);
 });
