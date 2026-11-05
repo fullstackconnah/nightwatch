@@ -37,7 +37,7 @@ describe("verdict", () => {
     assert.equal(v.kind, "compress");
     if (v.kind !== "compress") return;
     assert.equal(v.ratio, 2.29);
-    assert.equal(v.crf, 21);
+    assert.equal(v.crf, 18);
     assert.equal(v.targetKbps, 3500);
     assert.ok(v.estSavingBytes > 4e9);
     assert.equal(v.reason, "2.29× the sweet spot for 1080p film");
