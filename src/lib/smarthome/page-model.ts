@@ -130,11 +130,11 @@ export function smarthomeModel(i: ModelInput): Model {
     return head("warn", "Token rejected", "Home Assistant rejected the access token. Check it in Settings → Integrations.", "Controls stay off until the token works.", { link: SETTINGS });
   }
   if (ha.status === "unreachable" || !ha.entities) {
-    return head("warn", "Not answering", "Home Assistant isn’t answering. Controls are paused until it’s back.", "Retrying every 3 s. Facts below are unknown until it answers.");
+    return head("warn", "Not answering", "Home Assistant isn’t answering. Controls are paused until it’s back.", "Retrying every 3 s.");
   }
 
   const e: HaEntities = ha.entities;
-  const age = i.lastOkAt === null ? 0 : now - i.lastOkAt;
+  const age = i.lastOkAt === null ? 0 : Math.max(0, now - i.lastOkAt);
   const stale = i.loadError || age > STALE_MS;
   const total = e.lights.length + e.switches.length + e.climates.length + e.locks.length + e.sensors.length;
   if (total === 0) return head("ok", "Connected", "Connected, but Home Assistant shares no devices yet.", `From Home Assistant · updated ${ageText(age)} ago · checks every 3 s`);

@@ -69,6 +69,7 @@ test("unreachable: plain copy, the upstream detail (a host) is never on the page
   assert.deepEqual(m.chip, { tone: "warn", label: "Not answering" });
   assert.equal(m.answer, "Home Assistant isn’t answering. Controls are paused until it’s back.");
   assert.doesNotMatch(JSON.stringify(m), /ECONNREFUSED|10\.0\.0\.9|8123/);
+  assert.equal(m.evidence, "Retrying every 3 s.");
   assert.deepEqual(m.strips, []);
   assert.deepEqual(enabled(m), []);
   assert.equal(m.autoTarget, null);
@@ -238,4 +239,9 @@ test("nextOpen: jammed and unavailable name their strip at both widths; a person
   const calm = smarthomeModel(input()).autoTarget;
   assert.deepEqual(nextOpen({ open: null, by: null }, calm, false), { open: null, by: null });
   assert.deepEqual(nextOpen({ open: null, by: null }, "keep", false), { open: null, by: null });
+});
+
+test("a last answer in the future (clock skew) reads 0 s, never a negative age", () => {
+  const m = smarthomeModel(input({ lastOkAt: NOW + 5000 }));
+  assert.match(m.evidence, /updated 0 s ago/);
 });

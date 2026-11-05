@@ -58,6 +58,7 @@ export function WriteAction({
   const [reason, setReason] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
+  const frame = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (phase === "idle" && refocus.current) {
       refocus.current = false;
@@ -88,10 +89,13 @@ export function WriteAction({
     setPhase("idle");
   };
 
-  // Timer-only: back to idle without pulling focus to the trigger. A failed frame expires on the same window.
+  // Timer-only: focus goes back to the trigger only if it was inside the frame; a failure stays until dismissed.
   useEffect(() => {
-    if ((phase !== "asking" && phase !== "failed") || !autoCancelMs) return;
-    const t = setTimeout(() => setPhase("idle"), autoCancelMs);
+    if (phase !== "asking" || !autoCancelMs) return;
+    const t = setTimeout(() => {
+      if (frame.current?.contains(document.activeElement)) refocus.current = true;
+      setPhase("idle");
+    }, autoCancelMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, autoCancelMs]);
@@ -120,6 +124,7 @@ export function WriteAction({
     return (
       <div
         key="confirm"
+        ref={frame}
         // ConfirmStop (renderAsk) already grows in; both would compound the .97 scale.
         className={renderAsk ? "st-frame" : "st-frame nw-confirm"}
         onKeyDown={(e) => {

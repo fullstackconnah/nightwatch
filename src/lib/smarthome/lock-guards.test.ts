@@ -18,9 +18,14 @@ test("SH lock: every WriteAction is auto-cancelling from CONFIRM_WINDOW_MS, neve
 
 test("SH write-action: auto-cancel timer, retry goes back to asking, Cancel takes focus", () => {
   const src = read("components", "strips", "write-action.tsx");
-  assert.match(src, /setTimeout\(\(\) => setPhase\("idle"\), autoCancelMs\)/);
-  assert.match(src, /phase !== "failed"/);
+  assert.match(src, /\}, autoCancelMs\);/);
+  assert.doesNotMatch(src, /phase !== "failed"/); // a failed write stays until Try again or Dismiss
+  assert.match(src, /frame\.current\?\.contains\(document\.activeElement\)/);
   assert.match(src, /autoCancelMs \? setPhase\("asking"\) : void go\(\)/);
   assert.match(src, /autoFocus=\{!!autoCancelMs\}/);
   assert.match(src, /autoFocus=\{!autoCancelMs\}/);
+});
+
+test("SH strip-list: a wide open id that names no strip falls back to the first strip", () => {
+  assert.match(read("components", "strips", "strip-list.tsx"), /ordered\.some\(\(x\) => x\.id === state\.open\)/);
 });

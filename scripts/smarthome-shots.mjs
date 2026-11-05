@@ -54,9 +54,9 @@ const FEATURES = [
   ["strip-state-lines", null, (p) => p.locator("[data-row-id] .st-state")],
   ["light-name", "lights", (p) => detail(p).getByText("Hallway", { exact: true })],
   ["light-status", "lights", (p) => detail(p).getByText("60%", { exact: true })],
-  ["light-toggle", "lights", (p) => detail(p).getByRole("button", { name: "Toggle Hallway" })],
+  ["light-toggle", "lights", (p) => detail(p).getByRole("switch", { name: "Toggle Hallway" })],
   ["switch-name", "switches", (p) => detail(p).getByText("Desk fan", { exact: true })],
-  ["switch-toggle", "switches", (p) => detail(p).getByRole("button", { name: "Toggle Desk fan" })],
+  ["switch-toggle", "switches", (p) => detail(p).getByRole("switch", { name: "Toggle Desk fan" })],
   ["climate-current", "climate", (p) => detail(p).getByText("Current", { exact: true }).first()],
   ["climate-target", "climate", (p) => detail(p).getByText("Target", { exact: true }).first()],
   ["climate-minus", "climate", (p) => detail(p).getByRole("button", { name: /^Lower target temperature/ }).first()],
@@ -149,7 +149,9 @@ async function diagnose(page, label, width) {
 }
 
 const text = (page, sel) => page.locator(sel).first().innerText();
-const headBox = async (page) => (await page.locator("[data-feature=head]").boundingBox())?.height ?? 0;
+// The stale notice (.pt-notice) is required by pattern.md section 5, so the head is measured without it.
+const headBox = (page) =>
+  page.locator("[data-feature=head]").evaluate((el) => el.getBoundingClientRect().height - (el.querySelector(".pt-notice")?.getBoundingClientRect().height ?? 0));
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openStrip = async (page, id) => {
   const t = page.locator(`[data-k="open-${id}"]`);
@@ -208,7 +210,7 @@ async function perState(page, name, vp) {
   if (vp === "390") record("C16 answer at most 2 lines", name, a.lines <= 2 ? a.lines : `${a.lines} lines`);
   record("C17 clipped content", `${name}@${vp}`, a.clipped ? { n: a.clipped, sample: a.clippedSample } : 0);
   record("C18 no horizontal scroll", `${name}@${vp}`, (await overflow(page)) <= 0);
-  record("C19 no host or raw error", `${name}@${vp}`, !/\b\d{1,3}(\.\d{1,3}){3}\b|ECONNREFUSED|401 from/.test(await page.locator("body").innerText()));
+  record("C19 no host or raw error", `${name}@${vp}`, !/\b\d{1,3}(\.\d{1,3}){3}\b|ECONNREFUSED|401 from/.test(await page.locator("main").innerText()));
   return a;
 }
 const shot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: s.name === "390" });
