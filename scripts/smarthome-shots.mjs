@@ -92,6 +92,13 @@ for (const { name, ...opts } of VIEWPORTS) {
     reducedContext: await browser.newContext({ ...opts, timezoneId: "Australia/Sydney", reducedMotion: "reduce" }),
   });
 }
+// The test stack's dev login takes any password; each context keeps its own cookie (as minecraft-shots does).
+for (const s of sessions) {
+  for (const ctx of [s.context, s.reducedContext]) {
+    const login = await ctx.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
+    if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
+  }
+}
 const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
 
 /** C14: page errors, and any request that leaves the page's own origin. */
