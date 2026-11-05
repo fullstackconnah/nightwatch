@@ -22,7 +22,7 @@ export function makeClip(out: string, o: { kind: "mkv" | "mp4"; seconds?: number
     ...(mkv ? ["-f", "lavfi", "-i", `sine=frequency=880:duration=${sec}`] : []),
     "-i", srt, ...(mkv ? ["-i", meta] : []),
     "-map", "0:v", "-map", "1:a", ...(mkv ? ["-map", "2:a", "-map", "3:s", "-map_chapters", "4"] : ["-map", "2:s"]),
-    "-c:v", "libx264", "-b:v", "5M", "-minrate", "5M", "-maxrate", "5M", "-bufsize", "5M", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-b:v", "15M", "-minrate", "15M", "-maxrate", "15M", "-bufsize", "15M", "-pix_fmt", "yuv420p",
     "-c:a", "aac", "-c:s", mkv ? "srt" : "mov_text",
     "-metadata:s:a:0", "language=eng", ...(mkv ? ["-metadata:s:a:1", "language=jpn"] : []),
     ...(mkv ? ["-metadata:s:s:0", "language=eng"] : []),
