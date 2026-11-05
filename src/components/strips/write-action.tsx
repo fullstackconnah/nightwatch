@@ -8,7 +8,7 @@ type Phase = "idle" | "asking" | "flight" | "failed";
 /**
  * The strips pattern's one write idiom: an outlined trigger, an inline frame that asks once ("Yes, {verb}", Cancel),
  * the flight line, then done (the trigger returns) or failed (the reason, Try again, Dismiss). Danger tints only the
- * Yes. Escape cancels; Yes takes focus when the frame opens. `confirm={false}` skips the question (Start, Back up).
+ * Yes. Escape cancels; Yes takes focus when the frame opens (Cancel when autoCancelMs is set). `confirm={false}` skips the question (Start, Back up).
  */
 export function WriteAction({
   label,
@@ -88,9 +88,10 @@ export function WriteAction({
     setPhase("idle");
   };
 
+  // Timer-only: back to idle without pulling focus to the trigger. A failed frame expires on the same window.
   useEffect(() => {
-    if (phase !== "asking" || !autoCancelMs) return;
-    const t = setTimeout(cancel, autoCancelMs);
+    if ((phase !== "asking" && phase !== "failed") || !autoCancelMs) return;
+    const t = setTimeout(() => setPhase("idle"), autoCancelMs);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, autoCancelMs]);
@@ -134,10 +135,10 @@ export function WriteAction({
           <>
             <p className="st-say">{say}</p>
             <div className="st-acts">
-              <Button size="sm" variant="ghost" onClick={cancel}>
+              <Button autoFocus={!!autoCancelMs} size="sm" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
-              <Button autoFocus size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
+              <Button autoFocus={!autoCancelMs} size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
                 {yes}
               </Button>
             </div>
@@ -161,7 +162,7 @@ export function WriteAction({
         {failure}: {reason}.
       </p>
       <div className="st-acts">
-        <Button size="sm" variant="outline" onClick={() => void go()}>
+        <Button size="sm" variant="outline" onClick={() => (autoCancelMs ? setPhase("asking") : void go())}>
           Try again
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setPhase("idle")}>

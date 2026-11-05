@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { WriteAction } from "@/components/strips/write-action";
-import { RowError } from "@/components/smarthome/shared";
 import { CONFIRM_WINDOW_MS, LOCK_WORD, anyLockBusy, lockWrites } from "@/lib/smarthome/page-model";
 import type { HaEntities, HaLock } from "@/lib/types/ha";
 import type { UseHaResult } from "@/lib/use-ha";
@@ -32,7 +31,7 @@ export function LockActions({ lock, ha, entities, stale, lockBusy, onPending }: 
         key={action}
         label={action === "lock" ? "Lock" : "Unlock"}
         ariaLabel={`${action === "lock" ? "Lock" : "Unlock"} ${lock.name}`}
-        say={`${action === "lock" ? "Lock" : "Unlock"} the ${lock.name.toLowerCase()}?`}
+        say={`${action === "lock" ? "Lock" : "Unlock"} the ${lock.name.toLowerCase()}? It cancels itself in ${CONFIRM_WINDOW_MS / 1000} s.`}
         yes={`Yes, ${action}`}
         danger={action === "unlock"}
         flight={action === "lock" ? "Locking…" : "Unlocking…"}
@@ -63,7 +62,6 @@ export function LockDetail(p: LockProps & { inSlot?: boolean }) {
             <span className={l.state === "jammed" ? "microlabel !text-bad" : l.state === "unavailable" ? "microlabel !text-warn" : "microlabel"}>{LOCK_WORD[l.state]}</span>
           </div>
           {!p.inSlot && <LockActions {...p} lock={l} />}
-          <RowError ha={p.ha} entityId={l.entityId} what={`change ${l.name}`} />
         </li>
       ))}
     </ul>

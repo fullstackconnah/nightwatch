@@ -75,6 +75,8 @@ const checks = {};
 const record = (key, vp, value) => ((checks[key] ??= {})[vp] = value);
 const pageErrors = [];
 const foreignRequests = [];
+// diag.<stage>@<width>: what a failed page showed (screenshot, url, body text, console errors), so a hidden crash is visible.
+const diag = {};
 
 // One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next step runs.
 let stage = "";
@@ -94,6 +96,8 @@ const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.n
 
 /** C14: page errors, and any request that leaves the page's own origin. */
 function watch(page, name) {
+  page.consoleErrors = [];
+  page.on("console", (m) => m.type() === "error" && page.consoleErrors.push(m.text().slice(0, 300)));
   page.on("pageerror", (e) => pageErrors.push(`${name}: ${e.message}`));
   page.on("request", (r) => {
     const u = r.url();
@@ -117,11 +121,24 @@ async function visit(s, key, { hash = "", action = "ok", reduced = false } = {})
     return mock.action === "fail" ? json(route, { error: "upstream said 10.0.0.5 refused" }, 502) : json(route, { ok: true });
   });
   await page.clock.install({ time: NOW });
-  await page.goto(`${BASE_URL}/smarthome${hash}`, { waitUntil: "domcontentloaded" });
-  await page.locator("[data-feature=chip]").waitFor({ timeout: SLOW });
-  if (key !== "loading") await page.waitForFunction(() => document.querySelector("[data-feature=chip]")?.textContent?.trim() !== "Checking", null, { timeout: SLOW });
-  await page.waitForTimeout(500);
+  try {
+    await page.goto(`${BASE_URL}/smarthome${hash}`, { waitUntil: "domcontentloaded" });
+    await page.locator("[data-feature=chip]").waitFor({ timeout: SLOW });
+    if (key !== "loading") await page.waitForFunction(() => document.querySelector("[data-feature=chip]")?.textContent?.trim() !== "Checking", null, { timeout: SLOW });
+    await page.waitForTimeout(500);
+  } catch (e) {
+    await diagnose(page, `${stage}:${key}`, s.name);
+    throw e;
+  }
   return { page, mock };
+}
+
+/** Screenshot, url, first 600 chars of the body and the console errors of a page that failed to reach its state. */
+async function diagnose(page, label, width) {
+  const d = { url: page.url(), consoleErrors: page.consoleErrors.slice(0, 10) };
+  d.body = await page.evaluate(() => document.body.innerText.slice(0, 600)).catch((e) => `unreadable: ${e.message}`);
+  await page.screenshot({ path: join(OUT_DIR, `${label.replace(/[^A-Za-z0-9]+/g, "-")}-FAIL-${width}.png`), fullPage: true }).catch((e) => (d.screenshot = `failed: ${e.message}`));
+  diag[`${label}@${width}`] = d;
 }
 
 const text = (page, sel) => page.locator(sel).first().innerText();
@@ -302,7 +319,12 @@ await guarded("C13", () =>
   }),
 );
 
-await browser.close();
-record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
-record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
-console.log(JSON.stringify(checks));
+// The final records print even after failures, and on a runner kill.
+function finish() {
+  record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
+  record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
+  console.log(JSON.stringify({ ...checks, diag }));
+}
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));
+await browser.close().catch(() => {});
+finish();
