@@ -245,7 +245,7 @@ await guarded("widget-secret", () =>
     s.context.off("response", onResponse);
     await openStrip(page, "dashboard");
     await page.getByRole("button", { name: "edit", exact: true }).first().click();
-    await page.getByText("API key").first().waitFor({ timeout: SLOW });
+    await page.getByPlaceholder("http://homelab.local:8989").waitFor({ timeout: SLOW }); // the widget editor's own field; getByText("API key") also hit hidden "<api key>" copy
     record("O1 saved key shows the masked view", `widget-secret@${s.name}`, await page.getByRole("button", { name: "Replace" }).first().isVisible());
     record("O1 no password input holds a value", `widget-secret@${s.name}`, await page.evaluate(() => [...document.querySelectorAll("input[type=password]")].every((i) => i.value === "")));
     record("O1 no fixture secret in the page", `widget-secret@${s.name}`, !(await page.content()).includes(FIXTURE_SECRET));
