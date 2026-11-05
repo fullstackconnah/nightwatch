@@ -80,6 +80,13 @@ const mixed = show("Severance", [
 ]);
 
 const titleSet = [...movies, bluey, bigShow, mixed];
+// F4: a ~90-character title (30 of them unbroken), a ~120-character file name and sizes in the TB range.
+const longName = ("Extraordinarily " + "W".repeat(30) + " Documentary Series About Everything Under The Sun").slice(0, 90);
+const longFile = ("L".repeat(40) + ".Release.Name.2160p.REMUX.HEVC.TrueHD.Atmos-GROUP.".padEnd(80, "x") + ".S01E01.mkv").slice(0, 120);
+const longShow = show(longName, [season("Season 1", [
+  sav(`tv/${longName}/Season 1/${longFile}`, 3000, 40000, 2.5, 1500),
+  file(`tv/${longName}/Season 1/${longFile.replace("S01E01", "S01E02")}`, { size: 2500, kbps: 30000, ratio: 1.2 }),
+])]);
 const withScan = (extra = {}) => ({
   scan: { state: "idle", startedAt: new Date(NOW - 2 * HOUR - 600_000).toISOString(), finishedAt: SCANNED_AT, filesDone: 0, filesTotal: null, skipped: 0, ...extra },
   scannedAt: SCANNED_AT,
@@ -129,11 +136,11 @@ export const FIXTURES = {
   stale,
   nothingToCompress: ok(noSaving),
   detailFailed: { ...ok(titleSet), titles: {} },
-  longValues: ok(titleSet),
+  longValues: ok([...titleSet, longShow]),
   scale130: ok(manyTitles),
   hugeShow: ok([huge]),
   liveNormal: ok(titleSet),
 };
 
 /** The title ids each state opens, by capture. */
-export const OPEN = { movie: "movies/Alien (1979)", show: "tv/A  B", verdicts: "tv/Severance", missing: "movies/Gone (2001)" };
+export const OPEN = { long: "tv/" + longName, movie: "movies/Alien (1979)", show: "tv/A  B", verdicts: "tv/Severance", missing: "movies/Gone (2001)" };

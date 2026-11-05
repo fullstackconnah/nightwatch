@@ -45,7 +45,7 @@ const STATES = [
   ["file-row-verdicts", "normal", null, OPEN.verdicts],
   ["nothing-to-compress", "nothingToCompress", null, null],
   ["detail-failed", "detailFailed", null, OPEN.movie],
-  ["long-values", "longValues", null, OPEN.show],
+  ["long-values", "longValues", null, OPEN.long],
   ["scale-130", "scale130", null, null],
 ];
 const WRITE_STATES = new Set(["stale", "worker-down", "worker-down-with-data"]);
@@ -224,6 +224,7 @@ async function main() {
     ]) {
       const { page } = await visit(s, "normal");
       await page.route("**/api/media/library", answer);
+      await page.waitForTimeout(2300); // SWR dedupes revalidation for 2 s; wait it out so the focus really refetches
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       try {
         await chipIs(page, label);
@@ -293,16 +294,19 @@ async function main() {
   // C11 sticky pane and C12 columns at 1440; C13 wrapping at 390.
   await each(async (s) => {
     if (s.name !== "1440") return;
-    const { page } = await visit(s, "normal");
-    const rows = page.locator("[data-row-id]");
-    await rows.nth(Math.min(10, (await rows.count()) - 1)).scrollIntoViewIfNeeded();
-    await rows.nth(Math.min(10, (await rows.count()) - 1)).locator("button").first().click();
-    await page.waitForTimeout(400);
-    const box = await page.locator(".st-pane, .st-body").first().evaluate((el) => {
+    // C11 on the 130-strip fixture: open a title with a long file list, scroll well past the pane's natural top, then measure.
+    const big = await visit(s, "scale130");
+    await openByName(big.page, "Show 130");
+    await big.page.evaluate(() => window.scrollTo(0, 0));
+    await big.page.evaluate(() => window.scrollTo(0, Math.min(2500, document.documentElement.scrollHeight - innerHeight)));
+    await big.page.waitForTimeout(400);
+    const box = await big.page.locator(".st-pane").first().evaluate((el) => {
       const r = el.getBoundingClientRect();
-      return { top: r.top, bottom: r.bottom };
+      return { top: r.top, bottom: r.bottom, scrolled: window.scrollY };
     });
-    record("C11 sticky pane top and bottom", s.name, { ...box, ok: box.top >= 0 && box.top <= 24 && box.bottom <= 900 });
+    record("C11 sticky pane top and bottom", s.name, { ...box, ok: box.scrolled > 1000 && box.top >= 0 && box.top <= 24 && box.bottom <= 900 });
+    await big.page.close();
+    const { page } = await visit(s, "normal");
     await openByName(page, nameOf(OPEN.show));
     const cols = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
       els.map((el) => ["md-name", "md-size", "md-res", "md-codec", "md-rate", "md-word"].map((c) => el.querySelector(`.${c}`)?.getBoundingClientRect().left ?? -1)),
@@ -315,7 +319,7 @@ async function main() {
   await each(async (s) => {
     if (s.name !== "390") return;
     const { page } = await visit(s, "longValues");
-    await openByName(page, nameOf(OPEN.show));
+    await openByName(page, nameOf(OPEN.long));
     const lines = await page.evaluate(() => {
       const n = (el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight));
       return {
@@ -345,13 +349,27 @@ async function main() {
     await big.page.close();
   });
 
-  // C20 live: the real fixture worker.
+  // C20 live: the real fixture worker. The test stack needs a login (done per context) and has no worker set, so connect it first.
+  // Clips (make-fixtures.sh): 9 movie folders (Broken (2000) is listed, with a probeError) plus tv/Test Show = 10 strips; music/Decoy is never listed.
+  const LIVE_STRIPS = 10;
   await each(async (s) => {
+    const key = "C20 live: " + LIVE_STRIPS + " strips, no Decoy";
+    const api = s.context.request;
+    const set = await api.post(`${BASE_URL}/api/settings/integrations`, { data: { media: { workerUrl: "http://media-worker:8091", workerToken: "test-media-worker-token-not-secret-000000" } } });
+    if (set.status() === 401 || set.status() === 403) return record(key, s.name, "C20 live: login missing");
+    const scan = await api.post(`${BASE_URL}/api/media/scan`);
+    if (scan.status() === 401 || scan.status() === 403) return record(key, s.name, "C20 live: login missing");
+    let done = false;
+    for (const end = Date.now() + 90_000; Date.now() < end && !done; ) {
+      const lib = await (await api.get(`${BASE_URL}/api/media/library`)).json().catch(() => ({}));
+      done = lib.worker === "ok" && lib.data?.scan?.state !== "running" && Boolean(lib.data?.scannedAt);
+      if (!done) await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (!done) return record(key, s.name, "scan did not finish in 90 s");
     const { page } = await visit(s, "liveNormal", { live: true });
     const rows = await page.locator("[data-row-id]").count();
     const text = await page.locator("main").innerText();
-    if ((await page.locator("[data-feature=chip]").innerText()).trim() === "Not connected") record("C20 live: 9 strips, no Decoy", s.name, "live stack not connected");
-    else record("C20 live: 9 strips, no Decoy", s.name, { rows, decoy: /Decoy/.test(text) });
+    record(key, s.name, { rows, decoy: /Decoy/.test(text), ok: rows === LIVE_STRIPS && !/Decoy/.test(text) });
     await shot(page, "live-normal", s.name);
     await page.close();
   });
