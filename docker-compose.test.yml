@@ -62,6 +62,25 @@ services:
     labels:
       - dashboard.enable=false
 
+  # Read-only media worker over synthetic clips (make fixtures with services/media-worker/fixtures/make-fixtures.sh
+  # into ./test-media). Internal network only, no ports. MEDIA_WORKER_TEST_THRESHOLDS shrinks the size floors
+  # so tiny clips can be flagged; the live stack never sets it. In Settings use http://media-worker:8091 and
+  # the placeholder token below.
+  media-worker:
+    build: ./services/media-worker
+    container_name: homelab-dashboard-test-media-worker
+    restart: "no"
+    environment:
+      - MEDIA_WORKER_TOKEN=test-media-worker-token-not-secret-000000
+      - MEDIA_WORKER_TEST_THRESHOLDS=1
+      - TZ=Australia/Sydney
+    volumes:
+      - ./test-media:/mnt/media:ro
+    networks:
+      - internal
+    labels:
+      - dashboard.enable=false
+
   dashboard:
     build:
       context: .

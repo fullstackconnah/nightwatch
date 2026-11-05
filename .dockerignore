@@ -5,3 +5,6 @@ data
 .env
 .env.local
 *.md
+services/*
+!services/media-worker/src/types.ts
+test-media

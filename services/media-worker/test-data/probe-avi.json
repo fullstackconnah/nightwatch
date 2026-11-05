@@ -1,0 +1,8 @@
+{
+  "streams": [
+    { "index": 0, "codec_name": "mpeg4", "profile": "Advanced Simple Profile", "codec_type": "video", "width": 720, "height": 400,
+      "pix_fmt": "yuv420p", "field_order": "unknown", "disposition": { "attached_pic": 0 } },
+    { "index": 1, "codec_name": "mp3", "codec_type": "audio", "channels": 2, "bit_rate": "128000" }
+  ],
+  "format": { "format_name": "avi", "duration": "5400.000000", "size": "1500000000", "bit_rate": "2222222" }
+}
