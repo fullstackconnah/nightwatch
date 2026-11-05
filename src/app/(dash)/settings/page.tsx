@@ -1,6 +1,6 @@
 "use client";
 
-/* Settings on the strips pattern: the head says whether anything needs you, nine strips each hold one area's forms
+/* Settings on the strips pattern: the head says whether anything needs you, ten strips each hold one area's forms
    (Access, six integrations, Hermes, Dashboard). The page owns the tile draft and the widget/tile writes (3b gives
    those the strip treatment); every other form reports its draft and last error up through useFormReport. */
 
@@ -19,6 +19,7 @@ import {
   ForgejoPanel,
   GithubPanel,
   HomeAssistantPanel,
+  MediaPanel,
   MinecraftPanel,
   NpmPanel,
   VoiceCard,
@@ -125,6 +126,7 @@ export default function SettingsPage() {
     forgejo: <ForgejoPanel {...panel} />,
     github: <GithubPanel {...panel} />,
     minecraft: <MinecraftPanel {...panel} />,
+    media: <MediaPanel {...panel} />,
     voice: <VoiceCard {...panel} />,
     hermes: (
       <div className="space-y-5">

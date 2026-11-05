@@ -1,14 +1,14 @@
-/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the nine strips in a fixed
+/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the ten strips in a fixed
  * order, which strip the answer names, and whether writes are on. It claims nothing about reachability: only
  * configured flags, updatedAt stamps and the forms' own reports (R1). Type-only imports so node:test can load it.
  * Section 5 of the settings shape brief is the spec; page-model.test.ts has a case per row. */
 import { ageText } from "../home.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
 
-export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "voice" | "hermes" | "dashboard";
+export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "hermes" | "dashboard";
 export type FormId =
   | "password" | "system" | "sso" | "orchestra"
-  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "voice"
+  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice"
   | "hermes-model" | "hermes-daemon" | "widgets" | "tiles";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 
@@ -50,18 +50,18 @@ export interface Model {
 
 const TITLES: Record<StripId, string> = {
   access: "Access", homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub",
-  minecraft: "Minecraft", voice: "Voice", hermes: "Hermes", dashboard: "Dashboard",
+  minecraft: "Minecraft", media: "Media", voice: "Voice", hermes: "Hermes", dashboard: "Dashboard",
 };
 const ORDER = Object.keys(TITLES) as StripId[];
 /** Each form's strip, in the order a save failure is looked for. */
 const FORMS: Record<FormId, StripId> = {
   password: "access", system: "access", sso: "access", orchestra: "access",
-  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", voice: "voice",
+  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice",
   "hermes-model": "hermes", "hermes-daemon": "hermes", widgets: "dashboard", tiles: "dashboard",
 };
 const FORM_TITLE: Record<FormId, string> = {
   password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra",
-  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", voice: "Voice",
+  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice",
   "hermes-model": "the Hermes model", "hermes-daemon": "the Hermes daemon", widgets: "the widgets", tiles: "the tiles",
 };
 const FORM_IDS = Object.keys(FORMS) as FormId[];
@@ -96,10 +96,10 @@ export function settingsModel(i: ModelInput): Model {
   // ---- facts ----
   const { integrations: ig, system, hermesDaemon: hd, meta } = data;
   const hermes = data.config.hermes;
-  const setUp = [ig.homeassistant, ig.npm, ig.forgejo, ig.github, ig.minecraft].filter((x) => x.configured).length + (system.voiceConfigured ? 1 : 0);
+  const setUp = [ig.homeassistant, ig.npm, ig.forgejo, ig.github, ig.minecraft, ig.media].filter((x) => x.configured).length + (system.voiceConfigured ? 1 : 0);
   const stamps: [string, string | null | undefined][] = [
     ["Home Assistant", ig.homeassistant.updatedAt], ["NPM", ig.npm.updatedAt], ["Forgejo", ig.forgejo.updatedAt],
-    ["GitHub", ig.github.updatedAt], ["Minecraft", ig.minecraft.updatedAt], ["System settings", system.updatedAt],
+    ["GitHub", ig.github.updatedAt], ["Minecraft", ig.minecraft.updatedAt], ["Media", ig.media.updatedAt], ["System settings", system.updatedAt],
     ["Hermes model", meta.hermesModelUpdatedAt], ["Hermes daemon", hd.updatedAt],
   ];
   const newest = stamps
@@ -118,7 +118,7 @@ export function settingsModel(i: ModelInput): Model {
   let answer =
     setUp === 0
       ? "No integrations are set up yet. Each one below says what it needs."
-      : `${setUp === 6 ? "All 6" : `${setUp} of 6`} integrations are set up. ${last}`;
+      : `${setUp === 7 ? "All 7" : `${setUp} of 7`} integrations are set up. ${last}`;
   let autoTarget: Model["autoTarget"] = null;
   if (draftStrips.length) {
     const more = draftStrips.length - 1;
@@ -156,6 +156,7 @@ export function settingsModel(i: ModelInput): Model {
     forgejo: { state: integration(ig.forgejo), tone: null },
     github: { state: integration(ig.github), tone: null },
     minecraft: { state: integration(ig.minecraft, ig.minecraft.curseforgeKeySet ? "" : " · no CurseForge key"), tone: null },
+    media: { state: integration(ig.media), tone: null },
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }

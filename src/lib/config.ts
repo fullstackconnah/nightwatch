@@ -117,6 +117,8 @@ export interface AppConfig {
     rconPassword?: string;
     updatedAt?: string;
   };
+  /** Media manager: the PC-side media worker's address and bearer token (server-side only). */
+  media?: { workerUrl?: string; workerToken?: string; updatedAt?: string };
   /** Hermes model routing, set from the settings page's "Hermes · model"
    *  panel. This copy is the settings UI's own read model (so GET
    *  /api/settings has something to show); it is NOT what the hermes daemon

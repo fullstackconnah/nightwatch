@@ -3592,6 +3592,53 @@ body {
   .st-chev { transition: none; }
 }
 
+/* ---- media (src/app/(dash)/media, src/components/media): filter row, sticky pane, file rows in one DOM and two grids ---- */
+.md-filter { justify-content: space-between; }
+.md-seg { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.md-empty { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; padding: 0.75rem 1rem; }
+.md-page .st-name {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere;
+}
+.md-wait { min-height: 6rem; }
+.md-files { margin: 0; padding: 0; list-style: none; }
+.md-cols { display: none; }
+.md-file {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name size" "facts word" "line line" "act act";
+  align-items: baseline; gap: 0.125rem 0.75rem; min-height: 2.75rem; padding: 0.375rem 0;
+  content-visibility: auto; contain-intrinsic-size: auto 5rem;
+  font-size: 0.75rem;
+}
+.md-name {
+  grid-area: name; font-family: var(--font-mono); color: var(--color-ink); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.md-size, .md-facts, .md-line-facts { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.md-size { grid-area: size; text-align: right; }
+.md-facts { grid-area: facts; color: var(--color-ink-dim); min-width: 0; }
+.md-codec::before, .md-rate::before { content: "\00a0·\00a0"; }
+.md-word { grid-area: word; justify-self: end; color: var(--color-ink-dim); }
+.md-word[data-kind="compress"] { color: var(--color-ink); font-weight: 600; }
+.md-line { grid-area: line; margin: 0; font-size: 0.7rem; color: var(--color-ink-dim); }
+.md-line-facts { color: var(--color-ink-faint); }
+@media (min-width: 64rem) {
+  .md-page .st-pane { position: sticky; top: 1rem; max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
+  .st-wide .md-cols, .st-wide .md-file {
+    display: grid; grid-template-columns: minmax(0, 1fr) 4.75rem 4rem 3.5rem 5.5rem 7.5rem; column-gap: 0.75rem;
+  }
+  .st-wide .md-cols { text-transform: uppercase; letter-spacing: 0.04em; font-size: 0.65rem; }
+  .st-wide .md-cols span:nth-child(2), .st-wide .md-cols span:nth-child(5) { text-align: right; }
+  .st-wide .md-file {
+    grid-template-areas: "name size res codec rate word" ". line line line line line";
+    contain-intrinsic-size: auto 3.5rem; align-items: baseline;
+  }
+  .st-wide .md-facts { display: contents; }
+  .st-wide .md-res { grid-area: res; }
+  .st-wide .md-codec { grid-area: codec; }
+  .st-wide .md-rate { grid-area: rate; text-align: right; }
+  .st-wide .md-codec::before, .st-wide .md-rate::before { content: none; }
+  .st-wide .md-word { justify-self: start; }
+}
+
 /* nw motion */
 /* Unlayered and last on purpose: the Home reduced rule (`.hm *`, transition none) is unlayered too and would beat an earlier rule, which
    would kill the Home menu's reduced opacity fade. Curve is --ease-calm; exits stay instant (unmount). */

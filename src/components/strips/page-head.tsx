@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -16,6 +17,7 @@ export function PageHead({
   answer,
   evidence,
   link,
+  action,
   notice,
 }: {
   title: string;
@@ -23,6 +25,8 @@ export function PageHead({
   answer: string;
   evidence: string;
   link?: { href: string; label: string } | null;
+  /** Takes the link's slot (a button, not a link); when given, `link` is not drawn. */
+  action?: ReactNode;
   notice?: string | null;
 }) {
   return (
@@ -38,11 +42,11 @@ export function PageHead({
       </p>
       <div className="st-evidence" data-feature="evidence">
         <span>{evidence}</span>
-        {link && (
+        {action ?? (link && (
           <Link href={link.href} className={buttonVariants({ variant: "outline", size: "sm" })}>
             {link.label}
           </Link>
-        )}
+        ))}
       </div>
       {notice && (
         <p className="st-notice" role="status" data-feature="notice">
