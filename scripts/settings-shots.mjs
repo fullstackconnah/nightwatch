@@ -184,7 +184,7 @@ const paint = (page) =>
       const cs = getComputedStyle(el);
       if (cs.display === "none" || cs.visibility === "hidden") continue;
       const sides = ["Top", "Right", "Bottom", "Left"].filter((d) => parseFloat(cs[`border${d}Width`]) > 0).map((d) => cs[`border${d}Color`]);
-      if ([cs.color, cs.backgroundColor, ...sides].some(danger)) hits.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`);
+      if ([cs.color, cs.backgroundColor, ...sides].some(danger)) hits.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)} "${(el.textContent ?? "").trim().slice(0, 40)}"`);
     }
     return hits;
   });
@@ -405,6 +405,7 @@ await guarded("C12-motion", () =>
 if (process.env.SENTINELS) {
   await guarded("C3", async () => {
     const s = sessions[0];
+    try {
     const { page } = await visit(s, "calm", { real: true });
     const fields = [
       ["homeassistant", "Long-lived access token"], ["npm", "Admin password"], ["forgejo", "Access token"], ["github", "Personal access token"],
@@ -414,6 +415,7 @@ if (process.env.SENTINELS) {
       ["hermes", "OpenRouter API key", "first"], ["hermes", "Anthropic API key", "first"], ["hermes", "Webhook URL", "last"], ["hermes", "Bot token", "last"],
     ];
     for (const [strip, label, which = "last"] of fields) {
+      stage = `C3:${strip}:${label}`;
       await openStrip(page, strip);
       const body = visibleBody(page);
       const replace = body.getByRole("group", { name: label }).getByRole("button", { name: "Replace" });
@@ -435,6 +437,7 @@ if (process.env.SENTINELS) {
     const body = await page.request.get(`${BASE_URL}/api/settings`).then((r) => r.text());
     record("C3 sentinel hits (html, inputs, GET body)", "1440", hits + (body.match(/NWSENTINEL-|86420/g) ?? []).length);
     await page.close();
+    } catch (e) { await failShot(s, e); }
   });
 }
 

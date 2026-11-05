@@ -1,6 +1,6 @@
 [
   {"id":"A1","strip":"access","by":"label","name":"Current password","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))"},
-  {"id":"A2","strip":"access","by":"label","name":"New password","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))","exact":true},
+  {"id":"A2","strip":"access","by":"label","name":"New password","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))"},
   {"id":"A3","strip":"access","by":"label","name":"Confirm new password","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))"},
   {"id":"A4","strip":"access","by":"button","name":"Save","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))","exact":true},
   {"id":"A5","strip":"access","by":"label","name":"MCP token","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"System\"))"},
@@ -80,7 +80,7 @@
   {"id":"W1","strip":"dashboard","by":"button","name":"Add widget","width":"both","fixture":"calm","steps":[]},
   {"id":"W2","strip":"dashboard","by":"button","name":"edit","width":"both","fixture":"calm","steps":[],"exact":true},
   {"id":"W3","strip":"dashboard","by":"css","name":"(trash icon button)","width":"both","fixture":"calm","steps":[],"none":"the delete button is an icon with no accessible name or data attribute"},
-  {"id":"W4","strip":"dashboard","by":"label","name":"Container","width":"both","fixture":"calm","steps":["Add widget"],"exact":true},
+  {"id":"W4","strip":"dashboard","by":"label","name":"Container","width":"both","fixture":"calm","steps":["Add widget"]},
   {"id":"W5","strip":"dashboard","by":"label","name":"Type","width":"both","fixture":"calm","steps":["Add widget"],"exact":true},
   {"id":"W6","strip":"dashboard","by":"label","name":"Service URL","width":"both","fixture":"calm","steps":["Add widget"]},
   {"id":"W7","strip":"dashboard","by":"label","name":"API key","width":"both","fixture":"calm","steps":["Add widget"]},
