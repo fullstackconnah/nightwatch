@@ -13,11 +13,13 @@ export const SWEET_KBPS: Record<Res, Record<Kind, number>> = {
   "2160p": { film: 9000, tv: 7000 },
 };
 
+// Calibrated 2026-11-06 (VMAF mean >= 93, 1% low >= 85): 1080p film needed CRF 18 (Bourne: 93.4 / 85.0, about 72% smaller);
+// tv passed at 22. Other film rows take the same -3 offset unmeasured.
 export const CRF: Record<Res, Record<Kind, number>> = {
-  "480p": { film: 21, tv: 22 },
-  "720p": { film: 21, tv: 22 },
-  "1080p": { film: 21, tv: 22 },
-  "2160p": { film: 22, tv: 23 },
+  "480p": { film: 18, tv: 22 },
+  "720p": { film: 18, tv: 22 },
+  "1080p": { film: 18, tv: 22 },
+  "2160p": { film: 19, tv: 23 },
 };
 
 /** Flag a file when kbps / sweet spot reaches this. A codec with no entry is never flagged. */

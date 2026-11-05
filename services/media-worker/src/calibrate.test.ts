@@ -27,7 +27,7 @@ describe("calibrate (B10)", () => {
     const dirs = dirsFor(root);
     const rows = await calibrate({ rels: ["movies/Film.mkv"], mediaRoot: root, dirs, cutSec: 3, prefix: [], filters: "no vmaf here", resolve });
     assert.equal(rows.length, 3);
-    assert.deepEqual(rows.map((r) => r.crf), [19, 21, 23]);
+    assert.deepEqual(rows.map((r) => r.crf), [16, 18, 20]);
     assert.ok(rows.every((r) => r.bytes > 0 && r.kbps > 0 && r.vmafMean === null));
     assert.ok(rows[0].bytes > rows[2].bytes, "a lower CRF is a bigger file");
     const text = formatRows(rows, false);
