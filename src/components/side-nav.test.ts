@@ -11,3 +11,8 @@ test("exactly one AI lanes entry, directly after Hermes, pointing at /orchestrat
     /\{ href: "\/hermes", label: "Hermes", icon: Bot \},\s*\{ href: "\/orchestrators", label: "AI lanes", icon: Workflow \},/,
   );
 });
+
+test("Media sits directly after Minecraft and points at /media", () => {
+  assert.equal(src.match(/label: "Media"/g)?.length, 1);
+  assert.match(src, /\{ href: "\/minecraft", label: "Minecraft", icon: Pickaxe \},\s*\{ href: "\/media", label: "Media", icon: Film \},/);
+});

@@ -51,6 +51,9 @@ function sanitizeConfig(config: AppConfig): AppConfig {
           updatedAt: config.minecraft.updatedAt,
         }
       : config.minecraft,
+    media: config.media
+      ? { workerUrl: config.media.workerUrl, updatedAt: config.media.updatedAt }
+      : config.media,
     hermes: config.hermes ? { tier: config.hermes.tier, model: config.hermes.model } : config.hermes,
     // system: only the fields the settings page's System/Voice/SSO cards
     // render as plain editable text (URLs, model/voice names, the OIDC
@@ -76,6 +79,7 @@ function integrationsMeta(config: AppConfig) {
     forgejo: status(config.forgejo, Boolean(config.forgejo?.token)),
     github: status(config.github, Boolean(config.github?.token)),
     minecraft: { ...status(config.minecraft, Boolean(config.minecraft?.managerToken)), ...mcSecretFlags(config.minecraft) },
+    media: status(config.media, Boolean(config.media?.workerToken)),
     hermes: {
       openrouterConfigured: Boolean(config.hermes?.openrouterApiKey),
       anthropicConfigured: Boolean(config.hermes?.anthropicApiKey),

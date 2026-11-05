@@ -10,11 +10,11 @@ const iso = (ago: number) => new Date(NOW - ago).toISOString();
 
 type Over = {
   auth?: boolean;
-  set?: Partial<Record<"homeassistant" | "npm" | "forgejo" | "github" | "minecraft", boolean>>;
+  set?: Partial<Record<"homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media", boolean>>;
   voice?: boolean;
   hermes?: { tier?: "local" | "openrouter" | "anthropic"; model?: string };
   hermesKeys?: { openrouterConfigured: boolean; anthropicConfigured: boolean };
-  updated?: Partial<Record<"homeassistant" | "npm" | "forgejo" | "github" | "minecraft", string>>;
+  updated?: Partial<Record<"homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media", string>>;
   sys?: string;
   daemon?: Partial<SettingsFullResponse["hermesDaemon"]>;
   meta?: Partial<SettingsFullResponse["meta"]>;
@@ -23,7 +23,7 @@ type Over = {
   hermesModelUpdatedAt?: string | null;
   widgets?: number;
 };
-/** Six of six set up by default. */
+/** Seven of seven set up by default. */
 function data(o: Over = {}): SettingsFullResponse {
   const on = (k: keyof NonNullable<Over["set"]>) => o.set?.[k] ?? true;
   const st = (k: keyof NonNullable<Over["set"]>) => ({ configured: on(k), updatedAt: o.updated?.[k] });
@@ -36,6 +36,7 @@ function data(o: Over = {}): SettingsFullResponse {
     integrations: {
       homeassistant: st("homeassistant"), npm: st("npm"), forgejo: st("forgejo"), github: st("github"),
       minecraft: { ...st("minecraft"), curseforgeKeySet: true, ...o.minecraft },
+      media: st("media"),
       hermes: o.hermesKeys ?? { openrouterConfigured: true, anthropicConfigured: true },
     },
     system: { voiceConfigured: o.voice ?? true, updatedAt: o.sys, mcpTokenConfigured: true, kioskPinConfigured: true, ...o.system },
@@ -48,7 +49,7 @@ function input(o: Partial<ModelInput> & { d?: Over } = {}): ModelInput {
 }
 const model = (o: Partial<ModelInput> & { d?: Over } = {}) => settingsModel(input(o));
 const strip = (m: ReturnType<typeof model>, id: StripId) => m.strips.find((s) => s.id === id)!;
-const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "voice", "hermes", "dashboard"];
+const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "hermes", "dashboard"];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 
 // ---- C8: one case per section 5 row ----
@@ -76,11 +77,11 @@ test("load error before any data: warn, its own copy, no strips, no writes", () 
 test("refresh failed: the data's own chip and answer, a notice with the age, writes stay on, keep", () => {
   const m = model({ loadError: "boom", loadedAt: NOW - 90_000 });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.match(m.answer, /^All 6 integrations are set up/);
+  assert.match(m.answer, /^All 7 integrations are set up/);
   assert.equal(m.notice, "Couldn’t refresh: showing what loaded 2 min ago.");
   assert.equal(m.writable, true);
   assert.equal(m.autoTarget, "keep");
-  assert.equal(m.strips.length, 9);
+  assert.equal(m.strips.length, 10);
 });
 
 test("save failed: warn, names the form, keeps the changes, opens that form's strip", () => {
@@ -144,10 +145,10 @@ test("unsaved: neutral, names the strips, never moves anything", () => {
   assert.equal(same.answer, "Unsaved changes in Access. They stay while this page is open.");
 });
 
-test("calm: all 6 set up, ok chip, last change, calm evidence, opens nothing", () => {
+test("calm: all 7 set up, ok chip, last change, calm evidence, opens nothing", () => {
   const m = model({ d: { updated: { forgejo: iso(2 * DAY), github: iso(5 * DAY) } } });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.equal(m.answer, "All 6 integrations are set up. Last change: Forgejo, 2 d ago.");
+  assert.equal(m.answer, "All 7 integrations are set up. Last change: Forgejo, 2 d ago.");
   assert.equal(m.evidence, CALM_EVIDENCE);
   assert.equal(m.notice, null);
   assert.equal(m.autoTarget, null);
@@ -155,15 +156,15 @@ test("calm: all 6 set up, ok chip, last change, calm evidence, opens nothing", (
   assert.equal(m.writable, true);
 });
 
-test("partial: n of 6, ok chip", () => {
+test("partial: n of 7, ok chip", () => {
   const m = model({ d: { set: { npm: false, github: false }, voice: false } });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.match(m.answer, /^3 of 6 integrations are set up\. Last change:/);
+  assert.match(m.answer, /^4 of 7 integrations are set up\. Last change:/);
   assert.equal(m.autoTarget, null);
 });
 
 test("none set up: neutral, each strip says what it needs, nothing required is named", () => {
-  const m = model({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false }, voice: false } });
+  const m = model({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false, media: false }, voice: false } });
   assert.deepEqual(m.chip, { tone: "neutral", label: "Not set up" });
   assert.equal(m.answer, "No integrations are set up yet. Each one below says what it needs.");
   assert.equal(m.autoTarget, null);
@@ -173,15 +174,15 @@ test("none set up: neutral, each strip says what it needs, nothing required is n
 test("optional things are never problems: no SSO, PIN, Orchestra or daemon is still calm", () => {
   const m = model({ d: { meta: { ssoConfigured: false, kioskPinConfigured: false }, daemon: { updatedAt: null } } });
   assert.equal(m.chip.tone, "ok");
-  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null]);
+  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null]);
 });
 
 // ---- order, last change, strip lines ----
 
-test("the nine strips come in a fixed order with titles", () => {
+test("the ten strips come in a fixed order with titles", () => {
   const m = model();
   assert.deepEqual(m.strips.map((s) => s.id), NINE);
-  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Voice", "Hermes", "Dashboard"]);
+  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Hermes", "Dashboard"]);
   // priority states never reorder them (D3)
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
 });
@@ -252,7 +253,7 @@ test("auto-open per row: a strip id only for the rows that name one", () => {
   const rows: [string, ModelInput, StripId | null | "keep"][] = [
     ["loading", input({ data: undefined }), "keep"],
     ["calm", input(), null],
-    ["none", input({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false }, voice: false } }), null],
+    ["none", input({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false, media: false }, voice: false } }), null],
     ["no password", input({ d: { auth: false } }), "access"],
     ["hermes key", input({ d: { hermes: { tier: "anthropic" }, hermesKeys: { openrouterConfigured: true, anthropicConfigured: false } } }), "hermes"],
     ["unsaved", input({ forms: { github: { dirty: true, error: null } } }), "keep"],

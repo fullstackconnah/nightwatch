@@ -62,6 +62,7 @@ export interface SettingsFullResponse {
     forgejo: IntegrationStatus;
     github: IntegrationStatus;
     minecraft: IntegrationStatus & { curseforgeKeySet?: boolean; rconPasswordSet?: boolean };
+    media: IntegrationStatus;
     hermes: { openrouterConfigured: boolean; anthropicConfigured: boolean };
   };
   /** GOAL A: config.json's `system` block — MCP token, kiosk PIN, Hermes API,
@@ -676,6 +677,80 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
                 setManagerToken("");
                 setCurseforgeKey("");
                 setRconPassword("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Media: the PC-side media worker (URL + bearer token). Server-side only; the
+// token never comes back, so the field shows a configured state.
+
+export function MediaPanel({ data, mutate }: PanelProps) {
+  const status = data?.integrations.media;
+  const configured = status?.configured ?? false;
+  const [workerUrl, setWorkerUrl] = useState("");
+  const [workerToken, setWorkerToken] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setWorkerUrl(data.config.media?.workerUrl ?? "");
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+  useFormReport("media", {
+    dirty: seeded && (workerUrl !== (data?.config.media?.workerUrl ?? "") || workerToken !== ""),
+    error,
+  });
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        The media worker runs on the PC that holds the library. Its address and token are kept on the server and never shown here.
+      </p>
+      <Field label="Worker URL" required>
+        <Input placeholder="http://worker.example.invalid:8091" value={workerUrl} onChange={(e) => setWorkerUrl(e.target.value)} />
+      </Field>
+      <SecretField
+        key={`worker-${saveVersion}`}
+        label="Worker token"
+        configured={configured}
+        updatedAt={status?.updatedAt}
+        draft={workerToken}
+        onDraftChange={setWorkerToken}
+      />
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say={clearSay("Media")}
+            failure="Couldn’t remove the connection"
+            run={async () => {
+              await clear("media");
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || !workerUrl.trim()}
+            onClick={async () => {
+              const ok = await save("media", { workerUrl, workerToken: workerToken || undefined });
+              if (ok) {
+                setWorkerToken("");
                 setSaveVersion((v) => v + 1);
               }
             }}

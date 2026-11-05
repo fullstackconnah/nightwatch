@@ -23,6 +23,7 @@ import {
   Tablet,
   Pickaxe,
   Workflow,
+  Film,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContainers } from "@/lib/client";
@@ -56,6 +57,7 @@ const GROUPS: NavGroup[] = [
       { href: "/orchestrators", label: "AI lanes", icon: Workflow },
       { href: "/kiosk", label: "Kiosk", icon: Tablet },
       { href: "/minecraft", label: "Minecraft", icon: Pickaxe },
+      { href: "/media", label: "Media", icon: Film },
       { href: "/settings", label: "Settings", icon: Settings },
     ],
   },

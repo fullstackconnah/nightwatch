@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
+import { mergeMedia } from "@/lib/media/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ type Body = {
   forgejo?: Patch | null;
   github?: Patch | null;
   minecraft?: Patch | null;
+  media?: { workerUrl?: unknown; workerToken?: unknown } | null;
 };
 
 function str(v: unknown): string | undefined {
@@ -128,6 +130,16 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if ("media" in body) {
+    if (body.media === null) {
+      delete next.media;
+    } else if (body.media) {
+      const merged = mergeMedia(body.media, current.media, now);
+      if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
+      next.media = merged.media;
+    }
+  }
+
   if ("github" in body) {
     if (body.github === null) {
       delete next.github;
@@ -159,6 +171,7 @@ export async function POST(req: NextRequest) {
         updatedAt: next.minecraft?.updatedAt,
         ...mcSecretFlags(next.minecraft),
       },
+      media: { configured: Boolean(next.media?.workerToken), updatedAt: next.media?.updatedAt },
     },
   });
 }
