@@ -48,6 +48,6 @@ test("N3: the confirm sentences are the spec's words", () => {
 
 test("icon-only delete buttons carry an accessible name", () => {
   const w = readFileSync(join(SRC, "components/settings/settings-widgets.tsx"), "utf8");
-  assert.match(w, /aria-label=\{`Delete widget \$\{w\.container\}`\}/);
+  assert.match(w, /ariaLabel=\{`Delete \$\{w\.container\} widget`\}/);
   assert.match(w, /aria-label=\{`Remove field \$\{f\.label \|\| f\.path\}`\}/);
 });

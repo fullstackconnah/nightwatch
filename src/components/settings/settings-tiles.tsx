@@ -17,6 +17,7 @@ import { Save, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
+import { useFormReport } from "@/components/settings/form-report";
 import type { AppConfig } from "@/lib/config";
 
 export function isCustomized(cfg: AppConfig, name: string): boolean {
@@ -69,13 +70,19 @@ export function SettingsTiles({
   onChange,
   onSave,
   saving,
+  dirty,
+  error,
 }: {
   cfg: AppConfig;
   containerNames: string[];
   onChange: (cfg: AppConfig) => void;
   onSave: () => void;
   saving?: boolean;
+  /** Draft differs from the stored tile fields (computed by the page, which owns the draft). */
+  dirty: boolean;
+  error: string | null;
 }) {
+  useFormReport("tiles", { dirty, error });
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"customized" | "all">("customized");
 
@@ -106,6 +113,7 @@ export function SettingsTiles({
           <Save size={13} /> Save tiles
         </Button>
       </div>
+      {error && <p className="text-[0.7rem] text-bad">{error}</p>}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="panel p-1 flex gap-1 w-fit" role="group" aria-label="Container scope">

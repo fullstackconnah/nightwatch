@@ -11,6 +11,8 @@
 import { useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { WriteAction } from "@/components/strips/write-action";
+import { useFormReport } from "@/components/settings/form-report";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import type { WidgetInstance } from "@/lib/config";
@@ -25,7 +27,7 @@ function WidgetEditor({
   widget: WidgetInstance;
   types: string[];
   containers: string[];
-  onSave: (w: WidgetInstance) => void;
+  onSave: (w: WidgetInstance) => void | Promise<void>;
   onCancel: () => void;
 }) {
   const [w, setW] = useState<WidgetInstance>(widget);
@@ -122,14 +124,21 @@ export function SettingsWidgets({
   containerNames,
   onSave,
   onDelete,
+  error,
 }: {
   widgets: WidgetInstance[];
   types: string[];
   containerNames: string[];
-  onSave: (w: WidgetInstance) => void;
-  onDelete: (id: string) => void;
+  /** Resolves true when the PUT landed; the editor closes only then, so a failed save keeps the draft (K4). */
+  onSave: (w: WidgetInstance) => Promise<boolean>;
+  /** Throws on failure; the delete frame shows the reason. */
+  onDelete: (id: string) => Promise<void>;
+  /** The last save failure, from the page ("Couldn't save the widget: ..."). */
+  error: string | null;
 }) {
   const [editing, setEditing] = useState<WidgetInstance | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  useFormReport("widgets", { dirty: editing !== null, error });
 
   return (
     <div className="space-y-3">
@@ -160,24 +169,34 @@ export function SettingsWidgets({
           widget={editing}
           types={types}
           containers={containerNames}
-          onSave={(w) => {
-            onSave(w);
-            setEditing(null);
+          onSave={async (w) => {
+            if (await onSave(w)) setEditing(null);
           }}
           onCancel={() => setEditing(null)}
         />
       )}
 
+      {error && !deleting && <p className="text-[0.7rem] text-bad">{error}</p>}
+
       <div className="panel divide-y divide-line/50">
         {widgets.map((w) => (
-          <div key={w.id} className="flex items-center gap-3 px-4 py-2.5">
+          <div key={w.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
             <Badge variant="accent">{w.type}</Badge>
             <span className="text-sm font-medium min-w-0 truncate">{w.container}</span>
             <span className="font-mono text-xs text-ink-faint flex-1 min-w-0 truncate">{w.url}</span>
             <Button size="sm" variant="ghost" onClick={() => setEditing(w)}>edit</Button>
-            <Button size="icon" variant="ghost" aria-label={`Delete widget ${w.container}`} onClick={() => onDelete(w.id)}>
-              <Trash2 size={13} />
-            </Button>
+            <WriteAction
+              label=""
+              ariaLabel={`Delete ${w.container} widget`}
+              icon={<Trash2 size={13} />}
+              say={`Deletes the ${w.container} widget. Add it again to bring it back.`}
+              yes="Yes, delete"
+              danger
+              flight="Deleting…"
+              failure="Couldn’t delete the widget"
+              run={() => onDelete(w.id)}
+              onActive={setDeleting}
+            />
           </div>
         ))}
         {!widgets.length && (
