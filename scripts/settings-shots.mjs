@@ -35,7 +35,7 @@ const STATES = [
   ["loading", "loading", "Loading", "Loading settings", null],
   ["loadError", "load-error", "Not loaded", "couldn’t load", null],
   ["calm", "calm", "Ready", "integrations are set up", null],
-  ["partial", "partial", "Ready", "of 6 integrations are set up", null],
+  ["partial", "partial", "Ready", "of 7 integrations are set up", null],
   ["none", "none", "Not set up", "No integrations are set up", null],
   ["noPassword", "no-password", "Sign-in off", "No login password", "access"],
   ["hermesKeyMissing", "hermes-key-missing", "Needs a key", "no OpenRouter key is saved", "hermes"],
@@ -238,13 +238,11 @@ await guarded("dashboard", () =>
 const FIXTURE_SECRET = "wsecret-fixture"; // never in a fixture; with BASE_URL on a real stack seeded with it this check bites
 await guarded("widget-secret", () =>
   each(async (s) => {
-    const { page } = await visit(s, "calm");
     const bodies = [];
-    page.on("response", (r) => { if (new URL(r.url()).pathname === "/api/settings") bodies.push(r.text().catch(() => "")); });
-    await openStrip(page, "dashboard");
-    await page.getByRole("button", { name: "edit", exact: true }).first().click();
-    await page.getByText("API key").first().waitFor({ timeout: SLOW });
-    await page.reload({ waitUntil: "domcontentloaded" }); // a fresh GET, so the body listener sees one
+    const onResponse = (r) => { if (new URL(r.url()).pathname === "/api/settings") bodies.push(r.text().catch(() => "")); };
+    s.context.on("response", onResponse); // on the context, so the page's first GET is seen without a reload
+    const { page } = await visit(s, "calm");
+    s.context.off("response", onResponse);
     await openStrip(page, "dashboard");
     await page.getByRole("button", { name: "edit", exact: true }).first().click();
     await page.getByText("API key").first().waitFor({ timeout: SLOW });
