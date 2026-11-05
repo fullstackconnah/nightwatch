@@ -38,7 +38,7 @@ function FileRow({ file, kind, rj, off, onChanged }: { file: MediaFile; kind: "m
           {r.cells.rate}
         </span>
       </span>
-      <span className="md-word" data-kind={r.tone === "active" || r.tone === "bad" ? r.tone : file.verdict.kind}>
+      <span className="md-word" data-kind={r.tone === "active" || r.tone === "bad" || r.tone === "dim" ? r.tone : file.verdict.kind}>
         {r.word}
       </span>
       <span className="md-act">{r.act && <FileAct act={r.act} off={off} onChanged={onChanged} onDismiss={() => setDismissed(true)} />}</span>

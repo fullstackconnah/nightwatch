@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { createKioskElevationToken, createSessionToken, isRequestAuthenticated } from "../auth.ts";
 import { kioskMayCall } from "../kiosk-access.ts";
@@ -164,11 +166,10 @@ describe("session rule (N5)", () => {
 
 describe("shared types (M1)", () => {
   it("src imports only the worker's types file, and only as a type", () => {
-    const file = readFileSync(new URL("./worker.ts", import.meta.url), "utf8");
-    const pm = readFileSync(new URL("./page-model.ts", import.meta.url), "utf8");
-    for (const src of [file, pm]) {
-      for (const line of src.split("\n").filter((l) => /services\//.test(l) && /from/.test(l))) {
-        assert.match(line, /^import type .* from "(\.\.\/)+services\/media-worker\/src\/types\.ts";$/);
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : /\.tsx?$/.test(e.name) ? [join(d, e.name)] : []));
+    for (const f of walk(fileURLToPath(new URL("../../", import.meta.url)))) {
+      for (const line of readFileSync(f, "utf8").split(/\r?\n/).filter((l) => /services\//.test(l) && /\bfrom\b/.test(l))) {
+        assert.match(line, /^import type .* from "(\.\.\/)+services\/media-worker\/src\/types(\.ts)?";$/, f);
       }
     }
   });

@@ -338,6 +338,7 @@ const FAILED: Record<NonNullable<Job["failedCheck"]>, (v?: number) => string> = 
   decode: () => "the new file has decode errors",
   frames: () => "the frame count changed",
   saving: (v) => `it saved only ${v ?? 0}%`,
+  "small-saving": (v) => `it saved only ${mediaBytes(v ?? 0)}, too little to keep`,
   "source-changed": () => "the source file changed during compression",
   disk: () => "the disk got too full",
   restart: () => "the worker restarted twice",

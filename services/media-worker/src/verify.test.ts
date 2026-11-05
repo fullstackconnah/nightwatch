@@ -78,6 +78,15 @@ describe("verify (B4)", () => {
     assert.equal(r.ok, false);
   });
 
+  it("a percent-pass, bytes-fail saving fails 'small-saving' with the saved bytes", async (t) => {
+    if (skipped) return t.skip("no ffmpeg");
+    const out = join(dir, "small.mkv");
+    encode(out);
+    const srcBytes = statSync(src).size;
+    const r = await verifyOutput({ src, out, srcBytes, th: { MIN_FILE_BYTES: 0, MIN_SAVING_BYTES: srcBytes }, prefix: [] });
+    assert.ok(!r.ok && r.check === "small-saving" && r.value === srcBytes - statSync(out).size, JSON.stringify(r));
+  });
+
   it("a missing output fails 'probe'; a no-saving output fails 'saving'", async (t) => {
     if (skipped) return t.skip("no ffmpeg");
     const gone = await check(join(dir, "nope.mkv"));

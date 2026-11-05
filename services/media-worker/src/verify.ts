@@ -84,9 +84,12 @@ export async function verifyOutput(o: VerifyOpts): Promise<VerifyResult> {
   const [sj, oj] = await Promise.all([probe(o.src), outBytes > 0 ? probe(o.out) : null]);
   if (!sj || !oj) return fail("probe", "The new file couldn't be read");
   const saved = o.srcBytes - outBytes;
-  if (saved < o.th.MIN_SAVING_BYTES || saved / o.srcBytes < MIN_SAVING_PCT) {
+  if (saved / o.srcBytes < MIN_SAVING_PCT) {
     const pct = Math.max(0, Math.round((saved / o.srcBytes) * 100));
     return fail("saving", `Saved only ${pct}%`, pct);
+  }
+  if (saved < o.th.MIN_SAVING_BYTES) {
+    return fail("small-saving", `Saved only ${Math.round(saved / 1048576)} MB, too little to keep`, Math.max(0, saved));
   }
 
   // 2. duration
