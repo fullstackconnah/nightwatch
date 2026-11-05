@@ -77,13 +77,15 @@ export function rmQuiet(guard: Guard, dir: string, p: string, opts: { purge?: bo
  */
 export function swapIn(
   fs: SwapFs, guard: Guard, plan: SwapPlan, journal: (outIno: number, outSize: number) => void,
+  pathOk: () => boolean = () => true,
 ): { newIno: number; newSize: number } {
   fs.fsyncFile(plan.part);
   const out = fs.lstat(plan.part);
   journal(out.ino, out.size);
 
   const now = lstatOrNull(fs, plan.src);
-  if (!now || now.ino !== plan.srcIno || now.size !== plan.srcSize || now.mtimeMs !== plan.srcMtimeMs) {
+  // S6: the path rule is re-run here too, so a folder swapped for a symlink during a long encode is refused.
+  if (!pathOk() || !now || now.ino !== plan.srcIno || now.size !== plan.srcSize || now.mtimeMs !== plan.srcMtimeMs) {
     throw new SwapError(409, "The source file changed during compression", "source-changed");
   }
   fs.mkdir(plan.holdDir);

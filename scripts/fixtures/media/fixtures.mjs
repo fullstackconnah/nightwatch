@@ -177,8 +177,8 @@ const failed = (check, extra = {}) => job(3, P.alien, "failed", { finishedAt: is
 const queuedMany = Array.from({ length: 6 }, (_, i) => job(10 + i, `tv/A  B/Season 1/E${String(i + 1).padStart(2, "0")}.mkv`, "queued", { createdAt: iso(NOW - 600_000 + i) }));
 
 export const JOB_FIXTURES = {
-  compressOffCalibration: withJobFiles([], { ...idle, compressReady: false, reason: "Off until calibration" }),
-  notReady: withJobFiles([], { ...idle, compressEnabled: false, compressReady: false }),
+  compressOffCalibration: withJobFiles([], { ...idle, compressEnabled: false, compressReady: false, reason: "Off until calibration" }),
+  notReady: withJobFiles([], { ...idle, compressReady: false, reason: "Hold folder missing or not writable" }),
   compressConfirm: withJobFiles([]),
   queued: withJobFiles([job(1, P.alien, "queued")], { ...idle, queue: [job(1, P.alien, "queued")] }),
   encoding: withJobFiles([running("encoding", 42)], { ...idle, current: running("encoding", 42) }),
@@ -193,10 +193,5 @@ export const JOB_FIXTURES = {
   jellyfinFailed: withJobFiles([{ ...heldDone, jellyfin: "failed" }], { ...idle, recent: [{ ...heldDone, jellyfin: "failed" }] }),
   titleQueueMany: withJobFiles(queuedMany, { ...idle, queue: queuedMany }),
   cancelAll: withJobFiles([running("encoding", 10), job(6, P.blade, "queued")], { ...idle, current: running("encoding", 10), queue: [job(6, P.blade, "queued")] }),
-  alreadyCompressed: (() => {
-    const f = withJobFiles([]);
-    const d = f.titles["movies/Casablanca (1942)"];
-    d.files = d.files.map((x) => ({ ...x, verdict: { kind: "ok", ratio: 1.1, reason: "Already compressed by Nightwatch" } }));
-    return f;
-  })(),
+  alreadyCompressed: withJobFiles([job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa })], { ...idle, recent: [job(7, P.casa, "done", { ...heldDone, id: "job-00000007", path: P.casa })] }),
 };

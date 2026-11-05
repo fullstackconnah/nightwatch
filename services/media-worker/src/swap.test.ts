@@ -92,6 +92,24 @@ describe("swapIn (B5, M3, S6)", () => {
   });
 });
 
+describe("swapIn path re-check (S6, F2)", () => {
+  it("the path rule failing at the swap refuses the job and links nothing", () => {
+    const p = fixture();
+    assert.throws(() => swapIn(realFs, guard, p, () => {}, () => false), (e: unknown) => e instanceof SwapError && e.check === "source-changed");
+    assert.equal(readFileSync(p.src, "utf8"), "ORIGINAL");
+    assert.equal(existsSync(p.holdDir), false);
+  });
+
+  it("a hold link whose inode is not the original's is removed and the job refused", () => {
+    const p = fixture();
+    const odd: SwapFs = { ...realFs, lstat: (f) => (f === p.holdFile ? { ...realFs.lstat(f), ino: -1 } : realFs.lstat(f)) };
+    assert.throws(() => swapIn(odd, guard, p, () => {}), (e: unknown) => e instanceof SwapError && e.check === "source-changed");
+    assert.equal(existsSync(p.holdFile), false);
+    assert.equal(existsSync(p.holdDir), false);
+    assert.equal(readFileSync(p.src, "utf8"), "ORIGINAL");
+  });
+});
+
 describe("recoverSwap (M2)", () => {
   it("a throw after link and before rename: the original stays, the hold link goes, the job fails", () => {
     const p = fixture();
@@ -118,6 +136,20 @@ describe("recoverSwap (M2)", () => {
     assert.equal(r.result, "done");
     assert.equal(readFileSync(p.src, "utf8"), "OUTPUT");
     assert.equal(readFileSync(p.holdFile, "utf8"), "ORIGINAL");
+  });
+
+  it("M2: the source replaced by a third file and the hold file linked twice: keepHold, hold file stays", () => {
+    const p = fixture();
+    const { fs } = spy("rename");
+    assert.throws(() => swapIn(fs, guard, p, () => {}));
+    rmSync(p.src);
+    writeFileSync(p.src, "THIRD FILE");
+    linkSync(p.holdFile, join(root, "movies", `${p.id}.extra`));
+    const r = recoverSwap(realFs, guard, p, 0);
+    assert.equal(r.result, "failed");
+    assert.equal((r as { keepHold: boolean }).keepHold, true);
+    assert.equal(readFileSync(p.holdFile, "utf8"), "ORIGINAL");
+    assert.equal(readFileSync(p.src, "utf8"), "THIRD FILE");
   });
 
   it("source deleted while swapping: the hold file is kept and nothing is purged", () => {

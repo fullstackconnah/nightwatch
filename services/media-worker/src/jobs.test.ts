@@ -185,6 +185,51 @@ describe("boot recovery (M2, N4)", () => {
   });
 });
 
+describe("recovery and purge only when the drive is ready (F1, F5, F6)", () => {
+  it("F1: not ready at boot, ready later: the first enqueue re-queues the old record first", { skip: SKIP_OFF_LINUX }, () => {
+    const first = make();
+    seed(first.q, "enc-late", "encoding");
+    let up = false;
+    const started: string[] = [];
+    const again = createQueue({
+      ...second(first), ready: () => (up ? first.ready : { ready: false, reason: "drive missing" }),
+      run: async (r) => { started.push(r.id); await new Promise(() => undefined); },
+    });
+    assert.throws(() => again.enqueueOne("movies/b.mkv"), JobError); // not ready: nothing runs, nothing recovered
+    assert.equal(again.get("enc-late")?.state, "encoding");
+    up = true;
+    again.enqueueOne("movies/b.mkv");
+    assert.equal(started[0], "enc-late");
+    assert.equal(again.get("enc-late")?.attempts, 1);
+  });
+
+  it("F1: recoverOnce runs recovery once", () => {
+    const first = make();
+    seed(first.q, "enc-once", "encoding");
+    const again = createQueue({ ...second(first), run: () => new Promise(() => undefined) });
+    again.recoverOnce();
+    again.patch("enc-once", { state: "encoding" });
+    again.recoverOnce();
+    assert.equal(again.get("enc-once")?.attempts, 1);
+    assert.equal(again.get("enc-once")?.state, "encoding");
+  });
+
+  it("F5: purge with the drive gone marks nothing purged", () => {
+    const { q } = make({ ready: () => ({ ready: false, reason: "drive missing" }) });
+    seed(q, "held-1", "done", { heldUntil: "2026-11-04T00:00:00Z" });
+    assert.equal(q.purgeDue(), 0);
+    assert.equal(q.get("held-1")?.state, "done");
+  });
+
+  it("F6: a cancel requested before a restart ends cancelled, not re-queued", () => {
+    const first = make();
+    seed(first.q, "enc-cx", "encoding", { cancelRequested: true });
+    const again = createQueue({ ...second(first), run: () => new Promise(() => undefined) });
+    again.recover();
+    assert.equal(again.get("enc-cx")?.state, "cancelled");
+  });
+});
+
 /** Same state dir, a fresh queue: a worker restart. */
 function second(first: ReturnType<typeof make>): QueueOpts {
   return {

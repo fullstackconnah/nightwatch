@@ -251,29 +251,37 @@ async function main() {
   ];
   await each(async (s) => {
     for (const [name, key, open, action] of JOB_STATES) {
-      const { page } = await visit(s, key);
-      await openByName(page, nameOf(open));
-      if (action) {
-        await ACTIONS[action](page);
-        await page.waitForTimeout(300);
+      // Each state fails on its own: one FAIL plus a diagnose capture, and the loop goes on.
+      let page;
+      try {
+        ({ page } = await visit(s, key));
+        await openByName(page, nameOf(open));
+        if (action) {
+          await ACTIONS[action](page);
+          await page.waitForTimeout(300);
+        }
+        await perState(page, name, s.name);
+        // B7: the queue strip exists whenever it should.
+        if (open === "Compress queue") record("B7 queue strip present", `${name}@${s.name}`, (await stripByName(page, "Compress queue").count()) === 1 ? "ok" : "missing");
+        // B1: the act column lines up down the rows and stays inside them (1440 only; the stack at 390 has no columns).
+        if (s.name === "1440" && !action) {
+          const acts = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
+            els.map((el) => [el.querySelector(".md-act"), el]).filter(([a]) => a?.querySelector("button")).map(([a, row]) => ({ left: a.getBoundingClientRect().left, out: a.getBoundingClientRect().right > row.getBoundingClientRect().right + 1 })),
+          );
+          if (acts.length) record("B1 act column left edge spread at most 1 px, inside the row", name, { n: acts.length, ok: acts.every((a) => !a.out) && Math.max(...acts.map((a) => a.left)) - Math.min(...acts.map((a) => a.left)) <= 1 });
+        }
+        // B3: the bar's fill is scaleX(pct).
+        if (name === "encoding") {
+          const m = await page.locator(".md-bar > span").first().evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
+          record("B3 bar scaleX (0.42)", `${name}@${s.name}`, { scale: Number(m.toFixed(2)), ok: Math.abs(m - 0.42) < 0.01 });
+        }
+        await shot(page, name, s.name);
+      } catch (e) {
+        record("J state reached", `${name}@${s.name}`, `FAIL: ${String(e).slice(0, 200)}`);
+        if (page) await diagnose(page, name, s.name);
+      } finally {
+        await page?.close().catch(() => undefined);
       }
-      await perState(page, name, s.name);
-      // B7: the queue strip exists whenever it should.
-      if (open === "Compress queue") record("B7 queue strip present", `${name}@${s.name}`, (await stripByName(page, "Compress queue").count()) === 1 ? "ok" : "missing");
-      // B1: the act column lines up down the rows and stays inside them (1440 only; the stack at 390 has no columns).
-      if (s.name === "1440" && !action) {
-        const acts = await page.locator("[data-feature=file-row]").evaluateAll((els) =>
-          els.map((el) => [el.querySelector(".md-act"), el]).filter(([a]) => a?.querySelector("button")).map(([a, row]) => ({ left: a.getBoundingClientRect().left, out: a.getBoundingClientRect().right > row.getBoundingClientRect().right + 1 })),
-        );
-        if (acts.length) record("B1 act column left edge spread at most 1 px, inside the row", name, { n: acts.length, ok: acts.every((a) => !a.out) && Math.max(...acts.map((a) => a.left)) - Math.min(...acts.map((a) => a.left)) <= 1 });
-      }
-      // B3: the bar's fill is scaleX(pct).
-      if (name === "encoding") {
-        const m = await page.locator(".md-bar > span").first().evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).a);
-        record("B3 bar scaleX (0.42)", `${name}@${s.name}`, { scale: Number(m.toFixed(2)), ok: Math.abs(m - 0.42) < 0.01 });
-      }
-      await shot(page, name, s.name);
-      await page.close();
     }
   });
 

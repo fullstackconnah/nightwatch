@@ -75,6 +75,7 @@ export function createQueue(opts: QueueOpts) {
   const uid = "uid" in opts ? opts.uid : process.getuid?.();
   let running: { id: string; done: Promise<void> } | null = null;
   let closed = false;
+  let recovered = false;
 
   const save = () => writeJsonAtomic(file, { version: 1, jobs });
   const get = (id: string) => jobs.find((j) => j.id === id);
@@ -143,6 +144,7 @@ export function createQueue(opts: QueueOpts) {
     if (!opts.enabled) throw new JobError(409, "Compress is off until calibration is done");
     const ready = opts.ready();
     if (!ready.ready) throw new JobError(409, `Compress is unavailable: ${ready.reason}`);
+    recoverOnce(); // F1: the drive may have come up after boot
     if (paths.length < 1 || paths.length > MAX_BATCH) throw new JobError(400, `Send 1 to ${MAX_BATCH} paths`);
     if (new Set(paths).size !== paths.length) throw new JobError(400, "Duplicate path");
     const checked = paths.map(checkEnqueue); // all-or-nothing: the first problem is the answer
@@ -170,8 +172,67 @@ export function createQueue(opts: QueueOpts) {
     return publicJob(r);
   }
 
+  function purgeDue(): number {
+    if (!opts.ready().ready) return 0; // F5: with the drive gone the delete would fail quietly and the job read as purged
+    let n = 0;
+    for (const r of heldJobs()) {
+      if (Date.parse(r.heldUntil as string) >= now().getTime()) continue;
+      try {
+        purgeHold(opts.guard, plan(r));
+        patch(r.id, { state: "purged" });
+        n++;
+      } catch (e) {
+        opts.log?.(`purge of ${r.id} failed: ${(e as Error).message}`);
+      }
+    }
+    return n;
+  }
+
+  /** Boot: decide what each interrupted job becomes (M2, N4), clear orphans, then start the queue. */
+  function recover(): void {
+    recovered = true;
+    const t = now().toISOString();
+    const requeue: JobRecord[] = [];
+    for (const r of jobs) {
+      const p = plan(r);
+      if (r.state === "encoding" || r.state === "verifying") {
+        rmQuiet(opts.guard, opts.dirs.work, p.part);
+        r.attempts += 1;
+        if (r.cancelRequested) Object.assign(r, { state: "cancelled", finishedAt: t }); // F6: don't re-encode a cancelled job
+        else if (r.attempts >= 2) Object.assign(r, { state: "failed", failedCheck: "restart", finishedAt: t });
+        else { r.state = "queued"; delete r.progress; requeue.push(r); }
+      } else if (r.state === "swapping") {
+        const rec = recoverSwap(opts.fs, opts.guard, p, r.outIno ?? -1);
+        if (rec.result === "done") {
+          Object.assign(r, {
+            state: "done", newIno: rec.newIno, newSize: rec.newSize, outputBytes: rec.newSize, finishedAt: t,
+            heldUntil: new Date(now().getTime() + HOLD_DAYS * DAY_MS).toISOString(),
+          });
+        } else {
+          Object.assign(r, { state: "failed", failedCheck: "swap", error: rec.message, finishedAt: t, keepHold: rec.keepHold });
+        }
+      } else if (r.state === "done") {
+        let holdThere = true;
+        try { opts.fs.lstat(p.holdFile); } catch { holdThere = false; }
+        let srcIno: number | null = null;
+        try { srcIno = opts.fs.lstat(p.src).ino; } catch { /* gone */ }
+        if (!holdThere && srcIno !== null && srcIno === r.srcIno) Object.assign(r, { state: "undone", finishedAt: t });
+      }
+    }
+    // A job that was running goes to the head of the queue.
+    jobs = [...requeue, ...jobs.filter((j) => !requeue.includes(j))];
+    save();
+    try {
+      const live = new Set(jobs.filter((j) => j.state === "queued").map((j) => `${j.id}.part`));
+      for (const f of readdirSync(opts.dirs.work)) if (!live.has(f)) rmQuiet(opts.guard, opts.dirs.work, join(opts.dirs.work, f));
+    } catch { /* work/ not there yet: nothing to clear */ }
+    purgeDue();
+    pump();
+  }
+  const recoverOnce = () => { if (!recovered) recover(); };
+
   return {
-    patch, get, plan, heldBytes, earliestHeld,
+    patch, get, plan, recover, recoverOnce, purgeDue, heldBytes, earliestHeld,
     all: () => jobs,
     isCancelRequested: (id: string) => Boolean(get(id)?.cancelRequested),
 
@@ -223,62 +284,6 @@ export function createQueue(opts: QueueOpts) {
       patch(id, { state: "undone", finishedAt: now().toISOString() });
       void opts.afterChange?.(r).catch(() => undefined);
       return publicJob(r);
-    },
-
-    /** Hourly and at boot: delete originals whose heldUntil has passed. The clock is heldUntil, never mtime. */
-    purgeDue(): number {
-      let n = 0;
-      for (const r of heldJobs()) {
-        if (Date.parse(r.heldUntil as string) >= now().getTime()) continue;
-        try {
-          purgeHold(opts.guard, plan(r));
-          patch(r.id, { state: "purged" });
-          n++;
-        } catch (e) {
-          opts.log?.(`purge of ${r.id} failed: ${(e as Error).message}`);
-        }
-      }
-      return n;
-    },
-
-    /** Boot: decide what each interrupted job becomes (M2, N4), clear orphans, then start the queue. */
-    recover(): void {
-      const t = now().toISOString();
-      const requeue: JobRecord[] = [];
-      for (const r of jobs) {
-        const p = plan(r);
-        if (r.state === "encoding" || r.state === "verifying") {
-          rmQuiet(opts.guard, opts.dirs.work, p.part);
-          r.attempts += 1;
-          if (r.attempts >= 2) Object.assign(r, { state: "failed", failedCheck: "restart", finishedAt: t });
-          else { r.state = "queued"; delete r.progress; requeue.push(r); }
-        } else if (r.state === "swapping") {
-          const rec = recoverSwap(opts.fs, opts.guard, p, r.outIno ?? -1);
-          if (rec.result === "done") {
-            Object.assign(r, {
-              state: "done", newIno: rec.newIno, newSize: rec.newSize, outputBytes: rec.newSize, finishedAt: t,
-              heldUntil: new Date(now().getTime() + HOLD_DAYS * DAY_MS).toISOString(),
-            });
-          } else {
-            Object.assign(r, { state: "failed", failedCheck: "swap", error: rec.message, finishedAt: t, keepHold: rec.keepHold });
-          }
-        } else if (r.state === "done") {
-          let holdThere = true;
-          try { opts.fs.lstat(p.holdFile); } catch { holdThere = false; }
-          let srcIno: number | null = null;
-          try { srcIno = opts.fs.lstat(p.src).ino; } catch { /* gone */ }
-          if (!holdThere && srcIno !== null && srcIno === r.srcIno) Object.assign(r, { state: "undone", finishedAt: t });
-        }
-      }
-      // A job that was running goes to the head of the queue.
-      jobs = [...requeue, ...jobs.filter((j) => !requeue.includes(j))];
-      save();
-      try {
-        const live = new Set(jobs.filter((j) => j.state === "queued").map((j) => `${j.id}.part`));
-        for (const f of readdirSync(opts.dirs.work)) if (!live.has(f)) rmQuiet(opts.guard, opts.dirs.work, join(opts.dirs.work, f));
-      } catch { /* work/ not there yet: nothing to clear */ }
-      this.purgeDue();
-      pump();
     },
 
     pump,

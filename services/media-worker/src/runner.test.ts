@@ -26,7 +26,8 @@ before((t) => {
   root = tempDir("mw-run-");
   for (const d of ["movies", "tv", ".nightwatch"]) mkdirSync(join(root, d));
   clips = tempDir("mw-clips-");
-  if (!needFfmpeg(t)) { ready = false; return; }
+  // resolveMediaPath (the S6 re-check at job start) needs POSIX paths, so the end-to-end flow runs on Linux only.
+  if (process.platform !== "linux" || !needFfmpeg(t)) { ready = false; return; }
   makeClip(join(clips, "film.mkv"), { kind: "mkv", tagBps: true });
   makeClip(join(clips, "film.mp4"), { kind: "mp4" });
   makeClip(join(clips, "hdr.mkv"), { kind: "mkv", hdr: true });

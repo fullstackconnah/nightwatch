@@ -9,6 +9,7 @@ import type { JobRecord, Queue } from "./jobs.ts";
 import { NICE, ffprobeJson, parseProbe } from "./probe.ts";
 import { DISK_ABORT_BYTES, HOLD_DAYS, type Thresholds } from "./sweet-spot.ts";
 import { recoverSwap, rmQuiet, SwapError, swapIn, type SwapFs } from "./swap.ts";
+import { resolveMediaPath } from "./paths.ts";
 import type { Job } from "./types.ts";
 import { verdict } from "./verdict.ts";
 import { verifyOutput } from "./verify.ts";
@@ -62,6 +63,11 @@ export function createRunner(o: RunnerOpts) {
 
   const fail = (rec: JobRecord, check: NonNullable<Job["failedCheck"]>, extra: Partial<JobRecord> = {}) =>
     q.patch(rec.id, { state: "failed", failedCheck: check, finishedAt: now().toISOString(), ...extra });
+  /** S6: the path rule, re-run at job start and at the swap: same file, no symlink in the chain. */
+  const pathOk = (rec: JobRecord) => {
+    const r = resolveMediaPath(rec.path, o.mediaRoot);
+    return !("error" in r) && r.abs.replaceAll("\\", "/") === rec.abs.replaceAll("\\", "/"); // Windows dev boxes mix separators
+  };
   const cleanPart = (rec: JobRecord) => rmQuiet(o.guard, o.dirs.work, q.plan(rec).part);
 
   async function run(rec: JobRecord): Promise<void> {
@@ -73,6 +79,7 @@ export function createRunner(o: RunnerOpts) {
     let json: unknown;
     let st;
     try {
+      if (!pathOk(rec)) throw new Error("path rule");
       st = lstatSync(rec.abs);
       json = await ffprobeJson(rec.abs, { prefix });
     } catch {
@@ -135,7 +142,7 @@ export function createRunner(o: RunnerOpts) {
     // Swap.
     q.patch(id, { state: "swapping", outputBytes: res.outBytes });
     try {
-      const r = swapIn(o.fs, o.guard, plan, (outIno, outSize) => { q.patch(id, { outIno, outputBytes: outSize }); });
+      const r = swapIn(o.fs, o.guard, plan, (outIno, outSize) => { q.patch(id, { outIno, outputBytes: outSize }); }, () => pathOk(rec));
       q.patch(id, {
         state: "done", newIno: r.newIno, newSize: r.newSize, outputBytes: r.newSize, finishedAt: now().toISOString(),
         heldUntil: new Date(now().getTime() + HOLD_DAYS * 86_400_000).toISOString(),
