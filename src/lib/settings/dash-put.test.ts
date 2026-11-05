@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeDashPut } from "./dash-put.ts";
+import { mergeDashPut, publicWidgets } from "./dash-put.ts";
 import type { AppConfig } from "../config.ts";
 
 const current = {
@@ -48,4 +48,42 @@ test("K12: only the five dashboard fields are merged; hermes, system and extra k
   assert.equal("extra" in next, false);
   assert.equal(Object.getPrototypeOf(next), Object.prototype);
   assert.equal((next as { polluted?: unknown }).polluted, undefined);
+});
+
+const withSecrets = {
+  ...current,
+  widgets: [
+    { id: "w1", container: "a", type: "generic", url: "u", key: "wsecret-123", password: "wsecret-pw" },
+    { id: "w2", container: "b", type: "generic", url: "u", key: "wsecret-456" },
+  ],
+} as unknown as AppConfig;
+
+test("O1: no sanitized widget, nor the sanitized merge result, contains a secret", () => {
+  const pub = publicWidgets(withSecrets.widgets);
+  assert.ok(!JSON.stringify(pub).includes("wsecret"));
+  assert.deepEqual(pub.map((w) => [w.keySet, w.passwordSet]), [[true, true], [true, false]]);
+  const next = ok(mergeDashPut(withSecrets, { widgets: [{ ...pub[0], key: "wsecret-new" }, pub[1]] }));
+  assert.ok(!JSON.stringify({ config: { ...next, widgets: publicWidgets(next.widgets) } }).includes("wsecret"));
+});
+
+test("O1: an omitted or empty key keeps the stored one; a new one replaces; clear removes", () => {
+  const pub = publicWidgets(withSecrets.widgets);
+  const kept = ok(mergeDashPut(withSecrets, { widgets: [{ ...pub[0], key: "" }, pub[1]] }));
+  assert.equal(kept.widgets[0].key, "wsecret-123");
+  assert.equal(kept.widgets[0].password, "wsecret-pw");
+  assert.equal(kept.widgets[1].key, "wsecret-456");
+  const replaced = ok(mergeDashPut(withSecrets, { widgets: [{ ...pub[0], key: "new" }, pub[1]] }));
+  assert.equal(replaced.widgets[0].key, "new");
+  const cleared = ok(mergeDashPut(withSecrets, { widgets: [{ ...pub[0], clearKey: true, clearPassword: true }, pub[1]] }));
+  assert.equal(cleared.widgets[0].key, undefined);
+  assert.equal(cleared.widgets[0].password, undefined);
+  assert.equal(cleared.widgets[1].key, "wsecret-456");
+});
+
+test("O1: secrets follow the widget id when widgets are re-ordered or added; wire flags are not stored", () => {
+  const pub = publicWidgets(withSecrets.widgets);
+  const fresh = { id: "w3", container: "c", type: "generic", url: "u" };
+  const next = ok(mergeDashPut(withSecrets, { widgets: [pub[1], fresh, pub[0]] }));
+  assert.deepEqual(next.widgets.map((w) => [w.id, w.key]), [["w2", "wsecret-456"], ["w3", undefined], ["w1", "wsecret-123"]]);
+  assert.ok(!JSON.stringify(next.widgets).includes("keySet"));
 });

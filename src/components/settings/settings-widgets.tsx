@@ -15,6 +15,7 @@ import { WriteAction } from "@/components/strips/write-action";
 import { useFormReport } from "@/components/settings/form-report";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
+import { ClearAction, SecretField } from "@/components/settings/settings-integrations";
 import type { WidgetInstance } from "@/lib/config";
 
 function WidgetEditor({
@@ -27,12 +28,29 @@ function WidgetEditor({
   widget: WidgetInstance;
   types: string[];
   containers: string[];
-  onSave: (w: WidgetInstance) => void | Promise<void>;
+  onSave: (w: WidgetInstance) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [w, setW] = useState<WidgetInstance>(widget);
   const set = (patch: Partial<WidgetInstance>) => setW({ ...w, ...patch });
   const generic = w.type === "generic";
+  // Secrets are write-only: the server sends keySet/passwordSet, an empty draft keeps the stored value, Clear removes it.
+  const secret = (f: "key" | "password", label: string, flag: boolean | undefined, clear: "clearKey" | "clearPassword") => (
+    <div>
+      <SecretField label={label} configured={Boolean(flag)} draft={w[f] ?? ""} onDraftChange={(v) => set({ [f]: v || undefined })} />
+      {flag && (
+        <div className="mt-1">
+          <ClearAction
+            say={`Removes the saved ${label.toLowerCase()} from this widget. It stops working until you enter one again.`}
+            failure={`Couldn’t clear the ${label.toLowerCase()}`}
+            run={async () => {
+              if (!(await onSave({ ...w, [f]: undefined, [clear]: true }))) throw new Error("the widget wasn’t saved");
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="panel p-4 space-y-3 border-accent/30">
@@ -55,16 +73,12 @@ function WidgetEditor({
         <Field label="Service URL" required className="col-span-2">
           <Input placeholder="http://homelab.local:8989" value={w.url} onChange={(e) => set({ url: e.target.value })} />
         </Field>
-        <Field label="API key">
-          <Input type="password" value={w.key ?? ""} onChange={(e) => set({ key: e.target.value || undefined })} />
-        </Field>
+        {secret("key", "API key", w.keySet, "clearKey")}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <Field label="Username">
             <Input value={w.username ?? ""} onChange={(e) => set({ username: e.target.value || undefined })} />
           </Field>
-          <Field label="Password">
-            <Input type="password" value={w.password ?? ""} onChange={(e) => set({ password: e.target.value || undefined })} />
-          </Field>
+          {secret("password", "Password", w.passwordSet, "clearPassword")}
         </div>
         {generic && (
           <>
@@ -170,7 +184,9 @@ export function SettingsWidgets({
           types={types}
           containers={containerNames}
           onSave={async (w) => {
-            if (await onSave(w)) setEditing(null);
+            const ok = await onSave(w);
+            if (ok) setEditing(null);
+            return ok;
           }}
           onCancel={() => setEditing(null)}
         />

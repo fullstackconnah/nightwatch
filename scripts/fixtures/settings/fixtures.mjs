@@ -11,7 +11,7 @@ const config = () => ({
   hermes: { tier: "local", model: "local-model" },
   system: { voiceServerUrl: "http://homelab.local:8970", oidcIssuer: "http://homelab.local:9091", oidcClientId: "nightwatch", orchestraUrl: "http://homelab.local:7420" },
   urls: {}, icons: {}, hidden: [], groups: [],
-  widgets: [{ id: "w1", type: "generic", container: "sonarr", url: "http://homelab.local:8989", paths: "Queued:queue.total" }],
+  widgets: [{ id: "w1", type: "generic", container: "sonarr", url: "http://homelab.local:8989", keySet: true, passwordSet: false, paths: "Queued:queue.total" }],
 });
 
 const calm = () => ({

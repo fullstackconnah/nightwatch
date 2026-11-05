@@ -234,6 +234,31 @@ await guarded("dashboard", () =>
   }),
 );
 
+// ---- O1: a widget with a saved key opens write-only: masked view, no value anywhere in the page or any /api/settings body ----
+const FIXTURE_SECRET = "wsecret-fixture"; // never in a fixture; with BASE_URL on a real stack seeded with it this check bites
+await guarded("widget-secret", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm");
+    const bodies = [];
+    page.on("response", (r) => { if (new URL(r.url()).pathname === "/api/settings") bodies.push(r.text().catch(() => "")); });
+    await openStrip(page, "dashboard");
+    await page.getByRole("button", { name: "edit", exact: true }).first().click();
+    await page.getByText("API key").first().waitFor({ timeout: SLOW });
+    await page.reload({ waitUntil: "domcontentloaded" }); // a fresh GET, so the body listener sees one
+    await openStrip(page, "dashboard");
+    await page.getByRole("button", { name: "edit", exact: true }).first().click();
+    await page.getByText("API key").first().waitFor({ timeout: SLOW });
+    record("O1 saved key shows the masked view", `widget-secret@${s.name}`, await page.getByRole("button", { name: "Replace" }).first().isVisible());
+    record("O1 no password input holds a value", `widget-secret@${s.name}`, await page.evaluate(() => [...document.querySelectorAll("input[type=password]")].every((i) => i.value === "")));
+    record("O1 no fixture secret in the page", `widget-secret@${s.name}`, !(await page.content()).includes(FIXTURE_SECRET));
+    record("O1 no fixture secret in any /api/settings body", `widget-secret@${s.name}`, (await Promise.all(bodies)).every((b) => !b.includes(FIXTURE_SECRET)));
+    record("S no horizontal scroll", `widget-secret@${s.name}`, (await overflow(page)) <= 0);
+    await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+    await shot(page, s, "widget-secret");
+    await page.close();
+  }),
+);
+
 // ---- refresh-failed: a later GET fails (SWR refetches on focus after its 5 s throttle); save-failed: a draft meets a 500 ----
 await guarded("refresh-failed", () =>
   each(async (s) => {
