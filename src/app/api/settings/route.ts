@@ -9,6 +9,7 @@ import {
   publicHost,
   type AppConfig,
 } from "@/lib/config";
+import { mergeDashPut } from "@/lib/settings/dash-put";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { publicSystem } from "@/lib/orchestra-settings";
@@ -173,26 +174,20 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  let body: unknown;
   try {
-    const body = (await req.json()) as Partial<AppConfig>;
-    const current = loadConfig();
-    // Read-modify-write: start from the full current config (including
-    // homeassistant/npm/forgejo/github/hermes/jellyfin/pinnedFolders, none of
-    // which this route's body ever carries) and only override the five fields
-    // this form actually edits. A previous version built `next` from just
-    // those five fields, which silently erased every other block on the next
-    // tiles/widgets save — exactly the "clobber unrelated keys" bug the
-    // Integrations/Hermes panels below now depend on not happening.
-    const next: AppConfig = {
-      ...current,
-      groups: body.groups ?? current.groups,
-      urls: body.urls ?? current.urls,
-      icons: body.icons ?? current.icons,
-      hidden: body.hidden ?? current.hidden,
-      widgets: body.widgets ?? current.widgets,
-    };
-    saveConfig(next);
-    return NextResponse.json({ ok: true, config: sanitizeConfig(next) });
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
+  }
+  try {
+    // K12: read-modify-write. Each Dashboard save sends only its own fields ({ widgets } or { groups, urls, icons,
+    // hidden }); mergeDashPut keeps everything else from the stored config (homeassistant/npm/forgejo/github/hermes/
+    // jellyfin/...) and refuses an empty or wrongly shaped body with 400 before anything is written.
+    const merged = mergeDashPut(loadConfig(), body);
+    if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
+    saveConfig(merged.next);
+    return NextResponse.json({ ok: true, config: sanitizeConfig(merged.next) });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "save failed" },

@@ -28,6 +28,7 @@ export function WriteAction({
   onActive,
   autoCancelMs,
   renderAsk,
+  triggerClassName,
 }: {
   label: string;
   ariaLabel?: string;
@@ -53,6 +54,8 @@ export function WriteAction({
   autoCancelMs?: number;
   /** Replaces the default question (the shared ConfirmStop). */
   renderAsk?: (p: { onYes: () => void; onCancel: () => void }) => ReactNode;
+  /** Extra classes for the idle trigger (a 44 px touch target on mobile). */
+  triggerClassName?: string;
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [reason, setReason] = useState("");
@@ -108,6 +111,7 @@ export function WriteAction({
     return (
       <Button
         ref={trigger}
+        className={triggerClassName}
         size="sm"
         variant={primary ? "default" : "outline"}
         disabled={disabled}

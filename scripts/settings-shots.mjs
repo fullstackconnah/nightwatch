@@ -10,7 +10,7 @@
  * State fixtures mock GET /api/settings and the container list from scripts/fixtures/settings/fixtures.mjs (placeholders
  * only); the write routes answer from the mock. Time is page.clock (installed before goto); the zone is pinned.
  *
- * Checks written: C1 height, C2 inventory (the 98 spec kinds as probes, see inventory.json), RF refresh-failed, SF save-failed, C2c no write before Yes, C3 sentinels,
+ * Checks written: C1 height, C2 inventory (the 98 spec kinds as probes, see inventory.json), RF refresh-failed, SF save-failed, C2c no write before Yes (Clear and widget Delete), C10 K12 real-API saves, C3 sentinels,
  * C5s auto-open on paint, C6 calm paint, C7 answer slot, C9 drafts, C11 deep link, C12 targets / motion / errors,
  * C14 page errors and foreign requests.
  * Captures, per width: calm, partial, none, loading, load-error, refresh-failed, save-failed, no-password,
@@ -95,7 +95,7 @@ function watch(page, name) {
 async function visit(s, key, { hash = "", reduced = false, real = false } = {}) {
   const fx = FIXTURES[key];
   const page = await (reduced ? s.reducedContext : s.context).newPage();
-  const mock = { posts: [], gets: 0 };
+  const mock = { posts: [], gets: 0, bodies: [] };
   watch(page, s.name);
   live[s.name] = page;
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -105,6 +105,7 @@ async function visit(s, key, { hash = "", reduced = false, real = false } = {}) 
       const req = route.request();
       if (req.method() !== "GET") {
         mock.posts.push(`${req.method()} ${new URL(req.url()).pathname}`);
+        mock.bodies.push(req.postData());
         return json(route, fx.saveStatus ? { error: "upstream said 10.0.0.5 refused" } : { ok: true }, fx.saveStatus ?? 200);
       }
       mock.gets += 1;
@@ -224,8 +225,10 @@ await guarded("dashboard", () =>
   each(async (s) => {
     const { page } = await visit(s, "calm");
     await openStrip(page, "dashboard");
-    record("F3 saved badge out of flow", `dashboard@${s.name}`, await page.evaluate(() => { const b = [...document.querySelectorAll("#st-body-dashboard .nw-fade, #st-pane .nw-fade")].find((e) => e.textContent.trim() === "saved"); return Boolean(b) && getComputedStyle(b).position === "absolute"; }));
+    if (s.name === "1440") await page.waitForSelector("#st-pane .nw-fade", { state: "attached", timeout: SLOW }); // the pane mounts after the open
+    record("F3 saved badge out of flow", `dashboard@${s.name}`, await page.evaluate(() => { const b = [...document.querySelectorAll("#st-body-dashboard .nw-fade, #st-pane .nw-fade")].find((e) => e.textContent.trim() === "saved" && !e.closest("[hidden]")); return Boolean(b) && getComputedStyle(b).position === "absolute"; }));
     record("S no horizontal scroll", `dashboard@${s.name}`, (await overflow(page)) <= 0);
+    await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" }); // the fixed bottom nav hid the 390 widget row
     await shot(page, s, "dashboard");
     await page.close();
   }),
@@ -361,6 +364,49 @@ await guarded("C2c", () =>
   }),
 );
 
+// ---- C2c (widgets): Delete asks first; Escape and Cancel close the frame; Yes sends one PUT carrying only widgets ----
+await guarded("C2c-widget", () =>
+  each(async (s) => {
+    const { page, mock } = await visit(s, "calm", { hash: "#dashboard" });
+    const before = mock.posts.length;
+    const del = () => visibleBody(page).getByRole("button", { name: "Delete sonarr widget" });
+    await del().click();
+    const asked = await page.getByRole("button", { name: "Yes, delete" }).isVisible();
+    await page.keyboard.press("Escape");
+    const closed = !(await page.getByRole("button", { name: "Yes, delete" }).isVisible());
+    await del().click();
+    await page.getByRole("button", { name: "Cancel" }).first().click();
+    record("C2c widget delete asks, Escape and Cancel close, 0 writes before Yes", s.name, asked && closed && mock.posts.length === before);
+    await del().click();
+    await page.getByRole("button", { name: "Yes, delete" }).click();
+    await page.waitForTimeout(400);
+    const put = mock.bodies.map((b) => JSON.parse(b ?? "{}"));
+    record("C2c widget delete: one PUT, only widgets", s.name, mock.posts.length === before + 1 && put.length === 1 && Object.keys(put[0]).join() === "widgets");
+    await page.close();
+  }),
+);
+
+// ---- C9 (Hermes, Dashboard): a typed draft survives closing and reopening; the line, chip and answer say so ----
+await guarded("C9-hermes-dashboard", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm", { hash: "#hermes" });
+    await field(visibleBody(page), "Channel ID").fill("123456789");
+    await page.waitForTimeout(150);
+    record("C9 hermes chip Unsaved", s.name, (await text(page, "[data-feature=chip]")).trim() === "Unsaved");
+    record("C9 hermes answer names Hermes", s.name, (await text(page, "[data-feature=answer]")).includes("Hermes"));
+    record("C9 hermes line reads Edited", s.name, (await text(page, '[data-row-id="hermes"] .st-state')).includes("Edited · not saved"));
+    await openStrip(page, "dashboard");
+    await visibleBody(page).getByRole("button", { name: "Add widget" }).click();
+    await page.waitForTimeout(150);
+    record("C9 dashboard line reads Edited (editor open)", s.name, (await text(page, '[data-row-id="dashboard"] .st-state')).includes("Edited · not saved"));
+    await openStrip(page, "hermes");
+    record("C9 hermes value kept", s.name, (await field(visibleBody(page), "Channel ID").inputValue()) === "123456789");
+    await openStrip(page, "dashboard");
+    record("C9 widget editor kept", s.name, await visibleBody(page).getByRole("button", { name: "Save widget" }).isVisible());
+    await page.close();
+  }),
+);
+
 // ---- C11: /settings#minecraft opens Minecraft ----
 await guarded("C11", () =>
   each(async (s) => {
@@ -448,6 +494,38 @@ if (process.env.SENTINELS) {
     const body = await page.request.get(`${BASE_URL}/api/settings`).then((r) => r.text());
     record("C3 sentinel hits (html, inputs, GET body)", "1440", hits + (body.match(/NWSENTINEL-|86420/g) ?? []).length);
     await page.close();
+    } catch (e) { await failShot(s, e); }
+  });
+}
+
+// ---- C10 (K12), REAL API, opt-in: a widget save leaves the tile edit in the field; each PUT carries only its own fields; GET holds both ----
+if (process.env.C10 || process.env.SENTINELS) {
+  await guarded("C10", async () => {
+    const s = sessions[0];
+    try {
+      const { page } = await visit(s, "calm", { hash: "#dashboard", real: true });
+      const puts = [];
+      page.on("request", (r) => r.method() === "PUT" && new URL(r.url()).pathname === "/api/settings" && puts.push(Object.keys(JSON.parse(r.postData() ?? "{}")).sort().join()));
+      const body = visibleBody(page);
+      await body.getByRole("group", { name: "Container scope" }).getByRole("button").last().click();
+      const group = body.locator('input[aria-label^="Group for "]:visible').first();
+      await group.fill("NWC10-group");
+      await body.getByRole("button", { name: "Add widget" }).click();
+      const sel = body.getByLabel("Container", { exact: true });
+      const hasOpt = (await sel.locator("option").count()) > 1; // the real test stack may offer no container
+      if (hasOpt) await sel.selectOption({ index: 1 });
+      await body.getByLabel("Service URL").fill("http://homelab.local:1");
+      if (hasOpt) {
+        await body.getByRole("button", { name: "Save widget" }).click();
+        await page.waitForTimeout(1200);
+        record("C10 tile edit kept after a widget save", "1440", (await group.inputValue()) === "NWC10-group");
+      } else record("C10 skipped: no container", "1440", true);
+      await body.getByRole("button", { name: "Save tiles" }).click();
+      await page.waitForTimeout(1200);
+      const cfg = await page.request.get(`${BASE_URL}/api/settings`).then((r) => r.json());
+      record("C10 GET holds both changes", "1440", JSON.stringify(cfg.config.groups).includes("NWC10-group") && (!hasOpt || cfg.config.widgets.some((w) => w.url === "http://homelab.local:1")));
+      record("C10 PUT bodies: widget then tiles", "1440", puts.join(" | ") === (hasOpt ? "widgets | " : "") + "groups,hidden,icons,urls");
+      await page.close();
     } catch (e) { await failShot(s, e); }
   });
 }

@@ -305,3 +305,15 @@ test("N1: old anchors open the strips that now hold them", () => {
   assert.equal(legacyStripHash("#hermes"), "#hermes");
   assert.equal(legacyStripHash(""), "");
 });
+
+test("3b: Hermes and Dashboard drafts and errors reach the strip line, the chip and the answer", () => {
+  for (const [form, id, title] of [["hermes-model", "hermes", "Hermes"], ["hermes-daemon", "hermes", "Hermes"], ["widgets", "dashboard", "Dashboard"], ["tiles", "dashboard", "Dashboard"]] as const) {
+    const dirty = model({ forms: { [form]: { dirty: true, error: null } } });
+    assert.equal(strip(dirty, id).state, "Edited · not saved", form);
+    assert.equal(dirty.chip.label, "Unsaved", form);
+    assert.ok(dirty.answer.includes(title), form);
+    const failed = model({ forms: { [form]: { dirty: true, error: "Couldn’t save tiles: boom." } } });
+    assert.equal(failed.chip.label, "Not saved", form);
+    assert.equal(strip(failed, id).tone, "warn", form);
+  }
+});
