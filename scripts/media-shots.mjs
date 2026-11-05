@@ -224,8 +224,7 @@ async function main() {
     ]) {
       const { page } = await visit(s, "normal");
       await page.route("**/api/media/library", answer);
-      await page.waitForTimeout(2300); // SWR dedupes revalidation for 2 s; wait it out so the focus really refetches
-      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.clock.fastForward(310_000); // past the calm poll (300 s), so SWR's own refresh fires; focus revalidation was unreliable
       try {
         await chipIs(page, label);
         await perState(page, name, s.name);
