@@ -192,6 +192,7 @@ export function SettingsWidgets({
               say={`Deletes the ${w.container} widget. Add it again to bring it back.`}
               yes="Yes, delete"
               danger
+              triggerClassName="min-h-11 min-w-11 md:min-h-0 md:min-w-0"
               flight="Deleting…"
               failure="Couldn’t delete the widget"
               run={() => onDelete(w.id)}

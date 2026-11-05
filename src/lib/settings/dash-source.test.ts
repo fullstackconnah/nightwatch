@@ -39,5 +39,22 @@ test("D5/R7: Hermes model, Hermes daemon, widgets and tiles each report dirty an
 
 test("dashError copy: the three failure sentences are the spec's words", () => {
   const p = read("app/(dash)/settings/page.tsx");
-  for (const s of ["Couldn’t save the widget: ", "Couldn’t delete the widget: ", "Couldn’t save tiles: "]) assert.ok(p.includes(s), s);
+  for (const s of ["Couldn’t save the widget: ", "Couldn’t save tiles: "]) assert.ok(p.includes(s), s);
+  // F4: a failed Delete is worded by the WriteAction frame only, not by dashError as well
+  assert.ok(read("components/settings/settings-widgets.tsx").includes("Couldn’t delete the widget"));
+  assert.ok(!p.includes("Couldn’t delete the widget"));
+});
+
+test("K12: the settings PUT route merges through mergeDashPut and refuses with 400 before saveConfig", () => {
+  const r = read("app/api/settings/route.ts");
+  const put = r.slice(r.indexOf("mergeDashPut("));
+  assert.ok(r.includes("mergeDashPut("), "route calls mergeDashPut(");
+  assert.ok(put.indexOf("status: 400") > -1 && put.indexOf("status: 400") < put.indexOf("saveConfig("), "400 return before saveConfig(");
+});
+
+test("F1: a good Hermes daemon save re-seeds the drafts from the stored values", () => {
+  const h = read("components/settings/settings-hermes.tsx");
+  const i = h.indexOf('postJson("/api/settings/hermes-daemon"');
+  assert.ok(i > 0);
+  assert.match(h.slice(i, i + 200), /await mutate\(\);\s*setSeeded\(false\)/);
 });

@@ -38,3 +38,14 @@ test("K12: an empty, non-object or wrongly typed body is refused and merges noth
     assert.ok("error" in r, JSON.stringify(body));
   }
 });
+
+test("K12: only the five dashboard fields are merged; hermes, system and extra keys in the body are ignored", () => {
+  const body = JSON.parse('{ "widgets": [], "hermes": null, "system": {}, "extra": 1, "__proto__": { "polluted": 1 } }');
+  const withSystem = { ...current, system: { adminHash: "h" } } as unknown as AppConfig;
+  const next = ok(mergeDashPut(withSystem, body)) as unknown as Record<string, unknown>;
+  assert.deepEqual(next.hermes, current.hermes);
+  assert.deepEqual(next.system, { adminHash: "h" });
+  assert.equal("extra" in next, false);
+  assert.equal(Object.getPrototypeOf(next), Object.prototype);
+  assert.equal((next as { polluted?: unknown }).polluted, undefined);
+});

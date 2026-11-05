@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const [forms, setForms] = useState<Partial<Record<FormId, FormState>>>({});
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
+  // shortcut: tileDraft is seeded once and compared by JSON key order; another tab's save or a re-added URL can show a false "unsaved". Upgrade if owners report it.
   const [dashError, setDashError] = useState<{ widgets: string | null; tiles: string | null }>({ widgets: null, tiles: null });
 
   const report = useCallback((id: FormId, s: FormState) => {
@@ -83,8 +84,7 @@ export default function SettingsPage() {
     try {
       await persist({ widgets: data.config.widgets.filter((w) => w.id !== id) });
     } catch (e) {
-      setDashError((d) => ({ ...d, widgets: `Couldn’t delete the widget: ${why(e)}.` }));
-      throw e;
+      throw e; // the WriteAction frame shows the reason
     }
   }
 

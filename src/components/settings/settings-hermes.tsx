@@ -360,6 +360,7 @@ function HermesDaemonCard() {
       }
       await postJson("/api/settings/hermes-daemon", body);
       await mutate();
+      setSeeded(false); // reload the drafts from the stored (server-normalised) values
       setWebhookDraft("");
       setBotTokenDraft("");
       setSaveVersion((v) => v + 1);
