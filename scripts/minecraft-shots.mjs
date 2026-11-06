@@ -511,7 +511,7 @@ try {
       const section = detail(page).locator('section[aria-label="Upload a server pack"]');
       const input = section.getByLabel("Memory GB");
       await input.scrollIntoViewIfNeeded();
-      await input.fill("abc");
+      await input.fill("0");
       const error = await seen(section.getByText("Enter a number above 0, or leave blank for the default."));
       const uploadOff = await section.getByRole("button", { name: "Upload" }).isDisabled();
       record("upload-memory-error", s.name, { error, uploadOff });

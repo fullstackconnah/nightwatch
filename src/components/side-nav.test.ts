@@ -21,3 +21,7 @@ test("a failed logout shows an error and does not redirect", () => {
   assert.match(src, /if \(!ok\) return setLogoutError\(true\);\s*window\.location\.href = "\/login";/);
   assert.equal(src.match(/\{LOGOUT_ERROR\}/g)?.length, 2);
 });
+
+test("an expired session's logout (401) still counts as signed out", () => {
+  assert.match(src, /r\.ok \|\| r\.status === 401/);
+});

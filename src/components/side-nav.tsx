@@ -112,7 +112,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
     setLogoutError(false);
     // Redirect only on success: after a failed call the session cookie is still valid.
     const ok = await fetch("/api/auth/logout", { method: "POST" })
-      .then((r) => r.ok)
+      .then((r) => r.ok || r.status === 401) // logout is not public: an expired session answers 401 and is already signed out
       .catch(() => false);
     if (!ok) return setLogoutError(true);
     window.location.href = "/login";
