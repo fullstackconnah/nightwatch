@@ -1,3 +1,4 @@
+import { goLive } from "@/lib/sse-live";
 import { getTelemetryHistory, subscribeTelemetry, type TelemetrySample } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
@@ -45,13 +46,21 @@ export async function GET(request: Request): Promise<Response> {
       // history instantly instead of waiting a minute for it to fill back up.
       safeEnqueue(`event: history\ndata: ${JSON.stringify(getTelemetryHistory())}\n\n`);
 
-      unsubscribe = subscribeTelemetry((sample: TelemetrySample) => {
-        safeEnqueue(`event: sample\ndata: ${JSON.stringify(sample)}\n\n`);
-      });
-
-      heartbeatTimer = setInterval(() => {
-        safeEnqueue(": ping\n\n");
-      }, HEARTBEAT_MS);
+      // The history enqueue above can already have torn the stream down; goLive then
+      // undoes its own subscription instead of leaking it past teardown.
+      const live = goLive(
+        () => closed,
+        () => [
+          subscribeTelemetry((sample: TelemetrySample) => {
+            safeEnqueue(`event: sample\ndata: ${JSON.stringify(sample)}\n\n`);
+          }),
+        ],
+        () => safeEnqueue(": ping\n\n"),
+        HEARTBEAT_MS,
+      );
+      if (!live) return;
+      unsubscribe = live.unsubscribe;
+      heartbeatTimer = live.timer;
 
       request.signal.addEventListener("abort", teardown, { once: true });
     },

@@ -1,4 +1,5 @@
 import { readContainerLogTail, subscribeContainerLogs } from "@/lib/log-stream";
+import { goLive } from "@/lib/sse-live";
 import { parseResume } from "@/lib/log-reconnect";
 import {
   LOG_TAIL_DEFAULT,
@@ -120,22 +121,28 @@ export async function GET(request: Request): Promise<Response> {
 
       if (closed) return;
 
-      for (const name of names) {
-        const unsubscribe = subscribeContainerLogs(
-          name,
-          (line: LogLine) => {
-            safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
-          },
-          (state: LogTrackState) => {
-            safeEnqueue(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
-          },
-        );
-        unsubscribes.push(unsubscribe);
-      }
-
-      heartbeatTimer = setInterval(() => {
-        safeEnqueue(": ping\n\n");
-      }, HEARTBEAT_MS);
+      // A subscribe callback can fail its enqueue and tear down mid-loop; goLive then
+      // undoes the subscriptions instead of leaking them past teardown.
+      const live = goLive(
+        () => closed,
+        () =>
+          names.map((name) =>
+            subscribeContainerLogs(
+              name,
+              (line: LogLine) => {
+                safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
+              },
+              (state: LogTrackState) => {
+                safeEnqueue(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
+              },
+            ),
+          ),
+        () => safeEnqueue(": ping\n\n"),
+        HEARTBEAT_MS,
+      );
+      if (!live) return;
+      unsubscribes.push(live.unsubscribe);
+      heartbeatTimer = live.timer;
     },
     cancel() {
       teardown();
