@@ -3,6 +3,7 @@
 // (unlike Next's build, which does), so an "@/" import would resolve fine
 // under tsc but throw ERR_MODULE_NOT_FOUND at test time.
 import { loadConfig } from "../config.ts";
+import { fetchNoCrossOriginRedirect } from "../safe-fetch.ts";
 
 /**
  * Modpack search over CurseForge + Modrinth for the /minecraft "install a
@@ -134,7 +135,7 @@ function enc(s: string): string {
 async function fetchJson(url: string, headers?: Record<string, string>): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await (headers ? fetchNoCrossOriginRedirect : fetch)(url, {
       headers,
       signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
       cache: "no-store",

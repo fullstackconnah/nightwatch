@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
+import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import type {
   ProxyCertificate,
   ProxyManagerSnapshot,
@@ -59,7 +60,7 @@ interface NpmTokenResponse {
 async function requestToken(creds: NpmCredentials): Promise<AuthResult> {
   let res: Response;
   try {
-    res = await fetch(`${creds.url}/api/tokens`, {
+    res = await fetchNoCrossOriginRedirect(`${creds.url}/api/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identity: creds.email, secret: creds.password }),
