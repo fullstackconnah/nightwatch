@@ -44,7 +44,7 @@ export function usedVolumeNames(
   return used;
 }
 
-/** Names of the orphans among `volumes`; the one filter Clear and the snapshot share. */
+/** Names of the orphans among `volumes`, for Clear (the snapshot keeps the Volume objects for sizes). */
 export function orphanVolumeNames(
   volumes: readonly { Name: string; Labels?: Record<string, string> | null }[] | null | undefined,
   containers: readonly { Mounts?: readonly { Type?: string; Name?: string }[] }[],
