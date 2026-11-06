@@ -359,6 +359,22 @@ await each(async (s) => {
   await page.close();
 });
 
+// M4: a failed sign-out shows the role=alert line in the side nav (1440) or the top bar (390).
+stage = "signout-error";
+await guarded("signout-error", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm");
+    await page.route("**/api/auth/logout", (route) => route.fulfill({ status: 500, body: "{}" }));
+    await page.getByRole("button", { name: /^Log out$/ }).filter({ visible: true }).first().click();
+    const alert = page.getByRole("alert").filter({ hasText: /sign out/ });
+    await alert.waitFor({ timeout: SLOW });
+    record("M4 sign-out error visible, no redirect", s.name, (await alert.isVisible()) && new URL(page.url()).pathname === "/hermes");
+    const box = await page.locator(s.name === "390" ? "header" : "aside").first().boundingBox();
+    if (box) await page.screenshot({ path: join(OUT_DIR, `signout-error-${s.name}.png`), clip: { x: Math.max(0, box.x - 16), y: Math.max(0, box.y - 16), width: Math.min(box.width + 32, s.name === "390" ? 390 : 1440), height: Math.min(box.height + 32, 900) } });
+    await page.close();
+  }),
+);
+
 // C12: under reduced motion nothing in main has a transition duration.
 await guarded("C12", () =>
   each(async (s) => {
