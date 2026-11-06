@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { docker, removeImage } from "@/lib/docker";
+import { isImageId } from "@/lib/container-id";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ function explain(e: unknown): string {
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  if (!isImageId(id)) return NextResponse.json({ error: "invalid image id" }, { status: 400 });
 
   try {
     // Defensive re-check: the UI already renders the delete action disabled on

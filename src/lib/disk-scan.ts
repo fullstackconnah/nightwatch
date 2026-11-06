@@ -400,6 +400,8 @@ export function startScanJob(kind: ScanJobKind, root: string): StartJobResult {
     startedAt: Date.now(),
     finishedAt: null,
   };
+  // Sweep aged-out jobs here too: a replaced latest id is otherwise never looked up again.
+  for (const [jid, j] of jobs()) if (isExpired(j)) jobs().delete(jid);
   jobs().set(id, job);
   latestByKind().set(kind, id);
 
