@@ -4,7 +4,7 @@ import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { isOrphanVolume, removeVolumes } from "@/lib/orphan-volumes";
-import { createSwr,withTimeout, type Swr } from "@/lib/single-flight";
+import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
@@ -262,7 +262,7 @@ export interface ContainerStatsSnapshot {
 /** One-shot stats sample. Docker waits ~1s internally to fill precpu. */
 export async function containerStats(id: string): Promise<ContainerStatsSnapshot> {
   const container = docker.getContainer(id);
-  const s = (await container.stats({ stream: false })) as unknown as {
+  const s = (await container.stats({ stream: false, abortSignal: AbortSignal.timeout(STATS_CALL_MS) } as never)) as unknown as {
     cpu_stats: {
       cpu_usage: { total_usage: number };
       system_cpu_usage?: number;
@@ -330,6 +330,11 @@ export async function containerStats(id: string): Promise<ContainerStatsSnapshot
 
 const STATS_TTL_MS = 5_000;
 
+/** Bound for each one-shot call a telemetry tick awaits: above Docker's ~1s stats wait, below the 5s memo TTL, so a stuck call cannot wedge the 1Hz loop. */
+export const TELEMETRY_CALL_MS = 3_000;
+// Docker samples precpu for ~1 s, plus queueing on a busy host, so per-container stats get a longer bound.
+const STATS_CALL_MS = 4_500;
+
 /** Per-container row returned by allContainerStats/cached — mirrors ContainerStatsSnapshot minus the id. */
 export interface ContainerStatsRow {
   cpuPct: number;
@@ -349,9 +354,11 @@ export interface ContainerStatsRow {
  * 1Hz streaming consumers that would otherwise see the same sample ~4 ticks out of 5.
  */
 async function collectAllContainerStats(): Promise<Record<string, ContainerStatsRow>> {
-  const running = await docker.listContainers({ all: false });
-  const settled = await Promise.allSettled(
-    running.map(async (c) => {
+  const running = await withTimeout(docker.listContainers({ all: false, abortSignal: AbortSignal.timeout(TELEMETRY_CALL_MS) }), TELEMETRY_CALL_MS, () => null);
+  if (!running) throw new Error("listContainers timed out");
+  const settled = await mapWithin(
+    running,
+    async (c) => {
       const s = await containerStats(c.Id);
       const row: ContainerStatsRow = {
         cpuPct: s.cpuPercent,
@@ -364,14 +371,11 @@ async function collectAllContainerStats(): Promise<Record<string, ContainerStats
         pids: s.pids,
         ts: s.ts,
       };
-      return [c.Id, row] as const;
-    }),
+      return row;
+    },
+    STATS_CALL_MS,
   );
-  const data: Record<string, ContainerStatsRow> = {};
-  for (const r of settled) {
-    if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
-  }
-  return data;
+  return Object.fromEntries(settled.map(([c, row]) => [c.Id, row]));
 }
 
 const statsMemo = new Memo<Record<string, ContainerStatsRow>>({

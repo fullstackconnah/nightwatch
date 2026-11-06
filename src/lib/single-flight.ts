@@ -62,3 +62,15 @@ export function withTimeout<T, F>(p: Promise<T>, ms: number, fallback: () => F):
   p.catch(() => {});
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
+
+/** Runs `fn` over `items` in parallel; keeps `[item, result]` for each that resolves within `ms`. Rejected and timed-out calls are dropped. */
+export async function mapWithin<T, R>(items: T[], fn: (t: T) => Promise<R>, ms: number): Promise<[T, R][]> {
+  const none = Symbol();
+  const done = await Promise.all(
+    items.map(async (t) => {
+      const r = await withTimeout(fn(t), ms, () => none).catch(() => none);
+      return r === none ? null : ([t, r as R] as [T, R]);
+    }),
+  );
+  return done.filter((x): x is [T, R] => x !== null);
+}
