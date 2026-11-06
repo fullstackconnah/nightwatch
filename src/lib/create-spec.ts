@@ -47,6 +47,37 @@ export function createNetworks(): string[] {
 
 export const createNetwork = (spec: Checkable) => spec.network?.trim() || "bridge";
 
+// Shape check for an untrusted POST body, run before refuseCreate and any Docker call
+// (createAndStartContainer pulls the image before it reads ports or env). Returns a 400 message or null.
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+const isPort = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 65535;
+const rowShapes: Record<string, Record<string, (v: unknown) => boolean>> = {
+  ports: { host: isPort, container: isPort, protocol: (v) => typeof v === "string" },
+  env: { key: (v) => typeof v === "string", value: (v) => typeof v === "string" },
+  volumes: { host: (v) => typeof v === "string", container: (v) => typeof v === "string", readonly: (v) => typeof v === "boolean" },
+};
+const requiredFields = new Set(["ports.host", "ports.container"]);
+
+export function validateSpecShape(body: unknown): string | null {
+  if (!isObj(body)) return "body must be a JSON object";
+  if (typeof body.image !== "string" || !body.image) return "image is required";
+  for (const f of ["name", "network", "restartPolicy"]) {
+    if (body[f] !== undefined && typeof body[f] !== "string") return `${f} must be a string`;
+  }
+  for (const [list, fields] of Object.entries(rowShapes)) {
+    const rows = body[list];
+    if (rows === undefined) continue;
+    if (!Array.isArray(rows)) return `${list} must be a list`;
+    for (const row of rows) {
+      if (!isObj(row)) return `${list} rows must be objects`;
+      for (const [f, ok] of Object.entries(fields)) {
+        if (row[f] === undefined ? requiredFields.has(`${list}.${f}`) : !ok(row[f])) return `${list}.${f} is invalid`;
+      }
+    }
+  }
+  return null;
+}
+
 export function validateCreateSpec(spec: Checkable): string | null {
   const roots = bindRoots();
   // Same row filter createAndStartContainer applies when building Mounts.

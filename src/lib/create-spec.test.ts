@@ -3,7 +3,54 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildMounts, checkCreateSpecHost, validateCreateSpec } from "./create-spec.ts";
+import { buildMounts, checkCreateSpecHost, validateCreateSpec, validateSpecShape } from "./create-spec.ts";
+
+const badShapes: [string, unknown, RegExp][] = [
+  ["null body", null, /object/],
+  ["array body", [], /object/],
+  ["string body", "x", /object/],
+  ["no image", {}, /image/],
+  ["blank image", { image: "" }, /image/],
+  ["image number", { image: 5 }, /image/],
+  ["env string", { image: "i", env: "x" }, /env must be a list/],
+  ["env null row", { image: "i", env: [null] }, /env/],
+  ["env key number", { image: "i", env: [{ key: 1, value: "v" }] }, /env/],
+  ["ports null row", { image: "i", ports: [null] }, /ports/],
+  ["ports missing numbers", { image: "i", ports: [{}] }, /ports/],
+  ["port 70000", { image: "i", ports: [{ host: 70000, container: 80 }] }, /ports/],
+  ["port 0", { image: "i", ports: [{ host: 0, container: 80 }] }, /ports/],
+  ["port fraction", { image: "i", ports: [{ host: 80.5, container: 80 }] }, /ports/],
+  ["port protocol number", { image: "i", ports: [{ host: 80, container: 80, protocol: 1 }] }, /ports/],
+  ["volumes string", { image: "i", volumes: "x" }, /volumes must be a list/],
+  ["volumes null row", { image: "i", volumes: [null] }, /volumes/],
+  ["volumes host number", { image: "i", volumes: [{ host: 1, container: "/d" }] }, /volumes/],
+  ["network number", { image: "i", network: 5 }, /network/],
+  ["restartPolicy number", { image: "i", restartPolicy: 5 }, /restartPolicy/],
+  ["name number", { image: "i", name: 5 }, /name/],
+];
+
+for (const [label, body, re] of badShapes) {
+  test(`validateSpecShape refuses ${label}`, () => {
+    const r = validateSpecShape(body);
+    assert.ok(r && re.test(r), String(r));
+  });
+}
+
+test("validateSpecShape accepts a minimal and a full spec", () => {
+  assert.equal(validateSpecShape({ image: "img" }), null);
+  assert.equal(
+    validateSpecShape({
+      name: "n",
+      image: "img",
+      ports: [{ host: 8080, container: 80, protocol: "tcp" }],
+      env: [{ key: "A", value: "b" }],
+      volumes: [{ host: "/srv/x", container: "/data", readonly: true }],
+      network: "bridge",
+      restartPolicy: "always",
+    }),
+    null,
+  );
+});
 
 const spec = (host: string, network?: string) => ({
   image: "nginx",

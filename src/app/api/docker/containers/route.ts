@@ -5,6 +5,7 @@ import {
   refuseCreate,
   type CreateContainerSpec,
 } from "@/lib/docker";
+import { validateSpecShape } from "@/lib/create-spec";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 
@@ -44,10 +45,10 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
-    const spec = (await req.json()) as CreateContainerSpec;
-    if (!spec.image) {
-      return NextResponse.json({ error: "image is required" }, { status: 400 });
-    }
+    const body = await req.json().catch(() => null);
+    const bad = validateSpecShape(body);
+    if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    const spec = body as CreateContainerSpec;
     spec.ports ||= [];
     spec.env ||= [];
     spec.volumes ||= [];

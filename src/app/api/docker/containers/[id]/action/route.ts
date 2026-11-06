@@ -41,7 +41,7 @@ function explain(e: unknown, action: ContainerAction): string {
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   if (!isContainerId(id)) return NextResponse.json({ error: "invalid container id" }, { status: 400 });
-  const { action } = (await req.json().catch(() => ({}))) as { action?: unknown };
+  const { action } = ((await req.json().catch(() => null)) ?? {}) as { action?: unknown };
   if (!isAction(action)) {
     return NextResponse.json(
       { error: `action must be one of ${CONTAINER_ACTIONS.join("|")}` },
