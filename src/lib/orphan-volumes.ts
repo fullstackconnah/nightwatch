@@ -43,3 +43,12 @@ export function usedVolumeNames(
   }
   return used;
 }
+
+/** Names of the orphans among `volumes`; the one filter Clear and the snapshot share. */
+export function orphanVolumeNames(
+  volumes: readonly { Name: string; Labels?: Record<string, string> | null }[] | null | undefined,
+  containers: readonly { Mounts?: readonly { Type?: string; Name?: string }[] }[],
+): string[] {
+  const used = usedVolumeNames(containers);
+  return (volumes ?? []).filter((v) => isOrphanVolume(v, used)).map((v) => v.Name);
+}

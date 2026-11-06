@@ -3,7 +3,7 @@ import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
-import { isOrphanVolume, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
+import { isOrphanVolume, orphanVolumeNames, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
@@ -582,9 +582,8 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   // removes anonymous only), so remove the listed orphans by name instead.
   // Not getDiskReclaimSnapshot(): it awaits a 20-70 s df that can fail, and Clear needs no sizes.
   const [volumeList, containers] = await Promise.all([docker.listVolumes(), docker.listContainers({ all: true })]);
-  const used = usedVolumeNames(containers);
   const { removed } = await removeVolumes(
-    (volumeList.Volumes || []).filter((v) => isOrphanVolume(v, used)).map((v) => v.Name),
+    orphanVolumeNames(volumeList.Volumes, containers),
     (name) => docker.getVolume(name).remove(),
   );
   dfSwr.clear();
