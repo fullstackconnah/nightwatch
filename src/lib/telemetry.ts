@@ -1,8 +1,9 @@
-import { allContainerStats, type ContainerStatsRow } from "@/lib/docker";
+import { allContainerStats, TELEMETRY_CALL_MS, type ContainerStatsRow } from "@/lib/docker";
 import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { getInterfaceCounters } from "@/lib/network";
 import { recordMetricsHistoryTick } from "@/lib/metrics-history";
+import { withTimeout } from "@/lib/single-flight";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "@/lib/types/telemetry";
 
 /**
@@ -64,19 +65,19 @@ async function tick(): Promise<void> {
   // /host/proc bind mount hiccups) must never cost the tick its container data.
   const [raw, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
     allContainerStats(true),
-    getHostVitals().catch((err: unknown) => {
+    withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
       console.error("[telemetry] getHostVitals failed:", err);
       return null;
     }),
-    getHostDiskIoCounters().catch((err: unknown) => {
+    withTimeout(getHostDiskIoCounters(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
       console.error("[telemetry] getHostDiskIoCounters failed:", err);
       return null;
     }),
-    getHostNetCounters().catch((err: unknown) => {
+    withTimeout(getHostNetCounters(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
       console.error("[telemetry] getHostNetCounters failed:", err);
       return null;
     }),
-    getGpuSnapshot().catch((err: unknown) => {
+    withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
       console.error("[telemetry] getGpuSnapshot failed:", err);
       return null;
     }),
