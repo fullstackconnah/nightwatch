@@ -89,7 +89,11 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
     const t = m.text().slice(0, 200);
     consoleErrorMessages[t] = (consoleErrorMessages[t] ?? 0) + 1;
     // the full hydration text names the differing attribute (its diff follows the 200-char intro)
-    if (/hydrated but some attributes/.test(t) && !hydrationFull) hydrationFull = m.text().slice(0, 6000);
+    if (/hydrated but some attributes/.test(t) && !hydrationFull) {
+      hydrationFull = "pending"; // React passes the attribute diff as a %s argument, so it isn't in m.text()
+      Promise.all(m.args().map((a) => a.jsonValue().catch(() => String(a))))
+        .then((v) => { hydrationFull = v.map(String).join("\n").slice(0, 6000); }, (e) => { hydrationFull = `args unreadable: ${e}`; });
+    }
     // page.step names the script step; url + viewport + clock-pinned tell whether setFixedTime causes a hydration mismatch
     consoleErrorLog.push({ msg: t, page: page.url(), source: m.location().url, step: page.step ?? "load", viewport: `${viewport.width}x${viewport.height}`, fixedTime });
 
