@@ -69,15 +69,15 @@ async function tick(): Promise<void> {
       console.error("[telemetry] getHostVitals failed:", err);
       return null;
     }),
-    withTimeout(getHostDiskIoCounters(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
+    getHostDiskIoCounters().catch((err: unknown) => {
       console.error("[telemetry] getHostDiskIoCounters failed:", err);
       return null;
     }),
-    withTimeout(getHostNetCounters(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
+    getHostNetCounters().catch((err: unknown) => {
       console.error("[telemetry] getHostNetCounters failed:", err);
       return null;
     }),
-    withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
+    getGpuSnapshot().catch((err: unknown) => {
       console.error("[telemetry] getGpuSnapshot failed:", err);
       return null;
     }),
