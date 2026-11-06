@@ -1966,9 +1966,6 @@ body {
   overflow: hidden;
   transition: opacity 200ms var(--ease-calm);
 }
-.wl-panel[data-stale] {
-  opacity: 0.55;
-}
 @media (max-width: 767px) {
   .wl-panel {
     --wl-row: 56px;
@@ -2670,7 +2667,9 @@ body {
   overflow: hidden;
   transition: opacity 200ms var(--ease-calm);
 }
-.pt-panel[data-stale] {
+/* Stale dims the figures and graphics only. Labels keep full contrast: muted ink-faint is 4.89:1 on the panel at full
+   strength and 2.26:1 at .55, while ink stays 5.05:1 at .55. */
+:is(.wl-panel, .pt-panel, .band)[data-stale] :is(.wl-spark, .wl-bar, .wl-val, .wl-dval, .tl-spark, .tl-now, .tl-avg, .pt-c, .band-val) {
   opacity: 0.55;
 }
 @media (max-width: 767px) {
@@ -2905,6 +2904,14 @@ body {
 }
 /* 390: two lines. Groups: dot, name, procs, chevron / cpu, mem, disk i/o. Processes: pid (before comm), comm, state / cpu, mem; column 4 stays empty (7.3). */
 @media (max-width: 767px) {
+  /* The 'other · not in a container' name wraps (two lines at most) instead of cutting off. */
+  .pt-grow > .pt-name {
+    white-space: normal;
+    line-height: 1.15;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
   .pt-colhead,
   .pt-grow,
   .pt-pin {

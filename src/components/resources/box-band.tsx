@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Sparkline } from "@/components/sparkline";
+import { cn } from "@/lib/utils";
 import {
   HistoryRangeControl,
   MetricHistoryPanel,
@@ -30,6 +31,8 @@ const LABEL_PX = 10; // 0.625rem
 const labelWidth = (text: string) => text.length * 0.6 * LABEL_PX;
 
 const compactBytes = (v: number) => v === 0 ? "0" : formatBytes(v, 0).replace(/ (.)iB$/, "$1");
+// Same words the watchlist uses for a figure with no reading.
+const NO_DATA = "no data";
 const compactPct = (v: number) => `${Number.isInteger(v) ? v : v.toFixed(1)}%`;
 
 /**
@@ -92,9 +95,9 @@ export function BoxBand({
       aria = `Box CPU ${formatPercent(host.cpuPct, 1)}: containers ${c}, host and other ${o}, idle ${f}`;
       const load = host.loadAvg ?? [];
       figs = [
-        { label: "load 1m", value: load[0] != null ? load[0].toFixed(2) : "—" },
-        { label: "load 5m", value: load[1] != null ? load[1].toFixed(2) : "—" },
-        { label: "load 15m", value: load[2] != null ? load[2].toFixed(2) : "—" },
+        { label: "load 1m", value: load[0] != null ? load[0].toFixed(2) : NO_DATA },
+        { label: "load 5m", value: load[1] != null ? load[1].toFixed(2) : NO_DATA },
+        { label: "load 15m", value: load[2] != null ? load[2].toFixed(2) : NO_DATA },
         { label: "temp", value: host.tempC != null ? `${host.tempC.toFixed(0)}°C` : "no sensor" },
       ];
       sparkMax = Math.max(5, ...series);
@@ -122,18 +125,18 @@ export function BoxBand({
   });
 
   return (
-    <section className="panel p-4 flex flex-col gap-3 band" style={stale ? { opacity: 0.55 } : undefined} aria-label="The whole box">
+    <section className="panel p-4 flex flex-col gap-3 band" data-stale={stale || undefined} aria-label="The whole box">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-baseline gap-3 min-w-0">
           <span className="microlabel">THE BOX</span>
-          <span className={host ? "font-mono text-lg text-ink" : "font-mono text-sm text-ink-dim"}>{figure}</span>
+          <span className={host ? "band-val font-mono text-lg text-ink" : "font-mono text-sm text-ink-dim"}>{figure}</span>
         </div>
         <div className="w-full md:w-auto">
           <HistoryRangeControl value={range} onChange={onRangeChange} />
         </div>
       </div>
 
-      <div ref={trackRef} role="img" aria-label={aria} className="relative h-5 rounded-md overflow-hidden bg-panel-2">
+      <div ref={trackRef} role="img" aria-label={aria} className="band-val relative h-5 rounded-md overflow-hidden bg-panel-2">
         {segs.map(({ i, pct, start: x }) => (
           <div key={`s${i}`} className={`band-seg absolute inset-0 origin-left ${SEG_FILL[i]}`} style={{ transform: `translateX(${x}%) scaleX(${pct / 100})` }} />
         ))}
@@ -172,12 +175,12 @@ export function BoxBand({
         {figs.map((f) => (
           <div key={f.label} className="min-w-0">
             <div className="microlabel truncate">{f.label}</div>
-            <div className="font-mono text-sm text-ink mt-0.5 truncate">{f.value}</div>
+            <div className={cn("band-val font-mono text-sm mt-0.5 truncate", f.value === NO_DATA ? "text-ink-dim" : "text-ink")}>{f.value}</div>
           </div>
         ))}
         <div className="col-span-2 md:col-span-1 min-w-0">
           <div className="microlabel">60 s trend</div>
-          {series.length > 0 && <Sparkline values={series} max={sparkMax} width={160} height={32} className="text-accent w-full md:w-40 mt-0.5" />}
+          {series.length > 0 && <Sparkline values={series} max={sparkMax} width={160} height={32} className="band-val text-accent w-full md:w-40 mt-0.5" />}
         </div>
       </div>
 

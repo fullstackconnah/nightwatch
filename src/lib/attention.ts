@@ -13,6 +13,7 @@ import {
   sortHits,
   toHits,
   deriveChanges,
+  pruneRestartCounts,
   clipError,
   type AttentionHit,
   type AttentionReport,
@@ -176,6 +177,7 @@ function probeRestartLoop(containers: RuntimeContainer[]): RawHit[] {
     // rolling "since last check" delta, not a fixed reference point.
     counts.set(c.id, c.restartCount);
   }
+  pruneRestartCounts(counts, containers.map((c) => c.id));
   return hits;
 }
 

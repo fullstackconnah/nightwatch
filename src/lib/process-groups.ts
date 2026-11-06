@@ -83,3 +83,11 @@ export function topProcs<P extends PLike>(g: Group<P>, query: string, sort: Grou
   const key = (p: P) => (sort === "cpu" ? p.cpuPct : p.rssBytes);
   return [...pool].sort((a, b) => (key(b) ?? -1) - (key(a) ?? -1) || a.pid - b.pid).slice(0, n);
 }
+
+/** A held order keeps its places but still lists groups that newly match; ids no longer ranked drop out. */
+export function withNewcomers(order: readonly string[] | null, ranked: readonly string[]): string[] {
+  const now = new Set(ranked);
+  const kept = (order ?? []).filter((id) => now.has(id));
+  const have = new Set(kept);
+  return [...kept, ...ranked.filter((id) => !have.has(id))];
+}

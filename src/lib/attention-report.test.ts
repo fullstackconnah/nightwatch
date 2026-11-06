@@ -4,6 +4,7 @@ import {
   deriveChanges,
   firstHit,
   parseSince,
+  pruneRestartCounts,
   PENDING,
   runProbes,
   sortHits,
@@ -232,4 +233,10 @@ test("events are newest first", () => {
 test("Docker failed: no containers, backup events kept", () => {
   const ev = deriveChanges([], backupOk, SINCE, []);
   assert.equal(ev.length, 1);
+});
+
+test("pruneRestartCounts: drops containers that are gone, keeps the rest", () => {
+  const counts = new Map([["a", 1], ["gone", 4]]);
+  pruneRestartCounts(counts, ["a", "b"]);
+  assert.deepEqual([...counts.keys()], ["a"]);
 });

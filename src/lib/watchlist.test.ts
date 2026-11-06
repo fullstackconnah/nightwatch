@@ -9,6 +9,9 @@ import {
   createRanker,
   splitWatch,
   quietCap,
+  legendEntries,
+  watchCpuText,
+  listHeld,
   type WatchItem,
 } from "./watchlist.ts";
 
@@ -133,4 +136,38 @@ test("quietCap: the smallest step strictly above the quiet maximum", () => {
   assert.equal(quietCap("mem", 0), 16 * 1024 ** 2);
   assert.equal(quietCap("mem", 40 * 1024 ** 2), 64 * 1024 ** 2);
   assert.equal(quietCap("mem", 5 * 1024 ** 3), 1024 ** 3, "clamps to the top step");
+});
+
+test("legendEntries: a series with no samples is flagged noData, one with a sample is not", () => {
+  const out = legendEntries([
+    { key: "host", label: "box", points: [1, null] },
+    { key: "a", label: "a", points: [null, null] },
+    { key: "b", label: "b", points: [] },
+  ]);
+  assert.deepEqual(
+    out.map((e) => [e.key, e.noData]),
+    [["host", false], ["a", true], ["b", true]],
+  );
+});
+
+test("watchCpuText: one precision (2 dp) for every cpu figure, so rows line up", () => {
+  assert.equal(watchCpuText(1.2), "1.20%");
+  assert.equal(watchCpuText(0.85), "0.85%");
+  assert.equal(watchCpuText(0.05), "0.05%");
+  assert.equal(watchCpuText(12), "12.00%");
+});
+
+test("listHeld: hover, focus, an open row or a stale feed each hold the order", () => {
+  const off = { hover: false, focusIn: false, openId: null, stale: false };
+  assert.equal(listHeld(off), false);
+  for (const k of ["hover", "focusIn", "stale"] as const) assert.equal(listHeld({ ...off, [k]: true }), true, k);
+  assert.equal(listHeld({ ...off, openId: "c1" }), true);
+});
+
+test("listHeld reaches the ranker: while held a new order waits and pending is set", () => {
+  const r = createRanker();
+  r.offer(["a", "b"], 0, false);
+  assert.equal(r.offer(["b", "a"], 10_000, listHeld({ hover: false, focusIn: false, openId: null, stale: true })), false);
+  assert.equal(r.pending, true);
+  assert.deepEqual([...(r.order ?? [])], ["a", "b"]);
 });
