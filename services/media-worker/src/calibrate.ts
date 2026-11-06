@@ -10,7 +10,7 @@ import { encodeArgs, streamInfos } from "./encode-args.ts";
 import { createGuard } from "./fsguard.ts";
 import { resolveMediaPath } from "./paths.ts";
 import { NICE, ffprobeJson, parseProbe } from "./probe.ts";
-import { CRF, SWEET_KBPS } from "./sweet-spot.ts";
+import { CRF, SWEET_KBPS, TUNE } from "./sweet-spot.ts";
 
 export interface CalibRow {
   file: string;
@@ -67,7 +67,7 @@ export async function calibrate(o: CalibOpts): Promise<CalibRow[]> {
     const cutStreams = streamInfos(await ffprobeJson(cut, { prefix }));
     for (const crf of [base - 2, base, base + 2]) {
       const out = join(o.dirs.calibration, `${stem}-crf${crf}.mkv`);
-      const argv = encodeArgs({ src: cut, out, container: "matroska", streams: cutStreams, crf, prefix });
+      const argv = encodeArgs({ src: cut, out, container: "matroska", streams: cutStreams, crf, tune: TUNE[input.video.res][kind], prefix });
       ff(prefix, argv.slice(prefix.length));
       const bytes = statSync(out).size;
       const kbps = Math.round((bytes * 8) / cutSec / 1000);

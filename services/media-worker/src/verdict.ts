@@ -1,6 +1,6 @@
 import type { MediaFile, Verdict } from "./types.ts";
 import {
-  BYTES_PER_KBPS_SEC, CRF, EFFICIENT_CODECS, EFFICIENT_CODEC_PENALTY, FLAG_RATIO, MIN_SAVING_PCT, SWEET_KBPS,
+  BYTES_PER_KBPS_SEC, CRF, TUNE, EFFICIENT_CODECS, EFFICIENT_CODEC_PENALTY, FLAG_RATIO, MIN_SAVING_PCT, SWEET_KBPS,
   thresholds, type Kind, type Thresholds,
 } from "./sweet-spot.ts";
 
@@ -71,6 +71,7 @@ export function verdict(f: VerdictInput, kind: Kind, th: Thresholds = thresholds
     ratio,
     targetKbps: sweet,
     crf: CRF[v.res][kind],
+    tune: TUNE[v.res][kind],
     estSavingBytes: Math.round(estSaving),
     reason: `${ratio}× the sweet spot for ${v.res} ${kind === "film" ? "film" : "TV"}`,
   };

@@ -14,6 +14,15 @@ const base = { src: "/m/in.mkv", out: "/w/1.part", container: "matroska", crf: C
 const after = (a: string[], flag: string) => a[a.indexOf(flag) + 1];
 
 describe("encodeArgs", () => {
+  it("puts -tune grain right after the preset, never inside -x265-params", () => {
+    const a = encodeArgs({ ...base, streams: cover, tune: "grain" });
+    assert.equal(a[a.indexOf("-preset") + 2], "-tune");
+    assert.equal(a[a.indexOf("-preset") + 3], "grain");
+    assert.ok(!after(a, "-x265-params").includes("tune="));
+    assert.ok(!encodeArgs({ ...base, streams: cover, tune: null }).includes("-tune"));
+    assert.ok(!encodeArgs({ ...base, streams: cover }).includes("-tune"));
+  });
+
   it("re-encodes the main video, not the cover art at index 0", () => {
     const a = encodeArgs({ ...base, streams: cover });
     assert.equal(a.indexOf("-c:1") >= 0, true);

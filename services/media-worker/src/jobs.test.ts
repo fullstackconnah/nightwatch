@@ -18,7 +18,7 @@ let stateDir: string;
 const file = (path: string, over: Partial<MediaFile> = {}): MediaFile => ({
   path, name: path.split("/").pop() as string, bytes: 4 * GB, mtimeMs: 1, nlink: 1, durationSec: 3600, container: "matroska",
   video: null, videoStreams: 1, attachments: 0, audio: [], subs: [],
-  verdict: { kind: "compress", ratio: 3, targetKbps: 4000, crf: 22, estSavingBytes: GB, reason: "Over the sweet spot" }, ...over,
+  verdict: { kind: "compress", tune: null, ratio: 3, targetKbps: 4000, crf: 22, estSavingBytes: GB, reason: "Over the sweet spot" }, ...over,
 });
 
 before(() => {

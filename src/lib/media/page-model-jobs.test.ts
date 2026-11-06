@@ -18,7 +18,7 @@ const file = (job?: MediaFile["job"], over: Partial<MediaFile> = {}): MediaFile 
   path: "movies/Big Film (2001)/Big Film.mkv", name: "Big Film.mkv", bytes: 9 * GIB, mtimeMs: 0, nlink: 1, durationSec: 7200, container: "matroska",
   video: { codec: "h264", profile: null, width: 1920, height: 1080, res: "1080p", kbps: 8000, kbpsSource: "stream", tenBit: false, hdr: null, wideColour: false, interlaced: false },
   videoStreams: 1, attachments: 0, audio: [], subs: [],
-  verdict: { kind: "compress", ratio: 2.3, targetKbps: 3500, crf: 21, estSavingBytes: 4 * GIB, reason: "r" },
+  verdict: { kind: "compress", tune: null, ratio: 2.3, targetKbps: 3500, crf: 21, estSavingBytes: 4 * GIB, reason: "r" },
   ...(job ? { job } : {}),
   ...over,
 });
@@ -99,7 +99,7 @@ test("row: done with Jellyfin off or failed adds the next-scan note", () => {
 });
 
 test("row: a file with an earlier done job reads as already compressed, with Undo (S9)", () => {
-  const r = row(DONE, {}, file({ id: DONE.id, state: "done" }, { verdict: { kind: "compress", ratio: 2, targetKbps: 1, crf: 21, estSavingBytes: GIB, reason: "r" } }));
+  const r = row(DONE, {}, file({ id: DONE.id, state: "done" }, { verdict: { kind: "compress", tune: null, ratio: 2, targetKbps: 1, crf: 21, estSavingBytes: GIB, reason: "r" } }));
   assert.equal(r.word, "Compressed");
   assert.equal(r.act?.kind, "undo");
 });
@@ -208,7 +208,7 @@ test("stale or down: the jobs answer is ignored", () => {
 test("batch: counts suggested files, skips those already queued or done, caps at 200", () => {
   const files = [
     file(undefined, { path: "tv/S/a.mkv", name: "a.mkv" }),
-    file(undefined, { path: "tv/S/b.mkv", name: "b.mkv", verdict: { kind: "compress", ratio: 2, targetKbps: 1, crf: 21, estSavingBytes: 6 * GIB, reason: "r" } }),
+    file(undefined, { path: "tv/S/b.mkv", name: "b.mkv", verdict: { kind: "compress", tune: null, ratio: 2, targetKbps: 1, crf: 21, estSavingBytes: 6 * GIB, reason: "r" } }),
     file({ id: "x", state: "queued" }, { path: "tv/S/c.mkv", name: "c.mkv" }),
     file(undefined, { path: "tv/S/d.mkv", name: "d.mkv", verdict: { kind: "ok", ratio: null, reason: "Small file" } }),
   ];

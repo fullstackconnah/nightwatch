@@ -256,13 +256,13 @@ function file(o: { kbps?: number | null; source?: "stream" | "tag" | "estimated"
 }
 
 test("file row: compress verdict line with the sweet spot and ratio", () => {
-  const r = fileRow(file({ verdict: { kind: "compress", ratio: 2.29, targetKbps: 3500, crf: 21, estSavingBytes: 4.6 * GIB, reason: "r" } }), "movie");
+  const r = fileRow(file({ verdict: { kind: "compress", tune: null, ratio: 2.29, targetKbps: 3500, crf: 21, estSavingBytes: 4.6 * GIB, reason: "r" } }), "movie");
   assert.deepEqual(r.cells, { name: "Big Film.mkv", size: "8.1 GB", res: "1080p", codec: "h264", rate: "8.0 Mbit/s" });
   assert.equal(r.word, "Compress");
   assert.equal(r.line.facts, "1920×800");
   assert.equal(r.line.text, "saves ~4.6 GB (57%) at ~3.5 Mbit/s · sweet spot for 1080p film: 3.5 Mbit/s (2.3×)");
   assert.equal(r.act, null);
-  assert.match(fileRow(file({ verdict: { kind: "compress", ratio: 2, targetKbps: 2500, crf: 22, estSavingBytes: GIB, reason: "r" } }), "show").line.text, /sweet spot for 1080p TV: 4\.0 Mbit\/s \(2\.0×\)$/);
+  assert.match(fileRow(file({ verdict: { kind: "compress", tune: null, ratio: 2, targetKbps: 2500, crf: 22, estSavingBytes: GIB, reason: "r" } }), "show").line.text, /sweet spot for 1080p TV: 4\.0 Mbit\/s \(2\.0×\)$/);
 });
 
 test("file row: ok with and without a ratio, skip, cant", () => {
@@ -289,7 +289,7 @@ test("file row: an estimated rate is marked, an unknown one is a dash, a probe e
 });
 
 test("season head: size, files and the saving", () => {
-  const files = [file({ bytes: 2 * GIB, verdict: { kind: "compress", ratio: 2, targetKbps: 1, crf: 1, estSavingBytes: GIB, reason: "r" } }), file({ bytes: 3 * GIB })];
+  const files = [file({ bytes: 2 * GIB, verdict: { kind: "compress", tune: null, ratio: 2, targetKbps: 1, crf: 1, estSavingBytes: GIB, reason: "r" } }), file({ bytes: 3 * GIB })];
   assert.deepEqual(seasonHead({ name: "Season 01", bytes: 5 * GIB, files }), { name: "Season 01", right: "5.0 GB · 2 files · could save ~1.0 GB" });
   assert.equal(seasonHead({ name: "Season 02", bytes: GIB, files: [file()] }).right, "1.0 GB · 1 file · nothing to compress");
 });

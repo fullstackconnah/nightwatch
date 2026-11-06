@@ -37,10 +37,18 @@ describe("verdict", () => {
     assert.equal(v.kind, "compress");
     if (v.kind !== "compress") return;
     assert.equal(v.ratio, 2.29);
-    assert.equal(v.crf, 18);
+    assert.equal(v.crf, 22);
+    assert.equal(v.tune, "grain");
     assert.equal(v.targetKbps, 3500);
     assert.ok(v.estSavingBytes > 4e9);
     assert.equal(v.reason, "2.29× the sweet spot for 1080p film");
+  });
+
+  it("2160p film keeps CRF 19 untuned; tv is untuned", () => {
+    const f = verdict(mk({ res: "2160p", kbps: 20000, bytes: 18 * GB }), "film");
+    assert.ok(f.kind === "compress" && f.crf === 19 && f.tune === null);
+    const t = verdict(mk({ kbps: 8000 }), "tv");
+    assert.ok(t.kind === "compress" && t.crf === 22 && t.tune === null);
   });
 
   it("h264 1080p at 4500 kbps is close to the sweet spot", () => {
