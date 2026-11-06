@@ -40,6 +40,7 @@ export default function HermesPage() {
   // The stale notice already says why; the one-job reason only shows when it is the news.
   const why = write("test-alert").reason;
   const reason = model.stale ? null : why;
+  const askReason = model.stale ? null : write("ask").reason;
 
   const parts: Record<StripId, Pick<StripSpec, "slot" | "body">> | undefined = ok && {
     loops: { body: lead("loops", <HermesStatusBand status={ok} />) },
@@ -47,7 +48,7 @@ export default function HermesPage() {
       slot: <RunDigest run={run} enabled={write("run-digest").enabled} />,
       body: lead("runs", <RunsDetail run={run} enabled={write("test-alert").enabled} reason={reason} />),
     },
-    ask: { body: lead("ask", <HermesAsk tier={ok.tier.tier} run={run} enabled={write("ask").enabled} />) },
+    ask: { body: lead("ask", <HermesAsk tier={ok.tier.tier} run={run} enabled={write("ask").enabled} reason={askReason} />) },
     activity: { body: lead("activity", <HermesActivityFeed items={activity?.status === "ok" ? activity.items : []} />) },
   };
   const strips: StripSpec[] = parts ? model.strips.map((s) => ({ ...s, ...parts[s.id] })) : [];

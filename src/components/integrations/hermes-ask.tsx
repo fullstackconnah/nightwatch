@@ -33,7 +33,7 @@ export function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
 }
 
 /** `enabled` is the page's one-slot answer: off while any Hermes job runs, or while the page shows old data. */
-export function HermesAsk({ tier, run, enabled }: { tier: string | null; run: UseHermesRunResult; enabled: boolean }) {
+export function HermesAsk({ tier, run, enabled, reason }: { tier: string | null; run: UseHermesRunResult; enabled: boolean; reason?: string | null }) {
   const [question, setQuestion] = useState("");
 
   const { job, problem } = jobFor("ask", run);
@@ -77,6 +77,8 @@ export function HermesAsk({ tier, run, enabled }: { tier: string | null; run: Us
           </Button>
         </div>
       </div>
+
+      {!enabled && reason && <p className="st-note">{reason}</p>}
 
       {job?.state === "running" && tier === "local" && (
         <p className="text-[0.7rem] text-ink-dim">The local tier can take a few minutes to answer.</p>

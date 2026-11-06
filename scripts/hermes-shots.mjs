@@ -353,7 +353,7 @@ await guarded("C12", () =>
   each(async (s) => {
     const { page } = await visit(s, "calm", { reduced: true });
     const moving = await page.evaluate(() =>
-      [...document.querySelectorAll("main *")].filter((e) => getComputedStyle(e).transitionDuration.split(",").some((d) => parseFloat(d) > 0)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)} "${(e.textContent || "").trim().slice(0, 30)}" ${getComputedStyle(e).transitionProperty}`),
+      [...document.querySelectorAll("main *")].filter((e) => getComputedStyle(e).transitionProperty !== "none" && getComputedStyle(e).transitionDuration.split(",").some((d) => parseFloat(d) > 0)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)} "${(e.textContent || "").trim().slice(0, 30)}" ${getComputedStyle(e).transitionProperty}`),
     );
     record("C12 reduced motion: transitions with a duration", s.name, moving.length ? { n: moving.length, sample: moving.slice(0, 3) } : 0);
     await page.close();
