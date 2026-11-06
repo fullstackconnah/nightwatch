@@ -34,7 +34,9 @@ function useUpdateCheck() {
     setState({ kind: "checking" });
     try {
       const res = await fetch("/kiosk/api/version");
-      const data = (await res.json()) as { buildId: string };
+      const data = (await res.json()) as { buildId?: unknown };
+      // An error reply must never look like a new build: it would reload the kiosk.
+      if (!res.ok || typeof data.buildId !== "string") throw new Error("bad version reply");
       if (data.buildId !== BUILD_ID) {
         window.location.reload();
         return; // page is navigating away — no idle state to revert to

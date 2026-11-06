@@ -503,6 +503,23 @@ try {
       await page.close();
     }),
   );
+  // M5 (hunt 5): a bad Memory GB shows a field error under the input and disables Upload.
+  await guarded("upload-memory-error", () =>
+    each(async (s) => {
+      const { page } = await visit(s, "calm");
+      await openStrip(page, "pack");
+      const section = detail(page).locator('section[aria-label="Upload a server pack"]');
+      const input = section.getByLabel("Memory GB");
+      await input.scrollIntoViewIfNeeded();
+      await input.fill("0");
+      const error = await seen(section.getByText("Enter a number above 0, or leave blank for the default."));
+      const uploadOff = await section.getByRole("button", { name: "Upload" }).isDisabled();
+      record("upload-memory-error", s.name, { error, uploadOff });
+      // The input stays scrolled into view, so the house viewport shot holds the field and its error.
+      await shoot(page, s, "upload-memory-error", false);
+      await page.close();
+    }),
+  );
 } finally {
   await browser.close();
 }

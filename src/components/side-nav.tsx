@@ -71,6 +71,8 @@ const MOBILE_FIXED = GROUPS[0].items.slice(0, 4);
 // Everything the "More" sheet holds: Monitor's fifth item (Network) and the rest.
 const SHEET_GROUPS: NavGroup[] = [{ label: "Monitor", items: GROUPS[0].items.slice(4) }, ...GROUPS.slice(1)];
 
+const LOGOUT_ERROR = "Couldn't sign out. Check the connection and try again.";
+
 function isActive(href: string, pathname: string) {
   // The container detail page belongs to Docker: its back link and Remove both return there.
   if (href === "/docker") return pathname.startsWith("/docker") || pathname.startsWith("/containers/");
@@ -83,6 +85,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
   const unhealthy = data?.counts.unhealthy ?? 0;
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
 
   // Auto-close on route change — the sheet must never be the thing you have
   // to remember to dismiss after tapping a destination inside it.
@@ -106,7 +109,12 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
       .catch(() => {
         // A storage failure must never trap someone in a signed-in session.
       });
-    await fetch("/api/auth/logout", { method: "POST" });
+    setLogoutError(false);
+    // Redirect only on success: after a failed call the session cookie is still valid.
+    const ok = await fetch("/api/auth/logout", { method: "POST" })
+      .then((r) => r.ok || r.status === 401) // logout is not public: an expired session answers 401 and is already signed out
+      .catch(() => false);
+    if (!ok) return setLogoutError(true);
     window.location.href = "/login";
   }
 
@@ -195,12 +203,17 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
             <LogOut size={15} />
             Log out
           </button>
+          {logoutError && (
+            <p role="alert" className="px-2.5 text-xs text-bad">
+              {LOGOUT_ERROR}
+            </p>
+          )}
         </div>
       </aside>
 
       {/* mobile top bar */}
       <header
-        className="md:hidden sticky top-0 z-40 flex items-center justify-between border-b border-line bg-panel/90 backdrop-blur px-4"
+        className="md:hidden sticky top-0 z-40 flex flex-wrap items-center justify-between border-b border-line bg-panel/90 backdrop-blur px-4"
         style={{ paddingTop: "env(safe-area-inset-top)", minHeight: "52px" }}
       >
         <div className="flex items-center gap-2 py-2">
@@ -227,6 +240,11 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
             <LogOut size={17} />
           </button>
         </div>
+        {logoutError && (
+          <p role="alert" className="basis-full pb-2 text-xs text-bad">
+            {LOGOUT_ERROR}
+          </p>
+        )}
       </header>
 
       {/* mobile bottom tab bar — a stable 5-cell grid (the four Monitor
