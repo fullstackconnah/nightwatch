@@ -10,7 +10,7 @@
    Everything here is WAAPI (`Element.animate`) + plain refs — no motion
    library, per PRODUCT.md's no-new-deps rule. */
 
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 
 /* These five are MIRRORED as custom properties by the KIOSK MOTION VOCABULARY
    block at the end of src/app/globals.css (--kiosk-move-ms, --kiosk-fade-ms,
@@ -38,6 +38,19 @@ export const KIOSK_SHEEN_MS = 620;
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function subscribeReduced(onChange: () => void): () => void {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+/** Use this, not prefersReducedMotion(), anywhere the value reaches render output: the server
+ *  snapshot is false, so hydration matches, then React re-renders with the live value. */
+export function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(subscribeReduced, prefersReducedMotion, () => false);
 }
 
 export interface KioskFlipGroup {

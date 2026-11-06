@@ -35,6 +35,7 @@ import {
   KIOSK_REDUCED_MS,
   flipOutTo,
   prefersReducedMotion,
+  usePrefersReducedMotion,
 } from "@/lib/kiosk-motion";
 
 // Idle/night backoff (2026-08 perf pass): an alert is the one thing on this
@@ -409,6 +410,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // Mounted a beat longer than `hasAlerts` so the last alert clearing gets a
   // fade-out instead of popping out of existence — same entrance/exit shape
   // as kiosk-attention.tsx's `entered` flag, just with an exit half too.
+  const reducedMotion = usePrefersReducedMotion();
   const [mounted, setMounted] = useState(hasAlerts);
   const [entered, setEntered] = useState(false);
 
@@ -485,7 +487,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // — so the pulse is replaced with a static, heavier version of the same
   // ring at its brightest keyframe value, not dropped outright.
   const reducedBadRing =
-    bad && prefersReducedMotion()
+    bad && reducedMotion
       ? { boxShadow: "0 0 0 4px color-mix(in srgb, var(--color-bad) 45%, transparent)" }
       : null;
 

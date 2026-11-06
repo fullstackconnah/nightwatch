@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { prefersReducedMotion } from "@/lib/kiosk-motion";
+import { usePrefersReducedMotion } from "@/lib/kiosk-motion";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 
 /**
@@ -250,7 +250,7 @@ export function KioskSpark({
   label: string;
 }): ReactNode {
   const H = height;
-  const reduced = prefersReducedMotion();
+  const reduced = usePrefersReducedMotion();
 
   /* EVERY HOOK ABOVE THE EARLY RETURN. The `collecting…` branch below used to
      sit before useGlide, which meant this component rendered 0 hooks until its
@@ -342,7 +342,7 @@ export function KioskSparkPair({
   const H = height;
   const mid = H / 2;
   const amplitude = mid - 2;
-  const reduced = prefersReducedMotion();
+  const reduced = usePrefersReducedMotion();
 
   // Hoisted above the early return for the same reason as KioskSpark's — see
   // useGlide's MUST BE CALLED UNCONDITIONALLY note.

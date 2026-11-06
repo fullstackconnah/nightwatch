@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { dotsPillX } from "@/lib/sunroom-ambient";
-import { KIOSK_MOVE_MS, KIOSK_EASE_OUT, prefersReducedMotion } from "@/lib/kiosk-motion";
+import { KIOSK_MOVE_MS, KIOSK_EASE_OUT, usePrefersReducedMotion } from "@/lib/kiosk-motion";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { useKioskIdle, useKioskNight, KIOSK_IDLE_AFTER_MS } from "@/lib/kiosk-activity";
 
@@ -102,9 +102,7 @@ export function KioskCarousel({
   const [isDragging, setIsDragging] = useState(false);
   const [dragDx, setDragDx] = useState(0);
 
-  const reducedRef = useRef<boolean | null>(null);
-  if (reducedRef.current === null) reducedRef.current = prefersReducedMotion();
-  const reduced = reducedRef.current;
+  const reduced = usePrefersReducedMotion();
   const sr = useKioskTheme() === "sunroom";
 
   const pointerRef = useRef<{ id: number; x: number; y: number } | null>(null);
