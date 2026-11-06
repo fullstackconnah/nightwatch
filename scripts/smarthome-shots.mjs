@@ -161,9 +161,9 @@ const leadState = async (page) => {
   });
   return { ...r, ok: r.clamped === r.lead };
 };
-// The stale notice (.pt-notice) is required by pattern.md section 5, so the head is measured without it.
+// The stale notice (.st-notice) is required by pattern.md section 5, so the head is measured without it.
 const headBox = (page) =>
-  page.locator("[data-feature=head]").evaluate((el) => el.getBoundingClientRect().height - (el.querySelector(".pt-notice")?.getBoundingClientRect().height ?? 0));
+  page.locator("[data-feature=head]").evaluate((el) => el.getBoundingClientRect().height - (el.querySelector(".st-notice")?.getBoundingClientRect().height ?? 0));
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openStrip = async (page, id) => {
   const t = page.locator(`[data-k="open-${id}"]`);
