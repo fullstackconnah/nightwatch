@@ -1,62 +1,62 @@
 "use client";
 
-/* THESIS: subject-first, same ordering /smarthome and /proxy use — status
-   band (is it alive, what's it running) above the two things you might
-   actually do (trigger a run, ask it something) above the log of what it's
-   already done. Status and activity poll independently (10s / 30s) because
-   they change on different clocks; actions/ask each own their own job slot.
-   OWN-WORLD: nightwatch console — hairline .panel, teal accent, mono
-   numerals, microlabels; no chart library, no raw hex, no colour without a
-   threshold behind it. */
+/* THESIS: the strips pattern on /hermes. A pure hermesModel() answers "is Hermes alive, are its loops working, what did
+   it last say" and picks the strip the answer names; four fixed strips (Loops, Runs, Ask, Activity) hold what used to be
+   four stacked panels. The page owns the one Hermes job slot (the daemon runs one job at a time) and passes it to Runs
+   and Ask. OWN-WORLD: nightwatch console — the pattern's .st-* classes, house Badge and Button, no new token. */
 
-import { useHermesActivity, useHermesStatus } from "@/lib/use-hermes";
-import {
-  HermesLoadError,
-  HermesSkeleton,
-  HermesUnauthorized,
-  HermesUnconfigured,
-  HermesUnreachable,
-} from "@/components/integrations/hermes-status";
-import { HermesStatusBand } from "@/components/integrations/hermes-status-band";
-import { HermesActionsRow } from "@/components/integrations/hermes-actions";
-import { HermesAsk } from "@/components/integrations/hermes-ask";
+import { useEffect, useState, type ReactNode } from "react";
 import { HermesActivityFeed } from "@/components/integrations/hermes-activity";
+import { RunDigest, RunsDetail, WHY_ID } from "@/components/integrations/hermes-actions";
+import { HermesAsk } from "@/components/integrations/hermes-ask";
+import { HermesStatusBand } from "@/components/integrations/hermes-status-band";
+import { PageHead } from "@/components/strips/page-head";
+import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { hermesModel, type StripId, type WriteId } from "@/lib/hermes/page-model";
+import { useHermesActivity, useHermesRun, useHermesStatus } from "@/lib/use-hermes";
+import { useNow } from "@/lib/use-now";
 
 export default function HermesPage() {
-  const { data, error, isLoading } = useHermesStatus();
+  const status = useHermesStatus();
   const { data: activity } = useHermesActivity();
+  const run = useHermesRun();
+  const now = useNow(true);
+
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!status.isValidating && !status.error && status.data) setLastOkAt(Date.now());
+  }, [status.isValidating, status.error, status.data]);
+
+  const model = hermesModel({ status: status.data, activity, loadError: Boolean(status.error), run, lastOkAt, now });
+  const write = (id: WriteId) => model.writes.find((w) => w.id === id)!;
+  const ok = status.data?.status === "ok" ? status.data : undefined;
+
+  const lead = (id: StripId, body: ReactNode) => (
+    <>
+      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {body}
+    </>
+  );
+  // The stale notice already says why; the one-job reason only shows when it is the news.
+  const why = write("test-alert").reason;
+  const reason = model.stale ? null : why;
+
+  const parts: Record<StripId, Pick<StripSpec, "slot" | "body">> | undefined = ok && {
+    loops: { body: lead("loops", <HermesStatusBand status={ok} />) },
+    runs: {
+      slot: <RunDigest run={run} enabled={write("run-digest").enabled} />,
+      body: lead("runs", <RunsDetail run={run} enabled={write("test-alert").enabled} reason={reason} />),
+    },
+    ask: { body: lead("ask", <HermesAsk tier={ok.tier.tier} run={run} enabled={write("ask").enabled} />) },
+    activity: { body: lead("activity", <HermesActivityFeed items={activity?.status === "ok" ? activity.items : []} />) },
+  };
+  const strips: StripSpec[] = parts ? model.strips.map((s) => ({ ...s, ...parts[s.id] })) : [];
 
   return (
-    <div className="space-y-5 pb-2">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Hermes</h1>
-          <p className="mt-0.5 text-xs text-ink-dim">ops daemon — status, digests, alerts, ask</p>
-        </div>
-        {data?.status === "ok" && (
-          <div className="flex items-center gap-2">
-            <span className={data.ok ? "dot dot-running" : "dot dot-unhealthy"} aria-hidden />
-            <span className="microlabel">{data.ok ? "connected" : "reporting unhealthy"}</span>
-          </div>
-        )}
-      </header>
-
-      {Boolean(error) && !data && <HermesLoadError error={error} />}
-
-      {isLoading && !data && <HermesSkeleton />}
-
-      {data?.status === "unconfigured" && <HermesUnconfigured />}
-      {data?.status === "unreachable" && <HermesUnreachable detail={data.detail} />}
-      {data?.status === "unauthorized" && <HermesUnauthorized detail={data.detail} />}
-
-      {data?.status === "ok" && (
-        <div className="space-y-5">
-          <HermesStatusBand status={data} />
-          <HermesActionsRow />
-          <HermesAsk tier={data.tier.tier} />
-          <HermesActivityFeed items={activity?.status === "ok" ? activity.items : []} />
-        </div>
-      )}
+    <div className="st-page pb-2">
+      <PageHead title="Hermes" chip={model.chip} answer={model.answer} evidence={model.evidence} link={model.link} notice={model.notice} />
+      {why && <span id={WHY_ID} className="sr-only">{why}</span>}
+      {strips.length > 0 && <StripList strips={strips} autoTarget={model.autoTarget} />}
     </div>
   );
 }

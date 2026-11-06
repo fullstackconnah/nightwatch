@@ -8,10 +8,9 @@
  * except the job lives on the Hermes daemon rather than a local job store.
  *
  * useHermesRun bundles "start a run, remember its jobId, poll it" into one
- * slot. Every call site (the actions row's digest/alert-test buttons, the Ask
- * panel) owns its own slot — the daemon's own /run contract 409s when a run
- * is already in flight, so there is nothing to coordinate client-side beyond
- * surfacing that 409 honestly.
+ * slot. /hermes calls it once and hands the result to Runs and Ask (the daemon
+ * runs one job at a time), filtering results by job kind; the voice ask keeps
+ * its own, and the daemon's 409 is surfaced honestly.
  */
 
 import { useCallback, useState } from "react";
@@ -62,7 +61,10 @@ export interface UseHermesRunResult {
   job: HermesJobFetch | undefined;
   starting: boolean;
   startError: string | null;
-  start: (kind: HermesJobKind, question?: string) => Promise<void>;
+  /** The kind last started from this hook, so a failed start or an unreadable job can be filed under Runs or Ask. */
+  kind: HermesJobKind | null;
+  /** Resolves to the failure text (the daemon's 409 passes through), or null once the run has started. */
+  start: (kind: HermesJobKind, question?: string) => Promise<string | null>;
   reset: () => void;
 }
 
@@ -70,19 +72,24 @@ export function useHermesRun(): UseHermesRunResult {
   const [jobId, setJobId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const [kind, setKind] = useState<HermesJobKind | null>(null);
   const { data: job } = useHermesJob(jobId);
 
-  const start = useCallback(async (kind: HermesJobKind, question?: string) => {
+  const start = useCallback(async (kind: HermesJobKind, question?: string): Promise<string | null> => {
     setStarting(true);
     setStartError(null);
+    setKind(kind);
     try {
       const body = (await postJson(
         "/api/hermes-ctl/run",
         question !== undefined ? { kind, question } : { kind },
       )) as { jobId: string };
       setJobId(body.jobId);
+      return null;
     } catch (e) {
-      setStartError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : "could not start run");
+      const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "could not start run";
+      setStartError(message);
+      return message;
     } finally {
       setStarting(false);
     }
@@ -93,7 +100,7 @@ export function useHermesRun(): UseHermesRunResult {
     setStartError(null);
   }, []);
 
-  return { jobId, job, starting, startError, start, reset };
+  return { jobId, job, starting, startError, kind, start, reset };
 }
 
 export type { HermesActivityItem, HermesActivityKind, HermesJob, HermesJobKind, HermesStatusOk } from "@/lib/types/hermes";

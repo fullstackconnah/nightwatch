@@ -1,17 +1,16 @@
-/* THESIS: a textarea, a submit, and one answer band — the same job-slot shape
-   hermes-actions.tsx uses, kept separate because "ask a question" and "run a
-   scheduled job" are different mental modes even though they ride the same
-   /run contract. The local-tier note only appears once we actually know the
-   tier is local (from the status band's own poll), so it never claims a wait
-   that OpenRouter/Anthropic wouldn't have. OWN-WORLD: nightwatch console —
-   mono counter, .logbox-style answer band with preserved line breaks. */
+/* THESIS: a textarea, a submit, and one answer band — the Ask strip's detail. "Ask a question" and "run a scheduled
+   job" are different mental modes even though they ride the same /run contract, and the daemon runs one job at a time,
+   so the page owns the slot and passes `run` down (results filtered by job kind). The local-tier note only appears
+   once we know the tier is local (from the status poll), so it never claims a wait that OpenRouter/Anthropic wouldn't
+   have. OWN-WORLD: nightwatch console — mono counter, .logbox-style answer band with preserved line breaks. */
 "use client";
 
 import { useState } from "react";
-import { Loader2, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HermesVoiceMic } from "@/components/integrations/hermes-voice-mic";
-import { useHermesRun } from "@/lib/use-hermes";
+import { jobFor } from "@/lib/hermes/page-model";
+import type { UseHermesRunResult } from "@/lib/use-hermes";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -33,45 +32,31 @@ export function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
   return <span className="font-mono tabular-nums text-ink-dim text-xs">{formatElapsed(now - startMs)}</span>;
 }
 
-export function HermesAsk({ tier }: { tier: string | null }) {
+/** `enabled` is the page's one-slot answer: off while any Hermes job runs, or while the page shows old data. */
+export function HermesAsk({ tier, run, enabled }: { tier: string | null; run: UseHermesRunResult; enabled: boolean }) {
   const [question, setQuestion] = useState("");
-  const run = useHermesRun();
 
-  const job = run.job;
-  const running = run.starting || (job?.ok && job.job.state === "running");
+  const { job, problem } = jobFor("ask", run);
   const trimmed = question.trim();
   const overLimit = question.length > MAX_LENGTH;
 
   async function submit() {
-    if (!trimmed || overLimit || running) return;
-    await run.start("ask", trimmed);
-    setQuestion("");
+    if (!trimmed || overLimit || !enabled) return;
+    // A refused start (the daemon's 409) keeps the question so it can be sent again.
+    if (!(await run.start("ask", trimmed))) setQuestion("");
   }
 
   return (
-    <div className="panel p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span id="hermes-ask-label" className="microlabel">ask hermes</span>
-        {job?.ok && job.job.state === "running" && (
-          <span className="flex items-center gap-1.5">
-            <Loader2 size={12} className="animate-spin motion-reduce:animate-none text-ink-faint" aria-hidden />
-            <ElapsedTimer startedAt={job.job.startedAt} />
-          </span>
-        )}
-      </div>
-
+    <div className="space-y-3">
       <div className="space-y-1.5">
         <div className="flex items-start gap-2">
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            disabled={Boolean(running)}
+            disabled={!enabled}
             placeholder="Ask about anything Hermes has seen — a container, a trend, tonight's digest…"
-            // Programmatic name via the panel's own already-visible "ask
-            // hermes" microlabel — placeholder text disappears once typed and
-            // is not a reliable accessible-name source for AT. No new visible
-            // text, so no layout change.
-            aria-labelledby="hermes-ask-label"
+            // Placeholder text disappears once typed, so the name is explicit.
+            aria-label="Ask Hermes"
             rows={3}
             maxLength={MAX_LENGTH + 40}
             className={cn(
@@ -79,7 +64,7 @@ export function HermesAsk({ tier }: { tier: string | null }) {
             )}
           />
           <HermesVoiceMic
-            disabled={Boolean(running)}
+            disabled={!enabled}
             onTranscript={(text) => setQuestion((q) => (q ? `${q} ${text}` : text).slice(0, MAX_LENGTH))}
           />
         </div>
@@ -87,37 +72,34 @@ export function HermesAsk({ tier }: { tier: string | null }) {
           <span className={cn("font-mono text-[0.65rem] tabular-nums", overLimit ? "text-bad" : "text-ink-faint")}>
             {question.length}/{MAX_LENGTH}
           </span>
-          <Button size="sm" disabled={!trimmed || overLimit || Boolean(running)} onClick={() => void submit()}>
+          <Button size="sm" disabled={!trimmed || overLimit || !enabled} onClick={() => void submit()}>
             <Send size={13} /> Ask
           </Button>
         </div>
       </div>
 
-      {job?.ok && job.job.state === "running" && tier === "local" && (
+      {job?.state === "running" && tier === "local" && (
         <p className="text-[0.7rem] text-ink-dim">The local tier can take a few minutes to answer.</p>
       )}
 
-      {run.startError && <div role="alert" className="microlabel !text-warn/80">{run.startError}</div>}
+      {problem && <div role="alert" className="microlabel !text-warn/80">{problem}</div>}
 
-      {job?.ok && job.job.state === "error" && (
+      {job?.state === "error" && (
         <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">ask failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
-            {job.job.error ?? "Hermes reported an error with no further detail."}
+            {job.error ?? "Hermes reported an error with no further detail."}
           </p>
         </div>
       )}
 
-      {/* Same reasoning as hermes-actions.tsx: the answer band appears once
-          per run and holds still afterward, so role="status" directly on it
-          announces the outcome without risking re-announcement on later polls. */}
-      {job?.ok && job.job.state === "done" && job.job.result && (
+      {/* The answer band appears once per run and holds still afterward, so role="status" directly on it announces the
+          outcome without re-announcing on later polls. */}
+      {job?.state === "done" && job.result && (
         <div role="status" aria-live="polite" className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5">
-          <div className="text-ink whitespace-pre-wrap break-words">{job.job.result.body || "(no answer)"}</div>
+          <div className="text-ink whitespace-pre-wrap break-words">{job.result.body || "(no answer)"}</div>
         </div>
       )}
-
-      {job && !job.ok && <div role="alert" className="microlabel !text-bad">{job.detail}</div>}
     </div>
   );
 }
