@@ -1158,7 +1158,7 @@ function ResourcesPageInner() {
           )}
           {volumes !== null && sortedVolumes.length === 0 && (
             <div className="px-3 py-4 text-center text-ink-faint text-sm">
-              No named volumes — app data on this box lives in bind mounts.
+              No volumes — app data on this box lives in bind mounts.
             </div>
           )}
           {sortedVolumes.map((v) => (

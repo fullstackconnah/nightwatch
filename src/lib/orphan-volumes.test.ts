@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ANONYMOUS_LABEL, isOrphanVolume, removeVolumes } from "./orphan-volumes.ts";
+import { ANONYMOUS_LABEL, isOrphanVolume, removeVolumes, usedVolumeNames } from "./orphan-volumes.ts";
 
 const anon = { Name: "a1", Labels: { [ANONYMOUS_LABEL]: "" } };
 const named = { Name: "pgdata", Labels: {} };
@@ -32,4 +32,13 @@ test("other failures still surface", async () => {
   await assert.rejects(
     removeVolumes(["a"], async () => { throw Object.assign(new Error("x"), { statusCode: 403 }); }),
   );
+});
+
+test("usedVolumeNames: volume mounts by Name, stopped counted, binds ignored", () => {
+  const names = usedVolumeNames([
+    { Mounts: [{ Type: "volume", Name: "v1" }, { Type: "bind", Name: "b1" }] },
+    { Mounts: [{ Type: "volume", Name: "v2" }] },
+    {},
+  ]);
+  assert.deepEqual([...names].sort(), ["v1", "v2"]);
 });

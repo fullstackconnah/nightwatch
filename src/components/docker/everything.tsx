@@ -123,7 +123,7 @@ export const Everything = forwardRef<HTMLElement, EverythingProps>(function Ever
             {needle
               ? `Nothing matches "${q.trim()}".`
               : p.kind === "volumes"
-                ? "No named volumes. App data lives in bind mounts."
+                ? "No volumes. App data lives in bind mounts."
                 : `No ${p.kind} on this host.`}
           </p>
         )}
