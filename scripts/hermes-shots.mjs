@@ -195,7 +195,7 @@ const audit = (page) =>
     const clipped = [];
     for (const el of document.querySelectorAll("main *")) {
       const cs = getComputedStyle(el);
-      if (cs.display === "none" || cs.visibility === "hidden") continue;
+      if (cs.display === "none" || cs.visibility === "hidden" || el.classList.contains("sr-only")) continue;
       const sides = ["Top", "Right", "Bottom", "Left"].filter((d) => parseFloat(cs[`border${d}Width`]) > 0).map((d) => cs[`border${d}Color`]);
       if ([cs.color, cs.backgroundColor, ...sides].some(isDanger)) painted.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)}`);
       const r = el.getBoundingClientRect();
@@ -242,7 +242,12 @@ for (const [key, chip, phrase, open] of STATES) {
     if (key === "calm" || key === "dryRun") record("C15 calm paint (no bad or warn)", `${name}@${s.name}`, a.painted ? { n: a.painted, sample: a.paintedSample } : 0);
     if (key === "calm") record("C4 strip heads one height", s.name, [...new Set(a.heads)].length <= 2 ? "ok" : a.heads);
     if (open) record("C6 answer strip opens by itself", `${name}@${s.name}`, await isOpen(page, open));
-    else if (key === "calm") record("C6 calm opens nothing", s.name, !(await isOpen(page, "loops")) && !(await isOpen(page, "runs")));
+    else if (key === "calm") {
+      // Spec §5 Calm row: nothing open at 390; Loops open (Runs not) at 1440.
+      const loops = await isOpen(page, "loops");
+      const runs = await isOpen(page, "runs");
+      record("C6 calm opens nothing (390) / Loops only (1440)", s.name, s.name === "390" ? !loops && !runs : loops && !runs);
+    }
     await shot(page, s, name);
     await page.close();
   });
@@ -257,7 +262,11 @@ await each(async (s) => {
   record("CW one digest start", s.name, mock.posts.filter((p) => p.kind === "digest").length === 1);
   await openStrip(page, "runs");
   record("C11 job-running state line", s.name, /Digest running/.test(await text(page, '[data-row-id="runs"] .st-state')));
-  record("CW one slot: Ask is off while a job runs", s.name, (await page.getByRole("textbox", { name: "Ask Hermes" }).count()) === 0 || (await page.getByRole("textbox", { name: "Ask Hermes" }).isDisabled()));
+  // V1: open Ask; the button must exist, be disabled, and say why. A count of 0 fails.
+  await openStrip(page, "ask");
+  const askBtn = detail(page).getByRole("button", { name: /^Ask$/ });
+  record("CW one slot: Ask is off while a job runs", s.name, (await askBtn.count()) === 1 && (await askBtn.isDisabled()) && (await detail(page).getByText("Hermes runs one job at a time.").first().isVisible()));
+  await openStrip(page, "runs");
   await perState(page, "job-running", s.name);
   await shot(page, s, "job-running");
   await page.close();
@@ -270,20 +279,29 @@ for (const [key, name] of [["runDone", "run-done"], ["runFailed", "run-failed"]]
     await page.waitForTimeout(3_000);
     await page.clock.runFor(3_000);
     await page.waitForTimeout(500);
-    if (key === "runFailed") record("C6 failed run opens Runs", s.name, await isOpen(page, "runs"));
-    else await openStrip(page, "runs");
-    // C20: a digest result never appears under Ask.
-    await openStrip(page, "ask");
-    record("C20 digest result not shown in Ask", `${name}@${s.name}`, (await page.locator('[data-row-id="ask"] [role=status], [data-row-id="ask"] [role=alert]').count()) === 0);
-    await openStrip(page, "runs");
-    record("C11 run outcome shown", `${name}@${s.name}`, key === "runDone" ? await page.getByText("Everything is steady").isVisible() : await page.getByText(/did not answer in time/).isVisible());
+    if (key === "runFailed") {
+      // The strip list holds auto-open while pointer or focus is inside, by design: step out first.
+      await page.mouse.move(0, 0);
+      await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
+      await page.waitForTimeout(200);
+      record("C6 failed run opens Runs", s.name, await isOpen(page, "runs"));
+    } else await openStrip(page, "runs");
+    const outcome = key === "runDone" ? detail(page).getByText("Everything is steady").first() : detail(page).getByRole("alert").filter({ hasText: /did not answer in time/ }).first();
+    record("C11 run outcome shown", `${name}@${s.name}`, await outcome.isVisible());
     await perState(page, name, s.name);
     await shot(page, s, name);
+    // C20: a digest result never appears under Ask. The Ask detail must be found (its textbox) so the check is not vacuous.
+    await openStrip(page, "ask");
+    const askDetail = page.locator('[data-row-id="ask"] .st-body, #st-pane').first();
+    const found = await askDetail.getByRole("textbox", { name: "Ask Hermes" }).isVisible();
+    const leaked = /Everything is steady|did not answer in time/.test(await askDetail.innerText());
+    record("C20 digest result not shown in Ask", `${name}@${s.name}`, found && !leaked);
+    await openStrip(page, "runs");
     await page.close();
   });
 }
 
-// Test alert: asks first (R15 "Yes, send", primary), writes once on Yes, cancels itself.
+// Test alert: asks first (R15 "Yes, send", primary); Cancel closes it with no POST; Yes writes once. No auto-cancel by spec.
 stage = "test-alert-confirm";
 await each(async (s) => {
   const { page, mock } = await visit(s, "calm");
@@ -291,12 +309,14 @@ await each(async (s) => {
   await page.getByRole("button", { name: /Send test alert/ }).click();
   const yes = page.getByRole("button", { name: "Yes, send" });
   record("CW test alert asks first", s.name, (await yes.isVisible()) && mock.posts.length === 0);
+  await page.getByRole("button", { name: /^Cancel$/ }).click();
+  await page.waitForTimeout(250);
+  record("CW Cancel closes the question and sends no POST", s.name, !(await yes.isVisible()) && mock.posts.filter((p) => p.kind === "alert-test").length === 0);
+  await page.getByRole("button", { name: /Send test alert/ }).click();
+  await page.waitForTimeout(250); // the .nw-confirm grow-in scales to .97 first
   await perState(page, "test-alert-confirm", s.name);
   await shot(page, s, "test-alert-confirm");
-  await page.clock.runFor(4_200);
-  record("CW the question cancels itself", s.name, !(await yes.isVisible()) && mock.posts.length === 0);
-  await page.getByRole("button", { name: /Send test alert/ }).click();
-  await page.getByRole("button", { name: "Yes, send" }).click();
+  await yes.click();
   await page.waitForTimeout(400);
   record("CW one test-alert write", s.name, mock.posts.filter((p) => p.kind === "alert-test").length === 1);
   await page.close();
@@ -333,7 +353,7 @@ await guarded("C12", () =>
   each(async (s) => {
     const { page } = await visit(s, "calm", { reduced: true });
     const moving = await page.evaluate(() =>
-      [...document.querySelectorAll("main *")].filter((e) => getComputedStyle(e).transitionDuration.split(",").some((d) => parseFloat(d) > 0)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}`),
+      [...document.querySelectorAll("main *")].filter((e) => getComputedStyle(e).transitionDuration.split(",").some((d) => parseFloat(d) > 0)).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 60)} "${(e.textContent || "").trim().slice(0, 30)}" ${getComputedStyle(e).transitionProperty}`),
     );
     record("C12 reduced motion: transitions with a duration", s.name, moving.length ? { n: moving.length, sample: moving.slice(0, 3) } : 0);
     await page.close();

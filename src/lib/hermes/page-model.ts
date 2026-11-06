@@ -13,6 +13,8 @@ export type Tone = "ok" | "neutral" | "warn" | "bad";
 /** The single Hermes job slot the page owns (R19): the shape of useHermesRun()'s result, without its functions. */
 export interface RunInput {
   starting: boolean;
+  /** Set once start() resolved; with no job loaded yet the run is still pending. */
+  jobId?: string | null;
   /** The kind of the run last started from this page. */
   kind: HermesJobKind | null;
   job: { ok: true; job: HermesJob } | { ok: false; status: string; detail: string } | undefined;
@@ -102,13 +104,14 @@ export function hermesModel(i: ModelInput): Model {
   // ---- the one slot (R19) ----
   const runJob = jobFor("runs", run).job;
   const askJob = jobFor("ask", run).job;
-  const busy = run.starting || (run.job?.ok === true && run.job.job.state === "running");
+  const pending = run.starting || (Boolean(run.jobId) && !run.job);
+  const busy = pending || (run.job?.ok === true && run.job.job.state === "running");
   const elapsed = (j: HermesJob | null) => {
     const ms = j?.startedAt ? now - Date.parse(j.startedAt) : NaN;
     return Number.isFinite(ms) ? ` · ${formatElapsed(ms)}` : "";
   };
-  const runsRunning = runJob?.state === "running" || (run.starting && inScope("runs", run.kind));
-  const askRunning = askJob?.state === "running" || (run.starting && run.kind === "ask");
+  const runsRunning = runJob?.state === "running" || (pending && inScope("runs", run.kind));
+  const askRunning = askJob?.state === "running" || (pending && run.kind === "ask");
   const runLabel = (runJob?.kind ?? run.kind) === "alert-test" ? "Test alert" : "Digest";
   const runFailed = runJob?.state === "error";
 

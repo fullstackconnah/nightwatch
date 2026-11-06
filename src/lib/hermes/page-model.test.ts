@@ -147,6 +147,13 @@ test("starting counts as a running job", () => {
   assert.equal(strip(m, "runs").state, "Test alert starting");
 });
 
+test("job id set but the job not fetched yet is still busy: every write off, a job is running", () => {
+  const m = hermesModel(input({ run: { ...idle, kind: "digest", jobId: "job-1" } }));
+  assert.deepEqual(enabled(m), []);
+  for (const id of ALL) assert.equal(w(m, id as WriteId).reason, ONE);
+  assert.equal(strip(m, "runs").state, "Digest starting");
+});
+
 test("an ask running shows in Ask, not Runs; a digest never shows in Ask", () => {
   const m = hermesModel(input({ run: { ...idle, kind: "ask", job: job({ kind: "ask", startedAt: iso(-12_000) }) } }));
   assert.equal(strip(m, "ask").state, "Answering · 0:12");
