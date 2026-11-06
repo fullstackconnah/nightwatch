@@ -29,7 +29,8 @@ const BCRYPT_ROUNDS = 12;
 export async function POST(req: NextRequest) {
   let body: { currentPassword?: unknown; newPassword?: unknown };
   try {
-    body = await req.json();
+    const parsed = await req.json();
+    body = parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }

@@ -27,6 +27,9 @@ const badShapes: [string, unknown, RegExp][] = [
   ["network number", { image: "i", network: 5 }, /network/],
   ["restartPolicy number", { image: "i", restartPolicy: 5 }, /restartPolicy/],
   ["name number", { image: "i", name: 5 }, /name/],
+  ["restartPolicy unknown", { image: "i", restartPolicy: "sometimes" }, /restartPolicy/],
+  ["port protocol sctp", { image: "i", ports: [{ host: 80, container: 80, protocol: "sctp" }] }, /ports/],
+  ["env row without value", { image: "i", env: [{ key: "A" }] }, /env/],
 ];
 
 for (const [label, body, re] of badShapes) {
@@ -35,6 +38,11 @@ for (const [label, body, re] of badShapes) {
     assert.ok(r && re.test(r), String(r));
   });
 }
+
+test("validateSpecShape accepts every restart policy and protocol the UI sends", () => {
+  for (const restartPolicy of ["unless-stopped", "always", "on-failure", "no"]) assert.equal(validateSpecShape({ image: "i", restartPolicy }), null);
+  for (const protocol of ["tcp", "udp"]) assert.equal(validateSpecShape({ image: "i", ports: [{ host: 80, container: 80, protocol }] }), null);
+});
 
 test("validateSpecShape accepts a minimal and a full spec", () => {
   assert.equal(validateSpecShape({ image: "img" }), null);

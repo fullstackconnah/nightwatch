@@ -58,9 +58,14 @@ function mergedSecret(newValue: string | undefined, existing: string | undefined
 export async function POST(req: NextRequest) {
   let body: Body;
   try {
-    body = await req.json();
+    const parsed = await req.json();
+    body = parsed;
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  // A patch route has no required field, so a null, array or string body gets its own 400.
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
   }
 
   const current = loadConfig();
