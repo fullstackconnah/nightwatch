@@ -5,7 +5,7 @@
    used to be a stack of panels. Sync now is the one write and sits per mirror. OWN-WORLD: nightwatch console — the
    pattern's .st-* classes, house Badge and Button, no new token. */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { BranchRows, PullRows } from "@/components/integrations/git-branches-panel";
 import { GitCommitStream } from "@/components/integrations/git-commit-stream";
 import { MirrorRows } from "@/components/integrations/git-mirror-panel";
@@ -28,18 +28,12 @@ export default function GitPage() {
   const model = gitModel({ data, loadError: Boolean(error), lastOkAt, now });
   const ok = data?.status === "ok" ? data : undefined;
 
-  const lead = (id: StripId, body: ReactNode) => (
-    <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
-      {body}
-    </>
-  );
-
+  // No lead paragraph: the head answer says it once and the mirror rows hold each failure in full.
   const parts: Record<StripId, Pick<StripSpec, "body">> | undefined = ok && {
-    mirrors: { body: lead("mirrors", <MirrorRows mirrors={ok.mirrors} enabled={model.writes[0].enabled} forgejoUrl={ok.forgejoUrl} />) },
-    pulls: { body: lead("pulls", <PullRows pulls={ok.pulls} />) },
-    branches: { body: lead("branches", <BranchRows branches={ok.branches} />) },
-    commits: { body: lead("commits", <GitCommitStream stream={ok.stream} />) },
+    mirrors: { body: <MirrorRows mirrors={ok.mirrors} enabled={model.writes[0].enabled} forgejoUrl={ok.forgejoUrl} /> },
+    pulls: { body: <PullRows pulls={ok.pulls} /> },
+    branches: { body: <BranchRows branches={ok.branches} /> },
+    commits: { body: <GitCommitStream stream={ok.stream} /> },
   };
   const strips: StripSpec[] = parts ? model.strips.map((s) => ({ ...s, ...parts[s.id] })) : [];
 

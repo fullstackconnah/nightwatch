@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Single admin (the owner) monitoring and managing their Docker home server (192.168.1.70). Used on desktop at a desk and on a phone around the house — glance-first checks ("is everything up, what's eating resources") followed by quick actions (restart, stop, open the app). No other users; auth exists to gate LAN/remote access, not to model roles.
+Single admin (the owner) monitoring and managing their Docker home server (homelab.local). Used on desktop at a desk and on a phone around the house — glance-first checks ("is everything up, what's eating resources") followed by quick actions (restart, stop, open the app). No other users; auth exists to gate LAN/remote access, not to model roles.
 
 ## Product Purpose
 

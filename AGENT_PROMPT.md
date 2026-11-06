@@ -8,7 +8,7 @@ Paste everything below the line into a fresh Claude Code session (or any capable
 You are building a new project called **homelab-dashboard**, a self-hosted, single-pane-of-glass control panel for a home server running Docker.
 
 **Server facts:**
-- Host: `192.168.1.70`, reachable via `ssh homelab@192.168.1.70` (key auth already configured).
+- Host: `homelab.local`, reachable via `ssh homelab@homelab.local` (key auth already configured).
 - Existing stacks are managed with **Dockge** and follow the pattern documented for the "vaultview" project: each stack lives under `/mnt/docker/stacks/<name>`, is synced via `git archive` (not a live git clone — CRLF from `git archive` means diffing against `git show HEAD:<file>` will show false mismatches; verify content, not hashes), runs on its own port, and sits behind an **Nginx Proxy Manager (NPM)** reverse proxy.
 - There is currently a **gethomepage/homepage** dashboard running in Docker on port `3001`. This new project **replaces it** — feature parity with Homepage's "auto-discovered service tiles with live widget data" is the baseline bar, not a stretch goal.
 - No dedicated system-metrics exporter (e.g. Prometheus/node_exporter) exists yet on the host. Do not assume one — read metrics directly (see Architecture).

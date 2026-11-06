@@ -1,6 +1,6 @@
 # homelab-dashboard (nightwatch)
 
-Single-pane dashboard for the home server (192.168.1.70). Deployed as a Dockge
+Single-pane dashboard for the home server (homelab.local). Deployed as a Dockge
 stack on port 3005. See README.md (features/labels) and DEPLOY.md (runbook).
 
 ## Dev
@@ -8,7 +8,7 @@ stack on port 3005. See README.md (features/labels) and DEPLOY.md (runbook).
 - **Every host, ssh user and PIN in these docs is a placeholder** — this repo is
   public. The real values live in `.claude/local-env.md` (gitignored); substitute
   before running any command here.
-- Docker access: `ssh -N -L 127.0.0.1:12375:/var/run/docker.sock homelab@192.168.1.70` (`.env.local` points DOCKER_HOST at it), then `npm run dev` → http://localhost:3005; any password logs in (dev only)
+- Docker access: `ssh -N -L 127.0.0.1:12375:/var/run/docker.sock homelab@homelab.local` (`.env.local` points DOCKER_HOST at it), then `npm run dev` → http://localhost:3005; any password logs in (dev only)
 - **NEVER run `npm run build` while the dev server is running** — they share `.next`; chunks 404 and hydration silently dies
 - Killing the dev server on Windows can orphan the node child holding port 3005 — `netstat -ano | grep 3005` then `taskkill //F //PID <pid>`
 
