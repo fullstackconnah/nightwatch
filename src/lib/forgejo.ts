@@ -173,7 +173,7 @@ function firstLine(message: string): string {
  *  tokens in responses" applies to every secret reaching the client, not
  *  only the ones this dashboard itself holds. */
 function maskCredentials(url: string): string {
-  return url.replace(/:\/\/[^/@]+@/, "://");
+  return url.replace(/:\/\/[^\s/@]+@/g, "://");
 }
 
 const GITHUB_REPO_RE = /github\.com[/:]([^/]+)\/([^/.]+?)(?:\.git)?\/?$/i;
@@ -348,7 +348,7 @@ async function fetchRepoBundle(
       repo: repo.fullName,
       target,
       lastSync: pm.last_update ?? null,
-      lastError: pm.last_error?.trim() ? pm.last_error : null,
+      lastError: pm.last_error?.trim() ? maskCredentials(pm.last_error).slice(0, 300) : null,
       interval: pm.interval || null,
       defaultBranch,
     };

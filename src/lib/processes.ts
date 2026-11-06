@@ -3,6 +3,7 @@ import { HOST_PROC, HOST_SYS } from "@/lib/host-metrics";
 import { listContainers } from "@/lib/docker";
 import { Memo } from "@/lib/cache";
 import { processCpuShare } from "@/lib/cpu-share";
+import { redactCmdline } from "@/lib/redact";
 import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
 
 /**
@@ -232,7 +233,7 @@ async function readPidDetail(pid: number, ownContainerId: string | null): Promis
   try {
     const raw = await fsp.readFile(`${HOST_PROC}/${pid}/cmdline`, "utf8");
     const cleaned = raw.replace(/\0/g, " ").trim();
-    cmdline = cleaned.length > 0 ? cleaned : null;
+    cmdline = cleaned.length > 0 ? redactCmdline(cleaned) : null;
   } catch {
     cmdline = null; // treat as kernel thread / unreadable, not a scan failure
   }
