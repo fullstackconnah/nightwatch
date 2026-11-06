@@ -32,7 +32,7 @@ const STALE_TAGS = [
  * copied except the main video, which becomes HEVC. Never a -r, -vf or scale: frame rate and size stay as they were.
  */
 export function encodeArgs(
-  o: { src: string; out: string; container: string; streams: StreamInfo[]; crf: number; prefix?: string[] },
+  o: { src: string; out: string; container: string; streams: StreamInfo[]; crf: number; tune?: "grain" | null; prefix?: string[] },
 ): string[] {
   const mapped = o.streams.filter((s) => s.type !== "data");
   const video = mainVideo(mapped);
@@ -44,7 +44,7 @@ export function encodeArgs(
     ...mapped.flatMap((s) => ["-map", `0:${s.index}`]),
     "-map_chapters", "0", "-map_metadata", "0",
     "-c", "copy",
-    `-c:${outIdx}`, "libx265", "-preset", PRESET, "-crf", String(o.crf), "-pix_fmt", "yuv420p",
+    `-c:${outIdx}`, "libx265", "-preset", PRESET, ...(o.tune ? ["-tune", o.tune] : []), "-crf", String(o.crf), "-pix_fmt", "yuv420p",
     // hvc1 is what Apple players need in MP4; Matroska may refuse the tag (S7), so it is MP4 only.
     ...(mp4 ? [`-tag:${outIdx}`, "hvc1"] : []),
     "-x265-params", `log-level=error:pools=${X265_POOLS}`,

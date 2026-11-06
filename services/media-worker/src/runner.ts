@@ -118,7 +118,7 @@ export function createRunner(o: RunnerOpts) {
     const plan = q.plan(q.get(id) as JobRecord);
 
     // Encode.
-    const argv = encodeArgs({ src: rec.abs, out: plan.part, container: input.container, streams: streamInfos(json), crf: v.crf, prefix });
+    const argv = encodeArgs({ src: rec.abs, out: plan.part, container: input.container, streams: streamInfos(json), crf: v.crf, tune: v.tune, prefix });
     const child = spawn(argv[0], argv.slice(1), { detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     track(id)(child);
     const srcFps = srcFpsOf(json);

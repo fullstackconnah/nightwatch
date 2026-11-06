@@ -2,7 +2,7 @@
 // nothing, so the dashboard image can build with only this file (see .dockerignore).
 
 export type Verdict =
-  | { kind: "compress"; ratio: number; targetKbps: number; crf: number; estSavingBytes: number; reason: string }
+  | { kind: "compress"; ratio: number; targetKbps: number; crf: number; tune: "grain" | null; estSavingBytes: number; reason: string }
   | { kind: "ok"; ratio: number | null; reason: string }
   | { kind: "skip"; reason: string }
   | { kind: "cant"; reason: string };
