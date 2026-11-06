@@ -1,6 +1,7 @@
-import { loadConfig } from "@/lib/config";
-import { KeyedMemo } from "@/lib/cache";
-import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
+import { createHash } from "node:crypto";
+import { loadConfig } from "./config.ts";
+import { KeyedMemo } from "./cache.ts";
+import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
 import type {
   ProxyCertificate,
   ProxyManagerSnapshot,
@@ -57,7 +58,34 @@ interface NpmTokenResponse {
   expires?: string;
 }
 
-async function requestToken(creds: NpmCredentials): Promise<AuthResult> {
+const UNAUTHORIZED_TTL_MS = 60_000;
+
+// The password only ever enters a hash, so a settings change (url, user or password) gets a new key.
+const credKey = (c: NpmCredentials) => createHash("sha256").update(`${c.url}\n${c.email}\n${c.password}`).digest("hex");
+
+let inflight: { key: string; promise: Promise<AuthResult> } | null = null;
+let rejected: { key: string; until: number; result: AuthResult } | null = null;
+
+/** One login at a time per credential set; a rejected login is remembered for 60 s. Network/5xx failures are not. */
+function requestToken(creds: NpmCredentials): Promise<AuthResult> {
+  const key = credKey(creds);
+  if (rejected && rejected.key === key && rejected.until > Date.now()) return Promise.resolve(rejected.result);
+  if (inflight && inflight.key === key) return inflight.promise;
+  const promise = login(creds)
+    .then((result) => {
+      if (!result.ok && result.reason === "unauthorized") {
+        rejected = { key, until: Date.now() + UNAUTHORIZED_TTL_MS, result };
+      }
+      return result;
+    })
+    .finally(() => {
+      if (inflight?.promise === promise) inflight = null;
+    });
+  inflight = { key, promise };
+  return promise;
+}
+
+async function login(creds: NpmCredentials): Promise<AuthResult> {
   let res: Response;
   try {
     res = await fetchNoCrossOriginRedirect(`${creds.url}/api/tokens`, {
@@ -232,7 +260,9 @@ async function probeTargetUncached(target: string): Promise<RouteHealth> {
   try {
     await attempt("HEAD");
     return "up";
-  } catch {
+  } catch (e) {
+    // A timed-out HEAD means the upstream is dead; a GET would only burn another timeout.
+    if (e instanceof Error && e.name === "TimeoutError") return "down";
     try {
       await attempt("GET");
       return "up";
