@@ -40,7 +40,6 @@ const CONFIRM_ROOTS: Record<string, number> = {
   "components/resources/reclaim-shared.tsx": 2,
   "components/resources/image-delete-action.tsx": 2,
   "components/widget-actions.tsx": 2,
-  "components/integrations/hermes-actions.tsx": 1,
   "components/strips/write-action.tsx": 2,
 };
 
@@ -52,7 +51,7 @@ test("#1 nw-confirm sits on exactly the confirm and error roots, each with its o
     for (const t of tags) assert.match(t, /\bkey=/, `${file}: ${t.slice(0, 60)}`);
     total += tags.length;
   }
-  assert.equal(total, 12);
+  assert.equal(total, 11);
   const all = walk(SRC).filter((f) => /nw-confirm/.test(readFileSync(f, "utf8"))).map((f) => f.slice(SRC.length).replace(/\\/g, "/"));
   assert.deepEqual(all.sort(), Object.keys(CONFIRM_ROOTS).sort());
 });
@@ -65,7 +64,7 @@ test("#6 the error roots carry data-kind=error", () => {
 });
 
 test("#1 the left-aligned confirms set their origin inline", () => {
-  for (const f of ["components/widget-actions.tsx", "components/integrations/hermes-actions.tsx"]) {
+  for (const f of ["components/widget-actions.tsx"]) {
     assert.match(read(f), /"--nw-confirm-origin": "left center"/, f);
   }
 });

@@ -1,125 +1,79 @@
-/* THESIS: two ghost-button triggers over one shared job slot — the daemon
-   itself only runs one job at a time (POST /run 409s otherwise), so a
-   digest and a test alert sharing one progress/result area is honest about
-   that, not a simplification. Test alert gets the app's one inline two-step
-   confirm idiom (image-delete-action.tsx / reclaim-shared.tsx) because it's
-   the one button on this page that exercises a real, external side channel.
-   OWN-WORLD: nightwatch console — ghost buttons, .logbox-style result panel,
-   mono elapsed timer, honest 409 copy passed straight through. */
+/* THESIS: the Runs strip's two writes over the page's one Hermes job slot (the daemon runs one job at a time, so the
+   page owns the slot and passes `run` down). Run digest sits in the strip head; Send test alert is the one that
+   exercises a real external channel, so it asks once on the strips' WriteAction and its Yes is the primary button.
+   The result and failed-run panels are filtered by job kind (jobFor). OWN-WORLD: nightwatch console. */
 "use client";
 
-import { useState, type CSSProperties } from "react";
-import { AlertTriangle, Loader2, PlayCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useHermesRun } from "@/lib/use-hermes";
-import { useNow } from "@/lib/use-now";
+import { AlertTriangle, PlayCircle } from "lucide-react";
+import { WriteAction } from "@/components/strips/write-action";
+import { jobFor } from "@/lib/hermes/page-model";
+import type { UseHermesRunResult } from "@/lib/use-hermes";
 
-function formatElapsed(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+const TAP = "min-h-11 min-w-11 md:min-h-0 md:min-w-0";
+/** The page renders this id once, as the reason a disabled write is off. */
+export const WHY_ID = "hermes-why";
 
-function ElapsedTimer({ startedAt }: { startedAt: string | null }) {
-  const now = useNow(true);
-  const startMs = startedAt ? Date.parse(startedAt) : NaN;
-  if (!Number.isFinite(startMs) || now === 0) return null;
-  return <span className="font-mono tabular-nums text-ink-dim text-xs">{formatElapsed(now - startMs)}</span>;
-}
+const starter = (run: UseHermesRunResult, kind: "digest" | "alert-test") => async () => {
+  const failure = await run.start(kind);
+  if (failure) throw new Error(failure);
+};
 
-type ConfirmStep = "idle" | "confirm";
-
-export function HermesActionsRow() {
-  const run = useHermesRun();
-  const [confirmStep, setConfirmStep] = useState<ConfirmStep>("idle");
-
-  const job = run.job;
-  const running = run.starting || (job?.ok && job.job.state === "running");
-  const busy = running || confirmStep === "confirm";
-
-  async function startDigest() {
-    setConfirmStep("idle");
-    await run.start("digest");
-  }
-
-  async function startAlertTest() {
-    setConfirmStep("idle");
-    await run.start("alert-test");
-  }
-
+export function RunDigest({ run, enabled }: { run: UseHermesRunResult; enabled: boolean }) {
   return (
-    <div className="panel p-4 space-y-3">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="microlabel">actions</span>
-        {job?.ok && job.job.state === "running" && (
-          <span className="flex items-center gap-1.5">
-            <Loader2 size={12} className="animate-spin motion-reduce:animate-none text-ink-faint" aria-hidden />
-            <ElapsedTimer startedAt={job.job.startedAt} />
-          </span>
-        )}
+    <WriteAction
+      label="Run digest"
+      icon={<PlayCircle size={13} />}
+      confirm={false}
+      flight="Starting…"
+      failure="Couldn’t start the digest"
+      disabled={!enabled}
+      describedBy={WHY_ID}
+      triggerClassName={TAP}
+      run={starter(run, "digest")}
+    />
+  );
+}
+
+export function RunsDetail({ run, enabled, reason }: { run: UseHermesRunResult; enabled: boolean; reason: string | null }) {
+  const { job, problem } = jobFor("runs", run);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <WriteAction
+          label="Send test alert"
+          icon={<AlertTriangle size={13} />}
+          say="Sends a real test alert down the Discord webhook."
+          yes="Yes, send"
+          flight="Sending…"
+          failure="Couldn’t send the test alert"
+          disabled={!enabled}
+          describedBy={WHY_ID}
+          triggerClassName={TAP}
+          run={starter(run, "alert-test")}
+        />
       </div>
+      <p className="st-note">Runs started here show their result here; they don’t post to Discord.</p>
+      {!enabled && reason && <p className="st-note">{reason}</p>}
 
-      <p className="text-[0.7rem] text-ink-dim">
-        API-triggered runs show their result here — they don&apos;t post to Discord.
-      </p>
+      {problem && <div role="alert" className="microlabel !text-bad">{problem}</div>}
 
-      {confirmStep === "confirm" ? (
-        <div
-          key="confirm"
-          className="nw-confirm flex items-center gap-2 flex-wrap"
-          style={{ "--nw-confirm-origin": "left center" } as CSSProperties}
-        >
-          <AlertTriangle size={13} className="text-warn shrink-0" aria-hidden />
-          <span className="text-[0.7rem] text-ink-dim">
-            This sends a real test alert down the configured Discord webhook. Send it now?
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setConfirmStep("idle")}>
-              Cancel
-            </Button>
-            <Button size="sm" variant="warn" onClick={() => void startAlertTest()}>
-              Confirm
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div key="idle" className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => void startDigest()}>
-            <PlayCircle size={13} /> Run digest now
-          </Button>
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmStep("confirm")}>
-            <AlertTriangle size={13} /> Send test alert
-          </Button>
-        </div>
-      )}
-
-      {run.startError && (
-        <div role="alert" className="microlabel !text-warn/80">{run.startError}</div>
-      )}
-
-      {job?.ok && job.job.state === "error" && (
+      {job?.state === "error" && (
         <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">run failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
-            {job.job.error ?? "Hermes reported an error with no further detail."}
+            {job.error ?? "Hermes reported an error with no further detail."}
           </p>
         </div>
       )}
 
-      {/* role="status" directly on the result panel, not a separate sr-only
-          mirror: unlike log-track's scrollback this content renders once per
-          run and then sits static (polling stops once the job settles), so
-          there is no risk of re-announcing on every tick — the panel's own
-          appearance IS the one meaningful event. */}
-      {job?.ok && job.job.state === "done" && job.job.result && (
+      {/* role="status" on the result panel itself: it renders once per run and then sits static (polling stops once the
+          job settles), so the panel's appearance is the one announcement. */}
+      {job?.state === "done" && job.result && (
         <div role="status" aria-live="polite" className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5 space-y-1">
-          <div className="text-xs font-medium text-ink">{job.job.result.title || "(no title)"}</div>
-          <div className="text-ink-dim whitespace-pre-wrap break-words">{job.job.result.body || "(empty)"}</div>
+          <div className="text-xs font-medium text-ink">{job.result.title || "(no title)"}</div>
+          <div className="text-ink-dim whitespace-pre-wrap break-words">{job.result.body || "(empty)"}</div>
         </div>
       )}
-
-      {job && !job.ok && <div role="alert" className="microlabel !text-bad">{job.detail}</div>}
     </div>
   );
 }

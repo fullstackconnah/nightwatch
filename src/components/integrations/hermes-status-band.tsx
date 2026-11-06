@@ -90,14 +90,14 @@ export function HermesStatusBand({ status }: { status: HermesStatusOk }) {
   const { tier, dryRun, loops, discord, counts, startedAt } = status;
 
   return (
-    <div className="panel p-4 space-y-4">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="dot dot-running" aria-hidden />
             <span className="font-mono text-sm text-ink truncate">{tier.model}</span>
             {dryRun && (
-              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.65rem] font-mono font-medium border border-warn/30 text-warn bg-warn/5">
+              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.65rem] font-mono font-medium border border-line text-ink-dim">
                 dry run
               </span>
             )}
@@ -107,7 +107,7 @@ export function HermesStatusBand({ status }: { status: HermesStatusOk }) {
             {startedAt && <> · up {relativeTime(startedAt)}</>}
           </div>
           {dryRun && (
-            <p className="text-[0.7rem] text-warn/80 max-w-prose">
+            <p className="text-[0.7rem] text-ink-dim max-w-prose">
               Dry run is on — reports print to logs, not Discord.
             </p>
           )}

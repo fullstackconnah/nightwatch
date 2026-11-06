@@ -1,5 +1,4 @@
-/* THESIS: recent-first feed, same full-width hairline-header-plus-body band
-   git-commit-stream.tsx uses. Kind badges reuse the app's existing badge
+/* THESIS: recent-first feed, the Activity strip's detail (held while the strips are held, R5). Kind badges reuse the app's existing badge
    vocabulary rather than inventing a fifth colour: digest is routine
    (neutral), alert is the one kind that means something's actually wrong
    (bad), recovery is good news (ok), ask is a person asking (blue) — the
@@ -9,9 +8,10 @@
    truncating silently. OWN-WORLD: nightwatch console. */
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { useHeldList } from "@/components/strips/strip-list";
 import { relativeTime } from "@/lib/format";
 import type { HermesActivityItem, HermesActivityKind } from "@/lib/types/hermes";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,7 @@ function ActivityRow({ item }: { item: HermesActivityItem }) {
         aria-controls={expandable ? panelId : undefined}
         disabled={!expandable}
         className={cn(
-          "w-full text-left flex items-start gap-2.5 px-4 py-2.5 min-h-11 md:min-h-0",
+          "w-full text-left flex items-start gap-2.5 py-2.5 min-h-11 md:min-h-0",
           expandable ? "cursor-pointer hover:bg-panel-2/60" : "cursor-default",
         )}
       >
@@ -73,7 +73,7 @@ function ActivityRow({ item }: { item: HermesActivityItem }) {
         )}
       </button>
       {expandable && open && (
-        <div id={panelId} className="px-4 pb-3 -mt-1">
+        <div id={panelId} className="pb-3 -mt-1">
           <div className="logbox rounded-md border border-line bg-panel-2 px-3 py-2.5 text-ink-dim whitespace-pre-wrap break-words">
             {item.body}
           </div>
@@ -83,31 +83,40 @@ function ActivityRow({ item }: { item: HermesActivityItem }) {
   );
 }
 
-export function HermesActivityFeed({ items }: { items: HermesActivityItem[] }) {
-  return (
-    <div className="panel overflow-hidden">
-      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2 border-b border-line">
-        <span className="microlabel">activity</span>
-        <span className="font-mono text-xs text-ink-faint tabular-nums">
-          {items.length === 0 ? "—" : `${items.length} recent`}
-        </span>
-      </div>
+/** One id per item for the held list: (at, kind) can collide inside one second, so repeats get a counter. */
+function withIds(items: HermesActivityItem[]) {
+  const seen = new Map<string, number>();
+  return items.map((item) => {
+    const base = `${item.at}|${item.kind}`;
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    return { id: n ? `${base}#${n}` : base, item };
+  });
+}
 
-      {items.length === 0 ? (
-        <div className="px-4 py-6 text-xs text-ink-faint">
-          nothing recorded yet — hermes has been quiet
-        </div>
-      ) : (
-        <div className="max-h-[28rem] overflow-y-auto">
-          {items.map((item, i) => (
-            // Composite key: the daemon's own contract carries no id field, and
-            // (at, kind) alone can collide if two events land in the same
-            // second — index breaks the tie without claiming a stable identity
-            // the API doesn't offer.
-            <ActivityRow key={`${item.at}-${item.kind}-${i}`} item={item} />
-          ))}
-        </div>
-      )}
+/** Activity rows (30 s poll). While the strips are held (pointer or focus inside) rows stay put and new ones wait behind "N new · show" (R5). */
+export function HermesActivityFeed({ items }: { items: HermesActivityItem[] }) {
+  const live = withIds(items);
+  const h = useHeldList(live.map((x) => x.id));
+  const known = useRef(new Map<string, HermesActivityItem>());
+  for (const x of live) known.current.set(x.id, x.item);
+  if (items.length === 0 && h.rows.length === 0) {
+    return <p className="st-note">Nothing recorded yet. Hermes has been quiet.</p>;
+  }
+  return (
+    <div>
+      <div className="st-listhead">
+        <span>{items.length} recent</span>
+        <button type="button" className="st-pill" data-on={h.pill ? "" : undefined} tabIndex={h.pill ? 0 : -1} onClick={h.show}>
+          {h.pill || "0 new · show"}
+        </button>
+      </div>
+      <div className="max-h-[28rem] overflow-y-auto">
+        {h.rows.map((id) => {
+          const item = known.current.get(id);
+          return item && <ActivityRow key={id} item={item} />;
+        })}
+      </div>
     </div>
   );
 }
