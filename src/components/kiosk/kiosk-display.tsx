@@ -42,7 +42,7 @@ import {
   Wind,
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
-import { WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
+import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
@@ -165,7 +165,7 @@ interface WeatherOk {
   days: WeatherDay[];
   rain?: WeatherRain;
   /** Same payload as KioskWeatherOk.sun; only the night glyph reads it here. */
-  sun?: { elevationDeg: number };
+  sun?: KioskWeatherOk["sun"];
 }
 
 type WeatherResponse =
