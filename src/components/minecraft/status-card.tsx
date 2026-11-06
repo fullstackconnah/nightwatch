@@ -5,6 +5,7 @@
 "use client";
 
 import { ConfirmStop } from "@/components/resources/container-controls";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { postJson, type MinecraftStatusResponse } from "@/lib/client";
@@ -125,10 +126,10 @@ export function ServerDetail({
   const active = status?.instances.find((i) => i.slug === status.active);
   const restart = writeOf(model, "restart");
   const pause = writeOf(model, "pause");
-  const lead = leadFor(model, "server");
+  const lead = useClampedLead(leadFor(model, "server"));
   return (
     <div className="st-stack">
-      {lead && <p className="text-sm text-ink">{lead}</p>}
+      {lead && <p className="text-sm text-ink" data-feature="detail-lead">{lead}</p>}
       {active ? (
         <div className="st-row">
           <span className="text-sm text-ink font-medium">{active.name}</span>

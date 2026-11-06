@@ -151,6 +151,16 @@ async function diagnose(page, label, width) {
 }
 
 const text = (page, sel) => page.locator(sel).first().innerText();
+// L1 (R3): the detail lead shows exactly while the head answer is clamped; measured after two frames so the observer has run.
+const leadState = async (page) => {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const r = await page.evaluate(() => {
+    const a = document.querySelector("[data-feature=answer]");
+    const l = document.querySelector("[data-feature=detail-lead]");
+    return { clamped: !!a && a.scrollHeight > a.clientHeight + 1, lead: !!l && l.getClientRects().length > 0 };
+  });
+  return { ...r, ok: r.clamped === r.lead };
+};
 // The stale notice (.pt-notice) is required by pattern.md section 5, so the head is measured without it.
 const headBox = (page) =>
   page.locator("[data-feature=head]").evaluate((el) => el.getBoundingClientRect().height - (el.querySelector(".pt-notice")?.getBoundingClientRect().height ?? 0));
@@ -227,6 +237,7 @@ for (const [key, chip, phrase, open] of STATES) {
     const a = await perState(page, name, s.name);
     if (key === "calm") record("C15 calm paint (no bad or warn)", s.name, a.painted ? { n: a.painted, sample: a.paintedSample } : 0);
     if (open) record("C20 answer strip opens by itself", `${name}@${s.name}`, (await page.locator(`[data-row-id=${open}] [aria-expanded=true]`).count()) > 0 || (await page.locator("#st-pane h2").innerText()).toLowerCase() === open);
+    if (open) record("L1 detail lead only when clamped", `${name}@${s.name}`, await leadState(page));
     if (s.name === "390") record("C21 tap targets", name, (await small(page)).join("|") || "ok");
     await shot(page, s, name);
     if (key === "calm") {

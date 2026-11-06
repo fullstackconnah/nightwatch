@@ -10,6 +10,7 @@ import { CertificatesPanel } from "@/components/integrations/proxy-certificates"
 import { RouteTable } from "@/components/integrations/proxy-routes";
 import { PageHead } from "@/components/strips/page-head";
 import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import { buttonVariants } from "@/components/ui/button";
 import { proxyModel, type StripId } from "@/lib/proxy/page-model";
 import { useProxyManager } from "@/lib/use-npm";
@@ -25,11 +26,12 @@ export default function ProxyPage() {
   }, [isValidating, error, data]);
 
   const model = proxyModel({ data, loadError: Boolean(error), lastOkAt, now });
+  const detailLead = useClampedLead(model.detailLead);
   const ok = data?.status === "ok" ? data : undefined;
 
   const lead = (id: StripId, body: ReactNode) => (
     <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {model.autoTarget === id && detailLead && <p className="st-note mb-3" data-feature="detail-lead">{detailLead}</p>}
       {body}
     </>
   );

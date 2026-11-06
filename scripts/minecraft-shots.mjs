@@ -129,6 +129,16 @@ async function goStale(page, mock) {
 
 const chipOf = (page) => page.locator("[data-feature=chip]").innerText().then((t) => t.trim());
 const answerOf = (page) => page.locator("[data-feature=answer]").getAttribute("title");
+// L1 (R3): the detail lead shows exactly while the head answer is clamped; measured after two frames so the observer has run.
+const leadState = async (page) => {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const r = await page.evaluate(() => {
+    const a = document.querySelector("[data-feature=answer]");
+    const l = document.querySelector("[data-feature=detail-lead]");
+    return { clamped: !!a && a.scrollHeight > a.clientHeight + 1, lead: !!l && l.getClientRects().length > 0 };
+  });
+  return { ...r, ok: r.clamped === r.lead };
+};
 const detail = (page) => page.locator(".st-pane, .st-body");
 const openStrip = async (page, id) => {
   await page.locator(`[data-k="open-${id}"]`).click();
@@ -377,18 +387,16 @@ try {
     }),
   );
 
-  // C4b server half: the strip the answer names leads with the full answer.
-  await guarded("C4b", () =>
+  // L1 (replaces C4b): the strip the answer names leads with the full answer only while the head clamps it.
+  await guarded("L1", () =>
     each(async (s) => {
       const out = {};
       for (const key of ["crashed", "down", "tokenRejected", "noPack"]) {
         const { page } = await visit(s, key);
-        const answer = await answerOf(page);
-        const text = await detail(page).innerText();
-        out[key] = text.includes(answer);
+        out[key] = await leadState(page);
         await page.close();
       }
-      record("C4b", s.name, out);
+      record("L1 detail lead only when clamped", s.name, out);
     }),
   );
 

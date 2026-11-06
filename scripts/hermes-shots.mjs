@@ -156,6 +156,16 @@ async function diagnose(page, label, width) {
 }
 
 const text = (page, sel) => page.locator(sel).first().innerText();
+// L1 (R3): the detail lead shows exactly while the head answer is clamped; measured after two frames so the observer has run.
+const leadState = async (page) => {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const r = await page.evaluate(() => {
+    const a = document.querySelector("[data-feature=answer]");
+    const l = document.querySelector("[data-feature=detail-lead]");
+    return { clamped: !!a && a.scrollHeight > a.clientHeight + 1, lead: !!l && l.getClientRects().length > 0 };
+  });
+  return { ...r, ok: r.clamped === r.lead };
+};
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openStrip = async (page, id) => {
   const t = page.locator(`[data-k="open-${id}"]`);
@@ -242,6 +252,7 @@ for (const [key, chip, phrase, open] of STATES) {
     if (key === "calm" || key === "dryRun") record("C15 calm paint (no bad or warn)", `${name}@${s.name}`, a.painted ? { n: a.painted, sample: a.paintedSample } : 0);
     if (key === "calm") record("C4 strip heads one height", s.name, [...new Set(a.heads)].length <= 2 ? "ok" : a.heads);
     if (open) record("C6 answer strip opens by itself", `${name}@${s.name}`, await isOpen(page, open));
+    if (open) record("L1 detail lead only when clamped", `${name}@${s.name}`, await leadState(page));
     else if (key === "calm") {
       // Spec §5 Calm row: nothing open at 390; Loops open (Runs not) at 1440.
       const loops = await isOpen(page, "loops");

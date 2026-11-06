@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input, Select } from "@/components/ui/input";
 import { ApiError, postJson, useMinecraftPackSearch } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import type { McInstance } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
 import { UploadPack } from "./upload-pack";
@@ -49,6 +50,7 @@ export function PackBrowser({
   /** The full answer, when Pack opened by itself (R3). */
   lead?: string | null;
 }) {
+  const shownLead = useClampedLead(lead ?? null);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [source, setSource] = useState<"all" | "curseforge" | "modrinth">("all");
@@ -93,7 +95,7 @@ export function PackBrowser({
 
   return (
     <div className="st-stack">
-      {lead && <p className="text-sm text-ink">{lead}</p>}
+      {shownLead && <p className="text-sm text-ink" data-feature="detail-lead">{shownLead}</p>}
       <section className="st-stack" aria-label="Install a pack">
         <h3 className="microlabel">Install a pack</h3>
         <div className="flex gap-2 flex-wrap">
