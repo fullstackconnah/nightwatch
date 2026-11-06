@@ -43,6 +43,7 @@ const pageErrorMessages = {};
 let consoleErrors = 0;
 const consoleErrorMessages = {};
 const consoleErrorLog = [];
+let hydrationFull = null;
 /** True when the kiosk error boundary ("Something went wrong") is on screen: a render crash, which counts as a failure. */
 const crashed = (page) => page.getByText("Something went wrong").count().then((n) => n > 0);
 const foreign = [];
@@ -87,6 +88,8 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
     consoleErrors++;
     const t = m.text().slice(0, 200);
     consoleErrorMessages[t] = (consoleErrorMessages[t] ?? 0) + 1;
+    // the full hydration text names the differing attribute (its diff follows the 200-char intro)
+    if (/hydrated but some attributes/.test(t) && !hydrationFull) hydrationFull = m.text().slice(0, 6000);
     // page.step names the script step; url + viewport + clock-pinned tell whether setFixedTime causes a hydration mismatch
     consoleErrorLog.push({ msg: t, page: page.url(), source: m.location().url, step: page.step ?? "load", viewport: `${viewport.width}x${viewport.height}`, fixedTime });
 
@@ -738,6 +741,7 @@ for (const size of SIZES) {
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;
+results.n16HydrationFull = hydrationFull;
 results.n16PageErrors = pageErrors;
 results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;
