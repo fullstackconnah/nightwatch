@@ -3,6 +3,7 @@ import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
 import { loadConfig } from "@/lib/config";
 import type { PackResult } from "@/lib/minecraft/packs";
+import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,9 @@ export async function POST(req: NextRequest) {
   const rawSlug = typeof slugOverride === "string" && slugOverride.trim() ? slugOverride : pack.slug;
   const slug = sanitizeSlug(rawSlug);
   const memoryGb = typeof memoryGbRaw === "number" && Number.isFinite(memoryGbRaw) ? memoryGbRaw : undefined;
+  if (memoryGb !== undefined && !memoryGbInRange(memoryGb)) {
+    return NextResponse.json({ error: `memoryGb must be above 0 and at most ${MAX_MEMORY_GB}` }, { status: 400 });
+  }
 
   let cfApiKey: string | undefined;
   if (pack.source === "curseforge") {

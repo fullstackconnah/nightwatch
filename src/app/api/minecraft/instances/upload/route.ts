@@ -3,6 +3,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { uploadAuthorized } from "@/lib/upload-auth";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
+import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,11 @@ export async function POST(req: NextRequest) {
       { error: `loader must be one of ${[...VALID_LOADERS].join(", ")}` },
       { status: 400 },
     );
+  }
+
+  const memoryGb = params.get("memoryGb");
+  if (memoryGb !== null && !memoryGbInRange(Number(memoryGb))) {
+    return NextResponse.json({ error: `memoryGb must be above 0 and at most ${MAX_MEMORY_GB}` }, { status: 400 });
   }
 
   const contentType = req.headers.get("content-type");

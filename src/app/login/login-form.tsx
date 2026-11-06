@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Activity, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { loginFailure } from "@/lib/client-replies";
 
 /** One line per code the callback route can redirect back with — see
  *  src/app/api/auth/oidc/callback/route.ts. Codes only, never a raw error
@@ -37,7 +38,7 @@ export function LoginForm({
         body: JSON.stringify({ password }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Login failed");
+      if (!res.ok) throw new Error(loginFailure(data));
       window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
