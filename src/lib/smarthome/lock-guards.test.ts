@@ -32,7 +32,7 @@ test("SH write-action: the question line is a live region so the unlock hint is 
 });
 
 test("SH smarthome page: the auto-opened lead note keeps a gap above the first row", () => {
-  assert.match(read("app", "(dash)", "smarthome", "page.tsx"), /<p className="st-note mb-3">\{model\.detailLead\}/);
+  assert.match(read("app", "(dash)", "smarthome", "page.tsx"), /<p className="st-note mb-3" data-feature="detail-lead">\{detailLead\}/);
 });
 
 test("SH strip-list: a wide open id that names no strip falls back to the first strip", () => {

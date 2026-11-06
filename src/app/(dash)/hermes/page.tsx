@@ -12,6 +12,7 @@ import { HermesAsk } from "@/components/integrations/hermes-ask";
 import { HermesStatusBand } from "@/components/integrations/hermes-status-band";
 import { PageHead } from "@/components/strips/page-head";
 import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import { hermesModel, type StripId, type WriteId } from "@/lib/hermes/page-model";
 import { useHermesActivity, useHermesRun, useHermesStatus } from "@/lib/use-hermes";
 import { useNow } from "@/lib/use-now";
@@ -28,12 +29,13 @@ export default function HermesPage() {
   }, [status.isValidating, status.error, status.data]);
 
   const model = hermesModel({ status: status.data, activity, loadError: Boolean(status.error), run, lastOkAt, now });
+  const detailLead = useClampedLead(model.detailLead);
   const write = (id: WriteId) => model.writes.find((w) => w.id === id)!;
   const ok = status.data?.status === "ok" ? status.data : undefined;
 
   const lead = (id: StripId, body: ReactNode) => (
     <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {model.autoTarget === id && detailLead && <p className="st-note mb-3" data-feature="detail-lead">{detailLead}</p>}
       {body}
     </>
   );

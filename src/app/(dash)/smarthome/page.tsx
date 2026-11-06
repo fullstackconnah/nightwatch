@@ -7,6 +7,7 @@ import { LightsDetail, SensorsDetail, SwitchesDetail } from "@/components/smarth
 import { LockActions, LockDetail } from "@/components/smarthome/lock";
 import { PageHead } from "@/components/strips/page-head";
 import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import { fetcher } from "@/lib/client";
 import type { ClimateAutoOffServerState } from "@/lib/kiosk/use-climate-auto-off";
 import { smarthomeModel, type StripId, type WriteId } from "@/lib/smarthome/page-model";
@@ -26,12 +27,13 @@ export default function SmarthomePage() {
   const [lockBusy, setLockBusy] = useState(false);
 
   const model = smarthomeModel({ ha: ha.data, loadError: Boolean(ha.error), autoOff, lockBusy, lastOkAt, now });
+  const detailLead = useClampedLead(model.detailLead);
   const on = (id: WriteId) => model.writes.find((w) => w.id === id)?.enabled ?? false;
   const e = ha.data?.status === "ok" ? ha.data.entities : undefined;
 
   const lead = (id: StripId, body: ReactNode) => (
     <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {model.autoTarget === id && detailLead && <p className="st-note mb-3" data-feature="detail-lead">{detailLead}</p>}
       {body}
     </>
   );

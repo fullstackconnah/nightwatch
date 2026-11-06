@@ -28,6 +28,7 @@ import {
 import { LabelConventionPanel } from "@/components/settings/settings-reference";
 import { SettingsTiles, isCustomized } from "@/components/settings/settings-tiles";
 import { SettingsWidgets } from "@/components/settings/settings-widgets";
+import { useClampedLead } from "@/components/strips/use-answer-clamped";
 
 export default function SettingsPage() {
   const { data, error, mutate } = useSettingsFull((at) => setLoadedAt(at));
@@ -111,10 +112,11 @@ export default function SettingsPage() {
       ? { customized: containerNames.filter((n) => isCustomized(data.config, n)).length, total: containerNames.length }
       : null;
   const model = settingsModel({ data, loadError: error ? error.message : null, loadedAt, forms, tiles, now });
+  const detailLead = useClampedLead(model.detailLead);
 
   const lead = (id: StripId, body: React.ReactNode) => (
     <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note">{model.detailLead}</p>}
+      {model.autoTarget === id && detailLead && <p className="st-note" data-feature="detail-lead">{detailLead}</p>}
       {body}
     </>
   );

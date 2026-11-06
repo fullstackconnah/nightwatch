@@ -143,6 +143,16 @@ async function visit(s, key, { hash = "", reduced = false, real = false } = {}) 
 /** The editable input for a label: a configured secret shows a masked group with the same label until Replace is pressed. */
 const field = (scope, label) => scope.locator("input").and(scope.getByLabel(label));
 const text = (page, sel) => page.locator(sel).first().innerText();
+// L1 (R3): the detail lead shows exactly while the head answer is clamped; measured after two frames so the observer has run.
+const leadState = async (page) => {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  const r = await page.evaluate(() => {
+    const a = document.querySelector("[data-feature=answer]");
+    const l = document.querySelector("[data-feature=detail-lead]");
+    return { clamped: !!a && a.scrollHeight > a.clientHeight + 1, lead: !!l && l.getClientRects().length > 0 };
+  });
+  return { ...r, ok: r.clamped === r.lead };
+};
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 const openStrip = async (page, id) => {
   const t = page.locator(`[data-k="open-${id}"]`);
@@ -212,6 +222,7 @@ for (const [key, name, chip, phrase, open] of STATES) {
       record("S no horizontal scroll", `${name}@${s.name}`, (await overflow(page)) <= 0);
       record("S no host or raw error", `${name}@${s.name}`, !/\b\d{1,3}(\.\d{1,3}){3}\b|ECONNREFUSED/.test(await page.locator("main").innerText()));
       if (open) record("C5s auto-open names the strip", `${name}@${s.name}`, await isOpen(page, open));
+      if (open) record("L1 detail lead only when clamped", `${name}@${s.name}`, await leadState(page));
       if (s.name === "390") record("C12 targets under 44 px", name, (await small(page)).join("|") || "ok");
       await shot(page, s, name);
       if (key === "calm") await fullShot(page, s, name);
