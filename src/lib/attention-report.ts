@@ -212,3 +212,9 @@ export function deriveChanges(
   const hits = new Set(hitSubjects);
   return events.filter((e) => !e.subjects.some((s) => hits.has(s))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
+
+/** Forget restart baselines of containers that no longer exist, so the map cannot grow for ever. */
+export function pruneRestartCounts(counts: Map<string, number>, presentIds: Iterable<string>): void {
+  const present = new Set(presentIds);
+  for (const id of [...counts.keys()]) if (!present.has(id)) counts.delete(id);
+}

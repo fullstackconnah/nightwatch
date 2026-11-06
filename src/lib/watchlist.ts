@@ -118,3 +118,17 @@ export function quietCap(kind: "cpu" | "mem", quietMax: number): number {
   const steps = kind === "cpu" ? QUIET_CPU_STEPS : QUIET_MEM_STEPS;
   return steps.find((s) => quietMax < s) ?? steps[steps.length - 1];
 }
+
+/** A legend row per series; `noData` when the series has no sample at all (dim it, say so). */
+export function legendEntries<S extends { key: string; label: string; points: readonly (number | null)[] }>(
+  series: readonly S[],
+): { key: string; label: string; noData: boolean }[] {
+  return series.map((s) => ({ key: s.key, label: s.label, noData: s.points.every((v) => v == null) }));
+}
+
+/** One cpu precision for every watchlist figure (row, detail, avg, peak), so decimals line up. */
+export const watchCpuText = (v: number): string => `${v.toFixed(2)}%`;
+
+/** The order holds still while the owner is reading it: hover, focus, an open row, or a stale feed. */
+export const listHeld = (f: { hover: boolean; focusIn: boolean; openId: string | null; stale: boolean }): boolean =>
+  f.hover || f.focusIn || f.openId != null || f.stale;

@@ -7,7 +7,7 @@ import { SegmentButton } from "@/components/ui/segment-button";
 import { cn } from "@/lib/utils";
 import { SERIES_SLOTS, assignSlots, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
 import { relativeTime } from "@/lib/format";
-import { snapScale } from "@/lib/watchlist";
+import { legendEntries, snapScale } from "@/lib/watchlist";
 
 export interface OverviewSegment {
   key: string;
@@ -322,12 +322,18 @@ function HistoryChart({
 function HistoryLegend({ series }: { series: HistoryLineSeries[] }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1">
-      {series.map((s) => (
-        <div key={s.key} className="flex items-center gap-1.5 min-w-0">
-          <SeriesSwatch slot={s.slot} />
-          <span className="microlabel truncate max-w-[9rem]">{s.label}</span>
-        </div>
-      ))}
+      {legendEntries(series).map(({ noData }, i) => {
+        const s = series[i];
+        return (
+          <div key={s.key} className="flex items-center gap-1.5 min-w-0">
+            <span className={noData ? "opacity-40" : undefined}>
+              <SeriesSwatch slot={s.slot} />
+            </span>
+            <span className={cn("microlabel truncate max-w-[9rem]", noData && "!text-ink-dim")}>{s.label}</span>
+            {noData && <span className="microlabel !text-ink-dim whitespace-nowrap">no data</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }

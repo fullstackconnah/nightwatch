@@ -5,7 +5,7 @@ import { ChevronDown, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
 import { useProcesses, type ProcessRow } from "@/lib/client";
-import { buildGroups, filterGroups, processMatches, rankedIds, topProcs, type Group, type GroupSort } from "@/lib/process-groups";
+import { buildGroups, filterGroups, processMatches, rankedIds, topProcs, withNewcomers, type Group, type GroupSort } from "@/lib/process-groups";
 import { createRanker, type Ranker } from "@/lib/watchlist";
 import { Input, Select } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
@@ -360,7 +360,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
     // The first offer of a new sort or filter always commits, so results rank at once even while focus holds the list.
     if (ranker.offer(rankedIds(groups, gsort), Date.now(), held)) procCache.clear();
   }
-  const order = (ranker.order ?? []).filter((id) => byId.has(id));
+  // Held, a group that newly matches still appears (at the end) instead of waiting for focus to leave.
+  const order = withNewcomers(ranker.order, rankedIds(groups, gsort)).filter((id) => byId.has(id));
   for (const k of procCache.keys()) if (!open.has(k)) procCache.delete(k);
 
   const items: Item[] = [];

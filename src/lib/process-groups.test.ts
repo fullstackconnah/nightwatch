@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGroups, filterGroups, rankedIds, topProcs, OTHER_ID, type PLike } from "./process-groups.ts";
+import { buildGroups, filterGroups, rankedIds, topProcs, withNewcomers, OTHER_ID, type PLike } from "./process-groups.ts";
 
 const p = (pid: number, over: Partial<PLike> = {}): PLike => ({
   pid,
@@ -69,4 +69,10 @@ test("topProcs caps at 12 and orders by the key; null cpu last", () => {
   assert.equal(top[0].pid, 15);
   assert.ok(!top.some((x) => x.cpuPct == null));
   assert.equal(topProcs(g, "", "mem")[0].pid, 15);
+});
+
+test("withNewcomers: a group that newly matches joins the end of a held order; vanished ids are dropped", () => {
+  assert.deepEqual(withNewcomers(["a", "b"], ["b", "c", "a"]), ["a", "b", "c"]);
+  assert.deepEqual(withNewcomers(["a", "gone"], ["a"]), ["a"]);
+  assert.deepEqual(withNewcomers(null, ["x"]), ["x"]);
 });

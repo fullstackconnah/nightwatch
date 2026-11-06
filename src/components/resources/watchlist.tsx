@@ -33,6 +33,8 @@ import {
   quietCap,
   snapScale,
   splitWatch,
+  listHeld,
+  watchCpuText,
   type Ranker,
   type WatchSplit,
 } from "@/lib/watchlist";
@@ -129,7 +131,7 @@ const WatchRow = memo(function WatchRow(p: RowProps) {
   const v = row ? (isCpu ? row.cpuPct : row.memBytes) : null;
   const noData = v == null;
   const running = c.state === "running";
-  const text = noData ? "no data" : isCpu ? formatPercent(v, v < 0.1 ? 2 : 1) : formatBytes(v);
+  const text = noData ? "no data" : isCpu ? watchCpuText(v) : formatBytes(v);
   const frac = noData || scale <= 0 ? 0 : Math.min(1, v / scale);
   const ref = useCallback((el: HTMLDivElement | null) => register(c.id, el), [register, c.id]);
   const detailId = `wl-det-${c.id.slice(0, 12)}`;
@@ -327,7 +329,7 @@ function stripEqual(p: StripProps, n: StripProps): boolean {
 const TimelineStrip = memo(function TimelineStrip(p: StripProps) {
   const { c, kind, row, scale, stat, ring, open, slot, register } = p;
   const isCpu = kind === "cpu";
-  const fmt = (v: number) => (isCpu ? formatPercent(v, v < 0.1 ? 2 : 1) : formatBytes(v));
+  const fmt = (v: number) => (isCpu ? watchCpuText(v) : formatBytes(v));
   const now = row ? (isCpu ? row.cpuPct : row.memBytes) : null;
   const running = c.state === "running";
   const isNew = running && !!row && !stat;
@@ -445,7 +447,7 @@ export function Watchlist(p: WatchlistProps) {
   const [folds, setFolds] = useState({ quiet: false, stopped: false });
   const [creating, setCreating] = useState(false);
   const [bump, setBump] = useState(0);
-  const held = hover || focusIn || openId != null || stale;
+  const held = listHeld({ hover, focusIn, openId, stale });
   // An open container that left the list would hold the order for good.
   useEffect(() => {
     if (openId && !containers.some((c) => c.id === openId)) setOpenId(null);
