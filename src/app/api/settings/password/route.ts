@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
+import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
+
+// Same damper as login: the current-password check is otherwise a free bcrypt oracle.
+const limiter = createAttemptLimiter();
 
 // Auth: gated by src/middleware.ts, same as every other /api/* route — this
 // only rotates the password for the session that is already logged in.
@@ -27,6 +31,9 @@ const BCRYPT_ROUNDS = 12;
  * affordance and deliberately does not extend to this destructive write.
  */
 export async function POST(req: NextRequest) {
+  if (limiter.isLocked()) {
+    return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
+  }
   let body: { currentPassword?: unknown; newPassword?: unknown };
   try {
     const parsed = await req.json();
@@ -61,9 +68,12 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!verified) {
+    await new Promise((r) => setTimeout(r, 1000));
+    limiter.fail();
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
 
+  limiter.reset();
   const newHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
   const now = new Date().toISOString();
   const current = loadConfig();

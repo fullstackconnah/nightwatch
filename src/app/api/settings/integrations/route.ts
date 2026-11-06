@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
 import { mergeMedia } from "@/lib/media/settings";
+import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
     } else if (body.homeassistant) {
       const url = str(body.homeassistant.url) ?? current.homeassistant?.url;
       const token = mergedSecret(str(body.homeassistant.token), current.homeassistant?.token);
+      const badUrl = httpUrlError("Home Assistant URL", str(body.homeassistant.url));
+      if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "Home Assistant needs a URL" }, { status: 400 });
       if (!token) return NextResponse.json({ error: "Home Assistant needs a long-lived access token" }, { status: 400 });
       // Spread `current` first: this block is not just {url, token} any more —
@@ -96,6 +99,8 @@ export async function POST(req: NextRequest) {
       const url = str(body.npm.url) ?? current.npm?.url;
       const email = str(body.npm.email) ?? current.npm?.email;
       const password = mergedSecret(str(body.npm.password), current.npm?.password);
+      const badUrl = httpUrlError("NPM URL", str(body.npm.url));
+      if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "NPM needs a URL" }, { status: 400 });
       if (!email) return NextResponse.json({ error: "NPM needs the admin email" }, { status: 400 });
       if (!password) return NextResponse.json({ error: "NPM needs the admin password" }, { status: 400 });
@@ -109,6 +114,8 @@ export async function POST(req: NextRequest) {
     } else if (body.forgejo) {
       const url = str(body.forgejo.url) ?? current.forgejo?.url;
       const token = mergedSecret(str(body.forgejo.token), current.forgejo?.token);
+      const badUrl = httpUrlError("Forgejo URL", str(body.forgejo.url));
+      if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "Forgejo needs a URL" }, { status: 400 });
       if (!token) return NextResponse.json({ error: "Forgejo needs an access token" }, { status: 400 });
       next.forgejo = { url, token, updatedAt: now };
@@ -124,10 +131,12 @@ export async function POST(req: NextRequest) {
       const curseforgeKey = mergedSecret(str(body.minecraft.curseforgeKey), current.minecraft?.curseforgeKey);
       const rconHost = str(body.minecraft.rconHost) ?? current.minecraft?.rconHost;
       const rconPortRaw = body.minecraft.rconPort;
-      const rconPort =
-        typeof rconPortRaw === "number" && Number.isInteger(rconPortRaw)
-          ? rconPortRaw
-          : current.minecraft?.rconPort ?? 25575;
+      const badMc =
+        httpUrlError("managerUrl", str(body.minecraft.managerUrl)) ??
+        rconHostError(str(body.minecraft.rconHost)) ??
+        rconPortError(rconPortRaw);
+      if (badMc) return NextResponse.json({ error: badMc }, { status: 400 });
+      const rconPort = typeof rconPortRaw === "number" ? rconPortRaw : current.minecraft?.rconPort ?? 25575;
       const rconPassword = mergedSecret(str(body.minecraft.rconPassword), current.minecraft?.rconPassword);
       if (!managerUrl) return NextResponse.json({ error: "Minecraft needs the manager URL" }, { status: 400 });
       if (!managerToken) return NextResponse.json({ error: "Minecraft needs the manager token" }, { status: 400 });

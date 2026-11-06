@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readHermesSettingsFile, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
+import { budgetError, webhookError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
 
   const existing = readHermesSettingsFile() ?? { updatedAt: new Date().toISOString() };
 
+  const badWebhook = body.clearDiscordWebhookUrl === true ? null : webhookError(str(body.discordWebhookUrl));
+  if (badWebhook) return NextResponse.json({ error: badWebhook }, { status: 400 });
   const discordWebhookUrl = body.clearDiscordWebhookUrl === true
     ? undefined
     : mergedSecret(str(body.discordWebhookUrl), existing.discordWebhookUrl);
@@ -102,6 +105,8 @@ export async function POST(req: NextRequest) {
     if (typeof body.pipelineDailyBudgetUsd !== "number" || !Number.isFinite(body.pipelineDailyBudgetUsd) || body.pipelineDailyBudgetUsd < 0) {
       return NextResponse.json({ error: "pipelineDailyBudgetUsd must be a non-negative number" }, { status: 400 });
     }
+    const overBudget = budgetError(body.pipelineDailyBudgetUsd);
+    if (overBudget) return NextResponse.json({ error: overBudget }, { status: 400 });
     pipelineDailyBudgetUsd = body.pipelineDailyBudgetUsd;
   }
 
