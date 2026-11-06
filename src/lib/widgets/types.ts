@@ -1,4 +1,5 @@
 import type { WidgetInstance } from "@/lib/config";
+import { fetchNoCrossOriginRedirect } from "../safe-fetch.ts";
 
 export interface WidgetField {
   label: string;
@@ -31,13 +32,15 @@ export async function fetchJson<T = unknown>(
   const { timeoutMs = 5000, ...rest } = init || {};
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchNoCrossOriginRedirect(url, {
       ...rest,
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
   } catch (e) {
-    throw new WidgetError(e instanceof Error && e.name === "TimeoutError" ? "timeout" : "unreachable");
+    throw new WidgetError(
+      e instanceof Error && e.name === "TimeoutError" ? "timeout" : e instanceof Error && e.message.startsWith("redirected") ? "redirected" : "unreachable",
+    );
   }
   if (!res.ok) throw new WidgetError(`HTTP ${res.status}`);
   try {
@@ -58,13 +61,15 @@ export async function postAction(url: string, init?: RequestInit & { timeoutMs?:
   const { timeoutMs = 5000, ...rest } = init || {};
   let res: Response;
   try {
-    res = await fetch(url, {
+    res = await fetchNoCrossOriginRedirect(url, {
       ...rest,
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
   } catch (e) {
-    throw new WidgetError(e instanceof Error && e.name === "TimeoutError" ? "timeout" : "unreachable");
+    throw new WidgetError(
+      e instanceof Error && e.name === "TimeoutError" ? "timeout" : e instanceof Error && e.message.startsWith("redirected") ? "redirected" : "unreachable",
+    );
   }
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).trim();

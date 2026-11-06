@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
+import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import type {
   ProxyCertificate,
   ProxyManagerSnapshot,
@@ -59,14 +60,15 @@ interface NpmTokenResponse {
 async function requestToken(creds: NpmCredentials): Promise<AuthResult> {
   let res: Response;
   try {
-    res = await fetch(`${creds.url}/api/tokens`, {
+    res = await fetchNoCrossOriginRedirect(`${creds.url}/api/tokens`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identity: creds.email, secret: creds.password }),
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("redirected")) return { ok: false, reason: "unreachable", detail: "NPM redirected to another host." };
     return { ok: false, reason: "unreachable", detail: `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` };
   }
 

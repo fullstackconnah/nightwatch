@@ -3,6 +3,7 @@ import { formatBytes, formatNumber, formatPercent } from "@/lib/format";
 import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/types/downloads";
 import { resolvePath } from "./jsonpath";
 import { widgetTarget } from "./target";
+import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 
 /**
@@ -86,7 +87,7 @@ async function qbitLogin(w: WidgetInstance): Promise<string> {
   let res: Response;
   try {
     // qBittorrent's CSRF protection rejects logins without a matching Referer/Origin.
-    res = await fetch(`${w.url}/api/v2/auth/login`, {
+    res = await fetchNoCrossOriginRedirect(`${w.url}/api/v2/auth/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -97,8 +98,8 @@ async function qbitLogin(w: WidgetInstance): Promise<string> {
       signal: AbortSignal.timeout(5000),
       cache: "no-store",
     });
-  } catch {
-    throw new WidgetError("unreachable");
+  } catch (e) {
+    throw new WidgetError(e instanceof Error && e.message.startsWith("redirected") ? "redirected" : "unreachable");
   }
   const cookie = res.headers.get("set-cookie")?.match(/SID=[^;]+/)?.[0];
   if (!res.ok || !cookie) throw new WidgetError("login failed");

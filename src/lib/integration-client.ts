@@ -29,6 +29,8 @@
  * from the Probe union below.
  */
 
+import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
+
 /** Every integration reports one of these. "ok" carries data; the rest carry prose. */
 export type ProbeStatus = "unconfigured" | "unreachable" | "unauthorized" | "ok";
 
@@ -114,14 +116,15 @@ export abstract class IntegrationClient<C> {
 
     let res: Response;
     try {
-      res = await fetch(`${base}${path}`, {
+      res = await fetchNoCrossOriginRedirect(`${base}${path}`, {
         method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
         headers,
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
         signal: AbortSignal.timeout(this.timeoutMs),
         cache: "no-store",
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
       return { status: "unreachable", detail: this.unreachableDetail(base) };
     }
 
