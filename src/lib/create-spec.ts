@@ -52,11 +52,12 @@ export const createNetwork = (spec: Checkable) => spec.network?.trim() || "bridg
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isPort = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 65535;
 const rowShapes: Record<string, Record<string, (v: unknown) => boolean>> = {
-  ports: { host: isPort, container: isPort, protocol: (v) => typeof v === "string" },
+  ports: { host: isPort, container: isPort, protocol: (v) => v === "tcp" || v === "udp" },
   env: { key: (v) => typeof v === "string", value: (v) => typeof v === "string" },
   volumes: { host: (v) => typeof v === "string", container: (v) => typeof v === "string", readonly: (v) => typeof v === "boolean" },
 };
-const requiredFields = new Set(["ports.host", "ports.container"]);
+const requiredFields = new Set(["ports.host", "ports.container", "env.value"]);
+const restartPolicies = ["no", "always", "unless-stopped", "on-failure"];
 
 export function validateSpecShape(body: unknown): string | null {
   if (!isObj(body)) return "body must be a JSON object";
@@ -64,6 +65,7 @@ export function validateSpecShape(body: unknown): string | null {
   for (const f of ["name", "network", "restartPolicy"]) {
     if (body[f] !== undefined && typeof body[f] !== "string") return `${f} must be a string`;
   }
+  if (body.restartPolicy !== undefined && !restartPolicies.includes(body.restartPolicy as string)) return "restartPolicy is invalid";
   for (const [list, fields] of Object.entries(rowShapes)) {
     const rows = body[list];
     if (rows === undefined) continue;

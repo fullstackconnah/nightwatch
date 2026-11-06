@@ -36,7 +36,8 @@ function str(v: unknown): string | undefined {
 export async function POST(req: NextRequest) {
   let body: Body;
   try {
-    body = await req.json();
+    const parsed = await req.json();
+    body = parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
