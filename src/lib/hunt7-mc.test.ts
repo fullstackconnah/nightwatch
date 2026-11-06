@@ -14,6 +14,7 @@ describe("hunt 7 minecraft and jellyfin", () => {
   it("A4: upload forwards only the five fields, sanitised, with a timeout", () => {
     const s = read("../app/api/minecraft/instances/upload/route.ts");
     assert.ok(s.includes("sanitizeSlug("));
+    assert.ok(s.includes('query.set("memoryGb"'));
     assert.ok(!s.includes("params.toString()"));
     assert.ok(s.includes("AbortSignal.timeout(10 * 60 * 1000)"));
     assert.ok(s.includes("name.length > 100") && s.includes("mcVersion.length > 100"));
@@ -21,6 +22,10 @@ describe("hunt 7 minecraft and jellyfin", () => {
   it("A5: restore refuses path-like instance and file", () => {
     const s = read("../app/api/minecraft/backups/route.ts");
     assert.ok(s.includes('includes("..")') && s.includes("<= 255"));
+    const m = /const plainName = .*?!(\/.*\/)\.test/.exec(s);
+    assert.ok(m, "plainName regex found");
+    const re = new RegExp(m[1].slice(1, -1));
+    assert.ok(re.test("a/b") && re.test("a\\b") && !re.test("ab"));
   });
   it("A6: numberOrNull treats null, undefined and blank as null", () => {
     const s = read("./jellyfin.ts");

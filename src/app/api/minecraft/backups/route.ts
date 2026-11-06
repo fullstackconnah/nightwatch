@@ -16,7 +16,7 @@ export async function GET() {
 }
 
 // A bare file or instance name: a path piece would walk out of the backups folder on the manager.
-const plainName = (v: string) => v.length <= 255 && !/[\/]/.test(v) && !v.includes("..");
+const plainName = (v: string) => v.length <= 255 && !/[\/\\]/.test(v) && !v.includes("..");
 
 function isRestoreBody(v: unknown): v is { action: "restore"; instance: string; file: string } {
   if (!v || typeof v !== "object") return false;
