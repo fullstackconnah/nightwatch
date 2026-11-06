@@ -57,7 +57,7 @@ import { useKioskWeather, useWxParams } from "@/lib/kiosk-client";
 import { fetcher } from "@/lib/client";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { sunroomIsDark } from "@/lib/sunroom-light";
-import { prefersReducedMotion } from "@/lib/kiosk-motion";
+import { usePrefersReducedMotion } from "@/lib/kiosk-motion";
 import { WX_PRESETS, clamp01, effectiveMmHr, rainBand } from "@/lib/kiosk-weather-fx";
 
 /**
@@ -121,13 +121,13 @@ export function KioskSunroomWeather() {
   const { data } = useKioskWeather();
   // Only a ?wx= preview times the first lightning strike, so a capture can land on it.
   const { wx } = useWxParams();
+  const reduced = usePrefersReducedMotion();
 
   const ok = data && data.status === "ok" ? data : null;
   const sun = ok?.sun;
   if (theme !== "sunroom" || !ok || !sun) return null;
 
   const isDark = sunroomIsDark({ elevationDeg: sun.elevationDeg, hourAngleDeg: sun.hourAngleDeg ?? 0 });
-  const reduced = prefersReducedMotion();
 
   const mmHr = effectiveMmHr(ok);
   const band = rainBand(mmHr, ok.current?.code);

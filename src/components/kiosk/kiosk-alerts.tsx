@@ -35,6 +35,7 @@ import {
   KIOSK_REDUCED_MS,
   flipOutTo,
   prefersReducedMotion,
+  usePrefersReducedMotion,
 } from "@/lib/kiosk-motion";
 
 // Idle/night backoff (2026-08 perf pass): an alert is the one thing on this
@@ -409,6 +410,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // Mounted a beat longer than `hasAlerts` so the last alert clearing gets a
   // fade-out instead of popping out of existence — same entrance/exit shape
   // as kiosk-attention.tsx's `entered` flag, just with an exit half too.
+  const reducedMotion = usePrefersReducedMotion();
   const [mounted, setMounted] = useState(hasAlerts);
   const [entered, setEntered] = useState(false);
 
@@ -449,7 +451,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // keyframe because this file doesn't own globals.css (another agent does).
   useLayoutEffect(() => {
     const node = innerRef.current;
-    if (!node || !bad || prefersReducedMotion()) return;
+    if (!node || !bad || reducedMotion) return;
     const anim = node.animate(
       [
         { boxShadow: "0 0 0 0 color-mix(in srgb, var(--color-bad) 50%, transparent)" },
@@ -460,7 +462,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
       { duration: KIOSK_PULSE_MS, easing: "ease-in-out", iterations: Infinity },
     );
     return () => anim.cancel();
-  }, [bad]);
+  }, [bad, reducedMotion]); // an OS toggle swaps the static ring and the pulse
 
   if (!mounted) return null;
 
@@ -485,7 +487,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // — so the pulse is replaced with a static, heavier version of the same
   // ring at its brightest keyframe value, not dropped outright.
   const reducedBadRing =
-    bad && prefersReducedMotion()
+    bad && reducedMotion
       ? { boxShadow: "0 0 0 4px color-mix(in srgb, var(--color-bad) 45%, transparent)" }
       : null;
 

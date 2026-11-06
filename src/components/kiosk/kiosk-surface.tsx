@@ -35,7 +35,7 @@ import {
   KIOSK_FADE_MS,
   KIOSK_MOVE_MS,
   KIOSK_REDUCED_MS,
-  prefersReducedMotion,
+  usePrefersReducedMotion,
   useFlipGroup,
 } from "@/lib/kiosk-motion";
 import { KioskClock } from "@/components/kiosk/kiosk-clock";
@@ -237,10 +237,7 @@ function useKioskMode(pinned: boolean, suspended: boolean, initial: KioskViewMod
  *  for the new one, so nothing is ever stranded fading toward a target
  *  that's no longer wanted. */
 function useModeContent(mode: KioskViewMode) {
-  // Computed once (first render) rather than on every render; `null` just
-  // means "not measured yet" so it's never recomputed after that first read.
-  const reducedRef = useRef<boolean | null>(null);
-  if (reducedRef.current === null) reducedRef.current = prefersReducedMotion();
+  const reduced = usePrefersReducedMotion();
   const prevModeRef = useRef(mode);
   const [state, setState] = useState<{ outgoingMode: KioskViewMode | null; incomingVisible: boolean }>({
     outgoingMode: null,
@@ -252,7 +249,7 @@ function useModeContent(mode: KioskViewMode) {
   if (mode !== prevModeRef.current) {
     const prevMode = prevModeRef.current;
     prevModeRef.current = mode;
-    if (reducedRef.current) {
+    if (reduced) {
       setState({ outgoingMode: null, incomingVisible: true });
     } else {
       setState({ outgoingMode: prevMode, incomingVisible: false });
@@ -265,7 +262,7 @@ function useModeContent(mode: KioskViewMode) {
       firstEffectRunRef.current = false;
       return;
     }
-    if (reducedRef.current) return;
+    if (reduced) return;
 
     const outTimer = setTimeout(() => {
       setState((s) => (s.outgoingMode !== null ? { ...s, outgoingMode: null } : s));
@@ -283,7 +280,7 @@ function useModeContent(mode: KioskViewMode) {
   return {
     outgoingMode: state.outgoingMode,
     incomingVisible: state.incomingVisible,
-    durationMs: reducedRef.current ? KIOSK_REDUCED_MS : KIOSK_FADE_MS,
+    durationMs: reduced ? KIOSK_REDUCED_MS : KIOSK_FADE_MS,
   };
 }
 
