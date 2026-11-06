@@ -166,8 +166,9 @@ export async function POST(req: NextRequest) {
     // value needs propagating.
     if (mcpTokenJustSet && mcpToken) syncHermesMcpToken(mcpToken);
   } catch (e) {
+    console.error("settings/system save", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "save failed" },
+      { error: "save failed" },
       { status: 500 },
     );
   }

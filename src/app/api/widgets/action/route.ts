@@ -67,7 +67,8 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ ok: true, message: "done" });
   } catch (e) {
-    const message = e instanceof WidgetError ? e.message : e instanceof Error ? e.message : "action failed";
+    if (!(e instanceof WidgetError)) console.error("widgets/action", e);
+    const message = e instanceof WidgetError ? e.message : "action failed";
     return NextResponse.json({ ok: false, message });
   }
 }

@@ -18,9 +18,9 @@ export function redactCmdline(s: string): string {
   // mysql form: -psecret attached; runs before FLAG so "-psecret db" is not read as a flag.
   if (MYSQL.test(s)) out = out.replace(/(^|\s)-p(?=\S)\S+/g, "$1-p***");
   if (/\bredis-cli\b/.test(s)) out = out.replace(/(\s-a\s+)(?!-)\S+/g, "$1***");
-  if (/\bsshpass\b/.test(s)) out = out.replace(/(\bsshpass\b.*?\s-p\s*)(?!-)\S+/, "$1***");
+  if (/\bsshpass\b/.test(s)) out = out.replace(/(\bsshpass\b.*?\s-p\s*)(?!-)\S+/g, "$1***");
   return out
-    .replace(/(\s(?:-u|--user)(?:\s+|=)?[^\s:]+):\S+/g, (m, a: string) => (/\bcurl\b/.test(s) ? `${a}:***` : m))
+    .replace(/(\s(?:-u|--user(?=[\s=]))(?:\s+|=)?[^\s:]+):\S+/g, (m, a: string) => (/\bcurl\b/.test(s) ? `${a}:***` : m))
     .replace(/(Authorization:\s*\w+\s+)\S+/gi, "$1***")
     .replace(/(X-(?:Api-Key|Auth-Token):\s*)\S+/gi, "$1***")
     .replace(FLAG, (_m, name: string, sep: string) => `${name}${sep}***`)

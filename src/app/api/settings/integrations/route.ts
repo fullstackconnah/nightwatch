@@ -158,8 +158,9 @@ export async function POST(req: NextRequest) {
   try {
     saveConfig(next);
   } catch (e) {
+    console.error("settings/integrations save", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "save failed" },
+      { error: "save failed" },
       { status: 500 },
     );
   }
