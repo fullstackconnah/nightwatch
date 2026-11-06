@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfig, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
+import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest) {
   const typedMcpToken = str(body.mcpToken);
   let mcpToken = existing.mcpToken;
   let mcpTokenJustSet = false;
+  // Only a typed token that would actually be stored is length-checked.
+  const shortToken = !generated && !clearedMcpToken ? mcpTokenError(typedMcpToken) : null;
+  if (shortToken) return NextResponse.json({ error: shortToken }, { status: 400 });
   if (generated) {
     // 24 random bytes -> 48 hex characters, per the settings page's
     // "Generate" button contract.
@@ -107,6 +111,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Kiosk PIN must be 4-8 digits" }, { status: 400 });
   }
   const kioskPin = clearedKioskPin ? undefined : mergedSecret(typedKioskPin, existing.kioskPin);
+
+  // --- URL fields: http(s) only, blank allowed ---------------------------------
+  const badUrl =
+    httpUrlError("hermesApiUrl", str(body.hermesApiUrl)) ??
+    httpUrlError("voiceServerUrl", str(body.voiceServerUrl)) ??
+    httpUrlError("voiceTtsUrl", str(body.voiceTtsUrl)) ??
+    httpUrlError("oidcIssuer", str(body.oidcIssuer));
+  if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
 
   // --- Hermes API -------------------------------------------------------------
   const hermesApiUrl = "hermesApiUrl" in body ? (str(body.hermesApiUrl) ?? existing.hermesApiUrl) : existing.hermesApiUrl;

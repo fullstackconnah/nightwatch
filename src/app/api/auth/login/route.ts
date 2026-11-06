@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createSessionToken, isMissingSecretError, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
 import { candidatePasswordHashes } from "@/lib/auth-server";
+import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
 
 // Brute-force damper: 1s constant delay + lockout after repeated failures.
-let failures = 0;
-let lockedUntil = 0;
+const limiter = createAttemptLimiter();
 
 export async function POST(req: NextRequest) {
-  if (Date.now() < lockedUntil) {
+  if (limiter.isLocked()) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
   const { password } = ((await req.json().catch(() => null)) ?? {}) as { password?: string };
@@ -36,18 +36,14 @@ export async function POST(req: NextRequest) {
   await new Promise((r) => setTimeout(r, 1000));
 
   if (!ok) {
-    failures++;
-    if (failures >= 5) {
-      lockedUntil = Date.now() + 60_000;
-      failures = 0;
-    }
+    limiter.fail();
     const reason = !candidates.length && process.env.NODE_ENV !== "development"
       ? "No admin password is configured — login disabled"
       : "Wrong password";
     return NextResponse.json({ error: reason }, { status: 401 });
   }
 
-  failures = 0;
+  limiter.reset();
   const res = NextResponse.json({ ok: true });
   try {
     res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions());

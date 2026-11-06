@@ -71,7 +71,9 @@ Two layers, both required for exposure beyond the LAN:
 
 Session = 7-day HttpOnly JWT cookie; middleware guards every page and API
 route. The socket proxy never exposes `EXEC`, so the app cannot shell into
-containers even if compromised.
+containers even if compromised. Changing the password in Settings does not
+sign out other browsers: their sessions last up to 7 days unless
+`SESSION_SECRET` is changed.
 
 ## MCP server
 

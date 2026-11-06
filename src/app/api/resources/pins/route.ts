@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadConfig, saveConfig } from "@/lib/config";
+import { resolveAbsolutePath } from "@/lib/disk-usage";
+import { applyPin, MAX_PIN_PATH } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -35,14 +37,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'action must be "pin" or "unpin"' }, { status: 400 });
   }
 
+  if (path.length > MAX_PIN_PATH) {
+    return NextResponse.json({ error: `path must be at most ${MAX_PIN_PATH} characters` }, { status: 400 });
+  }
+  // A trailing slash is dropped first (it used to be accepted), so "/a/" and "/a" are one pin.
+  const norm = (p: string) => resolveAbsolutePath(p.length > 1 ? p.replace(/\/+$/, "") || "/" : p);
+  const normalized = norm(path);
+  if (!normalized) {
+    return NextResponse.json({ error: "path must be a non-empty absolute path" }, { status: 400 });
+  }
+
   const config = loadConfig();
-  const current = config.pinnedFolders ?? [];
-  const next =
-    action === "pin"
-      ? current.includes(path)
-        ? current
-        : [...current, path]
-      : current.filter((p) => p !== path);
+  const result = applyPin(config.pinnedFolders ?? [], action, normalized, norm);
+  if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
+  const next = result.pins;
 
   try {
     saveConfig({ ...config, pinnedFolders: next });

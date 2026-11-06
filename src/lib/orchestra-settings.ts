@@ -1,4 +1,5 @@
 import type { SystemSettings } from "./config.ts";
+import { httpUrlError } from "./settings-checks.ts";
 
 type Orchestra = Pick<SystemSettings, "orchestraUrl" | "orchestraToken">;
 
@@ -10,9 +11,8 @@ export function mergeOrchestraSettings(
   let orchestraUrl = existing.orchestraUrl;
   if ("orchestraUrl" in body && typeof body.orchestraUrl === "string") {
     const url = body.orchestraUrl.trim();
-    if (url && !/^https?:$/.test(URL.canParse(url) ? new URL(url).protocol : "")) {
-      return { error: "orchestraUrl must be an http(s) URL" };
-    }
+    const bad = httpUrlError("orchestraUrl", url);
+    if (bad) return { error: bad };
     orchestraUrl = url;
   }
   const typed = typeof body.orchestraToken === "string" ? body.orchestraToken.trim() : "";
