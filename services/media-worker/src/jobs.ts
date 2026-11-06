@@ -42,6 +42,16 @@ export function publicJob(r: JobRecord): Job {
   return j as unknown as Job;
 }
 
+/** H7: finished records kept across a boot; the snapshot shows 50. */
+export const KEEP_FINISHED = 200;
+const PRUNABLE = new Set(["failed", "cancelled", "undone", "purged"]);
+/** Drops the oldest finished records. `done` (hold and Undo) and a failed swap that kept its hold are never dropped. */
+export function pruneFinished(all: JobRecord[]): JobRecord[] {
+  const drop = new Set(all.filter((j) => PRUNABLE.has(j.state) && !j.keepHold)
+    .sort((a, b) => (b.finishedAt ?? b.createdAt).localeCompare(a.finishedAt ?? a.createdAt)).slice(KEEP_FINISHED));
+  return drop.size ? all.filter((j) => !drop.has(j)) : all;
+}
+
 export const ACTIVE = new Set(["queued", "encoding", "verifying", "swapping"]);
 const DAY_MS = 86_400_000;
 const MAX_BATCH = 200;
@@ -71,13 +81,15 @@ export interface QueueOpts {
 export function createQueue(opts: QueueOpts) {
   const now = opts.now ?? (() => new Date());
   const file = join(opts.stateDir, "jobs.json");
-  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
+  const loaded = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
+  let jobs = pruneFinished(loaded);
   const uid = "uid" in opts ? opts.uid : process.getuid?.();
   let running: { id: string; done: Promise<void> } | null = null;
   let closed = false;
   let recovered = false;
 
   const save = () => writeJsonAtomic(file, { version: 1, jobs });
+  if (jobs.length !== loaded.length) save();
   const get = (id: string) => jobs.find((j) => j.id === id);
   const patch = (id: string, p: Partial<JobRecord>): JobRecord => {
     const r = get(id);

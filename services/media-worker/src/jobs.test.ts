@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { checkReady } from "./disk.ts";
 import { createGuard } from "./fsguard.ts";
-import { createQueue, JobError, publicJob, type JobRecord, type QueueOpts } from "./jobs.ts";
+import { createQueue, KEEP_FINISHED, JobError, publicJob, type JobRecord, type QueueOpts } from "./jobs.ts";
 import { realFs } from "./swap.ts";
 import { SKIP_OFF_LINUX, tempDir } from "./testkit.ts";
 import type { MediaFile } from "./types.ts";
@@ -295,3 +295,24 @@ function second(first: ReturnType<typeof make>): QueueOpts {
     run: async () => undefined, kill: () => undefined, now: () => new Date("2026-11-05T00:00:00Z"),
   };
 }
+
+describe("boot prunes old finished jobs (H7)", () => {
+  it("keeps the newest finished records, and every active, done and held record", () => {
+    const first = make();
+    const day = (i: number) => new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
+    for (let i = 0; i < KEEP_FINISHED + 50; i++) seed(first.q, `old-${i}`, i % 2 ? "failed" : "purged", { finishedAt: day(i) });
+    seed(first.q, "kept-hold", "failed", { finishedAt: day(-5), keepHold: true });
+    seed(first.q, "old-done", "done", { finishedAt: day(-5), heldUntil: "2026-12-01T00:00:00Z" });
+    seed(first.q, "q-1", "queued");
+    seed(first.q, "swap-1", "swapping");
+    const again = createQueue({ ...second(first), run: async () => undefined });
+    const ids = again.all().map((j) => j.id);
+    assert.equal(ids.filter((id) => id.startsWith("old-") && id !== "old-done").length, KEEP_FINISHED);
+    assert.equal(again.get("old-0"), undefined);
+    assert.ok(again.get(`old-${KEEP_FINISHED + 49}`));
+    for (const id of ["kept-hold", "old-done", "q-1", "swap-1"]) assert.ok(again.get(id), id);
+    assert.equal(again.get("swap-1")?.state, "swapping");
+    const onDisk = createQueue({ ...second(first), run: async () => undefined });
+    assert.equal(onDisk.all().length, ids.length);
+  });
+});
