@@ -495,6 +495,5 @@ export async function triggerPushMirrorSync(
   if (res.status === 404) {
     return { ok: false, status: 404, detail: "That repo or mirror no longer exists." };
   }
-  const text = await res.text().catch(() => "");
-  return { ok: false, status: res.status, detail: text || `Forgejo returned HTTP ${res.status}.` };
+  return { ok: false, status: res.status, detail: `Forgejo returned HTTP ${res.status}.` };
 }

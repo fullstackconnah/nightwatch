@@ -248,12 +248,15 @@ async function perState(page, name, vp) {
   record("C17 clipped content", `${name}@${vp}`, a.clipped ? { n: a.clipped, sample: a.clippedSample } : 0);
   record("C19 no horizontal scroll", `${name}@${vp}`, (await overflow(page)) <= 0);
   record("C21 no host or raw error", `${name}@${vp}`, !/\b\d{1,3}(\.\d{1,3}){3}\b|ECONNREFUSED|forgejo\.example|npm\.example|401 from/.test(body));
-  record("R18 no old panel headings", `${name}@${vp}`, !/\b(mirror sync|open pull requests|active branches|commit stream)\b/.test(body));
+  const headings = (await page.locator("h1, h2, h3, h4, [role=heading]").allInnerTexts()).join("\n");
+  record("R18 no old panel headings", `${name}@${vp}`, !/\b(mirror sync|open pull requests|active branches|commit stream)\b/i.test(headings));
   if (vp === "390") record("C8 tap targets", name, (await small(page)).join("|") || "ok");
   return a;
 }
 // A full page per width plus a padded crop of the page head and strips.
 async function shot(page, s, name) {
+  // The fixed mobile nav and the Next dev badge would cover the crops; hide them for the captures only.
+  const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
   await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}-full.png`), fullPage: true });
   const box = await page.locator("main").first().boundingBox();
   if (box) {
@@ -261,6 +264,7 @@ async function shot(page, s, name) {
     const clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: Math.min(box.height + 2 * pad, 1600) };
     await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: true, clip });
   }
+  await tag.evaluate((el) => el.remove());
 }
 
 for (const [which, key, chip, phrase, open] of STATES) {
