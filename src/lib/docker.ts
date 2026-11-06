@@ -262,7 +262,7 @@ export interface ContainerStatsSnapshot {
 /** One-shot stats sample. Docker waits ~1s internally to fill precpu. */
 export async function containerStats(id: string): Promise<ContainerStatsSnapshot> {
   const container = docker.getContainer(id);
-  const s = (await container.stats({ stream: false })) as unknown as {
+  const s = (await container.stats({ stream: false, abortSignal: AbortSignal.timeout(TELEMETRY_CALL_MS) } as never)) as unknown as {
     cpu_stats: {
       cpu_usage: { total_usage: number };
       system_cpu_usage?: number;
@@ -352,7 +352,7 @@ export interface ContainerStatsRow {
  * 1Hz streaming consumers that would otherwise see the same sample ~4 ticks out of 5.
  */
 async function collectAllContainerStats(): Promise<Record<string, ContainerStatsRow>> {
-  const running = await withTimeout(docker.listContainers({ all: false }), TELEMETRY_CALL_MS, () => null);
+  const running = await withTimeout(docker.listContainers({ all: false, abortSignal: AbortSignal.timeout(TELEMETRY_CALL_MS) } as { all: false }), TELEMETRY_CALL_MS, () => null);
   if (!running) throw new Error("listContainers timed out");
   const settled = await mapWithin(
     running,

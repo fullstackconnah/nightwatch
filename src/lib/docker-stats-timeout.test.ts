@@ -12,3 +12,10 @@ test("a call that never answers is dropped; the other results are kept", async (
   assert.deepEqual(out, [["ok", 7]]);
   assert.ok(Date.now() - t0 < 1000);
 });
+
+test("an AbortSignal.timeout passed to a call aborts it, so the socket would close", async () => {
+  const signal = AbortSignal.timeout(50);
+  const call = (s: AbortSignal) =>
+    new Promise<never>((_, rej) => s.addEventListener("abort", () => rej(new Error("aborted"))));
+  await assert.rejects(call(signal), /aborted/);
+});
