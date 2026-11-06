@@ -19,7 +19,7 @@ function isValidBody(value: unknown): value is HaActionRequest {
   if (typeof v.entityId !== "string" || !v.entityId) return false;
   if (!(VALID_ACTIONS as readonly string[]).includes(v.action as string)) return false;
   if (v.hvacMode !== undefined && typeof v.hvacMode !== "string") return false;
-  if (v.delta !== undefined && typeof v.delta !== "number") return false;
+  if (v.delta !== undefined && (typeof v.delta !== "number" || !Number.isFinite(v.delta) || Math.abs(v.delta) > 10)) return false;
   return true;
 }
 

@@ -79,7 +79,7 @@ function extractContainerName(args: unknown): string | null {
 }
 
 export async function callTool(name: string, args: unknown): Promise<McpToolResult> {
-  const action = ACTION_BY_TOOL[name];
+  const action = Object.hasOwn(ACTION_BY_TOOL, name) ? ACTION_BY_TOOL[name] : undefined;
   if (!action) {
     return textResult(`Unknown tool "${name}". Known tools: ${Object.keys(ACTION_BY_TOOL).join(", ")}.`, true);
   }

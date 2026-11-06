@@ -228,6 +228,19 @@ async function compareGithubDefaultBranch(
   branchName: string,
   forgejoHeadSha: string,
 ): Promise<GitMirrorDefaultBranch> {
+  try {
+    return await compareGithubDefaultBranchRaw(token, ghRepo, branchName, forgejoHeadSha);
+  } catch {
+    return { state: "unknown" }; // a malformed GitHub reply must not take the whole snapshot down
+  }
+}
+
+async function compareGithubDefaultBranchRaw(
+  token: string,
+  ghRepo: { owner: string; repo: string },
+  branchName: string,
+  forgejoHeadSha: string,
+): Promise<GitMirrorDefaultBranch> {
   const branchesRes = await githubFetch(token, `/repos/${enc(ghRepo.owner)}/${enc(ghRepo.repo)}/branches?per_page=100`);
   if (!branchesRes || !branchesRes.ok) return { state: "unknown" };
 
@@ -285,8 +298,8 @@ async function fetchRepoBundle(
     forgejoFetch<ForgejoPushMirrorRaw[]>(baseUrl, token, `${base}/push_mirrors`),
   ]);
 
-  const commits: GitCommitEntry[] = commitsRes.ok
-    ? commitsRes.data.map((c) => ({
+  const commits: GitCommitEntry[] = commitsRes.ok && Array.isArray(commitsRes.data)
+    ? commitsRes.data.filter((c) => typeof c.sha === "string").map((c) => ({
         repo: repo.fullName,
         sha: c.sha,
         shortSha: c.sha.slice(0, 7),
@@ -297,7 +310,7 @@ async function fetchRepoBundle(
       }))
     : [];
 
-  const branchRaws = branchesRes.ok ? branchesRes.data : [];
+  const branchRaws = branchesRes.ok && Array.isArray(branchesRes.data) ? branchesRes.data : [];
   const branches: GitBranchSummary[] = branchRaws.map((b) => ({
     repo: repo.fullName,
     name: b.name,
@@ -305,7 +318,7 @@ async function fetchRepoBundle(
     isDefault: b.name === repo.defaultBranch,
   }));
 
-  const pulls: GitPullRequest[] = pullsRes.ok
+  const pulls: GitPullRequest[] = pullsRes.ok && Array.isArray(pullsRes.data)
     ? pullsRes.data.map((p) => ({
         repo: repo.fullName,
         number: p.number,
@@ -317,7 +330,7 @@ async function fetchRepoBundle(
     : [];
 
   let mirror: GitMirror | null = null;
-  if (mirrorsRes.ok && mirrorsRes.data.length > 0) {
+  if (mirrorsRes.ok && Array.isArray(mirrorsRes.data) && mirrorsRes.data.length > 0) {
     // A repo's push_mirrors list is effectively 0-or-1 for this dashboard's
     // use case (one local repo mirroring to one GitHub remote) — the first
     // entry is the one worth surfacing rather than fanning the UI out to N.
@@ -485,6 +498,7 @@ export async function triggerPushMirrorSync(
     return { ok: false, status: 502, detail: "Forgejo did not respond to the sync request." };
   }
 
+  await res.body?.cancel(); // status is all we need; free the socket
   if (res.ok) {
     gitSnapshotMemo.invalidate();
     return { ok: true };
