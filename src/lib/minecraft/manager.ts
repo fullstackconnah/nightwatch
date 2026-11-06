@@ -37,6 +37,8 @@ interface McManagerCredentials {
 }
 
 const TIMEOUT_MS = 6000;
+// Create, backup, restore and delete copy or unpack whole worlds and packs, far past the 6 s read limit.
+const SLOW_MS = 120_000;
 
 const UNCONFIGURED_DETAIL =
   "Minecraft manager is not configured — add managerUrl and managerToken in Settings → Integrations.";
@@ -85,15 +87,15 @@ export class McManagerClient extends IntegrationClient<McManagerCredentials> {
     memoryGb?: number;
     cfApiKey?: string;
   }): Promise<Probe<McInstance>> {
-    return this.request("/instances", { method: "POST", body });
+    return this.request("/instances", { method: "POST", body, includeErrorBody: true, timeoutMs: SLOW_MS });
   }
 
   activate(slug: string): Promise<Probe<{ ok: true; active: string }>> {
-    return this.request(`/instances/${encodeURIComponent(slug)}/activate`, { method: "POST" });
+    return this.request(`/instances/${encodeURIComponent(slug)}/activate`, { method: "POST", includeErrorBody: true });
   }
 
   deleteInstance(slug: string): Promise<Probe<{ ok: true }>> {
-    return this.request(`/instances/${encodeURIComponent(slug)}`, { method: "DELETE" });
+    return this.request(`/instances/${encodeURIComponent(slug)}`, { method: "DELETE", includeErrorBody: true, timeoutMs: SLOW_MS });
   }
 
   backups(): Promise<Probe<{ backups: McBackup[] }>> {
@@ -101,11 +103,11 @@ export class McManagerClient extends IntegrationClient<McManagerCredentials> {
   }
 
   runBackup(): Promise<Probe<{ ok: true }>> {
-    return this.request("/backups/run", { method: "POST" });
+    return this.request("/backups/run", { method: "POST", timeoutMs: SLOW_MS });
   }
 
   restoreBackup(instance: string, file: string): Promise<Probe<{ ok: true }>> {
-    return this.request("/backups/restore", { method: "POST", body: { instance, file } });
+    return this.request("/backups/restore", { method: "POST", body: { instance, file }, includeErrorBody: true, timeoutMs: SLOW_MS });
   }
 }
 

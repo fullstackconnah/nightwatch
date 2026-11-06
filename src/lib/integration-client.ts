@@ -67,6 +67,8 @@ export interface RequestOptions {
    * complaint is the useful part — HA's "refused light.toggle (HTTP 400): …".
    */
   includeErrorBody?: boolean;
+  /** Overrides the client's default timeout for this call (slow actions). */
+  timeoutMs?: number;
 }
 
 export abstract class IntegrationClient<C> {
@@ -91,11 +93,11 @@ export abstract class IntegrationClient<C> {
     return `${this.displayName} rejected the access token (HTTP ${httpStatus}).`;
   }
 
-  /** `base` is passed in rather than read from instance state: a client is a
+  /** `timeoutMs` is passed in rather than read from instance state: a client is a
    *  singleton shared by concurrent requests, so anything stashed on `this`
-   *  for the duration of one request is a race waiting to name the wrong host. */
-  protected unreachableDetail(base: string): string {
-    return `${this.displayName} at ${base} did not respond within ${this.timeoutMs / 1000}s.`;
+   *  for the duration of one request is a race. No URL: the browser never sees the upstream host. */
+  protected unreachableDetail(timeoutMs: number = this.timeoutMs): string {
+    return `${this.displayName} did not respond within ${timeoutMs / 1000}s.`;
   }
 
   protected unconfigured(): ProbeFail {
@@ -111,6 +113,7 @@ export abstract class IntegrationClient<C> {
     if (!creds) return this.unconfigured();
 
     const base = this.baseUrl(creds);
+    const timeoutMs = opts.timeoutMs ?? this.timeoutMs;
     const headers: Record<string, string> = { ...this.authHeaders(creds) };
     if (opts.body !== undefined) headers["Content-Type"] = "application/json";
 
@@ -120,12 +123,13 @@ export abstract class IntegrationClient<C> {
         method: opts.method ?? (opts.body !== undefined ? "POST" : "GET"),
         headers,
         body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
-      return { status: "unreachable", detail: this.unreachableDetail(base) };
+      console.error(`${this.displayName} at ${base} did not respond within ${timeoutMs / 1000}s.`);
+      return { status: "unreachable", detail: this.unreachableDetail(timeoutMs) };
     }
 
     if (res.status === 401 || res.status === 403) {

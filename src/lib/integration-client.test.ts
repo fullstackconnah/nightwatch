@@ -104,7 +104,7 @@ describe("IntegrationClient", () => {
     stubFetch(new Error("ECONNREFUSED"));
     const probe = await new TestClient().get("/api/states");
     assert.equal(probe.status, "unreachable");
-    assert.match(probe.detail, /Test Service at http:\/\/svc did not respond within 4s\./);
+    assert.match(probe.detail, /Test Service did not respond within 4s\./);
   });
 
   // --- the invariant ---------------------------------------------------------
@@ -170,5 +170,18 @@ describe("IntegrationClient", () => {
     assert.equal(seenInit.method, "POST");
     assert.equal((seenInit.headers as Record<string, string>)["Content-Type"], "application/json");
     assert.equal(seenInit.body, JSON.stringify({ entity_id: "light.x" }));
+  });
+});
+
+describe("IntegrationClient unreachable detail (hunt 7 A1 A3)", () => {
+  it("never puts the base URL in the detail", async () => {
+    stubFetch(new Error("ECONNREFUSED"));
+    const probe = await new TestClient().get("/x");
+    assert.ok(probe.status !== "ok" && !probe.detail.includes("http://svc"));
+  });
+  it("names the per-call timeout", async () => {
+    stubFetch(new Error("ECONNREFUSED"));
+    const probe = await (new TestClient() as unknown as { request(p: string, o: object): Promise<Probe<unknown>> }).request("/x", { timeoutMs: 90000 });
+    assert.ok(probe.status !== "ok" && /within 90s\./.test(probe.detail));
   });
 });

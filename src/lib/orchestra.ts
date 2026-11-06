@@ -51,8 +51,17 @@ async function get(creds: OrchestraCredentials, path: string): Promise<Fetched> 
       return { kind: "unauthorized", detail: `The orchestra service rejected the API token (HTTP ${res.status}).` };
     }
     if (res.status === 404) return { kind: "ok", status: 404, body: null };
-    if (!res.ok) return { kind: "unreachable", detail: `The orchestra service answered HTTP ${res.status}.` };
-    return { kind: "ok", status: res.status, body: await res.json() };
+    if (!res.ok) {
+      await res.body?.cancel();
+      return { kind: "unreachable", detail: `The orchestra service answered HTTP ${res.status}.` };
+    }
+    try {
+      return { kind: "ok", status: res.status, body: await res.json() };
+    } catch (e) {
+      // A timeout while the body streams is still a timeout; only a parse failure is an unreadable answer.
+      if (e instanceof SyntaxError) return { kind: "unreachable", detail: "The orchestra service sent an unreadable answer." };
+      throw e;
+    }
   } catch {
     return { kind: "unreachable", detail: `The orchestra service did not answer within ${TIMEOUT_MS / 1000}s.` };
   }
