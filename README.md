@@ -1,6 +1,6 @@
 # homelab-dashboard · nightwatch
 
-Self-hosted single-pane-of-glass for the homelab (192.168.1.70). Replaces
+Self-hosted single-pane-of-glass for the homelab (homelab.local). Replaces
 gethomepage/homepage: host vitals + every Docker container auto-discovered,
 live per-service widget data, container start/stop/restart/create from the UI.
 
@@ -49,7 +49,7 @@ Widget instances with secrets (API keys) live in `data/config.json`
 ```sh
 npm install
 # tunnel the homelab docker socket (keep running):
-ssh -N -L 127.0.0.1:12375:/var/run/docker.sock homelab@192.168.1.70
+ssh -N -L 127.0.0.1:12375:/var/run/docker.sock homelab@homelab.local
 npm run dev            # http://localhost:3005 — any password logs in (dev only)
 ```
 
@@ -77,7 +77,7 @@ containers even if compromised.
 
 `/api/mcp` exposes nightwatch's data to MCP clients (Claude Code, Claude
 Desktop, etc.) over the Streamable HTTP transport — hand-rolled JSON-RPC 2.0,
-no SDK. Deployed: `http://192.168.1.70:3005/api/mcp`.
+no SDK. Deployed: `http://homelab.local:3005/api/mcp`.
 
 Resources: `nightwatch://containers`, `nightwatch://telemetry`,
 `nightwatch://smart`, `nightwatch://logs/{container}` (last ~200 lines, by
@@ -91,7 +91,7 @@ Disabled by default — set `MCP_TOKEN` (a long random string) in the server's
 above. Unset `MCP_TOKEN` → the endpoint always returns 503.
 
 ```sh
-claude mcp add --transport http nightwatch http://192.168.1.70:3005/api/mcp \
+claude mcp add --transport http nightwatch http://homelab.local:3005/api/mcp \
   --header "Authorization: Bearer <token>"
 ```
 

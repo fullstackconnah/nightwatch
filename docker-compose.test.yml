@@ -93,9 +93,8 @@ services:
       - "3006:3005"
     environment:
       - DOCKER_HOST=tcp://socket-proxy:2375
-      - PUBLIC_HOST=192.168.1.70
+      - PUBLIC_HOST=${PUBLIC_HOST:-homelab.local}
       - HOST_NAME=homelab
-      - DOCKGE_URL=http://192.168.1.70:5001
       - DATA_DIR=/app/data
       - NODE_ENV=development
     # Deliberately no .env and no ADMIN_PASSWORD_HASH — the bypass requires

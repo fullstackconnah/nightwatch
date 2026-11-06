@@ -7,7 +7,7 @@ Same pattern as the vaultview stack: source synced to
 
 ```sh
 # from the repo root (Windows) — git archive of HEAD, extracted on the server
-git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
+git archive --format=tar HEAD | ssh homelab@homelab.local \
   "sudo mkdir -p /mnt/docker/stacks/homelab-dashboard && sudo tar -xf - -C /mnt/docker/stacks/homelab-dashboard"
 ```
 
@@ -53,8 +53,8 @@ git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
    Ship it out-of-band:
 
    ```sh
-   scp data/config.json homelab@192.168.1.70:/tmp/hd-config.json
-   ssh homelab@192.168.1.70 "sudo mkdir -p /mnt/docker/stacks/homelab-dashboard/data \
+   scp data/config.json homelab@homelab.local:/tmp/hd-config.json
+   ssh homelab@homelab.local "sudo mkdir -p /mnt/docker/stacks/homelab-dashboard/data \
      && sudo mv /tmp/hd-config.json /mnt/docker/stacks/homelab-dashboard/data/config.json \
      && sudo chown -R 1000:1000 /mnt/docker/stacks/homelab-dashboard/data \
      && sudo chmod 600 /mnt/docker/stacks/homelab-dashboard/data/config.json"
@@ -66,19 +66,19 @@ git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
 3. **Build & start**:
 
    ```sh
-   ssh homelab@192.168.1.70 "cd /mnt/docker/stacks/homelab-dashboard \
+   ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
      && sudo docker compose build && sudo docker compose up -d"
    ```
 
-4. Open http://192.168.1.70:3005 — log in with the admin password. Add an NPM
+4. Open http://homelab.local:3005 — log in with the admin password. Add an NPM
    access-list-protected proxy host if exposing beyond the LAN.
 
 ## Updates
 
 ```sh
-git archive --format=tar HEAD | ssh homelab@192.168.1.70 \
+git archive --format=tar HEAD | ssh homelab@homelab.local \
   "sudo tar -xf - -C /mnt/docker/stacks/homelab-dashboard"
-ssh homelab@192.168.1.70 "cd /mnt/docker/stacks/homelab-dashboard \
+ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
 ```
 
@@ -151,8 +151,8 @@ smartctl's JSON and the dashboard reads the file.
 **Install (one-time, host):**
 
 ```sh
-scp scripts/host/nightwatch-smart.* homelab@192.168.1.70:/tmp/
-ssh homelab@192.168.1.70 '
+scp scripts/host/nightwatch-smart.* homelab@homelab.local:/tmp/
+ssh homelab@homelab.local '
   sudo install -m 0755 /dev/stdin /usr/local/bin/nightwatch-smart < <(tr -d "\r" < /tmp/nightwatch-smart.sh)
   sudo install -m 0644 /dev/stdin /etc/systemd/system/nightwatch-smart.service < <(tr -d "\r" < /tmp/nightwatch-smart.service)
   sudo install -m 0644 /dev/stdin /etc/systemd/system/nightwatch-smart.timer < <(tr -d "\r" < /tmp/nightwatch-smart.timer)
@@ -247,9 +247,9 @@ scope** — everything comes from bind mounts that already existed.
 
 ```sh
 # previous commit → re-archive and rebuild
-git archive --format=tar HEAD~1 | ssh homelab@192.168.1.70 \
+git archive --format=tar HEAD~1 | ssh homelab@homelab.local \
   "sudo tar -xf - -C /mnt/docker/stacks/homelab-dashboard"
-ssh homelab@192.168.1.70 "cd /mnt/docker/stacks/homelab-dashboard \
+ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
 # nuclear: sudo docker compose down (Homepage on 3001 is untouched either way)
 ```

@@ -63,11 +63,11 @@ export function isVoiceConfigured(): boolean {
 
 export const VOICE_UNCONFIGURED_DETAIL =
   "Voice is not connected. Set the server URL on the settings page's Voice card (or " +
-  "VOICE_SERVER_URL, e.g. http://192.168.1.70:8970, in the server environment) — it's read " +
+  "VOICE_SERVER_URL, e.g. http://homelab.local:8970, in the server environment) — it's read " +
   "fresh on every request, so nothing else needs to change once it's set.";
 
-function unreachableDetail(url: string): string {
-  return `Voice server at ${url} did not respond within ${TIMEOUT_MS / 1000}s.`;
+function unreachableDetail(): string {
+  return `Voice server did not respond within ${TIMEOUT_MS / 1000}s.`;
 }
 
 /** One shape for every problem status, same convention as HermesStatusProblem. */
@@ -120,7 +120,7 @@ export async function transcribeAudio(audio: Buffer, contentType: string): Promi
       cache: "no-store",
     });
   } catch {
-    return { status: "unreachable", detail: unreachableDetail(creds.url) };
+    return { status: "unreachable", detail: unreachableDetail() };
   }
 
   if (!res.ok) {
@@ -167,7 +167,7 @@ export async function speakText(text: string): Promise<VoiceSpeakResult> {
       cache: "no-store",
     });
   } catch {
-    return { status: "unreachable", detail: unreachableDetail(creds.ttsUrl) };
+    return { status: "unreachable", detail: unreachableDetail() };
   }
 
   if (!res.ok || !res.body) {

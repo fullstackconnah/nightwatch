@@ -51,7 +51,7 @@ export interface NetInterface {
    * means the match failed and the raw name is all we honestly have.
    */
   label: string | null;
-  /** IPv4/IPv6 addresses with prefix length, e.g. "192.168.1.70/22". */
+  /** IPv4/IPv6 addresses with prefix length, e.g. "homelab.local/22". */
   addresses: string[];
   mac: string | null;
   mtu: number | null;
