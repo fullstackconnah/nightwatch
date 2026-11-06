@@ -197,6 +197,26 @@ describe("hold clock and purge (B5)", () => {
     await assert.rejects(q.undo("purged-1"), (e: unknown) => e instanceof JobError && e.status === 410 && /deleted on 4 Nov/.test(e.message));
   });
 
+  describe("a purged file's output is not re-compressed", { skip: SKIP_OFF_LINUX }, () => {
+    const last = (state: string) => ({ id: "last-1", path: "movies/a.mkv", state, createdAt: "x", crf: 22, sourceBytes: 9, attempts: 0, abs: "x", container: "matroska", finishedAt: "2026-11-04T00:00:00Z", outputBytes: 4 * GB }) as JobRecord;
+    it("refuses with 409 while the file is still the job's output", () => {
+      const { q } = make();
+      q.all().push(last("purged"));
+      assert.throws(() => q.enqueueOne("movies/a.mkv"), (e: unknown) => e instanceof JobError && e.status === 409 && /Already compressed on 4 Nov/.test(e.message));
+    });
+    it("allows a file replaced since (different bytes)", () => {
+      const { q, lib } = make();
+      lib["movies/a.mkv"] = file("movies/a.mkv", { bytes: 5 * GB });
+      q.all().push(last("purged"));
+      assert.equal(q.enqueueOne("movies/a.mkv").state, "queued");
+    });
+    it("an undone last job still enqueues", () => {
+      const { q } = make();
+      q.all().push(last("undone"));
+      assert.equal(q.enqueueOne("movies/a.mkv").state, "queued");
+    });
+  });
+
   it("the public job never carries a path on disk", { skip: SKIP_OFF_LINUX }, () => {
     const { q } = make();
     const j = q.enqueueOne("movies/a.mkv");

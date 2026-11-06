@@ -148,6 +148,9 @@ export function createQueue(opts: QueueOpts) {
     if (mine.some((j) => ACTIVE.has(j.state))) throw new JobError(409, "Already queued");
     const held = mine.find((j) => j.state === "done");
     if (held) throw new JobError(409, `Already compressed; Undo it or wait until ${dayLabel(held.heldUntil as string, opts.tz)}`);
+    // The hold ended and the original is gone: the file is the compressed output; a different size means a new download.
+    const last = mine[mine.length - 1];
+    if (last?.state === "purged" && last.outputBytes === f.bytes) throw new JobError(409, `Already compressed on ${dayLabel(last.finishedAt ?? last.heldUntil ?? now().toISOString(), opts.tz)}`);
     if (f.verdict.kind !== "compress") throw new JobError(409, `Not compressible. ${f.verdict.reason}`);
     if (uid !== undefined) {
       // S5: the worker runs as PUID:PGID, so it can swap only a file it owns inside a folder it can write.
