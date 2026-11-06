@@ -802,7 +802,8 @@ export async function getSmartSnapshot(): Promise<SmartSnapshot> {
       const content = await fsp.readFile(SMART_JSON_PATH, "utf8");
       raw = JSON.parse(content) as SmartFileShape;
     } catch (err) {
-      readError = err instanceof Error ? err.message : "failed to read smart.json";
+      console.error("smart.json read failed", err);
+      readError = "smart.json could not be read";
     }
 
     if (!raw) return emptySnapshot(ts, integrity, readError);

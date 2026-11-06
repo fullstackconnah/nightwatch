@@ -66,10 +66,8 @@ export function throwingSnapshotRoute<T>(
     try {
       return NextResponse.json(await source.collect());
     } catch (e) {
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : fallbackMessage },
-        { status: errorStatus },
-      );
+      console.error(fallbackMessage, e);
+      return NextResponse.json({ error: fallbackMessage }, { status: errorStatus });
     }
   };
 }
