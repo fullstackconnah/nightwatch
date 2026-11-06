@@ -171,7 +171,7 @@ export function Chores(p: ChoresProps) {
     : null;
   const emptyNote = (c: Chore) =>
     c.id === "dangling" ? "No dangling images."
-    : c.id === "orphans" ? (input.volumes.length ? "No orphan volumes." : "No named volumes. App data lives in bind mounts.")
+    : c.id === "orphans" ? (input.volumes.length ? "No orphan volumes. Named volumes are never cleared here." : "No volumes. App data lives in bind mounts.")
     : c.id === "unused" ? "Every tagged image is in use."
     : c.id === "stopped" ? "Every container is running."
     : c.note;
