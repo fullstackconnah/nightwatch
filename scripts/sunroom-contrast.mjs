@@ -191,9 +191,9 @@ console.log(`\n  ${cubeChecked} samples checked, ${cubeExempt} exempt as lightâ†
  * The puddle-line rain keeps its loud marks (rings, crowns) out of the glance
  * text zones by a mask, so what can reach text there is one streak at its
  * zone floor, plus the storm flash at peak. Darkening marks go in at their
- * maximum; the day rings, the day sheen and the day flash are the white marks that only lighten,
- * and the dark sheen is masked to 0, so they are left out (a lightening can
- * only raise dark-ink contrast). Both inks are checked: inkDim is the stricter.
+ * maximum: by day the streak is the slate mark (dayStreak) and the storm flash
+ * is counted on dark grounds only. Rings and crowns are masked out of the text
+ * zones and the dark sheen is masked to 0, so they are left out. Both inks are checked: inkDim is the stricter.
  * The numbers come from the shipped kiosk-weather-fx.ts, read in a child node
  * with type stripping so this file never holds a second copy. */
 console.log("\nGATE 4 â€” rain marks over the wet grounds\n");

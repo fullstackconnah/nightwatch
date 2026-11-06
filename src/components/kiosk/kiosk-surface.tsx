@@ -46,7 +46,7 @@ import { useKioskWidgetLayout } from "@/lib/kiosk-widgets";
 import {
   KioskDisplay,
   useWeatherView,
-  WEATHER_ICON,
+  currentGlyph,
   type KioskPeriod,
   type WeatherDay,
 } from "@/components/kiosk/kiosk-display";
@@ -305,7 +305,7 @@ function TempNode({
   // reading yet — a FLIP-registered node has to exist across the mode
   // change for the registry to have anything to measure.
   if (!current) return <div ref={registerRef} />;
-  const Icon = WEATHER_ICON[current.code];
+  const Icon = currentGlyph(current.code, weather.ok?.sun);
   return (
     <div
       ref={registerRef}

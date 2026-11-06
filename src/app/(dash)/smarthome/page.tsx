@@ -31,7 +31,7 @@ export default function SmarthomePage() {
 
   const lead = (id: StripId, body: ReactNode) => (
     <>
-      {model.autoTarget === id && model.detailLead && <p className="st-note">{model.detailLead}</p>}
+      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
       {body}
     </>
   );

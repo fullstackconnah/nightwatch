@@ -142,7 +142,7 @@ export function WriteAction({
           renderAsk({ onYes: () => void go(), onCancel: cancel })
         ) : (
           <>
-            <p className="st-say">{say}</p>
+            <p className="st-say" role="status">{say}</p>
             <div className="st-acts">
               <Button autoFocus={!!autoCancelMs} size="sm" variant="ghost" onClick={cancel}>
                 Cancel

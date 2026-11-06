@@ -111,15 +111,12 @@ export function KioskClimateTile({
   // shownHvacMode for the same mode-hold reason as isOn above — a tap must
   // recolour the tile before HA reports back). Every ON mode carries a tint
   // and the breathing edge glow: heat -> --color-heat (orange-red), cool ->
-  // --color-chill (icy cyan), dry -> --color-arid (bright amber), and
-  // fan_only/heat_cool/auto -> "neutral", the shared accent-on vocabulary,
-  // because they name no single kind of work. The root-locked tokens (see
-  // @theme) exist because sunroom's scoped warn/blue are AA-darkened for
-  // text and muddy a wash to brown/grey. Every non-sunroom theme keeps the
-  // plain accent-on look with no glow — the mode tint is part of sunroom's
-  // dress-up (the one theme whose whole surface is a light-and-warmth
-  // model), not a new system-wide colour language; modeTint is null
-  // off-theme, which also suppresses the glow layer below.
+  // --color-chill (icy cyan). Every other mode is the plain pane (the Sill DS:
+  // only heating and cooling wash); the power disc still carries every mode.
+  // The root-locked tokens (see @theme) exist because sunroom's scoped
+  // warn/blue are AA-darkened for text and muddy a wash to brown/grey. Every
+  // non-sunroom theme keeps the plain accent-on look with no glow; modeTint is
+  // heat/chill only, and null off-theme, which also suppresses the glow layer below.
   const kioskTheme = useKioskTheme();
   // Sill DS: only heating and cooling carry a wash (the --sr-wash-* tokens) and the working glow; every other
   // mode is the plain pane. The power disc carries every mode (--sr-mode-*, via data-mode on the button).

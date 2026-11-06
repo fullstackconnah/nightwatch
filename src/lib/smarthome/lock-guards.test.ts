@@ -22,8 +22,17 @@ test("SH write-action: auto-cancel timer, retry goes back to asking, Cancel take
   assert.doesNotMatch(src, /phase !== "failed"/); // a failed write stays until Try again or Dismiss
   assert.match(src, /frame\.current\?\.contains\(document\.activeElement\)/);
   assert.match(src, /autoCancelMs \? setPhase\("asking"\) : void go\(\)/);
-  assert.match(src, /autoFocus=\{!!autoCancelMs\}/);
-  assert.match(src, /autoFocus=\{!autoCancelMs\}/);
+  // Each autoFocus is tied to ITS button by label: swapping Cancel and Confirm must go red.
+  assert.match(src, /<Button autoFocus=\{!!autoCancelMs\}[^\n]*>\s*Cancel\s*<\/Button>/);
+  assert.match(src, /<Button autoFocus=\{!autoCancelMs\}[^\n]*>\s*\{yes\}\s*<\/Button>/);
+});
+
+test("SH write-action: the question line is a live region so the unlock hint is announced", () => {
+  assert.match(read("components", "strips", "write-action.tsx"), /<p className="st-say" role="status">\{say\}<\/p>/);
+});
+
+test("SH smarthome page: the auto-opened lead note keeps a gap above the first row", () => {
+  assert.match(read("app", "(dash)", "smarthome", "page.tsx"), /<p className="st-note mb-3">\{model\.detailLead\}/);
 });
 
 test("SH strip-list: a wide open id that names no strip falls back to the first strip", () => {
