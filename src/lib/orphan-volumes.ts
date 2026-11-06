@@ -30,3 +30,16 @@ export async function removeVolumes(
   }
   return { removed, skipped };
 }
+
+/** Names of volumes mounted by any container, running or stopped. */
+export function usedVolumeNames(
+  containers: readonly { Mounts?: readonly { Type?: string; Name?: string }[] }[],
+): Set<string> {
+  const used = new Set<string>();
+  for (const c of containers) {
+    for (const m of c.Mounts || []) {
+      if (m.Type === "volume" && m.Name) used.add(m.Name);
+    }
+  }
+  return used;
+}

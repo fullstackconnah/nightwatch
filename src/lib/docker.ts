@@ -3,7 +3,7 @@ import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
-import { isOrphanVolume, removeVolumes } from "@/lib/orphan-volumes";
+import { isOrphanVolume, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
@@ -530,17 +530,12 @@ export async function getDiskReclaimSnapshot(): Promise<DiskReclaimSnapshot> {
   }
   dangling.sort((a, b) => b.size - a.size);
 
-  const usedVolumeNames = new Set<string>();
-  for (const c of containers) {
-    for (const m of c.Mounts || []) {
-      if (m.Type === "volume" && m.Name) usedVolumeNames.add(m.Name);
-    }
-  }
+  const usedNames = usedVolumeNames(containers);
   const sizeByVolumeName = new Map(df.volumes.map((v) => [v.name, v.sizeBytes] as const));
   const orphans: OrphanVolume[] = [];
   let orphanBytes = 0;
   for (const v of volumeList.Volumes || []) {
-    if (!isOrphanVolume(v, usedVolumeNames)) continue;
+    if (!isOrphanVolume(v, usedNames)) continue;
     const size = sizeByVolumeName.get(v.Name) ?? null;
     if (size) orphanBytes += size;
     // CreatedAt isn't in dockerode's VolumeInspectInfo type but the daemon does
@@ -585,15 +580,16 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   }
   // Not docker.pruneVolumes(): its scope depends on the daemon version (23+
   // removes anonymous only), so remove the listed orphans by name instead.
-  const snap = await getDiskReclaimSnapshot();
+  // Not getDiskReclaimSnapshot(): it awaits a 20-70 s df that can fail, and Clear needs no sizes.
+  const [volumeList, containers] = await Promise.all([docker.listVolumes(), docker.listContainers({ all: true })]);
+  const used = usedVolumeNames(containers);
   const { removed } = await removeVolumes(
-    snap.volumes.orphans.map((o) => o.name),
+    (volumeList.Volumes || []).filter((v) => isOrphanVolume(v, used)).map((v) => v.Name),
     (name) => docker.getVolume(name).remove(),
   );
   dfSwr.clear();
-  const gone = new Set(removed);
-  const reclaimedBytes = snap.volumes.orphans.reduce((a, o) => a + (gone.has(o.name) ? (o.size ?? 0) : 0), 0);
-  return { reclaimedBytes, deleted: removed };
+  // shortcut: sizes come from df, which Clear no longer waits on, so reclaimedBytes is 0 (no UI reads it); upgrade if one needs it.
+  return { reclaimedBytes: 0, deleted: removed };
 }
 
 export interface ImageRemoveResult {
