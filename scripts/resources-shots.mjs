@@ -63,6 +63,8 @@ const cpuValues = () =>
 
 async function open(browser, vp, query) {
   const context = await browser.newContext(vp);
+  // The test stack's admin gate: same login as scripts/media-shots.mjs.
+  await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
   const page = await context.newPage();
   page.on("pageerror", (e) => pageErrors.push(`${vp.name} ${query}: ${e.message}`));
   await page.goto(`${BASE_URL}/resources?${query}`, { waitUntil: "domcontentloaded", timeout: 90_000 });
