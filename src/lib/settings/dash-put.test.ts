@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mergeDashPut, publicWidgets } from "./dash-put.ts";
+import { widgetTarget } from "../widgets/target.ts";
 import type { AppConfig } from "../config.ts";
 
 const current = {
@@ -156,4 +157,32 @@ test("J1: a changed origin, type or duplicate id copies no stored header value",
 test("J1: a result with no headers stores no headers field", () => {
   const r = ok(mergeDashPut(store(hdr()), { widgets: [hdr({ headers: {} })] })).widgets[0] as object;
   assert.equal("headers" in r, false);
+});
+
+test("J1 round 1: a changed endpoint (absolute or relative) keeps no stored secret", () => {
+  const stored = hdr({ key: "k-placeholder", url: "http://host-a:8989" });
+  for (const endpoint of ["http://evil.example/x", "@evil.example/x"]) {
+    const w = ok(mergeDashPut(store(stored), { widgets: [hdr({ endpoint, url: "http://host-a:8989", headers: { Authorization: "" } })] })).widgets[0] as { headers?: unknown; key?: string };
+    assert.equal(w.headers, undefined, endpoint);
+    assert.equal(w.key, undefined, endpoint);
+  }
+});
+
+test("J1 round 1: an unchanged endpoint keeps the stored secrets", () => {
+  for (const endpoint of [undefined, "/api/x"]) {
+    const stored = hdr({ key: "k-placeholder", endpoint });
+    const w = ok(mergeDashPut(store(stored), { widgets: [hdr({ endpoint, headers: { Authorization: "" } })] })).widgets[0] as { headers?: Record<string, string>; key?: string };
+    assert.equal(w.headers?.Authorization, "Bearer x");
+    assert.equal(w.key, "k-placeholder");
+  }
+});
+
+test("J1 round 1: inherited property names copy nothing", () => {
+  assert.equal(hdrs(hdr(), hdr({ headers: { constructor: "", toString: "" } })), undefined);
+});
+
+test("widgetTarget: absolute endpoint, relative endpoint, none", () => {
+  assert.equal(widgetTarget({ url: "http://h", endpoint: "http://e/x" }), "http://e/x");
+  assert.equal(widgetTarget({ url: "http://h", endpoint: "/x" }), "http://h/x");
+  assert.equal(widgetTarget({ url: "http://h" }), "http://h");
 });
