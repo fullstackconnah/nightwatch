@@ -834,6 +834,7 @@ export async function getSmartSnapshot(): Promise<SmartSnapshot> {
       verdict: "unknown",
       reasons: [],
     };
-    return emptySnapshot(ts, emptyIntegrity, err instanceof Error ? err.message : "smart snapshot failed");
+    console.error("smart snapshot failed", err);
+    return emptySnapshot(ts, emptyIntegrity, "smart snapshot failed");
   }
 }
