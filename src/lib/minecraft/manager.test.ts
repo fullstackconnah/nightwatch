@@ -126,3 +126,19 @@ describe("probeHttpStatus", () => {
     assert.equal(probeHttpStatus({ status: "unauthorized", detail: "" } satisfies ProbeFail), 502);
   });
 });
+
+describe("McManagerClient slow actions and reasons (hunt 7 A1 A2)", () => {
+  it("surfaces the manager's reason for a refused create", async () => {
+    stubFetch(new Response("slug already exists", { status: 409 }));
+    const probe = await new TestableManagerClient().createInstance({ slug: "abc", name: "n", source: "upload", packRef: "p", mcVersion: "1" });
+    assert.ok(probe.status !== "ok" && probe.detail.includes("slug already exists"));
+  });
+  it("uses the 120 s limit for slow actions and keeps 6 s for reads", async () => {
+    stubFetch(new Error("boom"));
+    const c = new TestableManagerClient();
+    const slow = await c.runBackup();
+    const fast = await c.instances();
+    assert.ok(slow.status !== "ok" && /within 120s/.test(slow.detail));
+    assert.ok(fast.status !== "ok" && /within 6s/.test(fast.detail));
+  });
+});

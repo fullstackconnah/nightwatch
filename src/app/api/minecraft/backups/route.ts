@@ -15,6 +15,9 @@ export async function GET() {
   return NextResponse.json(probe.data);
 }
 
+// A bare file or instance name: a path piece would walk out of the backups folder on the manager.
+const plainName = (v: string) => v.length <= 255 && !/[\/]/.test(v) && !v.includes("..");
+
 function isRestoreBody(v: unknown): v is { action: "restore"; instance: string; file: string } {
   if (!v || typeof v !== "object") return false;
   const b = v as Record<string, unknown>;
@@ -41,6 +44,9 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "restore" && isRestoreBody(body)) {
+    if (!plainName(body.instance) || !plainName(body.file)) {
+      return NextResponse.json({ error: "instance and file must be plain names" }, { status: 400 });
+    }
     // Trust boundary: the UI disables Restore while running, but the route must refuse it too.
     const all = await listContainers().catch(() => null);
     if (!all) return NextResponse.json({ error: "Couldn't check whether the server is running." }, { status: 503 });

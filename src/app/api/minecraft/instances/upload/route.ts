@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { uploadAuthorized } from "@/lib/upload-auth";
+import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 
@@ -40,13 +41,16 @@ export async function POST(req: NextRequest) {
   }
 
   const params = req.nextUrl.searchParams;
-  const slug = params.get("slug")?.trim();
+  const rawSlug = params.get("slug")?.trim();
   const name = params.get("name")?.trim();
   const mcVersion = params.get("mcVersion")?.trim();
   const loader = params.get("loader")?.trim();
 
-  if (!slug || !name || !mcVersion || !loader) {
+  if (!rawSlug || !name || !mcVersion || !loader) {
     return NextResponse.json({ error: "slug, name, mcVersion, and loader are required" }, { status: 400 });
+  }
+  if (name.length > 100 || mcVersion.length > 100) {
+    return NextResponse.json({ error: "name and mcVersion must be at most 100 characters" }, { status: 400 });
   }
   if (!VALID_LOADERS.has(loader)) {
     return NextResponse.json(
@@ -65,7 +69,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "content-type is required" }, { status: 400 });
   }
 
-  const upstreamUrl = `${creds.url}/instances/upload?${params.toString()}`;
+  // Only the five known fields go upstream, never the caller's whole query string.
+  const query = new URLSearchParams({ slug: sanitizeSlug(rawSlug), name, mcVersion, loader });
+  if (memoryGb !== null) query.set("memoryGb", memoryGb);
+  const upstreamUrl = `${creds.url}/instances/upload?${query.toString()}`;
 
   let res: Response;
   try {
@@ -76,6 +83,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": contentType,
       },
       body: req.body,
+      signal: AbortSignal.timeout(10 * 60 * 1000),
       // Node's fetch requires this whenever body is a stream — no matching
       // field exists on the DOM RequestInit type, hence the cast.
       duplex: "half",

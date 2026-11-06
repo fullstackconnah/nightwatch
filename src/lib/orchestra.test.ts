@@ -128,3 +128,12 @@ describe("getOrchestraDetail", () => {
     assert.deepEqual([missing.status, missing.orchestrator], ["ok", null]);
   });
 });
+
+describe("getOrchestraSnapshot unreadable body (hunt 7 B4)", () => {
+  it("a 200 with an unreadable body is an unreadable answer, not a timeout", async () => {
+    const url = await stub(() => ({ code: 200, body: "<html>not json" }));
+    const snap = await getOrchestraSnapshot({ url, token: TOKEN });
+    assert.equal(snap.status, "unreachable");
+    assert.match(snap.detail, /sent an unreadable answer/);
+  });
+});

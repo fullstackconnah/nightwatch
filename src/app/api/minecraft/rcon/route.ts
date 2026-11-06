@@ -11,6 +11,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "command is required" }, { status: 400 });
   }
 
+  if (command.length > 1000) {
+    return NextResponse.json({ error: "command too long" }, { status: 400 });
+  }
+
   const mc = loadConfig().minecraft;
   if (!mc?.rconHost || !mc?.rconPassword) {
     return NextResponse.json({ error: "RCON not configured" }, { status: 409 });

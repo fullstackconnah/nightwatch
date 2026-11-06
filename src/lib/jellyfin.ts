@@ -116,6 +116,7 @@ interface JellyfinSession {
 
 /** Returns null (never NaN/undefined) for anything that isn't a finite number. */
 function numberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
