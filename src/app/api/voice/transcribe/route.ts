@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { transcribeAudio, type VoiceTranscribeResult } from "@/lib/voice";
+import { contentLengthError } from "@/lib/upload-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,9 @@ function statusCodeFor(status: Exclude<VoiceTranscribeResult, { status: "ok" }>[
  */
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") ?? "";
+  // Checked before any body read: a chunked or oversized upload never gets buffered.
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES);
+  if (tooBig) return NextResponse.json({ status: "error", detail: tooBig.detail }, { status: tooBig.status });
   let buf: Buffer;
   let audioContentType: string;
 
@@ -52,10 +56,6 @@ export async function POST(req: NextRequest) {
     buf = Buffer.from(await file.arrayBuffer());
     audioContentType = file.type || "application/octet-stream";
   } else {
-    const contentLength = req.headers.get("content-length");
-    if (contentLength && Number(contentLength) > MAX_BODY_BYTES) {
-      return NextResponse.json({ status: "error", detail: "Audio exceeds the 8MB limit." }, { status: 413 });
-    }
     let raw: ArrayBuffer;
     try {
       raw = await req.arrayBuffer();
