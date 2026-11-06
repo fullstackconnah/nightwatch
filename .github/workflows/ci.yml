@@ -25,7 +25,8 @@ jobs:
       - run: npx tsc --noEmit
       # The media worker's suites probe and encode real clips; they fail, not skip, without it.
       # A stalled mirror once hung this step 14 min; fail fast and let a re-run retry.
-      - run: sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update && sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y --no-install-recommends ffmpeg
+      - run: echo 'Acquire::Retries "3"; Acquire::http::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80-ci-retries
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
         timeout-minutes: 6
       - run: npm test
       - run: npm run build
