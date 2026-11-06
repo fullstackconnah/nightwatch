@@ -515,9 +515,8 @@ try {
       const error = await seen(section.getByText("Enter a number above 0, or leave blank for the default."));
       const uploadOff = await section.getByRole("button", { name: "Upload" }).isDisabled();
       record("upload-memory-error", s.name, { error, uploadOff });
-      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
-      // Element crop, padded; a bare locator screenshot because this repo has no cropElement helper.
-      await section.locator("div", { has: input }).last().screenshot({ path: join(OUT_DIR, `mc-upload-memory-error-${s.name}.png`) });
+      // The input stays scrolled into view, so the house viewport shot holds the field and its error.
+      await shoot(page, s, "upload-memory-error", false);
       await page.close();
     }),
   );
