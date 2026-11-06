@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { isContainerId, isImageId } from "./container-id.ts";
+import { clampLogsTail, isContainerId, isImageId } from "./container-id.ts";
 
 /* No docker route test exists and node tests cannot import "@/" modules, so the routes and disk-scan are checked by source scan. */
 const SRC = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -36,8 +36,14 @@ describe("docker route id guards", () => {
       assert.ok(g < s.search(/docker\.|containerStats\(|containerLogs\(|removeImage\(id/), "guard precedes docker use");
     });
   }
-  it("clamps logs tail to an integer 1-5000", () => {
-    assert.ok(read("app/api/docker/containers/[id]/logs/route.ts").includes("Math.min(Math.max(1, Math.floor(Number("));
+  it("logs route uses clampLogsTail", () => {
+    assert.ok(read("app/api/docker/containers/[id]/logs/route.ts").includes("clampLogsTail(req.nextUrl.searchParams.get(\"tail\"))"));
+  });
+  it("clampLogsTail: missing/blank/0/non-numeric 200, negative 1, floor, cap 5000", () => {
+    const cases: [string | undefined, number][] = [
+      [undefined, 200], ["", 200], ["0", 200], ["abc", 200], ["-5", 1], ["2.7", 2], ["200", 200], ["99999", 5000],
+    ];
+    for (const [raw, want] of cases) assert.equal(clampLogsTail(raw), want, `tail=${JSON.stringify(raw)}`);
   });
 });
 
