@@ -297,22 +297,51 @@ function second(first: ReturnType<typeof make>): QueueOpts {
 }
 
 describe("boot prunes old finished jobs (H7)", () => {
-  it("keeps the newest finished records, and every active, done and held record", () => {
+  const day = (i: number) => new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
+  const STATES = ["failed", "purged", "cancelled", "undone"] as const;
+  it("cuts superseded records to the cap; the latest record of a file, done, held and active records stay", () => {
     const first = make();
-    const day = (i: number) => new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString();
-    for (let i = 0; i < KEEP_FINISHED + 50; i++) seed(first.q, `old-${i}`, i % 2 ? "failed" : "purged", { finishedAt: day(i) });
-    seed(first.q, "kept-hold", "failed", { finishedAt: day(-5), keepHold: true });
-    seed(first.q, "old-done", "done", { finishedAt: day(-5), heldUntil: "2026-12-01T00:00:00Z" });
-    seed(first.q, "q-1", "queued");
-    seed(first.q, "swap-1", "swapping");
+    // the only record of its file, and the oldest: must survive
+    seed(first.q, "lone-purged", "purged", { path: "movies/lone.mkv", finishedAt: day(-9) });
+    // superseded: each older record shares its path with the newer "latest-N"
+    for (let i = 0; i < KEEP_FINISHED + 50; i++) {
+      seed(first.q, `old-${i}`, STATES[i % 4], { path: `movies/f${i}.mkv`, finishedAt: day(i) });
+      seed(first.q, `new-${i}`, "done", { path: `movies/f${i}.mkv`, finishedAt: day(i), heldUntil: "2026-12-01T00:00:00Z" });
+    }
+    seed(first.q, "kept-hold", "failed", { path: "movies/h.mkv", finishedAt: day(-5), keepHold: true });
+    seed(first.q, "q-1", "queued", { path: "movies/q.mkv" });
+    seed(first.q, "swap-1", "swapping", { path: "movies/s.mkv" });
     const again = createQueue({ ...second(first), run: async () => undefined });
     const ids = again.all().map((j) => j.id);
-    assert.equal(ids.filter((id) => id.startsWith("old-") && id !== "old-done").length, KEEP_FINISHED);
+    assert.equal(ids.filter((id) => id.startsWith("old-")).length, KEEP_FINISHED);
     assert.equal(again.get("old-0"), undefined);
     assert.ok(again.get(`old-${KEEP_FINISHED + 49}`));
-    for (const id of ["kept-hold", "old-done", "q-1", "swap-1"]) assert.ok(again.get(id), id);
+    assert.equal(ids.filter((id) => id.startsWith("new-")).length, KEEP_FINISHED + 50);
+    for (const id of ["lone-purged", "kept-hold", "q-1", "swap-1"]) assert.ok(again.get(id), id);
     assert.equal(again.get("swap-1")?.state, "swapping");
     const onDisk = createQueue({ ...second(first), run: async () => undefined });
     assert.equal(onDisk.all().length, ids.length);
+  });
+
+  it("a record with no timestamps does not crash the sort", () => {
+    const first = make();
+    seed(first.q, "bare-1", "failed", { path: "movies/b.mkv", createdAt: undefined as unknown as string });
+    seed(first.q, "bare-2", "failed", { path: "movies/b.mkv", createdAt: undefined as unknown as string });
+    seed(first.q, "bare-3", "failed", { path: "movies/b.mkv", createdAt: undefined as unknown as string });
+    const again = createQueue({ ...second(first), run: async () => undefined });
+    assert.equal(again.all().length, 3);
+  });
+
+  it("a failing save on load is logged, not thrown", () => {
+    const first = make();
+    for (let i = 0; i < KEEP_FINISHED + 2; i++) seed(first.q, `old-${i}`, "failed", { path: "movies/x.mkv", finishedAt: day(i) });
+    seed(first.q, "latest", "done", { path: "movies/x.mkv", finishedAt: day(999), heldUntil: "2026-12-01T00:00:00Z" });
+    const logs: string[] = [];
+    const opts = { ...second(first), run: async () => undefined, log: (l: string) => logs.push(l) };
+    mkdirSync(join(stateDir, "jobs.json.tmp")); // the atomic write opens this path, so the save throws
+    const q = createQueue(opts);
+    assert.equal(q.all().length, KEEP_FINISHED + 1); // pruned in memory, and the worker still started
+    assert.ok(logs.some((l) => /not saved after pruning/.test(l)), logs.join("|"));
+    rmSync(join(stateDir, "jobs.json.tmp"), { recursive: true, force: true });
   });
 });
