@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   if (Date.now() < lockedUntil) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
-  const { password } = (await req.json().catch(() => ({}))) as { password?: string };
+  const { password } = ((await req.json().catch(() => null)) ?? {}) as { password?: string };
   // Tries every configured hash (config.json's system.adminPasswordHash, then
   // env ADMIN_PASSWORD_HASH) and accepts a match against any of them — see
   // candidatePasswordHashes()'s own comment for why this checks both rather

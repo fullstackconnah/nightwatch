@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
  * malformed request or an unknown container/action is a real HTTP error.
  */
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { container?: unknown; action?: unknown };
+  const body = ((await req.json().catch(() => null)) ?? {}) as { container?: unknown; action?: unknown };
   const container = typeof body.container === "string" ? body.container : null;
   const action = typeof body.action === "string" ? body.action : null;
   if (!container || !action) {

@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  * rather than adding a second, redundant check.
  */
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { owner?: unknown; repo?: unknown };
+  const body = ((await req.json().catch(() => null)) ?? {}) as { owner?: unknown; repo?: unknown };
   const owner = typeof body.owner === "string" ? body.owner.trim() : "";
   const repo = typeof body.repo === "string" ? body.repo.trim() : "";
   if (!owner || !repo) {

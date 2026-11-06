@@ -44,7 +44,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     // opaque 409 be the only answer.
     const containers = await docker.listContainers({ all: true });
     const owners = containers
-      .filter((c) => c.ImageID === id)
+      .filter((c) => c.ImageID?.replace(/^sha256:/, "").startsWith(id.replace(/^sha256:/, "")))
       .map((c) => (c.Names?.[0] || c.Id.slice(0, 12)).replace(/^\//, ""));
     if (owners.length > 0) {
       return NextResponse.json(

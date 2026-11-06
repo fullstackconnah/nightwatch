@@ -33,7 +33,7 @@ function explain(e: unknown, target: PruneTarget): string {
 }
 
 export async function POST(req: NextRequest) {
-  const { target } = (await req.json().catch(() => ({}))) as { target?: unknown };
+  const { target } = ((await req.json().catch(() => null)) ?? {}) as { target?: unknown };
   if (!isPruneTarget(target)) {
     return NextResponse.json(
       { error: `target must be one of ${PRUNE_TARGETS.join("|")}` },

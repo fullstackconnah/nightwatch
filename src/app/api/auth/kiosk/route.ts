@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { pin } = (await req.json().catch(() => ({}))) as { pin?: string };
+  const { pin } = ((await req.json().catch(() => null)) ?? {}) as { pin?: string };
   // Config-over-env: a PIN saved on the settings page's System card wins over
   // KIOSK_PIN. There is deliberately no built-in fallback — a default shipped
   // in source is a published credential, so an unconfigured install refuses
