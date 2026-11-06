@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mergeDashPut, publicWidgets } from "./dash-put.ts";
+import { widgetTarget } from "../widgets/target.ts";
 import type { AppConfig } from "../config.ts";
 
 const current = {
@@ -109,4 +110,85 @@ test("O1 polish: a secret does not follow the widget to a new origin or type", (
   assert.equal(run({ url: "http://host-a:8989/other" }).key, "k1");
   assert.equal(run({ url: "http://host-a:8989/other" }).password, "p1");
   assert.equal(run({ url: "http://host-b:8989/x", key: "new" }).key, "new");
+});
+
+const hdr = (over: Record<string, unknown> = {}) => sec("w1", { type: "generic", headers: { Authorization: "Bearer x", "X-A": "keep" }, ...over });
+const hdrs = (cfgW: unknown, incoming: unknown) => (ok(mergeDashPut(store(cfgW), { widgets: [incoming] })).widgets[0] as { headers?: Record<string, string> }).headers;
+
+test("J1: GET shape keeps header names, blanks every value and sets headersSet", () => {
+  const [a, b] = publicWidgets([hdr({ headers: { Authorization: "Bearer x", "X-A": "" } }), sec("w2")] as never) as unknown as Record<string, unknown>[];
+  assert.deepEqual(a.headers, { Authorization: "", "X-A": "" });
+  assert.equal(a.headersSet, true);
+  assert.equal(b.headersSet, false);
+  assert.equal("headers" in b, false);
+  assert.equal(publicWidgets([hdr({ headers: { "X-A": "" } })] as never)[0].headersSet, false);
+  assert.ok(!JSON.stringify(publicWidgets([hdr()] as never)).includes("Bearer x"));
+});
+
+test("J1: the public widget sent back unchanged keeps the stored headers", () => {
+  const stored = hdr();
+  assert.deepEqual(hdrs(stored, publicWidgets([stored] as never)[0]), { Authorization: "Bearer x", "X-A": "keep" });
+});
+
+test("J1: a value replaces, an empty value keeps, a new name is added", () => {
+  assert.deepEqual(hdrs(hdr(), hdr({ headers: { Authorization: "Bearer y", "X-A": "", "X-B": "b", "X-C": "" } })),
+    { Authorization: "Bearer y", "X-A": "keep", "X-B": "b" });
+});
+
+test("J1: a headers object from an API client sets the full list", () => {
+  assert.deepEqual(hdrs(hdr(), hdr({ headers: { "X-B": "b" } })), { "X-B": "b" });
+});
+
+test("J1: headers missing on the incoming widget keeps the stored ones", () => {
+  const { headers: _h, ...bare } = hdr() as Record<string, unknown>;
+  assert.deepEqual(hdrs(hdr(), bare), { Authorization: "Bearer x", "X-A": "keep" });
+  assert.equal(hdrs(sec("w1", { type: "generic" }), bare), undefined);
+});
+
+test("J1: a changed origin, type or duplicate id copies no stored header value", () => {
+  const blank = { Authorization: "", "X-A": "" };
+  assert.equal(hdrs(hdr(), hdr({ url: "http://host-b:8989/x", headers: blank })), undefined);
+  assert.equal(hdrs(hdr(), hdr({ type: "radarr", headers: blank })), undefined);
+  const dup = ok(mergeDashPut(store(hdr()), { widgets: [hdr({ headers: blank }), hdr({ headers: blank })] })).widgets as { headers?: unknown }[];
+  assert.equal(dup[0].headers, undefined);
+  assert.deepEqual(hdrs(hdr(), hdr({ url: "http://host-b:8989/x", headers: { Authorization: "new" } })), { Authorization: "new" });
+});
+
+test("J1: a result with no headers stores no headers field", () => {
+  const r = ok(mergeDashPut(store(hdr()), { widgets: [hdr({ headers: {} })] })).widgets[0] as object;
+  assert.equal("headers" in r, false);
+});
+
+test("J1 round 1: a changed endpoint (absolute or relative) keeps no stored secret", () => {
+  const stored = hdr({ key: "k-placeholder", url: "http://host-a:8989" });
+  for (const endpoint of ["http://evil.example/x", "@evil.example/x"]) {
+    const w = ok(mergeDashPut(store(stored), { widgets: [hdr({ endpoint, url: "http://host-a:8989", headers: { Authorization: "" } })] })).widgets[0] as { headers?: unknown; key?: string };
+    assert.equal(w.headers, undefined, endpoint);
+    assert.equal(w.key, undefined, endpoint);
+  }
+});
+
+test("J1 round 1: an unchanged endpoint keeps the stored secrets", () => {
+  for (const endpoint of [undefined, "/api/x"]) {
+    const stored = hdr({ key: "k-placeholder", endpoint });
+    const w = ok(mergeDashPut(store(stored), { widgets: [hdr({ endpoint, headers: { Authorization: "" } })] })).widgets[0] as { headers?: Record<string, string>; key?: string };
+    assert.equal(w.headers?.Authorization, "Bearer x");
+    assert.equal(w.key, "k-placeholder");
+  }
+});
+
+test("J1 round 1: inherited property names copy nothing", () => {
+  assert.equal(hdrs(hdr(), hdr({ headers: { constructor: "", toString: "" } })), undefined);
+});
+
+test("widgetTarget: absolute endpoint, relative endpoint, none", () => {
+  assert.equal(widgetTarget({ url: "http://h", endpoint: "http://e/x" }), "http://e/x");
+  assert.equal(widgetTarget({ url: "http://h", endpoint: "/x" }), "http://h/x");
+  assert.equal(widgetTarget({ url: "http://h" }), "http://h");
+});
+
+test("J1 round 2: a non-generic widget keeps no key when only its url moves, whatever the endpoint says", () => {
+  const cfg = store({ ...sec("w1"), url: "http://host-a:8989", key: "k-placeholder" });
+  const w = ok(mergeDashPut(cfg, { widgets: [sec("w1", { url: "http://evil.example", endpoint: "http://host-a:8989/x" })] })).widgets[0];
+  assert.equal(w.key, undefined);
 });

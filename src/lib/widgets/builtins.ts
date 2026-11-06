@@ -2,6 +2,7 @@ import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { formatBytes, formatNumber, formatPercent } from "@/lib/format";
 import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/types/downloads";
 import { resolvePath } from "./jsonpath";
+import { widgetTarget } from "./target";
 import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 
 /**
@@ -341,11 +342,7 @@ function formatGeneric(value: unknown, format?: string): string {
 }
 
 const generic: WidgetFetcher = async (w) => {
-  const url = w.endpoint
-    ? w.endpoint.startsWith("http")
-      ? w.endpoint
-      : `${w.url}${w.endpoint}`
-    : w.url;
+  const url = widgetTarget(w);
   const headers: Record<string, string> = { ...(w.headers || {}) };
   if (w.key) headers["X-Api-Key"] = w.key;
   const data = await fetchJson<unknown>(url, { headers });

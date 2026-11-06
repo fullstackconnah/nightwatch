@@ -1,8 +1,14 @@
 import type { AppConfig, WidgetInstance } from "../config.ts";
+import { widgetTarget } from "../widgets/target.ts";
 
-/** O1: widget secrets are write-only. The browser gets keySet/passwordSet instead of the values. */
+/** O1/J1: widget secrets are write-only. The browser gets keySet/passwordSet instead of the values, and header names with blank values. */
 export function publicWidgets(widgets: WidgetInstance[]): WidgetInstance[] {
-  return widgets.map(({ key, password, ...w }) => ({ ...w, keySet: Boolean(key), passwordSet: Boolean(password) }));
+  return widgets.map(({ key, password, ...w }) => ({
+    ...w,
+    ...(w.headers && { headers: Object.fromEntries(Object.keys(w.headers).map((n) => [n, ""])) }),
+    keySet: Boolean(key), passwordSet: Boolean(password),
+    headersSet: Object.values(w.headers ?? {}).some(Boolean),
+  }));
 }
 
 const origin = (u: unknown) => {
@@ -13,11 +19,11 @@ const origin = (u: unknown) => {
 function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unknown[] {
   return incoming.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
-    const { keySet: _k, passwordSet: _p, clearKey, clearPassword, ...w } = raw as WidgetInstance;
-    // A stored secret follows only an unambiguous id, and only while the type and url origin are unchanged.
+    const { keySet: _k, passwordSet: _p, headersSet: _h, clearKey, clearPassword, ...w } = raw as WidgetInstance;
+    // A stored secret follows only an unambiguous id, and only while the type, the url and the fetched address keep their origin.
     const unique = typeof w.id === "string" && w.id !== "" && incoming.filter((r) => (r as WidgetInstance | null)?.id === w.id).length === 1;
     const found = unique ? stored.find((x) => x.id === w.id) : undefined;
-    const old = found && found.type === w.type && origin(found.url) === origin(w.url) ? found : undefined;
+    const old = found && found.type === w.type && origin(found.url) === origin(w.url) && origin(widgetTarget(found)) === origin(widgetTarget(w)) ? found : undefined;
     for (const [f, clear] of [["key", clearKey], ["password", clearPassword]] as const) {
       const v = w[f];
       if (clear) delete w[f];
@@ -26,6 +32,15 @@ function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unkn
         else delete w[f];
       }
     }
+    // J1: header values follow the same rule; with no `old` none is ever copied, so a changed url or endpoint can't carry a token to a new host.
+    const sent = w.headers && typeof w.headers === "object" && !Array.isArray(w.headers) ? w.headers : undefined;
+    const headers: Record<string, string> = sent ? {} : { ...old?.headers };
+    for (const [n, v] of Object.entries(sent ?? {})) {
+      const val = typeof v === "string" && v !== "" ? v : old?.headers && Object.hasOwn(old.headers, n) ? old.headers[n] : undefined;
+      if (val) headers[n] = val; // empty stored headers are not kept
+    }
+    if (Object.keys(headers).length) w.headers = headers;
+    else delete w.headers;
     return w;
   });
 }

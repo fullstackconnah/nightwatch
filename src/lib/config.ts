@@ -26,6 +26,7 @@ export interface WidgetInstance {
   /** Wire-only (never stored): the browser sees these instead of key/password, and sends clear* to remove one. */
   keySet?: boolean;
   passwordSet?: boolean;
+  headersSet?: boolean;
   clearKey?: boolean;
   clearPassword?: boolean;
   /** generic only: path appended to url */
