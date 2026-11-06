@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type { FileStat } from "./probe.ts";
-import { SKIP_OFF_LINUX, start, tempDir, type Started } from "./testkit.ts";
+import { SKIP_OFF_LINUX, start, TOKEN, tempDir, type Started } from "./testkit.ts";
 import type { LibraryResponse, ScanState, TitleDetail } from "./types.ts";
 import type { VerdictInput } from "./verdict.ts";
 
@@ -88,5 +89,29 @@ describe("worker api", { skip: SKIP_OFF_LINUX }, () => {
   it("logs the scaled thresholds loudly at boot, without the token", async () => {
     assert.match(s.logs.join("\n"), /TEST THRESHOLDS ON/);
     assert.doesNotMatch(s.logs.join("\n"), /test-token/);
+  });
+});
+
+describe("shutdown (H2)", { skip: SKIP_OFF_LINUX }, () => {
+  it("SIGTERM closes the server and exits 0 within a few seconds", async () => {
+    const media = tempDir("mw-sig-media-"); const state = tempDir("mw-sig-state-");
+    const child = spawn(process.execPath, ["--experimental-strip-types", new URL("./server.ts", import.meta.url).pathname], {
+      env: { ...process.env, PORT: "0", HOST: "127.0.0.1", MEDIA_ROOT: media, STATE_DIR: state, MEDIA_WORKER_TOKEN: TOKEN },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    try {
+      let out = "";
+      await new Promise<void>((res, rej) => {
+        child.stdout.on("data", (d) => { out += d; if (/listening/.test(out)) res(); });
+        child.once("exit", (c) => rej(new Error(`exited ${c} before listening`)));
+        setTimeout(() => rej(new Error("no listen line")), 15_000).unref();
+      });
+      const exited = new Promise<number | null>((res) => child.once("exit", res));
+      child.kill("SIGTERM");
+      assert.equal(await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 5_000).unref())]), 0);
+    } finally {
+      child.kill("SIGKILL");
+      for (const d of [media, state]) rmSync(d, { recursive: true, force: true });
+    }
   });
 });

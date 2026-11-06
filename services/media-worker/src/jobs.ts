@@ -71,7 +71,7 @@ export interface QueueOpts {
 export function createQueue(opts: QueueOpts) {
   const now = opts.now ?? (() => new Date());
   const file = join(opts.stateDir, "jobs.json");
-  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file)?.jobs ?? [];
+  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
   const uid = "uid" in opts ? opts.uid : process.getuid?.();
   let running: { id: string; done: Promise<void> } | null = null;
   let closed = false;
@@ -108,7 +108,14 @@ export function createQueue(opts: QueueOpts) {
       .then(() => opts.run(next))
       .catch((e: Error) => {
         opts.log?.(`job ${next.id} crashed: ${e.message}`);
-        patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() });
+        // Only before the swap: `swapping` and `done` are left for boot recover(), so a done record is never lost.
+        const cur = jobs.find((x) => x.id === next.id);
+        if (!cur || !["queued", "encoding", "verifying"].includes(cur.state)) return;
+        // A failing state volume must not leave a film-sized .part on the media drive.
+        if (cur.state !== "queued") {
+          try { rmQuiet(opts.guard, opts.dirs.work, plan(cur).part); } catch (e3) { opts.log?.(`job ${next.id} part not removed: ${(e3 as Error).message}`); }
+        }
+        try { patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() }); } catch (e2) { opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`); }
       })
       .finally(() => { running = null; pump(); });
     running = { id: next.id, done };

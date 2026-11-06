@@ -36,12 +36,12 @@ before((t) => {
 after(() => { rmSync(root, { recursive: true, force: true }); rmSync(clips, { recursive: true, force: true }); });
 
 /** A queue and runner over a fresh media root (no scanner, no http): the unit under test is `runner.run`. */
-function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfin?: "told" | "failed" | "off" } = {}) {
+function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfin?: "told" | "failed" | "off"; probe?: typeof ffprobeJson; log?: (l: string) => void } = {}) {
   const dirs = checkReady(root).dirs;
   const guard = createGuard(dirs);
   const stateDir = tempDir("mw-run-state-");
   const runner = createRunner({
-    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW,
+    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW, ...(over.probe ? { probe: over.probe } : {}), ...(over.log ? { log: over.log } : {}),
     afterSwap: async () => over.jellyfin ?? "off",
   });
   const q = createQueue({
@@ -94,6 +94,69 @@ describe("runner end to end (B3-B5, S2, S7, M4)", () => {
     assert.equal(video.tags?.BPS, undefined);
     assert.equal(statSync(join(w.dirs.hold, rec.id, "Film.mkv")).size, before);
     assert.deepEqual(readdirSync(w.dirs.work), []);
+  });
+
+  it("H1: a cancel that lands during the re-probe stays cancelled; nothing is encoded or swapped", async (t) => {
+    if (skip()) return t.skip("no ffmpeg");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const w = world({ probe: async (abs, o) => { await gate; return ffprobeJson(abs, o); } });
+    const rec = w.put("film.mkv", "mkv");
+    const before = statSync(rec.abs).size;
+    const running = w.runner.run(rec);
+    w.q.cancel(rec.id); // the record is still `queued`, so this is the no-kill path
+    release();
+    await running;
+    const r = w.q.get(rec.id) as JobRecord;
+    assert.equal(r.state, "cancelled", JSON.stringify(r));
+    assert.equal(r.startedAt, undefined);
+    assert.equal(statSync(rec.abs).size, before);
+    assert.deepEqual(readdirSync(w.dirs.work), []);
+    assert.equal(existsSync(join(w.dirs.hold, rec.id)), false);
+  });
+
+  it("R2: a shutdown during the re-probe spawns no encode and the record stays queued", async (t) => {
+    if (skip()) return t.skip("no ffmpeg");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const w = world({ probe: async (abs, o) => { await gate; return ffprobeJson(abs, o); } });
+    const rec = w.put("film.mkv", "mkv");
+    const running = w.runner.run(rec);
+    w.runner.kill(rec.id, "shutdown");
+    release();
+    await running;
+    const r = w.q.get(rec.id) as JobRecord;
+    assert.equal(r.state, "queued", JSON.stringify(r));
+    assert.deepEqual(readdirSync(w.dirs.work), []);
+  });
+
+  it("R3: a cancel during the re-probe then a probe error stays cancelled, not failed", async (t) => {
+    if (skip()) return t.skip("no ffmpeg");
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const w = world({ probe: async () => { await gate; throw new Error("probe died"); } });
+    const rec = w.put("film.mkv", "mkv");
+    const running = w.runner.run(rec);
+    w.q.cancel(rec.id);
+    release();
+    await running;
+    assert.equal(w.q.get(rec.id)?.state, "cancelled");
+  });
+
+  it("H4: a progress patch that throws is logged once and the job still finishes", async (t) => {
+    if (skip()) return t.skip("no ffmpeg");
+    const logs: string[] = [];
+    const w = world({ log: (l) => logs.push(l) });
+    const rec = w.put("film.mkv", "mkv");
+    const real = w.q.patch;
+    w.q.patch = (id, p) => {
+      if (p.progress && Object.keys(p).length === 1) throw new Error("ENOSPC");
+      return real(id, p);
+    };
+    await w.runner.run(rec);
+    assert.equal((w.q.get(rec.id) as JobRecord).state, "done");
+    const warned = logs.filter((l) => /progress for .* not saved/.test(l));
+    assert.equal(warned.length, 1, logs.join("|"));
   });
 
   it("mp4: the same flow, and the output carries the hvc1 tag (S7)", async (t) => {
