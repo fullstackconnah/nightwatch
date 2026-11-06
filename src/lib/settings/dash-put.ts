@@ -20,10 +20,10 @@ function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unkn
   return incoming.map((raw) => {
     if (!raw || typeof raw !== "object") return raw;
     const { keySet: _k, passwordSet: _p, headersSet: _h, clearKey, clearPassword, ...w } = raw as WidgetInstance;
-    // A stored secret follows only an unambiguous id, and only while the type and the fetched address (url plus endpoint) keep their origin.
+    // A stored secret follows only an unambiguous id, and only while the type, the url and the fetched address keep their origin.
     const unique = typeof w.id === "string" && w.id !== "" && incoming.filter((r) => (r as WidgetInstance | null)?.id === w.id).length === 1;
     const found = unique ? stored.find((x) => x.id === w.id) : undefined;
-    const old = found && found.type === w.type && origin(widgetTarget(found)) === origin(widgetTarget(w)) ? found : undefined;
+    const old = found && found.type === w.type && origin(found.url) === origin(w.url) && origin(widgetTarget(found)) === origin(widgetTarget(w)) ? found : undefined;
     for (const [f, clear] of [["key", clearKey], ["password", clearPassword]] as const) {
       const v = w[f];
       if (clear) delete w[f];

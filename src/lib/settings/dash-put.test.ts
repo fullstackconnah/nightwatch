@@ -186,3 +186,9 @@ test("widgetTarget: absolute endpoint, relative endpoint, none", () => {
   assert.equal(widgetTarget({ url: "http://h", endpoint: "/x" }), "http://h/x");
   assert.equal(widgetTarget({ url: "http://h" }), "http://h");
 });
+
+test("J1 round 2: a non-generic widget keeps no key when only its url moves, whatever the endpoint says", () => {
+  const cfg = store({ ...sec("w1"), url: "http://host-a:8989", key: "k-placeholder" });
+  const w = ok(mergeDashPut(cfg, { widgets: [sec("w1", { url: "http://evil.example", endpoint: "http://host-a:8989/x" })] })).widgets[0];
+  assert.equal(w.key, undefined);
+});
