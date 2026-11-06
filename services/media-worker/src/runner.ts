@@ -81,7 +81,7 @@ export function createRunner(o: RunnerOpts) {
   const track = (id: string) => (c: ChildProcess) => { procs.set(id, c); c.once("close", () => procs.delete(id)); };
 
   const fail = (rec: JobRecord, check: NonNullable<Job["failedCheck"]>, extra: Partial<JobRecord> = {}) =>
-    q.patch(rec.id, { state: "failed", failedCheck: check, finishedAt: now().toISOString(), ...extra });
+    q.get(rec.id)?.state === "cancelled" ? undefined : q.patch(rec.id, { state: "failed", failedCheck: check, finishedAt: now().toISOString(), ...extra });
   /** S6: the path rule, re-run at job start and at the swap: same file, no symlink in the chain. */
   const pathOk = (rec: JobRecord) => {
     const r = resolveMediaPath(rec.path, o.mediaRoot);
@@ -110,7 +110,7 @@ export function createRunner(o: RunnerOpts) {
     if (!enoughFor(o.statfs, o.mediaRoot, st.size)) return void fail(rec, "disk", { startedAt: t0 });
 
     // H1: a cancel can land while the re-probe above is awaited; do not overwrite it with `encoding`.
-    if (q.get(id)?.state !== "queued") return;
+    if (stopping || q.get(id)?.state !== "queued") return; // shutdown: stays `queued`, runs on the next boot
     q.patch(id, {
       state: "encoding", startedAt: t0, crf: v.crf, sourceBytes: st.size, srcIno: st.ino, srcSize: st.size,
       srcMtimeMs: st.mtimeMs, srcMode: st.mode, progress: { pct: 0, fps: null, etaSec: null },

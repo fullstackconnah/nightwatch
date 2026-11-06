@@ -108,6 +108,11 @@ export function createQueue(opts: QueueOpts) {
       .then(() => opts.run(next))
       .catch((e: Error) => {
         opts.log?.(`job ${next.id} crashed: ${e.message}`);
+        // Only before the swap: `swapping` and `done` are left for boot recover(), so a done record is never lost.
+        const cur = jobs.find((x) => x.id === next.id);
+        if (!cur || !["queued", "encoding", "verifying"].includes(cur.state)) return;
+        // A failing state volume must not leave a film-sized .part on the media drive.
+        if (cur.state !== "queued") rmQuiet(opts.guard, opts.dirs.work, plan(cur).part);
         try { patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() }); } catch (e2) { opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`); }
       })
       .finally(() => { running = null; pump(); });

@@ -29,6 +29,7 @@ services:
     cpu_shares: 256
     mem_limit: 4g
     # init: true so node is not PID 1 and gets signals; the worker stops the encode on SIGTERM (ffmpeg gets 10 s to exit),
-    # boot recovery removes the .part and re-queues the job. 30 s covers the 10 s kill grace.
+    # boot recovery removes the .part and re-queues the job. close() also waits for the scanner, which can outlast 30 s, so docker may SIGKILL;
+    # state writes are atomic and boot recovery re-queues, so that is safe.
     init: true
     stop_grace_period: 30s
