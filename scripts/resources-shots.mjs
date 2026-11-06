@@ -116,10 +116,13 @@ try {
         const name = page.locator(".pt-grow > .pt-name", { hasText: "other" }).first();
         await name.waitFor({ timeout: SLOW });
         const m = await name.evaluate((el) => {
-          const lh = parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height;
+          // Lines = distinct text-rect tops; a Range over the text works whatever line-height resolves to (incl. `normal`).
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const tops = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
           return {
             clipped: el.scrollWidth > el.clientWidth + 1,
-            lines: Math.round(el.getBoundingClientRect().height / lh),
+            lines: tops.size,
             rowH: Math.round(el.closest(".pt-grow").getBoundingClientRect().height),
           };
         });

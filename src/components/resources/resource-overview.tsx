@@ -329,7 +329,7 @@ function HistoryLegend({ series }: { series: HistoryLineSeries[] }) {
             <span className={noData ? "opacity-40" : undefined}>
               <SeriesSwatch slot={s.slot} />
             </span>
-            <span className={cn("microlabel truncate max-w-[9rem]", noData && "!text-ink-dim")}>{s.label}</span>
+            <span className="microlabel truncate max-w-[9rem]">{s.label}</span>
             {noData && <span className="microlabel !text-ink-dim whitespace-nowrap">no data</span>}
           </div>
         );
