@@ -3,7 +3,8 @@ import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
-import { createSwr, withTimeout, type Swr } from "@/lib/single-flight";
+import { isOrphanVolume, removeVolumes } from "@/lib/orphan-volumes";
+import { createSwr,withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
 /**
@@ -478,9 +479,10 @@ export interface DiskReclaimSnapshot {
     unusedBytes: number;
   };
   volumes: {
-    /** Volumes with zero container references — same definition as the
-     *  volumes page's own "orphaned" badge, and exactly what pruneVolumes()
-     *  with no filters removes. */
+    /** Anonymous volumes (label com.docker.volume.anonymous) that no running
+     *  or stopped container references. Named unused volumes are never listed:
+     *  they may hold a stopped stack's data. This is exactly the set
+     *  pruneReclaimable("volumes") removes, by name. */
     orphans: OrphanVolume[];
     orphanBytes: number;
   };
@@ -534,7 +536,7 @@ export async function getDiskReclaimSnapshot(): Promise<DiskReclaimSnapshot> {
   const orphans: OrphanVolume[] = [];
   let orphanBytes = 0;
   for (const v of volumeList.Volumes || []) {
-    if (usedVolumeNames.has(v.Name)) continue;
+    if (!isOrphanVolume(v, usedVolumeNames)) continue;
     const size = sizeByVolumeName.get(v.Name) ?? null;
     if (size) orphanBytes += size;
     // CreatedAt isn't in dockerode's VolumeInspectInfo type but the daemon does
@@ -577,9 +579,17 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
       .filter((v): v is string => !!v);
     return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted };
   }
-  const result = await docker.pruneVolumes({});
+  // Not docker.pruneVolumes(): its scope depends on the daemon version (23+
+  // removes anonymous only), so remove the listed orphans by name instead.
+  const snap = await getDiskReclaimSnapshot();
+  const { removed } = await removeVolumes(
+    snap.volumes.orphans.map((o) => o.name),
+    (name) => docker.getVolume(name).remove(),
+  );
   dfSwr.clear();
-  return { reclaimedBytes: result.SpaceReclaimed ?? 0, deleted: result.VolumesDeleted ?? [] };
+  const gone = new Set(removed);
+  const reclaimedBytes = snap.volumes.orphans.reduce((a, o) => a + (gone.has(o.name) ? (o.size ?? 0) : 0), 0);
+  return { reclaimedBytes, deleted: removed };
 }
 
 export interface ImageRemoveResult {

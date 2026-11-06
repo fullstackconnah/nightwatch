@@ -72,7 +72,7 @@ export function buildChores({ reclaim, images, containers }: ChoreInput): Chore[
     },
     {
       id: "orphans", kind: "prune", title: "Orphan volumes",
-      note: `${plural(orphans.length, "named volume")} no container mounts`,
+      note: `${plural(orphans.length, "anonymous volume")} no container mounts`,
       count: orphans.length, bytes: sizing ? null : reclaim.volumes.orphanBytes,
       memberIds: orphans.map((o) => o.name),
     },
