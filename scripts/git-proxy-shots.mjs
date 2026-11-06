@@ -360,6 +360,16 @@ for (const [which, claim] of [["git", /In sync/], ["proxy", /All up/]]) {
         return { overlap: Math.round(Math.min(l.bottom, first.bottom) - Math.max(l.top, first.top)), rightGap: Math.round(Math.abs(r.right - l.right) * 10) / 10 };
       }));
     }
+    // P5: 8 px from the evidence row's lowest content (link/action box or the text's last line) to the paused notice.
+    await guarded("P5", async () => record("P5 gap to the paused notice (px, ok)", `${which}@${s.name}`, await page.evaluate(() => {
+      const row = document.querySelector(".st-evidence");
+      const rng = document.createRange();
+      rng.selectNodeContents(row.querySelector("span"));
+      const lines = rng.getClientRects();
+      const low = Math.max(lines[lines.length - 1].bottom, ...[...row.children].filter((e) => e.tagName !== "SPAN").map((e) => e.getBoundingClientRect().bottom));
+      const gap = Math.round((document.querySelector(".st-notice").getBoundingClientRect().top - low) * 10) / 10;
+      return { gap, ok: Math.abs(gap - 8) <= 1 };
+    })));
     await perState(page, `${which}-stale`, s.name);
     await shot(page, s, `${which}-stale`);
     await page.close();
