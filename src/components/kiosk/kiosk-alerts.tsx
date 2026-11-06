@@ -451,7 +451,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
   // keyframe because this file doesn't own globals.css (another agent does).
   useLayoutEffect(() => {
     const node = innerRef.current;
-    if (!node || !bad || prefersReducedMotion()) return;
+    if (!node || !bad || reducedMotion) return;
     const anim = node.animate(
       [
         { boxShadow: "0 0 0 0 color-mix(in srgb, var(--color-bad) 50%, transparent)" },
@@ -462,7 +462,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
       { duration: KIOSK_PULSE_MS, easing: "ease-in-out", iterations: Infinity },
     );
     return () => anim.cancel();
-  }, [bad]);
+  }, [bad, reducedMotion]); // an OS toggle swaps the static ring and the pulse
 
   if (!mounted) return null;
 
