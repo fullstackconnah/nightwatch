@@ -147,8 +147,9 @@ export async function PUT(req: NextRequest) {
     saveConfig(merged.next);
     return NextResponse.json({ ok: true, config: sanitizeConfig(merged.next) });
   } catch (e) {
+    console.error("settings save", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "save failed" },
+      { error: "save failed" },
       { status: 500 },
     );
   }

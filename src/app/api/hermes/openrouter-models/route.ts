@@ -75,18 +75,19 @@ export async function GET() {
     cache = { fetchedAt: Date.now(), models };
     return NextResponse.json({ status: "ok", cachedAt: new Date(cache.fetchedAt).toISOString(), models });
   } catch (e) {
+    console.error("openrouter-models", e);
     // A stale cache beats an empty list — OpenRouter's catalogue barely moves.
     if (cache) {
       return NextResponse.json({
         status: "stale",
-        detail: e instanceof Error ? e.message : "openrouter unreachable",
+        detail: "openrouter unreachable",
         cachedAt: new Date(cache.fetchedAt).toISOString(),
         models: cache.models,
       });
     }
     return NextResponse.json({
       status: "error",
-      detail: e instanceof Error ? e.message : "openrouter unreachable",
+      detail: "openrouter unreachable",
       cachedAt: null,
       models: [],
     });

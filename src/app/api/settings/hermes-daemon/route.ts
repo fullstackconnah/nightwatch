@@ -129,8 +129,9 @@ export async function POST(req: NextRequest) {
   try {
     writeHermesSettingsFile(next);
   } catch (e) {
+    console.error("settings/hermes-daemon save", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "save failed" },
+      { error: "save failed" },
       { status: 500 },
     );
   }
