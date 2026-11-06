@@ -129,7 +129,7 @@ export function SideNav({ dockgeUrl }: { dockgeUrl: string }) {
               night<span className="text-accent">watch</span>
             </span>
           </div>
-          <div className="microlabel mt-1">homelab · 192.168.1.70</div>
+          <div className="microlabel mt-1">homelab</div>
         </div>
 
         {/* nav, grouped under microlabel dividers — the same idiom the log

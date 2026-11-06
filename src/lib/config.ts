@@ -392,7 +392,7 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
 }
 
 export function publicHost(): string {
-  return process.env.PUBLIC_HOST || "192.168.1.70";
+  return process.env.PUBLIC_HOST || "homelab.local";
 }
 
 export function dockgeUrl(): string {

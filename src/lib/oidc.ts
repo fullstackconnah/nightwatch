@@ -50,7 +50,7 @@ export function oidcConfig(): OidcConfig | null {
   return { issuer: issuer.replace(/\/+$/, ""), clientId, clientSecret };
 }
 
-/** Host only (e.g. "192.168.1.70:9091") for the settings panel — never the
+/** Host only (e.g. "homelab.local:9091") for the settings panel — never the
  *  client secret, never the full issuer URL with any embedded credentials. */
 export function oidcIssuerHost(): string | null {
   const cfg = oidcConfig();
