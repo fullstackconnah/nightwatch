@@ -54,7 +54,8 @@ test("K12: the settings PUT route merges through mergeDashPut and refuses with 4
 
 test("O1/F1: GET and the PUT reply both go through sanitizeConfig, which strips widget secrets with publicWidgets(", () => {
   const r = read("app/api/settings/route.ts");
-  const fn = r.slice(r.indexOf("function sanitizeConfig("), r.indexOf("function sanitizeConfig(") + 400);
+  const pc = read("lib/settings/public-config.ts");
+  const fn = pc.slice(pc.indexOf("function sanitizeConfig("), pc.indexOf("function sanitizeConfig(") + 400);
   assert.ok(fn.includes("widgets: publicWidgets(config.widgets"), "sanitizeConfig calls publicWidgets(");
   assert.ok(r.includes("config: sanitizeConfig(config)"), "GET body uses sanitizeConfig");
   assert.ok(r.includes("config: sanitizeConfig(merged.next)"), "PUT reply uses sanitizeConfig");

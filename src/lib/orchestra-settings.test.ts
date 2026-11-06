@@ -75,7 +75,7 @@ describe("system route wiring (source-level)", () => {
 describe("settings GET wiring (source-level)", () => {
   const src = readFileSync(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
   it("sanitizes through publicSystem and reports orchestraConfigured, never the token", () => {
-    assert.match(src, /publicSystem\(config\.system\)/);
+    assert.match(readFileSync(new URL("./settings/public-config.ts", import.meta.url), "utf8"), /publicSystem\(config\.system\)/);
     assert.match(src, /orchestraConfigured/);
     assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "").replace(/orchestraTokenSet/g, "")), false);
   });
