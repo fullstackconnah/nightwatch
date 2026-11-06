@@ -42,6 +42,19 @@ export function publicJob(r: JobRecord): Job {
   return j as unknown as Job;
 }
 
+/** H7: superseded finished records kept across a boot (the snapshot shows 50). */
+export const KEEP_FINISHED = 200;
+const PRUNABLE = new Set(["failed", "cancelled", "undone", "purged"]);
+/** Drops the oldest superseded finished records. The newest record of a path (what jobFor shows, and the dashboard's
+ *  "don't offer again" memory), `done` (hold and Undo) and a failed swap that kept its hold are never dropped. */
+export function pruneFinished(all: JobRecord[]): JobRecord[] {
+  const lastIdx = new Map<string, number>();
+  all.forEach((j, i) => lastIdx.set(j.path, i));
+  const drop = new Set(all.filter((j, i) => PRUNABLE.has(j.state) && !j.keepHold && lastIdx.get(j.path) !== i)
+    .sort((a, b) => (b.finishedAt ?? b.createdAt ?? "").localeCompare(a.finishedAt ?? a.createdAt ?? "")).slice(KEEP_FINISHED));
+  return drop.size ? all.filter((j) => !drop.has(j)) : all;
+}
+
 export const ACTIVE = new Set(["queued", "encoding", "verifying", "swapping"]);
 const DAY_MS = 86_400_000;
 const MAX_BATCH = 200;
@@ -71,13 +84,17 @@ export interface QueueOpts {
 export function createQueue(opts: QueueOpts) {
   const now = opts.now ?? (() => new Date());
   const file = join(opts.stateDir, "jobs.json");
-  let jobs: JobRecord[] = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
+  const loaded = readJson<{ version: number; jobs: JobRecord[] }>(file, true)?.jobs ?? [];
+  let jobs = pruneFinished(loaded);
   const uid = "uid" in opts ? opts.uid : process.getuid?.();
   let running: { id: string; done: Promise<void> } | null = null;
   let closed = false;
   let recovered = false;
 
   const save = () => writeJsonAtomic(file, { version: 1, jobs });
+  if (jobs.length !== loaded.length) {
+    try { save(); } catch (e) { opts.log?.(`jobs.json not saved after pruning: ${(e as Error).message}`); } // the next save writes it
+  }
   const get = (id: string) => jobs.find((j) => j.id === id);
   const patch = (id: string, p: Partial<JobRecord>): JobRecord => {
     const r = get(id);
