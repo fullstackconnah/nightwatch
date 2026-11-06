@@ -512,7 +512,7 @@ try {
       const input = section.getByLabel("Memory GB");
       await input.scrollIntoViewIfNeeded();
       await input.fill("0");
-      const error = await seen(section.getByText("Enter a number above 0, or leave blank for the default."));
+      const error = await seen(section.getByText("Enter a number above 0 and up to 32, or leave blank for the default."));
       const uploadOff = await section.getByRole("button", { name: "Upload" }).isDisabled();
       record("upload-memory-error", s.name, { error, uploadOff });
       // The input stays scrolled into view, so the house viewport shot holds the field and its error.

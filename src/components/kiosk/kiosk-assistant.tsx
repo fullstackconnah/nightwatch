@@ -23,6 +23,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { Loader2, Send, Sparkles } from "lucide-react";
+import { assistantSay } from "@/lib/client-replies";
 import { cn } from "@/lib/utils";
 
 interface AssistantReply {
@@ -58,7 +59,7 @@ export function KioskAssistant({ onShowCamera }: { onShowCamera?: () => void }) 
         const reply = (await res.json()) as AssistantReply;
         // Keep the route's own words whatever the status (400/429/500 carry a real `say`); an unparsable body
         // throws above, and a missing or blank `say` is "couldn't reach", never a blank line in the history.
-        if (typeof reply.say !== "string" || !reply.say.trim()) throw new Error("bad assistant reply");
+        assistantSay(reply);
         setHistory((h) => [{ asked: trimmed, reply }, ...h].slice(0, MAX_HISTORY));
         // The camera intent has nothing to execute server-side — the modal
         // lives in page.tsx, so the route reports the intent and the host

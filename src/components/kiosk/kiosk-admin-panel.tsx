@@ -15,6 +15,7 @@ import { stateDotClass } from "@/components/resources/container-tile";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 import { BUILD_ID } from "@/lib/build-id";
+import { versionBuildId } from "@/lib/client-replies";
 
 type CheckState = { kind: "idle" } | { kind: "checking" } | { kind: "result"; label: string };
 
@@ -36,15 +37,15 @@ function useUpdateCheck() {
       const res = await fetch("/kiosk/api/version");
       const data = (await res.json()) as { buildId?: unknown };
       // An error reply must never look like a new build: it would reload the kiosk.
-      if (!res.ok || typeof data.buildId !== "string") throw new Error("bad version reply");
-      if (data.buildId !== BUILD_ID) {
+      const buildId = versionBuildId(res.ok, data);
+      if (buildId !== BUILD_ID) {
         window.location.reload();
         return; // page is navigating away — no idle state to revert to
       }
       // On the test stack and in dev both sides read "dev" (export-subst
       // only substitutes on a real `git archive`), so this always reports
       // up-to-date there — expected, not a bug.
-      setState({ kind: "result", label: `Up to date · ${data.buildId}` });
+      setState({ kind: "result", label: `Up to date · ${buildId}` });
       setTimeout(() => setState({ kind: "idle" }), 4000);
     } catch {
       setState({ kind: "result", label: "Check failed" });
