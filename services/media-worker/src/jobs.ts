@@ -112,7 +112,9 @@ export function createQueue(opts: QueueOpts) {
         const cur = jobs.find((x) => x.id === next.id);
         if (!cur || !["queued", "encoding", "verifying"].includes(cur.state)) return;
         // A failing state volume must not leave a film-sized .part on the media drive.
-        if (cur.state !== "queued") rmQuiet(opts.guard, opts.dirs.work, plan(cur).part);
+        if (cur.state !== "queued") {
+          try { rmQuiet(opts.guard, opts.dirs.work, plan(cur).part); } catch (e3) { opts.log?.(`job ${next.id} part not removed: ${(e3 as Error).message}`); }
+        }
         try { patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() }); } catch (e2) { opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`); }
       })
       .finally(() => { running = null; pump(); });

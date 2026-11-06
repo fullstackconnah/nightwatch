@@ -127,7 +127,7 @@ describe("pump crash handler (H4)", { skip: SKIP_OFF_LINUX }, () => {
   it("a patch that throws inside the crash handler is logged, not an unhandled rejection", async () => {
     const logs: string[] = [];
     let q!: ReturnType<typeof make>["q"];
-    ({ q } = make({ log: (l) => logs.push(l), run: async () => { q.all().splice(0); throw new Error("boom"); } }));
+    ({ q } = make({ log: (l) => logs.push(l), run: async (r) => { q.patch(r.id, { state: "encoding" }); rmSync(stateDir, { recursive: true, force: true }); writeFileSync(stateDir, "x"); throw new Error("boom"); } }));
     q.enqueueOne("movies/a.mkv");
     await tick(); await tick(); await tick();
     assert.ok(logs.some((l) => /crashed: boom/.test(l)) && logs.some((l) => /not marked failed/.test(l)), logs.join("|"));
@@ -152,6 +152,21 @@ describe("pump crash handler keeps done records (R1) and removes the part (R5)",
     await tick(); await tick(); await tick();
     assert.equal(q.all()[0].state, "failed");
     assert.equal(existsSync(part), false);
+  });
+});
+
+describe("pump crash handler survives a failing .part remover (D1)", { skip: SKIP_OFF_LINUX }, () => {
+  it("logs the remover error and still marks the job failed", async () => {
+    let q!: ReturnType<typeof make>["q"];
+    const logs: string[] = [];
+    const m0 = make();
+    const guard = { ...m0.guard, removeInside: () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); } };
+    const m = make({ guard, log: (l) => logs.push(l), run: async (r) => { q.patch(r.id, { state: "encoding" }); throw new Error("vol"); } });
+    q = m.q;
+    q.enqueueOne("movies/a.mkv");
+    await tick(); await tick(); await tick();
+    assert.equal(q.all()[0].state, "failed");
+    assert.ok(logs.some((l) => /part not removed: EIO/.test(l)), logs.join("|"));
   });
 });
 
