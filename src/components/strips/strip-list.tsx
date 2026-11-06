@@ -136,7 +136,6 @@ export function StripList({
               <>
                 <header className="st-panehead">
                   <h2>{sel.title}</h2>
-                  <span>{sel.state}</span>
                 </header>
                 {keepMounted
                   ? ordered.map((s) => (

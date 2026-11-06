@@ -3541,10 +3541,13 @@ body {
   font-size: 1rem; line-height: 1.45; letter-spacing: -0.005em; color: var(--color-ink); text-wrap: pretty;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
 }
+/* The link or action stays on this row at every width; only the evidence text wraps, inside its own column. */
 .st-evidence {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.25rem 0.75rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 0.25rem 0.75rem;
   min-height: 2.75rem; font-size: 0.75rem; color: var(--color-ink-faint);
 }
+.st-evidence > span { flex: 1 1 auto; min-width: 0; }
+.st-evidence > :not(span) { flex: none; }
 .st-notice {
   padding: 0.75rem; border: 1px solid var(--color-line); border-radius: var(--radius-md, 0.375rem);
   background: var(--color-panel-2); font-size: 0.8125rem; color: var(--color-ink-dim); margin: 0;
@@ -3579,7 +3582,8 @@ body {
   border-bottom: 1px solid var(--color-line); margin-bottom: 0.5rem;
 }
 .st-panehead h2 { margin: 0; font-size: 0.875rem; font-weight: 600; }
-.st-panehead span { font-size: 0.75rem; color: var(--color-ink-faint); }
+/* The pane opens on its title alone: a Mirrors row's own top padding would stack on the head's margin. */
+.st-pane .st-flush > :first-child { padding-top: 0; }
 @media (min-width: 64rem) {
   .st-grid { display: grid; grid-template-columns: 24rem minmax(0, 1fr); gap: 1rem; align-items: start; }
 }

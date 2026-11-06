@@ -128,7 +128,7 @@ test("mirror error: bad chip, the repo and the first error line, Mirrors opens w
   assert.equal(strip(m, "mirrors").state, "1 failing · 3 in sync");
   assert.equal(strip(m, "mirrors").tone, "bad");
   assert.equal(m.autoTarget, "mirrors");
-  assert.equal(m.detailLead, m.answer);
+  assert.equal(m.detailLead, null); // the mirror rows show the failure in full; no third copy
   assert.equal(m.writes[0].enabled, true);
 });
 
@@ -153,6 +153,7 @@ test("diverged without an error: warn chip, ahead and behind, Mirrors opens", ()
   assert.equal(strip(m, "mirrors").state, "1 diverged · 3 in sync");
   assert.equal(strip(m, "mirrors").tone, "warn");
   assert.equal(m.autoTarget, "mirrors");
+  assert.equal(m.detailLead, null);
   s.mirrors[2] = mirror("lab/c", { defaultBranch: { state: "diverged" } });
   assert.equal(gitModel(input({ data: s })).answer, "lab/c has diverged from GitHub.");
   s.mirrors[3] = mirror("lab/d", { defaultBranch: { state: "diverged", aheadBy: 1, behindBy: 0 } });

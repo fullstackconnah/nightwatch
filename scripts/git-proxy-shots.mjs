@@ -283,6 +283,20 @@ for (const [which, key, chip, phrase, open] of STATES) {
       record("C6 calm opens nothing by itself", `${which}@${s.name}`, s.name === "390" ? !anyOpen : (await page.locator(".st-pane h2").first().innerText()).toLowerCase().startsWith(PAGES[which].calmWide.slice(0, 4)));
     }
     if (open) record("C6 answer strip opens by itself", `${name}@${s.name}`, await isOpen(page, open));
+    if (key === "calm" && s.name === "1440") {
+      // P1: the pane head holds its title alone; the strip's state is not repeated beside it.
+      record("P1 pane head holds only its h2", `${which}@${s.name}`, await page.evaluate(() => [...document.querySelectorAll(".st-panehead > :not(h2)")].length));
+      // P4: on /git, the rule under the pane head to the first mirror row's content is within the strip padding (.st-strip: 0.75rem = 12 px).
+      if (which === "git") {
+        record("P4 gap above first mirror row (px, max 12)", `${name}@${s.name}`, await page.evaluate(() => {
+          const head = document.querySelector(".st-panehead");
+          const row = document.querySelector(".st-pane .st-flush > :first-child > :first-child");
+          return head && row ? Math.round((row.getBoundingClientRect().top - head.getBoundingClientRect().bottom) * 10) / 10 : "missing";
+        }));
+      }
+    }
+    // P3: a failed mirror's error is said in the head answer and in its row, never a third time.
+    if (key === "mirrorError") record("P3 error text at most twice", `${name}@${s.name}`, (await page.locator("main").innerText()).split("authentication rejected").length - 1);
     if (key === "noRepos" || key === "noRoutes") record("no strips when empty", `${name}@${s.name}`, (await page.locator("[data-row-id]").count()) === 0);
     await shot(page, s, name);
     await page.close();
@@ -332,6 +346,19 @@ for (const [which, claim] of [["git", /In sync/], ["proxy", /All up/]]) {
     if (which === "git") {
       await openStrip(page, "mirrors");
       record("CW stale: Sync now is off", s.name, (await page.getByRole("button", { name: /Sync lab\/.* now/ }).first().isDisabled()));
+    }
+    if (s.name === "390") {
+      // P2: the page link stays on the evidence row: it overlaps the evidence text's first line and ends flush with the row's right edge.
+      record("P2 link on the evidence row (overlap px, right gap px)", `${which}@${s.name}`, await page.evaluate(() => {
+        const row = document.querySelector(".st-evidence");
+        const link = row.querySelector("a, button");
+        const rng = document.createRange();
+        rng.selectNodeContents(row.querySelector("span"));
+        const first = rng.getClientRects()[0];
+        const l = link.getBoundingClientRect();
+        const r = row.getBoundingClientRect();
+        return { overlap: Math.round(Math.min(l.bottom, first.bottom) - Math.max(l.top, first.top)), rightGap: Math.round(Math.abs(r.right - l.right) * 10) / 10 };
+      }));
     }
     await perState(page, `${which}-stale`, s.name);
     await shot(page, s, `${which}-stale`);

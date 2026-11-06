@@ -52,7 +52,7 @@ function SyncNow({ mirror, enabled }: { mirror: GitMirror; enabled: boolean }) {
 export function MirrorRows({ mirrors, enabled, forgejoUrl }: { mirrors: GitMirror[]; enabled: boolean; forgejoUrl: string }) {
   if (mirrors.length === 0) return <p className="st-note">No push mirrors are configured.</p>;
   return (
-    <div>
+    <div className="st-flush">
       {mirrors.map((m) => {
         const badge = stateBadge(m);
         const note = m.lastError ? safeLine(m.lastError, forgejoUrl) : divergence(m);

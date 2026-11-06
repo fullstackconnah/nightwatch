@@ -127,7 +127,6 @@ export function gitModel(i: ModelInput): Model {
   let evidence = `Updated ${ageText(age)} ago · checks every ${POLL_S} s`;
   let notice: string | null = null;
   let autoTarget: Model["autoTarget"] = failing.length > 0 || diverged.length > 0 ? "mirrors" : null;
-  const detailLead = autoTarget === "mirrors" ? answer : null;
   if (stale) {
     chip = { tone: "neutral", label: "Stale" };
     answer = `Showing what was true ${ageText(age)} ago: ${answer}`;
@@ -162,7 +161,7 @@ export function gitModel(i: ModelInput): Model {
   ];
 
   return {
-    chip, answer, evidence, notice, link, strips, autoTarget, detailLead, stale,
+    chip, answer, evidence, notice, link, strips, autoTarget, detailLead: null, stale,
     writes: [{ id: "sync", enabled: !stale, reason: stale ? PAUSED : null }],
   };
 }
