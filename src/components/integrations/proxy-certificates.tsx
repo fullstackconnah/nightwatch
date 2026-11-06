@@ -1,6 +1,6 @@
 "use client";
 
-import { certVariant } from "@/components/integrations/proxy-routes";
+import { certVariant } from "@/lib/proxy/page-model";
 import type { ProxyCertificate } from "@/lib/types/npm";
 import { cn } from "@/lib/utils";
 
@@ -34,24 +34,11 @@ function DaysFigure({ daysLeft }: { daysLeft: number | null }) {
 }
 
 export function CertificatesPanel({ certificates }: { certificates: ProxyCertificate[] }) {
-  if (certificates.length === 0) {
-    return (
-      <section className="panel p-4">
-        <h2 className="text-sm font-semibold tracking-tight">Certificates</h2>
-        <p className="text-sm text-ink-dim mt-2">No certificates issued in NPM yet.</p>
-      </section>
-    );
-  }
+  if (certificates.length === 0) return <p className="st-note">No certificates are issued in NPM yet.</p>;
 
   return (
-    <section className="panel overflow-hidden">
-      <div className="px-3 pt-3 pb-2 border-b border-line">
-        <h2 className="text-sm font-semibold tracking-tight">Certificates</h2>
-        <p className="text-[0.7rem] text-ink-faint mt-0.5">
-          {certificates.length} {certificates.length === 1 ? "certificate" : "certificates"} ·
-          soonest expiry first
-        </p>
-      </div>
+    <div>
+      <p className="st-note mb-1">Soonest expiry first.</p>
       <ul>
         {certificates.map((c) => (
           <li
@@ -71,6 +58,6 @@ export function CertificatesPanel({ certificates }: { certificates: ProxyCertifi
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }

@@ -1,66 +1,67 @@
 "use client";
 
-import { useGit } from "@/lib/use-forgejo";
-import { GitStatusPanel } from "@/components/integrations/git-status-panel";
-import { GitCommitStream } from "@/components/integrations/git-commit-stream";
-import { GitBranchesPanel } from "@/components/integrations/git-branches-panel";
-import { GitMirrorPanel } from "@/components/integrations/git-mirror-panel";
+/* THESIS: the strips pattern on /git. A pure gitModel() answers "is my code safely mirrored to GitHub, and what is
+   moving" and picks the strip the answer names; four fixed strips (Mirrors, Pull requests, Branches, Commits) hold what
+   used to be a stack of panels. Sync now is the one write and sits per mirror. OWN-WORLD: nightwatch console — the
+   pattern's .st-* classes, house Badge and Button, no new token. */
 
-function GitLoadingSkeleton() {
-  return (
-    <div className="space-y-4" aria-hidden="true">
-      <div className="panel h-64 animate-pulse motion-reduce:animate-none bg-panel-2/40" />
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="panel h-48 animate-pulse motion-reduce:animate-none bg-panel-2/40" />
-        <div className="panel h-48 animate-pulse motion-reduce:animate-none bg-panel-2/40" />
-      </div>
-    </div>
-  );
-}
+import { useEffect, useState, type ReactNode } from "react";
+import { BranchRows, PullRows } from "@/components/integrations/git-branches-panel";
+import { GitCommitStream } from "@/components/integrations/git-commit-stream";
+import { MirrorRows } from "@/components/integrations/git-mirror-panel";
+import { PageHead } from "@/components/strips/page-head";
+import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { buttonVariants } from "@/components/ui/button";
+import { gitModel, type StripId } from "@/lib/git/page-model";
+import { useGit } from "@/lib/use-forgejo";
+import { useNow } from "@/lib/use-now";
 
 export default function GitPage() {
-  const { data, error } = useGit();
+  const { data, error, isValidating } = useGit();
+  const now = useNow(true);
+
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isValidating && !error && data) setLastOkAt(Date.now());
+  }, [isValidating, error, data]);
+
+  const model = gitModel({ data, loadError: Boolean(error), lastOkAt, now });
+  const ok = data?.status === "ok" ? data : undefined;
+
+  const lead = (id: StripId, body: ReactNode) => (
+    <>
+      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {body}
+    </>
+  );
+
+  const parts: Record<StripId, Pick<StripSpec, "body">> | undefined = ok && {
+    mirrors: { body: lead("mirrors", <MirrorRows mirrors={ok.mirrors} enabled={model.writes[0].enabled} forgejoUrl={ok.forgejoUrl} />) },
+    pulls: { body: lead("pulls", <PullRows pulls={ok.pulls} />) },
+    branches: { body: lead("branches", <BranchRows branches={ok.branches} />) },
+    commits: { body: lead("commits", <GitCommitStream stream={ok.stream} />) },
+  };
+  const strips: StripSpec[] = parts ? model.strips.map((s) => ({ ...s, ...parts[s.id] })) : [];
+
+  // The Forgejo link opens in a new tab, as the old empty-state link did; PageHead's own link is same-tab.
+  const action = model.link && (
+    <a href={model.link.href} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      {model.link.label}
+    </a>
+  );
 
   return (
-    <div className="space-y-4">
-      <header>
-        <h1 className="text-lg font-semibold tracking-tight">Git</h1>
-        <p className="text-xs text-ink-dim mt-0.5">
-          {data?.status === "ok"
-            ? `${data.repos.length} ${data.repos.length === 1 ? "repo" : "repos"} on ${data.forgejoUrl}`
-            : "self-hosted commit stream · local → GitHub mirror sync"}
-        </p>
-      </header>
-
-      {error && <div className="panel p-4 text-bad text-sm">{error.message}</div>}
-
-      {!data && !error && <GitLoadingSkeleton />}
-
-      {data && data.status !== "ok" && <GitStatusPanel snapshot={data} />}
-
-      {data && data.status === "ok" && data.repos.length === 0 && (
-        <div className="panel p-6 text-center text-sm space-y-1">
-          <p className="text-ink-faint">no repos yet — this Forgejo instance is empty.</p>
-          <a
-            href={data.forgejoUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-accent hover:underline font-mono text-xs"
-          >
-            {data.forgejoUrl}
-          </a>
-        </div>
-      )}
-
-      {data && data.status === "ok" && data.repos.length > 0 && (
-        <>
-          <GitCommitStream stream={data.stream} repoCount={data.repos.length} />
-          <div className="grid gap-4 md:grid-cols-2 items-start">
-            <GitBranchesPanel pulls={data.pulls} branches={data.branches} />
-            <GitMirrorPanel mirrors={data.mirrors} />
-          </div>
-        </>
-      )}
+    <div className="st-page pb-2">
+      <PageHead
+        title="Git"
+        chip={model.chip}
+        answer={model.answer}
+        evidence={model.evidence}
+        link={model.link}
+        action={model.link && !model.link.href.startsWith("/") ? action : undefined}
+        notice={model.notice}
+      />
+      {strips.length > 0 && <StripList strips={strips} autoTarget={model.autoTarget} />}
     </div>
   );
 }
