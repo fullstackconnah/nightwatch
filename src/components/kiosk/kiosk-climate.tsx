@@ -297,9 +297,9 @@ export function KioskClimateTile({
           over the container's own 10% tint, saying "actively moving air" —
           replacing the four blurred convection streams the owner rejected
           as neither subtle nor
-          mode-legible at the container level. Rendered for every ON tile
-          under sunroom (modeTint non-null), in that tile's own mode colour —
-          accent for the neutral fan/auto modes — and never off-theme.
+          mode-legible at the container level. Rendered only for a heating or
+          cooling tile under sunroom (modeTint non-null), in the heat or chill
+          colour — every other mode is the plain pane — and never off-theme.
           First child, -z-10 + the root's `isolate` above: same painting-order
           arrangement the streams used, so this layer sits above the tile's
           background and below its text (see the isolate comment). aria-hidden:

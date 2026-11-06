@@ -578,7 +578,7 @@ const AMBIENT_CHECKS = (page) => page.evaluate(CONTROLS);
 for (const size of SIZES) {
   for (const stop of ["midday", "night"]) {
     await guarded(`ambient main ${stop} ${size.name}`, async () => {
-      const { context, page } = await visit(STOP_URL, { viewport: size.viewport, weather: weatherFor(stop), fixedTime: stop === "midday" });
+      const { context, page } = await visit(STOP_URL, { viewport: size.viewport, weather: weatherFor(stop), fixedTime: true });
       await page.screenshot({ path: join(OUT_DIR, `ambient-main-${stop}-${size.name}.png`), fullPage: true });
       results.ambient[`main-${stop}-${size.name}`] = await AMBIENT_CHECKS(page);
       await context.close();

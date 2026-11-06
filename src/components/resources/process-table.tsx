@@ -702,7 +702,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                         <div className="mt-1 h-0.5 rounded-full bg-panel-2 overflow-hidden">
                           {pct > 0 && (
                             <div
-                              className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none"
+                              className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-[var(--ease-calm)] motion-reduce:transition-none"
                               style={{ transform: `scaleX(${pct / 100})`, background: "var(--color-accent-dim)" }}
                             />
                           )}
@@ -782,7 +782,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                     <div className="mt-1.5 h-0.5 rounded-full bg-panel-2 overflow-hidden">
                       {pct > 0 && (
                         <div
-                          className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none"
+                          className="h-full w-full origin-left rounded-full transition-transform duration-300 ease-[var(--ease-calm)] motion-reduce:transition-none"
                           style={{ transform: `scaleX(${pct / 100})`, background: "var(--color-accent-dim)" }}
                         />
                       )}

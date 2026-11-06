@@ -130,6 +130,8 @@ async function visit(s, key, { hash = "", action = "ok", reduced = false } = {})
   await page.clock.install({ time: NOW });
   try {
     await page.goto(`${BASE_URL}/smarthome${hash}`, { waitUntil: "domcontentloaded" });
+    // Hide the Next dev indicator (the round "N" badge) from every capture; next.config is untouched.
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     await page.locator("[data-feature=chip]").waitFor({ timeout: SLOW });
     if (key !== "loading") await page.waitForFunction(() => document.querySelector("[data-feature=chip]")?.textContent?.trim() !== "Checking", null, { timeout: SLOW });
     await page.waitForTimeout(500);

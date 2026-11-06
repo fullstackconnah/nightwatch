@@ -565,16 +565,15 @@ export function KioskClimateModal({
             the nudge row below — a target nudge changes what this block
             shows, so the two stay in focus together). */}
         <div
-          className="kiosk-defocus flex flex-wrap items-center justify-center gap-x-8 gap-y-4"
+          // Two grid rows (labels, then values) with items-baseline: the 4xl and 3xl
+          // numbers share one text baseline instead of one line-box edge (they sat 2 px apart).
+          className="kiosk-defocus grid grid-cols-[auto_auto] items-baseline justify-center gap-x-8 gap-y-1 text-center"
           data-kiosk-focused={targetControl.interacting ? "true" : undefined}
         >
-          <div className="text-center">
-            <div className="microlabel">Current</div>
-            <div className="mt-1 font-mono text-4xl text-ink" data-sr-live>{formatTemp(climate.currentTemp, climate.unit)}</div>
-          </div>
-          <div className="text-center">
-            <div className="microlabel">Target</div>
-            <div className="mt-1 font-mono text-3xl text-accent">
+          <div className="microlabel">Current</div>
+          <div className="microlabel">Target</div>
+          <div className="font-mono text-4xl text-ink" data-sr-live>{formatTemp(climate.currentTemp, climate.unit)}</div>
+          <div className="font-mono text-3xl text-accent">
               {dualSetpoint ? (
                 // A two-value range with a dash is not a dial — stays plain
                 // text, same as the tile's own dual-setpoint branch.
@@ -591,7 +590,6 @@ export function KioskClimateModal({
                   direction={targetControl.reelDirection}
                 />
               )}
-            </div>
           </div>
         </div>
 
