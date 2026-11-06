@@ -116,7 +116,7 @@ function gpuUnavailableCopy(reason: GpuUnavailableReason): { headline: string; f
     case "driver-mismatch":
       return {
         headline: "Host driver and libraries are different versions",
-        fix: "The loaded NVIDIA kernel module does not match the installed userspace libraries. Reboot 192.168.1.70 to resync them.",
+        fix: "The loaded NVIDIA kernel module does not match the installed userspace libraries. Reboot the homelab to resync them.",
       };
     case "no-device":
       return {

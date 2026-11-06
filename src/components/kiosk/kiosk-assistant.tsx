@@ -2,7 +2,7 @@
 
 /* THESIS: on THIS deployment the assistant is a typed control, not a mic.
 
-   The kiosk is served over plain HTTP at 192.168.1.70:3005 — nginx-proxy-
+   The kiosk is served over plain HTTP at the homelab on :3005 — nginx-proxy-
    manager has no proxy host in front of it (verified: its proxy_host
    directory is empty, and https on that port refuses). That is a non-
    localhost insecure origin, so the browser blocks both
