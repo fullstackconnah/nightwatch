@@ -106,7 +106,12 @@ export async function readResource(uri: string): Promise<McpResourceContent> {
   }
 
   if (uri.startsWith(LOGS_PREFIX)) {
-    const name = decodeURIComponent(uri.slice(LOGS_PREFIX.length));
+    let name: string;
+    try {
+      name = decodeURIComponent(uri.slice(LOGS_PREFIX.length));
+    } catch {
+      throw new McpError(JSON_RPC_ERROR_CODES.INVALID_PARAMS, `Malformed logs URI: "${uri}".`);
+    }
     if (!name) {
       throw new McpError(JSON_RPC_ERROR_CODES.INVALID_PARAMS, `Malformed logs URI: "${uri}".`);
     }
