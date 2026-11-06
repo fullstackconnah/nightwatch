@@ -123,7 +123,8 @@ export abstract class IntegrationClient<C> {
         signal: AbortSignal.timeout(this.timeoutMs),
         cache: "no-store",
       });
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
       return { status: "unreachable", detail: this.unreachableDetail(base) };
     }
 

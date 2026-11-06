@@ -47,10 +47,30 @@ describe("fetchNoCrossOriginRedirect", () => {
     assert.equal(calls.length, 1);
   });
 
-  it("counts a scheme change on the same host as cross-origin", async () => {
-    const calls = stub(redirect(301, "https://a.test/x"));
-    await assert.rejects(fetchNoCrossOriginRedirect("http://a.test/x", {}), /redirected to another host/);
+  it("follows a same-host http to https upgrade", async () => {
+    const calls = stub(redirect(301, "https://a.test/x"), new Response("ok"));
+    const res = await fetchNoCrossOriginRedirect("http://a.test/x", {});
+    assert.equal(res.status, 200);
+    assert.equal(calls[1].url, "https://a.test/x");
+  });
+
+  it("throws on https to http on the same host", async () => {
+    const calls = stub(redirect(301, "http://a.test/x"));
+    await assert.rejects(fetchNoCrossOriginRedirect("https://a.test/x", {}), /redirected to another host/);
     assert.equal(calls.length, 1);
+  });
+
+  it("keeps the method and body on a same-origin 307 after a POST", async () => {
+    const calls = stub(redirect(307, "/again"), new Response("ok"));
+    await fetchNoCrossOriginRedirect("http://a.test/act", { method: "POST", body: "payload" });
+    assert.equal(calls[1].init.method, "POST");
+    assert.equal(calls[1].init.body, "payload");
+  });
+
+  it("turns a 301 after a lowercase post into a GET", async () => {
+    const calls = stub(redirect(301, "/x"), new Response("ok"));
+    await fetchNoCrossOriginRedirect("http://a.test/act", { method: "post", body: "b" });
+    assert.equal(calls[1].init.method, "GET");
   });
 
   it("throws on the 4th hop", async () => {

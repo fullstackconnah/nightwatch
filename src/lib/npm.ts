@@ -67,7 +67,8 @@ async function requestToken(creds: NpmCredentials): Promise<AuthResult> {
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("redirected")) return { ok: false, reason: "unreachable", detail: "NPM redirected to another host." };
     return { ok: false, reason: "unreachable", detail: `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` };
   }
 

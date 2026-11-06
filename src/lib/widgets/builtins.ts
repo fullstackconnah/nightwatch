@@ -98,8 +98,8 @@ async function qbitLogin(w: WidgetInstance): Promise<string> {
       signal: AbortSignal.timeout(5000),
       cache: "no-store",
     });
-  } catch {
-    throw new WidgetError("unreachable");
+  } catch (e) {
+    throw new WidgetError(e instanceof Error && e.message.startsWith("redirected") ? "redirected" : "unreachable");
   }
   const cookie = res.headers.get("set-cookie")?.match(/SID=[^;]+/)?.[0];
   if (!res.ok || !cookie) throw new WidgetError("login failed");

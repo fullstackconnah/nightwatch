@@ -13,8 +13,11 @@ export async function fetchNoCrossOriginRedirect(url: string, init: RequestInit 
     const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
     if (!location) return res;
     const next = new URL(location, current);
-    if (next.origin !== new URL(current).origin || hop >= MAX_HOPS) throw new Error("redirected to another host");
-    if (res.status === 303 || ((res.status === 301 || res.status === 302) && req.method === "POST")) {
+    const cur = new URL(current);
+    // a force-SSL proxy in front of the same service upgrades http to https on the same host
+    const upgrade = next.hostname === cur.hostname && cur.protocol === "http:" && next.protocol === "https:";
+    if ((next.origin !== cur.origin && !upgrade) || hop >= MAX_HOPS) throw new Error("redirected to another host");
+    if (res.status === 303 || ((res.status === 301 || res.status === 302) && req.method?.toUpperCase() === "POST")) {
       req = { ...req, method: "GET", body: undefined };
     }
     current = next.href;
