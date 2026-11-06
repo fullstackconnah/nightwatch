@@ -28,6 +28,14 @@ describe("redactCmdline", () => {
     ["git log --author=bob", "git log --author=bob"],
     ["mosquitto --auth-mode none", "mosquitto --auth-mode none"],
     ["app --auth-token=x --auth=y --authkey z --auth_key w", "app --auth-token=*** --auth=*** --authkey *** --auth_key ***"],
+    ["app --authorization=secret", "app --authorization=***"],
+    ["curl -uadmin:secret http://x", "curl -uadmin:*** http://x"],
+    ["curl --user=admin:secret http://x", "curl --user=admin:*** http://x"],
+    ["wget --user=admin:secret http://x", "wget --user=admin:secret http://x"],
+    ["curl -H Authorization: token abc http://x", "curl -H Authorization: token *** http://x"],
+    ["curl -H X-Api-Key: abc123 http://x", "curl -H X-Api-Key: *** http://x"],
+    ["curl -H x-auth-token: t http://x", "curl -H x-auth-token: *** http://x"],
+    ["sshpass -p secret ssh -p 2222 host", "sshpass -p *** ssh -p 2222 host"],
   ];
   for (const [input, want] of cases) {
     it(input, () => assert.equal(redactCmdline(input), want));

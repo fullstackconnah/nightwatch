@@ -23,6 +23,7 @@ describe("hunt 6 robustness", () => {
     assert.ok(b.includes("Array.isArray(pullsRes.data)"));
     assert.ok(b.includes("Array.isArray(mirrorsRes.data)"));
     assert.ok(b.includes('typeof c.sha === "string"'));
+    assert.equal(b.split("&& typeof").length - 1, 4); // R1: null elements dropped from commits, branches, pulls, mirrors
   });
   it("B8: HA delta must be finite and bounded", () => {
     const src = read("../app/api/ha/action/route.ts");

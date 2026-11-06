@@ -299,7 +299,7 @@ async function fetchRepoBundle(
   ]);
 
   const commits: GitCommitEntry[] = commitsRes.ok && Array.isArray(commitsRes.data)
-    ? commitsRes.data.filter((c) => typeof c.sha === "string").map((c) => ({
+    ? commitsRes.data.filter((c) => c && typeof c.sha === "string").map((c) => ({
         repo: repo.fullName,
         sha: c.sha,
         shortSha: c.sha.slice(0, 7),
@@ -310,7 +310,7 @@ async function fetchRepoBundle(
       }))
     : [];
 
-  const branchRaws = branchesRes.ok && Array.isArray(branchesRes.data) ? branchesRes.data : [];
+  const branchRaws = branchesRes.ok && Array.isArray(branchesRes.data) ? branchesRes.data.filter((b) => b && typeof b === "object") : [];
   const branches: GitBranchSummary[] = branchRaws.map((b) => ({
     repo: repo.fullName,
     name: b.name,
@@ -319,7 +319,7 @@ async function fetchRepoBundle(
   }));
 
   const pulls: GitPullRequest[] = pullsRes.ok && Array.isArray(pullsRes.data)
-    ? pullsRes.data.map((p) => ({
+    ? pullsRes.data.filter((p) => p && typeof p === "object").map((p) => ({
         repo: repo.fullName,
         number: p.number,
         title: p.title,
@@ -330,11 +330,12 @@ async function fetchRepoBundle(
     : [];
 
   let mirror: GitMirror | null = null;
-  if (mirrorsRes.ok && Array.isArray(mirrorsRes.data) && mirrorsRes.data.length > 0) {
+  const mirrorRaws = mirrorsRes.ok && Array.isArray(mirrorsRes.data) ? mirrorsRes.data.filter((m) => m && typeof m === "object") : [];
+  if (mirrorRaws.length > 0) {
     // A repo's push_mirrors list is effectively 0-or-1 for this dashboard's
     // use case (one local repo mirroring to one GitHub remote) — the first
     // entry is the one worth surfacing rather than fanning the UI out to N.
-    const pm = mirrorsRes.data[0];
+    const pm = mirrorRaws[0];
     const target = maskCredentials(pm.remote_address ?? "");
     const forgejoHead = branchRaws.find((b) => b.name === repo.defaultBranch)?.commit?.id ?? null;
 
