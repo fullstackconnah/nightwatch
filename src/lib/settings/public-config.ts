@@ -1,6 +1,6 @@
 import type { AppConfig } from "../config.ts";
 import { publicSystem } from "../orchestra-settings.ts";
-import { mediaPublic } from "./../media/settings.ts";
+import { mediaPublic } from "../media/settings.ts";
 import { publicWidgets } from "./dash-put.ts";
 
 /**

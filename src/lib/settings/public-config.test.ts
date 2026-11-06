@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import type { AppConfig } from "../config.ts";
 import { mergeDashPut } from "./dash-put.ts";
@@ -38,7 +39,7 @@ const FULL = {
   npm: { url: "http://npm.test", email: "a@b.test", password: "" },
   forgejo: { url: "http://fg.test", token: "" },
   github: { token: "" },
-  minecraft: { managerUrl: "http://mc.test", managerToken: "", rconHost: "h", rconPassword: "", rconPort: 1 },
+  minecraft: { managerUrl: "http://mc.test", managerToken: "", rconHost: "h", rconPassword: "", rconPort: 1, curseforgeKey: "" },
   media: { workerUrl: "http://m.test", workerToken: "" },
   hermes: { tier: "local", model: "m", openrouterApiKey: "", anthropicApiKey: "" },
   system: {
@@ -53,6 +54,16 @@ describe("sanitizeConfig", () => {
     assert.ok(fakes.length >= 12);
     const out = JSON.stringify(sanitizeConfig(cfg));
     for (const f of fakes) assert.ok(!out.includes(f), `leaked ${f}`);
+  });
+
+  it("FULL covers every secret-named field AppConfig declares", () => {
+    const src = readFileSync(new URL("../config.ts", import.meta.url), "utf8");
+    const start = src.indexOf("export interface AppConfig {");
+    const body = src.slice(start, src.indexOf("\n}", start));
+    const NOT_SECRET = new Set(["pinnedFolders"]);
+    const declared = new Set([...body.matchAll(/(\w+)\??:/g)].map((m) => m[1]).filter((k) => SECRET.test(k) && !NOT_SECRET.has(k)));
+    const seeded = JSON.stringify(FULL);
+    for (const k of declared) assert.ok(seeded.includes(`"${k}"`), `${k} is declared in AppConfig but not seeded in FULL`);
   });
 
   it("keeps the non-secret jellyfin fields", () => {
