@@ -16,3 +16,8 @@ test("Media sits directly after Minecraft and points at /media", () => {
   assert.equal(src.match(/label: "Media"/g)?.length, 1);
   assert.match(src, /\{ href: "\/minecraft", label: "Minecraft", icon: Pickaxe \},\s*\{ href: "\/media", label: "Media", icon: Film \},/);
 });
+
+test("a failed logout shows an error and does not redirect", () => {
+  assert.match(src, /if \(!ok\) return setLogoutError\(true\);\s*window\.location\.href = "\/login";/);
+  assert.equal(src.match(/\{LOGOUT_ERROR\}/g)?.length, 2);
+});

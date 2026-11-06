@@ -15,6 +15,7 @@ import { useState } from "react";
 import { WriteAction } from "@/components/strips/write-action";
 import { Field, Input, Select } from "@/components/ui/input";
 import { ApiError } from "@/lib/client";
+import { memoryGbError } from "@/lib/minecraft/memory-gb";
 
 const LOADERS = ["neoforge", "forge", "fabric"] as const;
 
@@ -46,7 +47,8 @@ export function UploadPack({
   const [busy, setBusy] = useState(false);
 
   const slug = deriveSlug(name);
-  const canSubmit = Boolean(file) && name.trim().length > 0 && mcVersion.trim().length > 0;
+  const memoryError = memoryGbError(memoryGb);
+  const canSubmit = Boolean(file) && name.trim().length > 0 && mcVersion.trim().length > 0 && !memoryError;
   const off = busy || disabled;
 
   async function submit() {
@@ -116,7 +118,7 @@ export function UploadPack({
             placeholder="optional"
           />
         </Field>
-        <Field label="Memory GB">
+        <Field label="Memory GB" error={memoryError}>
           <Input type="number" min={1} value={memoryGb} onChange={(e) => setMemoryGb(e.target.value)} disabled={off} />
         </Field>
       </div>

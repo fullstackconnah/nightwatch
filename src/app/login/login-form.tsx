@@ -36,7 +36,7 @@ export function LoginForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Login failed");
       window.location.href = "/";
     } catch (err) {
