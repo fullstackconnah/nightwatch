@@ -286,7 +286,7 @@ function unconfiguredSnapshot(): ProxyManagerSnapshot {
     status: "unconfigured",
     detail:
       'No Nginx Proxy Manager connection configured. Add an "npm" block to data/config.json: ' +
-      '{ "npm": { "url": "http://192.168.1.70:81", "email": "<admin email>", "password": "<admin password>" } }',
+      '{ "npm": { "url": "http://homelab.local:81", "email": "<admin email>", "password": "<admin password>" } }',
     routes: [],
     certificates: [],
     npmUrl: null,

@@ -1,80 +1,65 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
-import { Button } from "@/components/ui/button";
+/* THESIS: the strips pattern on /proxy. A pure proxyModel() answers "is any route down, or a certificate about to
+   expire" and picks the strip the answer names; two fixed strips (Routes, Certificates) hold the route map and the
+   certificate list. Read-only by design: NPM's own admin does the editing, so the page's one action is the link out.
+   OWN-WORLD: nightwatch console — the pattern's .st-* classes, house Badge and Button, no new token. */
+
+import { useEffect, useState, type ReactNode } from "react";
 import { CertificatesPanel } from "@/components/integrations/proxy-certificates";
 import { RouteTable } from "@/components/integrations/proxy-routes";
-import { ProxyError, ProxyLoading, ProxyUnconfigured } from "@/components/integrations/proxy-status";
+import { PageHead } from "@/components/strips/page-head";
+import { StripList, type StripSpec } from "@/components/strips/strip-list";
+import { buttonVariants } from "@/components/ui/button";
+import { proxyModel, type StripId } from "@/lib/proxy/page-model";
 import { useProxyManager } from "@/lib/use-npm";
-import { cn } from "@/lib/utils";
+import { useNow } from "@/lib/use-now";
 
-/**
- * /proxy — the Nginx Proxy Manager route map: which domain forwards to which
- * upstream, whether that upstream answered its last health probe, and how long
- * until the certificate covering it expires. Read-only by design (per the
- * expansion spec's §5) — NPM's own admin UI does the editing; this page's job is
- * the glance-first "is anything about to expire or fall over" answer.
- */
 export default function ProxyPage() {
-  const { data: snapshot, error, isLoading } = useProxyManager();
+  const { data, error, isValidating } = useProxyManager();
+  const now = useNow(true);
 
-  const dotClass =
-    !snapshot || isLoading
-      ? "dot-restarting"
-      : snapshot.status === "ok"
-        ? "dot-running"
-        : snapshot.status === "unconfigured"
-          ? "dot-stopped"
-          : "dot-dead";
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isValidating && !error && data) setLastOkAt(Date.now());
+  }, [isValidating, error, data]);
 
-  const statusLabel = !snapshot
-    ? "connecting"
-    : snapshot.status === "ok"
-      ? `${snapshot.routes.length} ${snapshot.routes.length === 1 ? "route" : "routes"}`
-      : snapshot.status;
+  const model = proxyModel({ data, loadError: Boolean(error), lastOkAt, now });
+  const ok = data?.status === "ok" ? data : undefined;
+
+  const lead = (id: StripId, body: ReactNode) => (
+    <>
+      {model.autoTarget === id && model.detailLead && <p className="st-note mb-3">{model.detailLead}</p>}
+      {body}
+    </>
+  );
+
+  const parts: Record<StripId, Pick<StripSpec, "body">> | undefined = ok && {
+    routes: { body: lead("routes", <RouteTable routes={ok.routes} />) },
+    certs: { body: lead("certs", <CertificatesPanel certificates={ok.certificates} />) },
+  };
+  const strips: StripSpec[] = parts ? model.strips.map((s) => ({ ...s, ...parts[s.id] })) : [];
+
+  // The NPM admin link opens in a new tab, as before; PageHead's own link is same-tab (right for Settings).
+  const external = model.link && !model.link.href.startsWith("/");
+  const action = external && (
+    <a href={model.link!.href} target="_blank" rel="noreferrer" className={buttonVariants({ variant: "outline", size: "sm" })}>
+      {model.link!.label}
+    </a>
+  );
 
   return (
-    <div className="space-y-5 pb-2">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-lg font-semibold tracking-tight">Proxy</h1>
-          <p className="text-xs text-ink-dim mt-0.5">
-            Nginx Proxy Manager — domain → forward target, upstream health, certificate expiry
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1.5">
-            <span className={cn("dot", dotClass)} aria-hidden />
-            <span className="microlabel">{statusLabel}</span>
-          </span>
-          {snapshot?.npmUrl && (
-            <a href={snapshot.npmUrl} target="_blank" rel="noreferrer">
-              <Button variant="outline">
-                <ExternalLink size={13} /> Open NPM admin
-              </Button>
-            </a>
-          )}
-        </div>
-      </header>
-
-      {error && (
-        <ProxyError status="unreachable" detail={error.message ?? "Could not reach /api/proxy-manager."} />
-      )}
-
-      {!error && !snapshot && <ProxyLoading />}
-
-      {!error && snapshot?.status === "unconfigured" && <ProxyUnconfigured />}
-
-      {!error && snapshot && (snapshot.status === "unreachable" || snapshot.status === "unauthorized") && (
-        <ProxyError status={snapshot.status} detail={snapshot.detail} />
-      )}
-
-      {!error && snapshot?.status === "ok" && (
-        <>
-          <RouteTable routes={snapshot.routes} />
-          <CertificatesPanel certificates={snapshot.certificates} />
-        </>
-      )}
+    <div className="st-page pb-2">
+      <PageHead
+        title="Proxy"
+        chip={model.chip}
+        answer={model.answer}
+        evidence={model.evidence}
+        link={model.link}
+        action={action || undefined}
+        notice={model.notice}
+      />
+      {strips.length > 0 && <StripList strips={strips} autoTarget={model.autoTarget} />}
     </div>
   );
 }

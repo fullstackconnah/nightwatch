@@ -361,10 +361,9 @@ function unconfiguredSnapshot(): GitSnapshot {
   return {
     status: "unconfigured",
     forgejoUrl: null,
-    // Prose only — the config.json snippet itself lives in git-status-panel.tsx
-    // as a <pre> block (matching ha-status/proxy-status), not inline in a sentence.
+    // Prose only; the page no longer shows this detail (the connection head says what to do).
     detail:
-      "No Forgejo connection configured. Create the admin account at http://192.168.1.70:3010, " +
+      "No Forgejo connection configured. Create the admin account at http://homelab.local:3010, " +
       "then mint an access token in Settings → Applications (read scopes cover everything this page " +
       "shows) and add this block to data/config.json on the server:",
     repos: [],

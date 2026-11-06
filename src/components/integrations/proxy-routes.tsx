@@ -1,22 +1,18 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { certVariant } from "@/lib/proxy/page-model";
 import type { ProxyRoute, RouteCertRef, RouteHealth } from "@/lib/types/npm";
 import { cn } from "@/lib/utils";
 
 /**
- * The route map's core table: one row per NPM proxy or redirection host. Health
- * and enabled state lead every row — a disabled route or a route whose upstream
- * is down is the thing worth noticing, not the domain name.
+ * The Routes strip's detail: one row per NPM proxy or redirection host. Health and enabled state lead every row — a
+ * disabled route or a route whose upstream is down is the thing worth noticing, not the domain name. The count and
+ * up/down summary moved to the strip's state line (R18).
  */
 
-/** Threshold Rule for certs: neutral >= 30d, warn < 30d, bad < 7d or already expired. */
-export function certVariant(daysLeft: number | null): "neutral" | "warn" | "bad" {
-  if (daysLeft === null) return "neutral";
-  if (daysLeft < 7) return "bad";
-  if (daysLeft < 30) return "warn";
-  return "neutral";
-}
+/** The cert tone rule lives with the model (node-testable); kept exported here for the callers that imported it. */
+export { certVariant };
 
 export function CertBadge({ cert }: { cert: RouteCertRef | null }) {
   if (!cert) {
@@ -125,42 +121,8 @@ function RouteCard({ route }: { route: ProxyRoute }) {
 }
 
 export function RouteTable({ routes }: { routes: ProxyRoute[] }) {
-  if (routes.length === 0) {
-    return (
-      <div className="panel p-6 text-center text-ink-faint text-sm">
-        No proxy or redirection hosts in NPM yet.
-      </div>
-    );
-  }
-
-  const upCount = routes.filter((r) => r.health === "up").length;
-  const downCount = routes.filter((r) => r.health === "down").length;
-
   return (
-    <section className="panel overflow-hidden">
-      <div className="px-3 pt-3 pb-2 border-b border-line flex items-baseline justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="text-sm font-semibold tracking-tight">Routes</h2>
-          <p className="text-[0.7rem] text-ink-faint mt-0.5">
-            {routes.length} {routes.length === 1 ? "host" : "hosts"} · domain → forward target
-          </p>
-        </div>
-        <div className="flex items-center gap-3 font-mono text-[0.7rem] text-ink-faint tabular-nums">
-          {upCount > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="dot dot-running" aria-hidden />
-              {upCount} up
-            </span>
-          )}
-          {downCount > 0 && (
-            <span className="flex items-center gap-1.5">
-              <span className="dot dot-dead" aria-hidden />
-              {downCount} down
-            </span>
-          )}
-        </div>
-      </div>
-
+    <div>
       <table className="w-full text-sm hidden md:table">
         <thead>
           <tr className="border-b border-line">
@@ -193,6 +155,6 @@ export function RouteTable({ routes }: { routes: ProxyRoute[] }) {
         <HealthDot health="unknown" />
         <span className="text-[0.65rem] text-ink-faint">{HEALTH_LABEL.unknown} — disabled route, or a redirect to an external target</span>
       </div>
-    </section>
+    </div>
   );
 }
