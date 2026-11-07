@@ -35,7 +35,7 @@ export async function scanResponse(client: MediaWorkerClient = mediaWorker): Pro
 const ID = /^[a-z0-9-]{8,40}$/;
 export const validJobId = (id: string | null | undefined): id is string => !!id && ID.test(id);
 const MAX_PATH = 4096;
-const IPV4 =/\b\d{1,3}(\.\d{1,3}){3}\b/;
+const IPV4 = /\b\d{1,3}(\.\d{1,3}){3}\b/;
 
 export function safeReason(detail: string): string | null {
   const m = /HTTP \d+: (\{.*\})$/.exec(detail);
