@@ -136,8 +136,14 @@ function stopChimeLoopIfIdle() {
   }
 }
 
+function unlockOnFirstTouch() {
+  ensureAudioContext();
+}
+
 function subscribe(onChange: () => void): () => void {
   restoreOnce();
+  // A timer restored after a reload has had no add-click, so unlock on any first touch.
+  if (!audioCtx) document.addEventListener("pointerdown", unlockOnFirstTouch, { once: true, capture: true });
   listeners.add(onChange);
   startChimeLoopIfNeeded();
   return () => {

@@ -285,6 +285,8 @@ export async function submitKioskPin(pin: string): Promise<KioskPinResult> {
   }
 }
 
-export async function lockKiosk(): Promise<void> {
-  await fetch("/api/auth/kiosk/lock", { method: "POST" }).catch(() => {});
+/** True when the server accepted the lock. */
+export async function lockKiosk(): Promise<boolean> {
+  const res = await fetch("/api/auth/kiosk/lock", { method: "POST" }).catch(() => null);
+  return res?.ok ?? false;
 }
