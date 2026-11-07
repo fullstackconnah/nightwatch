@@ -1,6 +1,6 @@
 import { readContainerLogTail, subscribeContainerLogs } from "@/lib/log-stream";
 import { goLive } from "@/lib/sse-live";
-import { parseResume } from "@/lib/log-reconnect";
+import { parseResume, staleResumeNames } from "@/lib/log-reconnect";
 import {
   LOG_TAIL_DEFAULT,
   MAX_TRACKS,
@@ -33,12 +33,13 @@ export async function GET(request: Request): Promise<Response> {
   const tail = clampTail(url.searchParams.get("tail"));
   // Cap at MAX_TRACKS; ignore extras rather than reject the request.
   const names = splitNames(url.searchParams.get("c")).slice(0, MAX_TRACKS);
-  const seedRequested = new Set(splitNames(url.searchParams.get("seed")));
+  // resume=name:lastTs,... marks a reconnect after a restart; only newer lines are replayed.
+  const resumeRaw = url.searchParams.get("resume");
+  const resumeFrom = parseResume(resumeRaw, Date.now());
+  // A resume point too old to replay gets the normal tail, so the buffer has no silent gap.
+  const seedRequested = new Set([...splitNames(url.searchParams.get("seed")), ...staleResumeNames(resumeRaw, resumeFrom)]);
   // Preserve `c`'s order for seeding, and only seed names that are actually tracked.
   const seedNames = names.filter((n) => seedRequested.has(n));
-
-  // resume=name:lastTs,... marks a reconnect after a restart; only newer lines are replayed.
-  const resumeFrom = parseResume(url.searchParams.get("resume"), Date.now());
 
   const encoder = new TextEncoder();
   const unsubscribes: (() => void)[] = [];

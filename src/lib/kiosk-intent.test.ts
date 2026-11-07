@@ -276,3 +276,13 @@ describe("whole-word name matching (hunt 8 A6)", () => {
     assert.equal(got.kind === "light" && got.entityId, "light.den");
   });
 });
+
+describe("plural names (hunt 8 review)", () => {
+  const ctx: IntentContext = {
+    entities: { ...house.entities!, lights: [light("light.desk", "Desk Lamp"), light("light.deskl", "Desk Light")] },
+  };
+  it("desk lamps matches Desk Lamp", () => {
+    const got = matchIntent("turn off desk lamps", ctx);
+    assert.equal(got.kind === "light" && got.entityId, "light.desk");
+  });
+});

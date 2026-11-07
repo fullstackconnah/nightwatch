@@ -62,6 +62,17 @@ export function parseResume(raw: string | null, now: number): Map<string, number
   return out;
 }
 
+/** Names in a raw `resume=` value that parseResume rejected (too old, future, bad ts): they need a fresh tail. */
+export function staleResumeNames(raw: string | null, kept: Map<string, number>): string[] {
+  const out: string[] = [];
+  for (const part of (raw ?? "").split(",")) {
+    const p = part.trim();
+    const i = p.lastIndexOf(":");
+    if (i > 0 && !kept.has(p.slice(0, i))) out.push(p.slice(0, i));
+  }
+  return out;
+}
+
 const boot = Date.now().toString(36);
 let reads = 0;
 

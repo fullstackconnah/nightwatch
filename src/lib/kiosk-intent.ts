@@ -104,7 +104,7 @@ function bestMatch<T extends { name: string; entityId: string }>(
     if (tokens.length === 0) continue;
     let score = 0;
     // whole words: "garden" must not match a light named Den (tokens hold no spaces)
-    for (const t of tokens) if (words.has(t)) score += 1;
+    for (const t of tokens) if (words.has(t) || words.has(t + "s")) score += 1;
     if (score > 0) scored.push({ item, score });
   }
   if (scored.length === 0) return { match: null, ambiguous: false };

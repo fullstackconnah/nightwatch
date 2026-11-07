@@ -5,6 +5,7 @@ import {
   shouldRetry,
   attemptsSoFar,
   parseResume,
+  staleResumeNames,
   readIdPrefix,
   MAX_RECONNECT_ATTEMPTS,
   MIN_LIVE_MS,
@@ -78,4 +79,11 @@ test("parseResume drops a ts older than an hour (hunt 8 B2)", () => {
   const now = 10_000_000_000;
   const got = parseResume(`old:${now - 7_200_000},new:${now - 600_000},zero:0,one:1`, now);
   assert.deepEqual([...got], [["new", now - 600_000]]);
+});
+
+test("staleResumeNames lists resume names parseResume rejected (hunt 8 review)", () => {
+  const now = 10_000_000;
+  const raw = `c:${now - 7_200_000},d:${now - 600_000}`;
+  assert.deepEqual(staleResumeNames(raw, parseResume(raw, now)), ["c"]);
+  assert.deepEqual(staleResumeNames(null, new Map()), []);
 });
