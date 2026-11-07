@@ -24,6 +24,7 @@ import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import type { AppConfig } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
+import { rconPortFieldError } from "@/lib/settings-field-checks";
 import { useFormReport } from "@/components/settings/form-report";
 
 // ---------------------------------------------------------------------------
@@ -588,6 +589,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
     }
   }, [data, seeded]);
   const mc = data?.config.minecraft;
+  const portError = rconPortFieldError(rconPort);
   useFormReport("minecraft", {
     dirty:
       seeded &&
@@ -617,7 +619,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
         <Field label="RCON host">
           <Input placeholder="homelab.local" value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
         </Field>
-        <Field label="RCON port">
+        <Field label="RCON port" error={portError}>
           <Input placeholder="25575" value={rconPort} onChange={(e) => setRconPort(e.target.value)} />
         </Field>
       </div>
@@ -665,6 +667,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
             size="sm"
             disabled={saving || !managerUrl.trim()}
             onClick={async () => {
+              if (portError) return;
               const ok = await save("minecraft", {
                 managerUrl,
                 rconHost,

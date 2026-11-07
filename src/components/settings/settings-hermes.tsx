@@ -23,6 +23,7 @@ import { fetcher, postJson } from "@/lib/client";
 import { useFormReport } from "@/components/settings/form-report";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { BUDGET_HINT } from "@/lib/settings-field-checks";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
 
 type Tier = "local" | "openrouter" | "anthropic";
@@ -476,7 +477,7 @@ function HermesDaemonCard() {
                   <HaSwitchControl on={pipelineEnabled} onToggle={() => setPipelineEnabled((v) => !v)} label="Pipeline enabled" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <Field label="Daily budget (USD)">
+                  <Field label="Daily budget (USD)" hint={BUDGET_HINT}>
                     <Input
                       inputMode="decimal"
                       value={pipelineBudget}

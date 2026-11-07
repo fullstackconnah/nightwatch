@@ -494,6 +494,92 @@ await guarded("C12-motion", () =>
   }),
 );
 
+// ---- H13: widget-switch, budget-hint, rcon-port-error, access-stamp (hunt 13 settings fixes) ----
+// Padded element crop (16 px, clamped to the page) after an instant scroll; the check fails when fixed or sticky chrome covers the crop rect.
+async function cropEl(page, s, loc, name) {
+  await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" }); // the same fixed bottom nav the other states hide
+  await loc.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+  const { clip, covered } = await loc.evaluate((el, pad) => {
+    const r = el.getBoundingClientRect();
+    const box = { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad };
+    const covered = [...document.querySelectorAll("body *")].filter((e) => {
+      const cs = getComputedStyle(e);
+      if (!["fixed", "sticky"].includes(cs.position) || cs.visibility === "hidden" || cs.display === "none" || e.contains(el)) return false;
+      const b = e.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top;
+    }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}`);
+    const x = Math.max(0, box.left + scrollX), y = Math.max(0, box.top + scrollY);
+    const w = Math.min(document.documentElement.scrollWidth, box.right + scrollX) - x, h = Math.min(document.documentElement.scrollHeight, box.bottom + scrollY) - y;
+    return { clip: { x, y, width: w, height: h }, covered };
+  }, 16);
+  record("H13 crop clear of fixed or sticky chrome", `${name}@${s.name}`, covered.length ? covered : "ok");
+  await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: true, clip });
+  await fullShot(page, s, name);
+}
+FIXTURES.twoWidgets ??= (() => {
+  const f = structuredClone(FIXTURES.calm);
+  f.get.config.widgets.push({ id: "w2", type: "generic", container: "radarr", url: "http://homelab.local:7878", keySet: false, passwordSet: false, paths: "Queued:queue.total" });
+  return f;
+})();
+await guarded("widget-switch", () =>
+  each(async (s) => {
+    const { page, mock } = await visit(s, "twoWidgets", { hash: "#dashboard" });
+    const body = visibleBody(page).first();
+    const edits = body.getByRole("button", { name: "edit", exact: true });
+    await edits.nth(0).click();
+    const editor = body.locator(".panel.border-accent\\/30").first();
+    await editor.waitFor({ timeout: SLOW });
+    const first = await editor.getByLabel("Container").inputValue();
+    await edits.nth(1).click();
+    await page.waitForTimeout(200);
+    const second = await editor.getByLabel("Container").inputValue();
+    const url = await editor.getByLabel("Service URL").inputValue();
+    record("H13 A1 editor shows widget B after A (title = container)", s.name, { first, second, url, ok: first === "sonarr" && second === "radarr" && url === "http://homelab.local:7878" });
+    record("H13 A1 no write while switching", s.name, mock.posts.length === 0);
+    await cropEl(page, s, editor, "widget-switch");
+    await page.close();
+  }),
+);
+await guarded("budget-hint", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm", { hash: "#hermes" });
+    const input = field(visibleBody(page), "Daily budget (USD)").first();
+    const group = input.locator("xpath=..");
+    const copy = "Blank keeps the current cap. It can't be removed; the most is $1000.";
+    record("H13 A5 budget hint copy", s.name, (await group.innerText()).includes(copy));
+    const ids = (await input.getAttribute("aria-describedby")) ?? "";
+    record("H13 A5 hint wired by aria-describedby", s.name, ids.includes("-hint"));
+    await cropEl(page, s, group, "budget-hint");
+    await page.close();
+  }),
+);
+await guarded("rcon-port-error", () =>
+  each(async (s) => {
+    const { page, mock } = await visit(s, "calm", { hash: "#minecraft" });
+    const input = field(visibleBody(page), "RCON port").first();
+    await input.fill("abc");
+    const before = mock.posts.length;
+    await visibleBody(page).getByRole("button", { name: "Save", exact: true }).click();
+    await page.waitForTimeout(500);
+    const group = input.locator("xpath=..");
+    record("H13 A6 error copy", s.name, (await group.innerText()).includes("Port must be a whole number from 1 to 65535."));
+    record("H13 A6 field invalid", s.name, (await input.getAttribute("aria-invalid")) === "true");
+    record("H13 A6 no PUT sent", s.name, mock.posts.length === before);
+    await cropEl(page, s, group, "rcon-port-error");
+    await page.close();
+  }),
+);
+await guarded("access-stamp", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm", { hash: "#access" });
+    const body = visibleBody(page).first();
+    const stamped = async (title) => (await body.locator(`section:has(> div > h3:text-is("${title}"))`).innerText()).includes("last saved");
+    record("H13 A7 stamp kept on System, gone from Orchestra and SSO", s.name, { system: await stamped("System"), orchestra: await stamped("Orchestra"), sso: await stamped("SSO / OIDC") });
+    await cropEl(page, s, body, "access-stamp");
+    await page.close();
+  }),
+);
+
 // ---- C3: sentinels against the REAL API (opt-in; the lead tears the stack's data volume down afterwards) ----
 if (process.env.SENTINELS) {
   await guarded("C3", async () => {

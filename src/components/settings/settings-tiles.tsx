@@ -19,6 +19,7 @@ import { Field, Input } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { useFormReport } from "@/components/settings/form-report";
 import type { AppConfig } from "@/lib/config";
+import { groupInputText } from "@/lib/settings-field-checks";
 
 export function isCustomized(cfg: AppConfig, name: string): boolean {
   return Boolean(
@@ -44,6 +45,29 @@ function withGroup(cfg: AppConfig, name: string, value: string): AppConfig {
     else groups.push({ name: target, containers: [name] });
   }
   return { ...cfg, groups };
+}
+
+/** Keeps the raw typed text so a trailing space stays visible; the draft gets the trimmed group. */
+function GroupInput({
+  cfg,
+  name,
+  onChange,
+  ...rest
+}: { cfg: AppConfig; name: string; onChange: (cfg: AppConfig) => void } & Omit<
+  React.ComponentProps<typeof Input>,
+  "value" | "onChange"
+>) {
+  const [typed, setTyped] = useState<string | undefined>();
+  return (
+    <Input
+      {...rest}
+      value={groupInputText(typed, groupOf(cfg, name))}
+      onChange={(e) => {
+        setTyped(e.target.value);
+        onChange(withGroup(cfg, name, e.target.value.trim()));
+      }}
+    />
+  );
 }
 
 function withUrl(cfg: AppConfig, name: string, value: string): AppConfig {
@@ -186,12 +210,13 @@ export function SettingsTiles({
                         Header-cell association alone doesn't carry reliably
                         for form controls inside cells. */}
                     <td className="px-3 py-1.5">
-                      <Input
+                      <GroupInput
+                        cfg={cfg}
+                        name={name}
+                        onChange={onChange}
                         className="h-7"
                         aria-label={`Group for ${name}`}
                         placeholder="(compose project)"
-                        value={groupOf(cfg, name)}
-                        onChange={(e) => onChange(withGroup(cfg, name, e.target.value))}
                       />
                     </td>
                     <td className="px-3 py-1.5">
@@ -247,11 +272,7 @@ export function SettingsTiles({
                     cell would fight the column header), which is why that half
                     carries aria-label instead. */}
                 <Field label="Group">
-                  <Input
-                    placeholder="(compose project)"
-                    value={groupOf(cfg, name)}
-                    onChange={(e) => onChange(withGroup(cfg, name, e.target.value))}
-                  />
+                  <GroupInput cfg={cfg} name={name} onChange={onChange} placeholder="(compose project)" />
                 </Field>
                 <Field label="App URL">
                   <Input
