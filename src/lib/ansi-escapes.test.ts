@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ANSI_SEQUENCE, ESC, stripAnsi } from "./ansi-escapes.ts";
+import { ANSI_SEQUENCE, ESC, isSgr, stripAnsi } from "./ansi-escapes.ts";
 
 describe("ansi escapes", () => {
   it("strips private-mode CSI sequences", () => {
@@ -16,5 +16,19 @@ describe("ansi escapes", () => {
   });
   it("strips cursor movement and erase finals", () => {
     assert.equal(stripAnsi("x" + ESC + "[2K" + ESC + "[1Ay"), "xy");
+  });
+});
+
+describe("ansi escapes, review fixes", () => {
+  it("a lone ESC[ keeps a following bracket", () => {
+    assert.ok(stripAnsi(ESC + "[[INFO] x").includes("[INFO] x"));
+    assert.equal(stripAnsi("a" + ESC + "[?25lb"), "ab");
+  });
+  it("isSgr rejects private sequences ending in m", () => {
+    assert.equal(isSgr(">4;1", "m"), false);
+    assert.equal(isSgr("1", "m"), true);
+    assert.equal(isSgr("31", "m"), true);
+    assert.equal(isSgr(undefined, "m"), true);
+    assert.equal(isSgr("1", "K"), false);
   });
 });
