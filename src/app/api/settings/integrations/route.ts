@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { mergeMedia } from "@/lib/media/settings";
+import { rconPasswordForHost, secretForUrl } from "@/lib/settings/dash-put";
 import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
       delete next.homeassistant;
     } else if (body.homeassistant) {
       const url = str(body.homeassistant.url) ?? current.homeassistant?.url;
-      const token = mergedSecret(str(body.homeassistant.token), current.homeassistant?.token);
+      const token = mergedSecret(str(body.homeassistant.token), secretForUrl(current.homeassistant?.token, current.homeassistant?.url, url));
       const badUrl = httpUrlError("Home Assistant URL", str(body.homeassistant.url));
       if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "Home Assistant needs a URL" }, { status: 400 });
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
     } else if (body.npm) {
       const url = str(body.npm.url) ?? current.npm?.url;
       const email = str(body.npm.email) ?? current.npm?.email;
-      const password = mergedSecret(str(body.npm.password), current.npm?.password);
+      const password = mergedSecret(str(body.npm.password), secretForUrl(current.npm?.password, current.npm?.url, url));
       const badUrl = httpUrlError("NPM URL", str(body.npm.url));
       if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "NPM needs a URL" }, { status: 400 });
@@ -118,7 +119,7 @@ export async function POST(req: NextRequest) {
       delete next.forgejo;
     } else if (body.forgejo) {
       const url = str(body.forgejo.url) ?? current.forgejo?.url;
-      const token = mergedSecret(str(body.forgejo.token), current.forgejo?.token);
+      const token = mergedSecret(str(body.forgejo.token), secretForUrl(current.forgejo?.token, current.forgejo?.url, url));
       const badUrl = httpUrlError("Forgejo URL", str(body.forgejo.url));
       if (badUrl) return NextResponse.json({ error: badUrl }, { status: 400 });
       if (!url) return NextResponse.json({ error: "Forgejo needs a URL" }, { status: 400 });
@@ -132,7 +133,7 @@ export async function POST(req: NextRequest) {
       delete next.minecraft;
     } else if (body.minecraft) {
       const managerUrl = str(body.minecraft.managerUrl) ?? current.minecraft?.managerUrl;
-      const managerToken = mergedSecret(str(body.minecraft.managerToken), current.minecraft?.managerToken);
+      const managerToken = mergedSecret(str(body.minecraft.managerToken), secretForUrl(current.minecraft?.managerToken, current.minecraft?.managerUrl, managerUrl));
       const curseforgeKey = mergedSecret(str(body.minecraft.curseforgeKey), current.minecraft?.curseforgeKey);
       const rconHost = str(body.minecraft.rconHost) ?? current.minecraft?.rconHost;
       const rconPortRaw = body.minecraft.rconPort;
@@ -142,7 +143,7 @@ export async function POST(req: NextRequest) {
         rconPortError(rconPortRaw);
       if (badMc) return NextResponse.json({ error: badMc }, { status: 400 });
       const rconPort = typeof rconPortRaw === "number" ? rconPortRaw : current.minecraft?.rconPort ?? 25575;
-      const rconPassword = mergedSecret(str(body.minecraft.rconPassword), current.minecraft?.rconPassword);
+      const rconPassword = mergedSecret(str(body.minecraft.rconPassword), rconPasswordForHost(current.minecraft?.rconPassword, current.minecraft?.rconHost, rconHost));
       if (!managerUrl) return NextResponse.json({ error: "Minecraft needs the manager URL" }, { status: 400 });
       if (!managerToken) return NextResponse.json({ error: "Minecraft needs the manager token" }, { status: 400 });
       next.minecraft = { managerUrl, managerToken, curseforgeKey, rconHost, rconPort, rconPassword, updatedAt: now };

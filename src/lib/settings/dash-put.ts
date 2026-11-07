@@ -20,6 +20,12 @@ export function secretForUrl(stored: string | undefined, oldUrl: string | undefi
   return origin(oldUrl ?? "") === origin(newUrl ?? "") ? stored : undefined;
 }
 
+/** RCON has a host, not a URL: the stored password survives only while the host is the same (case and trim ignored; a port change alone keeps it). */
+export function rconPasswordForHost(stored: string | undefined, oldHost: string | undefined, newHost: string | undefined): string | undefined {
+  const norm = (h: string | undefined) => (h ?? "").trim().toLowerCase();
+  return norm(oldHost) === norm(newHost) ? stored : undefined;
+}
+
 /** Per widget id: an empty or missing secret keeps the stored one, a value replaces it, clearKey/clearPassword removes it. */
 function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unknown[] {
   return incoming.map((raw) => {

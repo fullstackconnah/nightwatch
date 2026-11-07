@@ -19,7 +19,7 @@ describe("mergeMedia", () => {
 
   it("a second save without a token keeps the old one; an empty token too", () => {
     const current = { workerUrl: URL1, workerToken: TOKEN, updatedAt: "old" };
-    assert.equal((mergeMedia({ workerUrl: "http://other.example.invalid:8091" }, current, NOW) as any).media.workerToken, TOKEN);
+    assert.equal((mergeMedia({ workerUrl: URL1 + "/v2" }, current, NOW) as any).media.workerToken, TOKEN);
     assert.equal((mergeMedia({ workerUrl: URL1, workerToken: "  " }, current, NOW) as any).media.workerToken, TOKEN);
   });
 
@@ -49,5 +49,23 @@ describe("the media block through the saved config", () => {
       if (prev === undefined) delete process.env.DATA_DIR; else process.env.DATA_DIR = prev;
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("mergeMedia: the token follows the worker origin", () => {
+  const current = { workerUrl: URL1, workerToken: "tok-a", updatedAt: "old" };
+  const tok = (patch: object) => (mergeMedia(patch, current, NOW) as any).media?.workerToken;
+  it("keeps it for the same URL, a path-only change, or no URL in the patch", () => {
+    assert.equal(tok({}), "tok-a");
+    assert.equal(tok({ workerUrl: URL1 }), "tok-a");
+    assert.equal(tok({ workerUrl: URL1 + "/v2" }), "tok-a");
+  });
+  it("drops it on a new scheme, host or port, so the save is refused", () => {
+    for (const u of ["https://worker.example.invalid:8091", "http://other.example.invalid:8091", "http://worker.example.invalid:9000"]) {
+      assert.deepEqual(mergeMedia({ workerUrl: u }, current, NOW), { error: "Media needs the worker token" });
+    }
+  });
+  it("saves a typed token with the new origin", () => {
+    assert.equal(tok({ workerUrl: "http://other.example.invalid:8091", workerToken: "tok-b" }), "tok-b");
   });
 });

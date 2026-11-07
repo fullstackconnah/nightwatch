@@ -192,3 +192,11 @@ test("J1 round 2: a non-generic widget keeps no key when only its url moves, wha
   const w = ok(mergeDashPut(cfg, { widgets: [sec("w1", { url: "http://evil.example", endpoint: "http://host-a:8989/x" })] })).widgets[0];
   assert.equal(w.key, undefined);
 });
+
+test("rconPasswordForHost keeps the password only while the host is the same (case and trim ignored)", async () => {
+  const { rconPasswordForHost } = await import("./dash-put.ts");
+  assert.equal(rconPasswordForHost("pw", "mc.example", "mc.example"), "pw");
+  assert.equal(rconPasswordForHost("pw", "mc.example", " MC.Example "), "pw");
+  assert.equal(rconPasswordForHost("pw", "mc.example", "other.example"), undefined);
+  assert.equal(rconPasswordForHost("pw", "mc.example", undefined), undefined);
+});
