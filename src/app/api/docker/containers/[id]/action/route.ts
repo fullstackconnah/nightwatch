@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hostname } from "node:os";
-import { findTarget, isProtectedContainer, LOOKUP_FAILED_MESSAGE, PROTECTED_MESSAGE, UI_BLOCKED_ACTIONS } from "@/lib/protected-containers";
+import { findTarget, isProtectedContainer, LOOKUP_FAILED_MESSAGE, PROTECTED_MESSAGE, protectedActionRefused } from "@/lib/protected-containers";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { isContainerId } from "@/lib/container-id";
 import {
   CONTAINER_ACTIONS,
@@ -48,7 +49,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       { status: 400 },
     );
   }
-  if (UI_BLOCKED_ACTIONS.includes(action)) {
+  // Same test the kiosk-elevation middleware and hermes-ctl/run use: a real session cookie means a full session.
+  const hasSession = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value);
+  if (protectedActionRefused(action, hasSession, true)) {
     // id may be a short id or a name. A failed lookup fails closed (503); an unknown id falls through to Docker's 404.
     const all = await listContainers().catch(() => null);
     if (!all) return NextResponse.json({ error: LOOKUP_FAILED_MESSAGE }, { status: 503 });
