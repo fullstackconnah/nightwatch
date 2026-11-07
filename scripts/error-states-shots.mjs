@@ -62,16 +62,17 @@ async function mockDetail(page, { running = true, inspectFailsAfter = Infinity, 
 /** Padded crop of the union of the given locators. Fails (returns false) when a fixed or sticky element covers it. */
 async function crop(page, locators, file) {
   for (const l of locators) await l.first().scrollIntoViewIfNeeded();
-  // Clear the sticky top bar (mobile header): scroll up by its height so the crop sits below it.
-  await page.evaluate(() => {
+  // Put the crop's top just below the sticky top bar (mobile header), clear of it and of the bottom nav.
+  const top = Math.min(...(await Promise.all(locators.map(async (l) => (await l.first().boundingBox()).y))));
+  await page.evaluate(([y, pad]) => {
     let h = 0;
     for (const el of document.querySelectorAll("body *")) {
       if (getComputedStyle(el).position !== "sticky") continue;
       const r = el.getBoundingClientRect();
       if (r.height && r.top <= 1 && r.bottom < innerHeight / 2) h = Math.max(h, r.bottom);
     }
-    window.scrollTo({ top: Math.max(0, window.scrollY - h), behavior: "instant" });
-  });
+    window.scrollBy({ top: y - h - pad, behavior: "instant" });
+  }, [top, PAD]);
   const boxes = [];
   for (const l of locators) boxes.push(await l.first().boundingBox());
   const vp = page.viewportSize();
