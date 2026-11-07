@@ -46,6 +46,7 @@ import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kios
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
+import { type WeatherViewStatus, weatherViewStatus } from "@/lib/kiosk/view-status";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 
 // color-mix against the live --color-ink-faint token, not a literal rgb: the
@@ -199,8 +200,6 @@ export function currentGlyph(code: WeatherIconKey, sun?: { elevationDeg: number 
    optional, which is a real loss of type safety on the most-read surface of
    the kiosk to remove a duplication that costs nothing. */
 
-type WeatherViewStatus = "loading" | "unconfigured" | "unreachable-empty" | "ready" | "ready-stale";
-
 interface WeatherView {
   status: WeatherViewStatus;
   ok: WeatherOk | null;
@@ -227,18 +226,24 @@ export function useWeatherView(): WeatherView {
     if (data?.status === "ok") setLastOk(data);
   }, [data]);
 
+  const status = weatherViewStatus({
+    hasData: !!data,
+    payload: data?.status,
+    hasError: !!error,
+    isLoading,
+    hasLastOk: !!lastOk,
+  });
   if (!data) {
-    if (isLoading) return { status: "loading", ok: lastOk };
-    if (lastOk) return { status: "ready-stale", ok: lastOk };
-    return { status: "unreachable-empty", ok: null, detail: error instanceof Error ? error.message : undefined };
+    return status === "unreachable-empty"
+      ? { status, ok: null, detail: error instanceof Error ? error.message : undefined }
+      : { status, ok: lastOk };
   }
-  if (data.status === "unconfigured") return { status: "unconfigured", ok: null, detail: data.detail };
+  if (data.status === "unconfigured") return { status, ok: null, detail: data.detail };
   if (data.status === "unreachable") {
-    return lastOk
-      ? { status: "ready-stale", ok: lastOk, detail: data.detail }
-      : { status: "unreachable-empty", ok: null, detail: data.detail };
+    return { status, ok: status === "ready-stale" ? lastOk : null, detail: data.detail };
   }
-  return { status: "ready", ok: data };
+  // A failed revalidation beside kept data: data is the last good reading.
+  return { status, ok: data, detail: status === "ready-stale" && error instanceof Error ? error.message : undefined };
 }
 
 /* ── briefing contract ──────────────────────────────────────────────────── */

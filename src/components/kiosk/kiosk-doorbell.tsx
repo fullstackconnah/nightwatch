@@ -36,6 +36,7 @@ import {
   prefersReducedMotion,
 } from "@/lib/kiosk-motion";
 import { useNow } from "@/lib/use-now";
+import { type CameraStatus, cameraStatus } from "@/lib/kiosk/view-status";
 import type { HaDoorbellSnapshot, HaDoorbellTrigger, HaDoorbellTriggerKind } from "@/lib/types/ha";
 
 /** A doorbell answered thirty seconds late isn't answered. This is the number
@@ -296,7 +297,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
  *  say it. "stills" is a real, visible difference in what you're looking at —
  *  a one-second-old frame, not a live view — and hiding that behind the same
  *  indicator as a working stream would be a lie about a security camera. */
-export type CameraStatus = "connecting" | "live" | "stills" | "failed";
+export type { CameraStatus };
 const DOT_WORD: Record<CameraStatus, string> = { connecting: "Connecting", live: "Live", stills: "Stills", failed: "Offline" };
 
 function CameraView({
@@ -323,9 +324,7 @@ function CameraView({
   }, [entityId, attempt]);
 
   useEffect(() => {
-    if (failed && !painted) onStatusChange("failed");
-    else if (!painted) onStatusChange("connecting");
-    else onStatusChange(mode === "stream" ? "live" : "stills");
+    onStatusChange(cameraStatus(mode, painted, failed));
   }, [mode, painted, failed, onStatusChange]);
 
   // First-frame deadline for the stream — see the function comment.
