@@ -91,13 +91,18 @@ describe("redactLogText hunt 10 review 2", () => {
     assert.ok(!redactLogText("token: Bearer abc").includes("abc"));
   });
   it("masks an unclosed quoted value", () => {
-    assert.ok(!redactLogText('password="abc').includes("abc"));
+    const out = redactLogText('password: "abc def');
+    assert.ok(!out.includes("abc") && !out.includes("def"), out);
+  });
+  it("masks a secret behind a 100-character key name", () => {
+    assert.ok(!redactLogText("a".repeat(100) + "_PASSWORD=abc").includes("abc"));
   });
   it("keeps real keys matching", () => {
     for (const k of ["POSTGRES_PASSWORD", "x_api_key", '"client_secret"']) assert.ok(!redactLogText(`${k}=zzz1`).includes("zzz1"), k);
   });
   const long: [string, string][] = [
     ["a", "a".repeat(65536)],
+    ["a 128 KB line", "a".repeat(131072)],
     ["password repeated", "password".repeat(8192)],
     ["unclosed quote", 'password="' + "a".repeat(65536)],
   ];

@@ -181,7 +181,14 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
+  // `mine` is this attempt's promise; handlers only clear the cache while it is
+  // still the cached one, so a stale request never evicts a newer attempt.
+  let mine: Promise<IDBDatabase> | null = null;
+  let rejected = false;
+  const clearMine = () => {
+    if (dbPromise === mine) dbPromise = null;
+  };
+  mine = new Promise((resolve, reject) => {
     const open = indexedDB.open(DB_NAME, DB_VERSION);
     open.onupgradeneeded = () => {
       const db = open.result;
@@ -194,28 +201,37 @@ function openDb(): Promise<IDBDatabase> {
     };
     open.onsuccess = () => {
       const db = open.result;
+      // A blocked open already rejected its caller; a late success is a spare
+      // connection nobody holds, so close it.
+      if (rejected) {
+        db.close();
+        return;
+      }
       // A second tab running a future DB_VERSION would otherwise block that
       // tab's upgrade forever. Close and let the caller reopen.
       db.onversionchange = () => {
         db.close();
-        dbPromise = null;
+        clearMine();
       };
       resolve(db);
     };
     // Both reject paths clear the cache so the next flush retries the open
     // instead of replaying one transient failure forever.
     open.onerror = () => {
-      dbPromise = null;
+      rejected = true;
+      clearMine();
       reject(open.error ?? new Error("could not open the log archive"));
     };
     // Private-mode Firefox and a few enterprise policies never fire either
     // handler; without this the archive would hang every caller forever.
     open.onblocked = () => {
-      dbPromise = null;
+      rejected = true;
+      clearMine();
       reject(new Error("the log archive is blocked by another tab"));
     };
   });
-  return dbPromise;
+  dbPromise = mine;
+  return mine;
 }
 
 function req<T>(request: IDBRequest<T>): Promise<T> {

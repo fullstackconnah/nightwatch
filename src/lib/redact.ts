@@ -2,7 +2,7 @@
  * Masks secrets in a host process command line before it reaches the client.
  * Heuristic by flag/key name; unmatched text is returned unchanged.
  */
-const SECRET_NAME = String.raw`[\w.-]{0,64}(?:pass|token|secret|api[-_]?key|auth(?:[-_]?(?:token|key|header)|orization)?(?![\w.-]))[\w.-]{0,64}`;
+const SECRET_NAME = String.raw`[\w.-]{0,128}(?:pass|token|secret|api[-_]?key|auth(?:[-_]?(?:token|key|header)|orization)?(?![\w.-]))[\w.-]{0,128}`;
 
 // --flag=value and --flag value (a value starting with "-" is the next flag).
 const FLAG = new RegExp(String.raw`(--?${SECRET_NAME})(=|\s+)(?!-)\S+`, "gi");
@@ -14,7 +14,7 @@ const URL_PASS = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*):[^\s/@]*@/gi;
 const MYSQL = /\b(?:mysql\w*|mariadb\w*)\b/i;
 
 // "key": "value", key=value, key: value where the key holds a secret word; quoted or bare value.
-const KV = /((?<![\w.-])["']?[\w.-]{0,64}(?:pass|token|secret|api[-_]?key)[\w.-]{0,64}["']?\s*(?:=>|[:=])\s*)("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;}&"']+)/gi;
+const KV = /((?<![\w.-])["']?[\w.-]{0,128}(?:pass|token|secret|api[-_]?key)[\w.-]{0,128}["']?\s*(?:=>|[:=])\s*)("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;}&"']+)/gi;
 const BEARER = /\bBearer\s+[\w.~+/=-]+/gi;
 
 /** Container log text for the MCP client: cmdline masking plus key-value secrets and bare bearer tokens. */

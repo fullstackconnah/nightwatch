@@ -21,6 +21,7 @@ import * as React from "react";
 // leaf module because the server needs them too (the level classifier strips
 // escapes before matching). Re-exported here so client callers keep one import.
 import { ANSI_SEQUENCE, ESC, hasAnsi, isSgr, stripAnsi } from "@/lib/ansi-escapes";
+import { highlightRanges } from "@/lib/highlight-ranges";
 
 export { hasAnsi, stripAnsi };
 
@@ -287,31 +288,16 @@ interface HighlightPart {
  * across calls. Zero-length matches (e.g. a pattern like `x*`, which can match
  * an empty string) are guarded so they cannot spin forever — a non-advancing
  * match consumes one character as unmarked text and moves on. */
-function splitHighlight(text: string, highlight: RegExp): HighlightPart[] {
+function splitByRanges(text: string, ranges: [number, number][]): HighlightPart[] {
   if (text.length === 0) return [{ text, marked: false }];
-  const flags = highlight.flags.includes("g") ? highlight.flags : highlight.flags + "g";
-  const re = new RegExp(highlight.source, flags);
   const parts: HighlightPart[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ text: text.slice(lastIndex, match.index), marked: false });
-    }
-    if (match[0].length > 0) {
-      parts.push({ text: match[0], marked: true });
-      lastIndex = re.lastIndex;
-    } else {
-      if (match.index < text.length) {
-        parts.push({ text: text[match.index], marked: false });
-      }
-      lastIndex = match.index + 1;
-      re.lastIndex = lastIndex;
-    }
+  let at = 0;
+  for (const [s, e] of ranges) {
+    if (s > at) parts.push({ text: text.slice(at, s), marked: false });
+    parts.push({ text: text.slice(s, e), marked: true });
+    at = e;
   }
-  if (lastIndex < text.length) {
-    parts.push({ text: text.slice(lastIndex), marked: false });
-  }
+  if (at < text.length) parts.push({ text: text.slice(at), marked: false });
   return parts;
 }
 
@@ -321,9 +307,9 @@ const MARK_STYLE: React.CSSProperties = {
   borderRadius: "0.15em",
 };
 
-function renderParts(text: string, highlight: RegExp | null | undefined, keyPrefix: string): React.ReactNode {
-  if (!highlight) return text;
-  return splitHighlight(text, highlight).map((part, i) =>
+function renderParts(text: string, ranges: [number, number][] | undefined, keyPrefix: string): React.ReactNode {
+  if (!ranges) return text;
+  return splitByRanges(text, ranges).map((part, i) =>
     part.marked ? (
       <mark key={`${keyPrefix}-${i}`} style={MARK_STYLE}>
         {part.text}
@@ -357,15 +343,18 @@ export const AnsiText = React.memo(function AnsiText({
   highlight?: RegExp | null;
 }) {
   if (!ansi) {
-    return <>{renderParts(stripAnsi(text), highlight, "p")}</>;
+    const plain = stripAnsi(text);
+    return <>{renderParts(plain, highlight ? highlightRanges([plain], highlight)[0] : undefined, "p")}</>;
   }
 
   const segments = segmentAnsi(text);
+  // One pass over the whole line, so ^ anchors the line start and a match can span segments.
+  const ranges = highlight ? highlightRanges(segments.map((s) => s.text), highlight) : null;
   return (
     <>
       {segments.map((seg, i) => {
         const hasStyle = Object.keys(seg.style).length > 0;
-        const content = renderParts(seg.text, highlight, `s${i}`);
+        const content = renderParts(seg.text, ranges?.[i], `s${i}`);
         return hasStyle ? (
           <span key={i} style={seg.style}>
             {content}
