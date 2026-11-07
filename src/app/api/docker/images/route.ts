@@ -36,9 +36,7 @@ export async function GET() {
         .sort((a, b) => b.created - a.created),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker images failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }

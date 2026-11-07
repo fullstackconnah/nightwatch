@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ANONYMOUS_LABEL, isOrphanVolume, orphanVolumeNames, removeVolumes, usedVolumeNames } from "./orphan-volumes.ts";
+import { ANONYMOUS_LABEL, isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames, VolumePruneError } from "./orphan-volumes.ts";
 
 const anon = { Name: "a1", Labels: { [ANONYMOUS_LABEL]: "" } };
 const named = { Name: "pgdata", Labels: {} };
@@ -25,13 +25,29 @@ test("removes only the listed names, skips an in-use refusal, keeps going", asyn
     if (n === "b") throw Object.assign(new Error("in use"), { statusCode: 409 });
   });
   assert.deepEqual(seen, ["a", "b", "c"]);
-  assert.deepEqual(res, { removed: ["a", "c"], skipped: ["b"] });
+  assert.deepEqual(res, { removed: ["a", "c"], skipped: ["b"], failed: [] });
 });
 
-test("other failures still surface", async () => {
-  await assert.rejects(
-    removeVolumes(["a"], async () => { throw Object.assign(new Error("x"), { statusCode: 403 }); }),
-  );
+test("other failures are listed, not thrown", async () => {
+  const res = await removeVolumes(["a"], async () => { throw Object.assign(new Error("x"), { statusCode: 403 }); });
+  assert.deepEqual([res.removed, res.skipped, res.failed], [[], [], ["a"]]);
+});
+
+test("A5: nothing removed, all refused: the original Docker error is thrown (keeps the 403 hint)", async () => {
+  const err403 = Object.assign(new Error("forbidden"), { statusCode: 403 });
+  const res = await removeVolumes(["a", "b"], async () => { throw err403; });
+  assert.equal(pruneFailure(res, 2), err403);
+  assert.equal(pruneFailure(res, 2) instanceof VolumePruneError, false);
+});
+
+test("A5: some removed, some failed: partial-removal error; all removed: nothing", async () => {
+  const res = await removeVolumes(["a", "b", "c"], async (n) => {
+    if (n === "b") throw Object.assign(new Error("boom"), { statusCode: 500 });
+  });
+  const err = pruneFailure(res, 3) as VolumePruneError;
+  assert.ok(err instanceof VolumePruneError);
+  assert.equal(err.message, "Removed 2 of 3 volumes. Docker refused to remove the rest.");
+  assert.equal(pruneFailure(await removeVolumes(["a"], async () => {}), 1), undefined);
 });
 
 test("orphanVolumeNames: only the anonymous unused name; null volumes gives []", () => {

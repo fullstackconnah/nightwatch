@@ -347,7 +347,6 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
         key={saveVersion}
         label="Service token"
         configured={Boolean(data?.meta.orchestraTokenSet)}
-        updatedAt={data?.system.updatedAt}
         draft={token}
         onDraftChange={setToken}
       />
@@ -431,7 +430,6 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         key={saveVersion}
         label="Client secret"
         configured={secretConfigured}
-        updatedAt={data?.system.updatedAt}
         draft={clientSecret}
         onDraftChange={setClientSecret}
       />

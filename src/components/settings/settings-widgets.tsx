@@ -184,6 +184,7 @@ export function SettingsWidgets({
 
       {editing && (
         <WidgetEditor
+          key={editing.id}
           widget={editing}
           types={types}
           containers={containerNames}

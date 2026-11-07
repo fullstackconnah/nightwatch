@@ -3,7 +3,8 @@ import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
-import { isOrphanVolume, orphanVolumeNames, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
+import { classifyImages } from "@/lib/image-reclaim";
+import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
@@ -469,8 +470,8 @@ export interface OrphanVolume {
 
 export interface DiskReclaimSnapshot {
   images: {
-    /** Untagged images — exactly what `docker image prune` (and this app's
-     *  "Prune dangling images" action) removes. */
+    /** Untagged images no container uses — exactly what `docker image prune`
+     *  (and this app's "Prune dangling images" action) removes. */
     dangling: DanglingImage[];
     danglingBytes: number;
     /**
@@ -516,18 +517,7 @@ export async function getDiskReclaimSnapshot(): Promise<DiskReclaimSnapshot> {
     systemDf(),
   ]);
 
-  const inUseImageIds = new Set(containers.map((c) => c.ImageID));
-  const dangling: DanglingImage[] = [];
-  let danglingBytes = 0;
-  let unusedBytes = 0;
-  for (const img of images) {
-    const tags = (img.RepoTags ?? []).filter((t) => t !== "<none>:<none>");
-    if (!inUseImageIds.has(img.Id)) unusedBytes += img.Size;
-    if (tags.length === 0) {
-      danglingBytes += img.Size;
-      dangling.push({ id: img.Id, tags, size: img.Size, created: img.Created });
-    }
-  }
+  const { dangling, danglingBytes, unusedBytes } = classifyImages(images, new Set(containers.map((c) => c.ImageID)));
   dangling.sort((a, b) => b.size - a.size);
 
   const usedNames = usedVolumeNames(containers);
@@ -582,11 +572,11 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   // removes anonymous only), so remove the listed orphans by name instead.
   // Not getDiskReclaimSnapshot(): it awaits a 20-70 s df that can fail, and Clear needs no sizes.
   const [volumeList, containers] = await Promise.all([docker.listVolumes(), docker.listContainers({ all: true })]);
-  const { removed } = await removeVolumes(
-    orphanVolumeNames(volumeList.Volumes, containers),
-    (name) => docker.getVolume(name).remove(),
-  );
+  const names = orphanVolumeNames(volumeList.Volumes, containers);
+  const res = await removeVolumes(names, (name) => docker.getVolume(name).remove());
+  const { removed } = res;
   dfSwr.clear();
+  if (res.failed.length > 0) throw pruneFailure(res, names.length);
   // shortcut: sizes come from df, which Clear no longer waits on, so reclaimedBytes is 0 (no UI reads it); upgrade if one needs it.
   return { reclaimedBytes: 0, deleted: removed };
 }
