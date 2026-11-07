@@ -7,7 +7,31 @@ import { makeClip } from "./clips.ts";
 import { encodeArgs, streamInfos, type StreamInfo } from "./encode-args.ts";
 import { ffprobeJson } from "./probe.ts";
 import { needFfmpeg, tempDir } from "./testkit.ts";
-import { verifyOutput, type VerifyResult } from "./verify.ts";
+import { execProc, fullReadMs, verifyOutput, VERIFY_CHILD_MS, type VerifyResult } from "./verify.ts";
+
+describe("fullReadMs (R1)", () => {
+  it("is twice the duration for a long film and the flat cap for a missing duration", () => {
+    assert.equal(fullReadMs(2.5 * 3600), 5 * 3600_000);
+    assert.equal(fullReadMs(0), VERIFY_CHILD_MS);
+    assert.equal(fullReadMs(undefined), VERIFY_CHILD_MS);
+    assert.equal(fullReadMs(60), VERIFY_CHILD_MS);
+  });
+});
+
+describe("execProc timeout (B1)", () => {
+  it("kills a child that never exits and resolves code -1", async () => {
+    const t0 = Date.now();
+    const r = await execProc([process.execPath, "-e", "setInterval(() => {}, 1000)"], undefined, 300);
+    assert.equal(r.code, -1);
+    assert.match(r.stderr, /timed out/);
+    assert.ok(Date.now() - t0 < 5000);
+  });
+
+  it("leaves a child that finishes in time alone", async () => {
+    const r = await execProc([process.execPath, "-e", "console.log('ok')"], undefined, 10_000);
+    assert.deepEqual([r.code, r.stdout.trim()], [0, "ok"]);
+  });
+});
 
 const TH = { MIN_FILE_BYTES: 0, MIN_SAVING_BYTES: 0 };
 let dir: string;

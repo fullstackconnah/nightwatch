@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -8,7 +9,7 @@ import { checkReady } from "./disk.ts";
 import { createGuard } from "./fsguard.ts";
 import { createQueue, type JobRecord } from "./jobs.ts";
 import { ffprobeJson } from "./probe.ts";
-import { createRunner, parseProgress } from "./runner.ts";
+import { createRunner, parseProgress, progressAdvanced, stallWatch, type Seen } from "./runner.ts";
 import { realFs } from "./swap.ts";
 import { needFfmpeg, tempDir } from "./testkit.ts";
 
@@ -72,6 +73,26 @@ describe("parseProgress (B3)", () => {
     const block = "frame=2400\nfps=30\nout_time_us=N/A\nspeed=N/A\nprogress=continue\n";
     assert.deepEqual(parseProgress(block, 1000, 24), { pct: 10, fps: 30, etaSec: 720 });
     assert.equal(parseProgress(block, 1000, null), null);
+  });
+});
+
+describe("progressAdvanced (R2)", () => {
+  const run = (blocks: string[]) => {
+    let last: Seen | null = null;
+    return blocks.map((b) => { const r = progressAdvanced(b, last); last = r.seen; return r.advanced; });
+  };
+  it("repeated identical blocks do not count; the first does", () => {
+    const b = "frame=10\nout_time_us=1000\nprogress=continue\n";
+    assert.deepEqual(run([b, b, b]), [true, false, false]);
+  });
+  it("a changed frame counts, even with the same out_time", () => {
+    assert.deepEqual(run(["frame=10\nout_time_us=5\nprogress=continue\n", "frame=11\nout_time_us=5\nprogress=continue\n"]), [true, true]);
+  });
+  it("no frame but a changed out_time counts", () => {
+    assert.deepEqual(run(["out_time_us=5\nprogress=continue\n", "out_time_us=6\nprogress=continue\n", "out_time_us=6\nprogress=continue\n"]), [true, true, false]);
+  });
+  it("a block with neither counts once only", () => {
+    assert.deepEqual(run(["progress=continue\n", "progress=continue\n", "progress=continue\n"]), [true, false, false]);
   });
 });
 
@@ -210,6 +231,51 @@ describe("runner end to end (B3-B5, S2, S7, M4)", () => {
     assert.equal(w.q.get(rec.id)?.state, "cancelled");
     assert.deepEqual(readdirSync(w.dirs.work), []);
     assert.equal(statSync(rec.abs).size, before);
+  });
+});
+
+describe("stall watchdog (B1)", () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("fires once when nothing kicks it within the window", async () => {
+    let fired = 0;
+    const w = stallWatch(50, () => fired++);
+    await wait(150);
+    w.clear();
+    assert.equal(fired, 1);
+  });
+
+  it("does not fire while progress keeps arriving past the window, nor after clear()", async () => {
+    let fired = 0;
+    const w = stallWatch(80, () => fired++);
+    for (let i = 0; i < 6; i++) { await wait(40); w.kick(); } // 240 ms in total, three windows
+    assert.equal(fired, 0);
+    w.clear();
+    await wait(150);
+    assert.equal(fired, 0);
+  });
+});
+
+describe("track (B3)", () => {
+  it("the first child's close doesn't untrack the second: cancel still signals it", async () => {
+    const w = world();
+    const sleeper = () => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const first = sleeper();
+    const second = sleeper();
+    try {
+      w.runner.track("same")(first);
+      w.runner.track("same")(second);
+      const firstClosed = once(first, "close");
+      first.kill();
+      await firstClosed;
+      const secondClosed = once(second, "close");
+      w.runner.kill("same", "cancel");
+      const timeout = new Promise((r) => setTimeout(() => r("still running"), 3000));
+      assert.notEqual(await Promise.race([secondClosed, timeout]), "still running");
+    } finally {
+      first.kill();
+      second.kill();
+    }
   });
 });
 

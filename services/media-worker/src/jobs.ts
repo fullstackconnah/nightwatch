@@ -45,7 +45,7 @@ export function publicJob(r: JobRecord): Job {
 /** H7: superseded finished records kept across a boot (the snapshot shows 50). */
 export const KEEP_FINISHED = 200;
 const PRUNABLE = new Set(["failed", "cancelled", "undone", "purged"]);
-/** Drops the oldest superseded finished records. The newest record of a path (what jobFor shows, and the dashboard's
+/** Drops the oldest superseded finished records. B5: a `keepHold` record is never auto-purged, since the hold file may be the only copy. The newest record of a path (what jobFor shows, and the dashboard's
  *  "don't offer again" memory), `done` (hold and Undo) and a failed swap that kept its hold are never dropped. */
 export function pruneFinished(all: JobRecord[]): JobRecord[] {
   const lastIdx = new Map<string, number>();
@@ -79,6 +79,10 @@ export interface QueueOpts {
   log?: (line: string) => void;
   tz?: string;
   uid?: number | undefined;
+  /** Shutdown waits this long for the running job (the kill grace plus 5 s); a process stuck in the kernel ignores SIGKILL. */
+  stopWaitMs?: number;
+  /** Test seam: leave the process so compose restarts it and boot recover() repairs a stranded record. */
+  exit?: (code: number) => void;
 }
 
 export function createQueue(opts: QueueOpts) {
@@ -127,6 +131,8 @@ export function createQueue(opts: QueueOpts) {
         opts.log?.(`job ${next.id} crashed: ${e.message}`);
         // Only before the swap: `swapping` and `done` are left for boot recover(), so a done record is never lost.
         const cur = jobs.find((x) => x.id === next.id);
+        // B2: a write failed mid-swap, so memory and jobs.json disagree; restart and let boot recover() decide.
+        if (cur?.state === "swapping") { opts.log?.(`job ${next.id} stranded in swapping; exiting for boot recovery`); (opts.exit ?? process.exit)(1); return; }
         if (!cur || !["queued", "encoding", "verifying"].includes(cur.state)) return;
         // A failing state volume must not leave a film-sized .part on the media drive.
         if (cur.state !== "queued") {
@@ -308,7 +314,14 @@ export function createQueue(opts: QueueOpts) {
         if (e instanceof SwapError) throw new JobError(e.status, e.message);
         throw e;
       }
-      patch(id, { state: "undone", finishedAt: now().toISOString() });
+      try {
+        patch(id, { state: "undone", finishedAt: now().toISOString() });
+      } catch (e) {
+        // B6: the file is back but the record says done; boot recover() marks it undone (the hold is gone, the source ino matches).
+        opts.log?.(`undo of ${id} not saved: ${(e as Error).message}; exiting for boot recovery`);
+        (opts.exit ?? process.exit)(1);
+        throw e;
+      }
       void opts.afterChange?.(r).catch(() => undefined);
       return publicJob(r);
     },
@@ -317,7 +330,14 @@ export function createQueue(opts: QueueOpts) {
     /** Shutdown: no new job starts, the running ffmpeg is stopped, its record stays `encoding` for boot recovery. */
     async stop(): Promise<void> {
       closed = true;
-      if (running) { opts.kill(running.id, "shutdown"); await running.done; }
+      if (running) {
+        opts.kill(running.id, "shutdown");
+        const ms = opts.stopWaitMs ?? 15_000;
+        let timer: NodeJS.Timeout | undefined;
+        const gaveUp = new Promise<boolean>((r) => { timer = setTimeout(() => r(true), ms); });
+        if (await Promise.race([running.done.then(() => false), gaveUp])) opts.log?.(`job ${running.id} did not stop within ${ms} ms; shutting down anyway`);
+        clearTimeout(timer);
+      }
     },
   };
 }

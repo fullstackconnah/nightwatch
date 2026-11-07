@@ -12,7 +12,7 @@ export interface WorkerConfig {
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): WorkerConfig {
   return {
-    token: env.MEDIA_WORKER_TOKEN ?? "",
+    token: (env.MEDIA_WORKER_TOKEN ?? "").trim(), // the dashboard trims its copy too
     port: Number(env.PORT ?? 8091),
     // Inside the container; the compose file decides which host address is published.
     host: env.HOST ?? "0.0.0.0",

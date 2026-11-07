@@ -174,6 +174,51 @@ describe("pump crash handler survives a failing .part remover (D1)", { skip: SKI
   });
 });
 
+describe("stranded swap and bounded stop (B1, B2, B6)", () => {
+  /** A queued record put straight in (enqueue's path rule is POSIX-only), then pumped. */
+  const seed = (q: ReturnType<typeof make>["q"]) => {
+    q.all().push({ id: "s1", path: "movies/a.mkv", state: "queued", createdAt: "x", crf: 22, sourceBytes: 1, attempts: 0, abs: join(root, "movies", "a.mkv"), container: "matroska" } as JobRecord);
+    q.pump();
+  };
+
+  it("B2: a run that throws while swapping exits 1 for boot recovery", async () => {
+    const exits: number[] = [];
+    let q!: ReturnType<typeof make>["q"];
+    ({ q } = make({ exit: (c) => exits.push(c), run: async (r) => { q.patch(r.id, { state: "swapping" }); throw new Error("ENOSPC"); } }));
+    seed(q);
+    await tick(); await tick(); await tick();
+    assert.deepEqual(exits, [1]);
+    assert.equal(q.all()[0].state, "swapping"); // left for recover()
+  });
+
+  it("B6: an undo whose state write fails after the file moved back exits 1", async () => {
+    const exits: number[] = [];
+    const { q, ready } = make({ exit: (c) => exits.push(c) });
+    const hold = join(ready.dirs.hold, "u1");
+    mkdirSync(hold, { recursive: true });
+    const abs = join(root, "movies", "a.mkv");
+    writeFileSync(join(hold, "a.mkv"), "x"); // the held original, same bytes as the current file
+    const st = statSync(abs);
+    const rec = { id: "u1", path: "movies/a.mkv", state: "done", createdAt: "x", crf: 22, sourceBytes: 1, attempts: 0, abs, container: "matroska", newIno: st.ino, newSize: st.size } as JobRecord;
+    q.all().push(rec);
+    q.patch("u1", {}); // save with the record in place
+    rmSync(stateDir, { recursive: true, force: true }); writeFileSync(stateDir, "x"); // every later save fails
+    await assert.rejects(q.undo("u1"));
+    assert.deepEqual(exits, [1]);
+  });
+
+  it("B1: stop() gives up after stopWaitMs when the running job never settles", async () => {
+    const logs: string[] = [];
+    const { q } = make({ stopWaitMs: 100, log: (l) => logs.push(l) });
+    seed(q); // the default fake run never settles
+    await tick();
+    const t0 = Date.now();
+    await q.stop();
+    assert.ok(Date.now() - t0 < 2000);
+    assert.ok(logs.some((l) => /did not stop within 100 ms/.test(l)), logs.join("|"));
+  });
+});
+
 describe("hold clock and purge (B5)", () => {
   it("purge goes by heldUntil, never by file mtime", () => {
     const { q, ready } = make();

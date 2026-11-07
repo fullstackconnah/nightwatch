@@ -173,8 +173,9 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
           const body = await jsonBody(req, res);
           if (body === undefined) return;
           const b = body as { path?: unknown; paths?: unknown };
-          if (b && Array.isArray(b.paths)) return send(res, 201, queue.enqueueBatch(b.paths));
-          if (b && "path" in b) return send(res, 201, queue.enqueueOne(b.path));
+          if (typeof b !== "object" || b === null) return send(res, 400, { error: "Send path or paths" }); // `"path" in 5` would throw
+          if (Array.isArray(b.paths)) return send(res, 201, queue.enqueueBatch(b.paths));
+          if ("path" in b) return send(res, 201, queue.enqueueOne(b.path));
           return send(res, 400, { error: "Send path or paths" });
         }
         const m = /^\/jobs\/(?:batch\/([\w-]+)|([\w-]+))\/(cancel|undo)$/.exec(url.pathname);

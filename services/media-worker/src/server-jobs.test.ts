@@ -75,6 +75,11 @@ describe("jobs api (B8)", () => {
     assert.equal((await post("/jobs/abcdef123456/undo")).status, 404);
   });
 
+  it("B4: a JSON number or string body is a 400, not a 500", async () => {
+    await setup({ MEDIA_COMPRESS_ENABLED: "1" }, true);
+    for (const body of [5, "x"]) assert.equal((await post("/jobs", body)).status, 400);
+  });
+
   it("a lean file and a hardlinked file are 409 'not compressible'", { skip: SKIP_OFF_LINUX }, async () => {
     await setup({ MEDIA_COMPRESS_ENABLED: "1" }, true);
     for (const path of ["movies/Lean Film (2015)/Lean Film.mkv", "movies/Linked (2016)/Linked.mkv"]) {
