@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHaStates, performHaAction } from "@/lib/ha";
+import { getHaStates, getHiddenSettingsIds, performHaAction } from "@/lib/ha";
+import { kioskVoiceEntities } from "@/lib/ha-settings-entities";
 import { getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
 import { allowAsk } from "@/lib/kiosk-ask-limit";
 import { matchIntent, type KioskIntent } from "@/lib/kiosk-intent";
@@ -27,7 +28,8 @@ export const dynamic = "force-dynamic";
  *  - ENTITIES ARE RE-RESOLVED SERVER-SIDE. The client sends prose, never an
  *    entity id, and the matcher runs against a fresh getHaStates() here. A
  *    caller cannot name an entity the kiosk was never willing to show, because
- *    the caller never names an entity at all.
+ *    the caller never names an entity at all. Entities the kiosk hides (settings
+ *    lights and switches) are filtered out of that fresh read too.
  *  - Temperatures are clamped before they reach HA, mirroring the bounds the
  *    tap surface's own route enforces.
  *  - Nothing leaks: HA and hermes tokens live server-side, and every failure
@@ -95,8 +97,14 @@ export async function POST(req: NextRequest) {
     // Fresh, server-side truth about what exists. If HA is unreachable the
     // matcher still runs — it just can't resolve devices, so device phrasings
     // fall through to `unresolved` and open questions still work.
-    const states = await getHaStates();
-    const entities = states.status === "ok" ? states.entities ?? null : null;
+    const [states, hidden] = await Promise.all([
+      getHaStates(),
+      getHiddenSettingsIds().catch((err: unknown) => {
+        console.error("[kiosk assistant] hidden settings read failed", err instanceof Error ? err.message : err);
+        return null;
+      }),
+    ]);
+    const entities = states.status === "ok" && states.entities ? kioskVoiceEntities(states.entities, hidden) : null;
 
     const intent = matchIntent(utterance, { entities });
 
