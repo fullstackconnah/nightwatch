@@ -498,13 +498,23 @@ await guarded("C12-motion", () =>
 // Padded element crop (16 px, clamped to the page) after an instant scroll; the check fails when fixed or sticky chrome covers the crop rect.
 async function cropEl(page, s, loc, name) {
   await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" }); // the same fixed bottom nav the other states hide
-  await loc.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
-  const { clip, covered } = await loc.evaluate((el, pad) => {
-    const r = el.getBoundingClientRect();
-    const box = { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad };
+  // loc may match several elements: the crop is their union. A target that fits scrolls to just under the sticky mobile header; a taller one hides that header before the full-page clip.
+  const { clip, covered } = await loc.evaluateAll((els, pad) => {
+    const union = () => {
+      const rs = els.map((e) => e.getBoundingClientRect());
+      const left = Math.min(...rs.map((r) => r.left)) - pad, top = Math.min(...rs.map((r) => r.top)) - pad;
+      return { left, top, right: Math.max(...rs.map((r) => r.right)) + pad, bottom: Math.max(...rs.map((r) => r.bottom)) + pad };
+    };
+    const head = document.querySelector("header.md\\:hidden");
+    const hh = head && getComputedStyle(head).display !== "none" ? head.getBoundingClientRect().height : 0;
+    let box = union();
+    if (box.bottom - box.top + hh <= innerHeight) {
+      scrollTo({ top: Math.max(0, scrollY + box.top - hh), behavior: "instant" });
+      box = union();
+    } else if (head) head.style.visibility = "hidden";
     const covered = [...document.querySelectorAll("body *")].filter((e) => {
       const cs = getComputedStyle(e);
-      if (!["fixed", "sticky"].includes(cs.position) || cs.visibility === "hidden" || cs.display === "none" || e.contains(el)) return false;
+      if (!["fixed", "sticky"].includes(cs.position) || cs.visibility === "hidden" || cs.display === "none" || els.some((t) => e.contains(t))) return false;
       const b = e.getBoundingClientRect();
       return b.width > 0 && b.height > 0 && b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top;
     }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}`);
@@ -513,6 +523,7 @@ async function cropEl(page, s, loc, name) {
     return { clip: { x, y, width: w, height: h }, covered };
   }, 16);
   record("H13 crop clear of fixed or sticky chrome", `${name}@${s.name}`, covered.length ? covered : "ok");
+  if (covered.length) fail(s.name, `${name}: crop covered by ${covered.join(", ")}`); // a FAIL record makes the helper print SHOTS fail
   await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: true, clip });
   await fullShot(page, s, name);
 }
@@ -575,7 +586,8 @@ await guarded("access-stamp", () =>
     const body = visibleBody(page).first();
     const stamped = async (title) => (await body.locator(`section:has(> div > h3:text-is("${title}"))`).innerText()).includes("last saved");
     record("H13 A7 stamp kept on System, gone from Orchestra and SSO", s.name, { system: await stamped("System"), orchestra: await stamped("Orchestra"), sso: await stamped("SSO / OIDC") });
-    await cropEl(page, s, body, "access-stamp");
+    const cards = body.locator(["System", "SSO / OIDC", "Orchestra"].map((t) => `section:has(> div > h3:text-is("${t}"))`).join(", "));
+    await cropEl(page, s, cards, "access-stamp");
     await page.close();
   }),
 );
