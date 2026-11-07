@@ -64,3 +64,8 @@ test("components are wired to the helpers", () => {
   assert.match(growth, /cappedMounts\(mountpoints\)/);
   assert.match(growth, /moreMountsNote\(dropped\)/);
 });
+
+test("H12: Hermes Ask renders the failed-run error through failedRunText", () => {
+  const src = readFileSync(new URL("../components/integrations/hermes-ask.tsx", import.meta.url), "utf8");
+  assert.match(src, /failedRunText\(job\.error\)/);
+});

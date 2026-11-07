@@ -301,7 +301,8 @@ for (const [key, name] of [["runDone", "run-done"], ["runFailed", "run-failed"]]
     record("C11 run outcome shown", `${name}@${s.name}`, await outcome.isVisible());
     if (key === "runFailed") {
       const t = await outcome.innerText();
-      record("H12 failed run text hides secrets", s.name, !t.includes("abc123secret") && !t.includes("hunter2"));
+      const whole = t + (await page.locator("main").innerText());
+      record("H12 failed run text hides secrets", s.name, !whole.includes("abc123secret") && !whole.includes("hunter2"));
     }
     await perState(page, name, s.name);
     await shot(page, s, name);

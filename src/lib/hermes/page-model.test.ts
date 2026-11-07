@@ -248,3 +248,9 @@ test("the Loops line never reads dry run into the tone, and the strip ids are un
   const m = hermesModel(input());
   assert.equal(new Set(m.strips.map((s) => s.id)).size, 4);
 });
+
+test("last run failed: the Runs strip redacts a credential in the error", () => {
+  const m = hermesModel(input({ run: { ...idle, kind: "digest", job: job({ state: "error", error: "boom password=hunter2" }) } }));
+  assert.ok(strip(m, "runs").state.startsWith("Last run failed: boom"));
+  assert.ok(!strip(m, "runs").state.includes("hunter2"));
+});

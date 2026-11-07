@@ -74,8 +74,28 @@ async function open(browser, vp, query, setup) {
   await page.evaluate(COLOUR);
   return { context, page };
 }
-const finish = async (page, state, vpName) => {
-  await page.screenshot({ path: join(OUT_DIR, `resources-${state}-${vpName}.png`), fullPage: true });
+// Padded crop (16 px, clamped to the page) of one element; fails when fixed or sticky chrome overlaps the crop rect.
+const cropElement = async (page, loc, state, vpName) => {
+  await loc.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+  const r = await loc.evaluate((el) => {
+    const b = el.getBoundingClientRect();
+    const pad = 16;
+    const x = Math.max(0, b.left - pad), y = b.top - pad, w = Math.min(b.width + 2 * pad, innerWidth - x), h = b.height + 2 * pad;
+    const over = [...document.querySelectorAll("body *")].filter((e) => {
+      if (e.contains(el) || el.contains(e)) return false;
+      const cs = getComputedStyle(e);
+      if (cs.position !== "fixed" && cs.position !== "sticky") return false;
+      const q = e.getBoundingClientRect();
+      return q.width > 0 && q.height > 0 && q.left < x + w && q.right > x && q.top < y + h && q.bottom > y;
+    }).map((e) => e.tagName.toLowerCase() + "." + String(e.className).slice(0, 30));
+    return { clip: { x, y: Math.max(0, y + scrollY), width: w, height: h }, over };
+  });
+  check("crop not covered by fixed or sticky chrome", `${state}@${vpName}`, r.over.length === 0, r.over);
+  await page.screenshot({ path: join(OUT_DIR, `resources-${state}-${vpName}.png`), fullPage: true, clip: r.clip });
+};
+const finish = async (page, state, vpName, crop) => {
+  await page.screenshot({ path: join(OUT_DIR, `resources-${state}-${vpName}${crop ? "-full" : ""}.png`), fullPage: true });
+  if (crop) await cropElement(page, crop(page), state, vpName);
   const o = await page.evaluate(docOverflow);
   check("document overflow", `${state}@${vpName}`, o.scroll <= o.client, o);
 };
@@ -96,12 +116,12 @@ const browser = await chromium.launch();
 try {
   for (const vp of VIEWPORTS) {
     // Each state fails on its own: one FAIL line plus a capture, and the loop goes on.
-    const run = async (state, query, fn, setup) => {
+    const run = async (state, query, fn, setup, crop) => {
       let ctx;
       try {
         ctx = await open(browser, vp, query, setup);
         await fn(ctx.page);
-        await finish(ctx.page, state, vp.name);
+        await finish(ctx.page, state, vp.name, crop);
       } catch (e) {
         check("state reached", `${state}@${vp.name}`, false, String(e).slice(0, 200));
         await ctx?.page.screenshot({ path: join(OUT_DIR, `resources-${state}-FAIL-${vp.name}.png`), fullPage: true }).catch(() => {});
@@ -177,7 +197,7 @@ try {
       await page.waitForTimeout(3000);
       check("scan-lost line and button visible", `scan-lost@${vp.name}`, (await line.isVisible()) && (await find.isVisible()), null);
       check("scan-lost poll stopped (GETs in 3 s)", `scan-lost@${vp.name}`, scanGets.length === before, { extra: scanGets.length - before });
-    }, withDisk(["/mnt/test"]));
+    }, withDisk(["/mnt/test"]), (page) => page.locator("div.space-y-2", { has: page.getByText("LARGEST FILES", { exact: true }) }).last());
 
     // Hunt 12: 7 mounts with real growth: 5 series drawn, the rest named in a note, the fastest-growing line shown.
     await run("growth-more", "metric=disk", async (page) => {
@@ -190,10 +210,12 @@ try {
       await withDisk(GROWTH_MOUNTS)(page);
       await page.route(/\/api\/resources\/growth/, (route) => {
         const now = Date.now();
-        const mounts = Object.fromEntries(GROWTH_MOUNTS.map((m, i) => [m, Array.from({ length: 24 }, (_, k) => ({ t: now - (23 - k) * 3_600_000, usedBytes: (i + 1) * 1e10 + k * (i + 1) * 1e8 }))]));
+        const asked = new URL(route.request().url()).searchParams.get("mounts");
+        const only = asked ? asked.split(",") : GROWTH_MOUNTS;
+        const mounts = Object.fromEntries(GROWTH_MOUNTS.filter((m) => only.includes(m)).map((m, i) => [m, Array.from({ length: 24 }, (_, k) => ({ t: now - (23 - k) * 3_600_000, usedBytes: (i + 1) * 1e10 + k * (i + 1) * 1e8 }))]));
         return json(route, { recordingSince: now - 3 * 86_400_000, mounts });
       });
-    });
+    }, (page) => page.locator(".panel", { has: page.getByText("DISK GROWTH", { exact: true }) }).last());
 
     await run("all-filter", "metric=all", async (page) => {
       const items = page.locator(".pt-item");
