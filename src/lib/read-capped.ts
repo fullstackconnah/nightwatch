@@ -1,7 +1,10 @@
 /** Reads a response body as text, at most `max` bytes (the reader is cancelled there). A content-length over `max` returns null without reading. */
-export async function readCapped(res: Response, max: number): Promise<string | null> {
+export async function readCapped(res: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number): Promise<string | null> {
   const len = Number(res.headers.get("content-length"));
-  if (len > max) return null;
+  if (len > max) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
   if (!res.body) return "";
   const reader = res.body.getReader();
   const dec = new TextDecoder();

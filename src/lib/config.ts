@@ -236,7 +236,10 @@ function readConfig(strict: boolean): AppConfig {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const parsed = JSON.parse(fs.readFileSync(configPath(), "utf8"));
-    if (strict && (!parsed || typeof parsed !== "object" || Array.isArray(parsed))) throw new Error("config.json is not an object");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (strict) throw new Error("config.json is not an object");
+      return DEFAULT_CONFIG; // never cached, so a later strict read re-reads the file and refuses
+    }
     const config: AppConfig = { ...DEFAULT_CONFIG, ...parsed };
     cache = { mtimeMs: stat.mtimeMs, config };
     return config;

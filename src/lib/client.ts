@@ -18,18 +18,8 @@ import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, Inter
 import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
 
-export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
-
-/** The error text the server sent, or null for an offline/timeout failure or a bare "HTTP 500" (nothing worth showing). */
-export function serverMessage(e: unknown): string | null {
-  return e instanceof ApiError && !/^HTTP d+$/.test(e.message) ? e.message : null;
-}
+import { ApiError } from "@/lib/api-error";
+export { ApiError, serverMessage } from "@/lib/api-error";
 
 export const fetcher = async (url: string) => {
   const res = await fetch(url);

@@ -40,9 +40,9 @@ describe("hunt 8 polish 5: size caps in mergeDashPut", () => {
     assert.ok("next" in mergeDashPut(cur, { groups: many(200) }));
     assert.deepEqual(mergeDashPut(cur, { groups: many(201) }), { error: "Too many groups (the most is 200)" });
   });
-  it("the settings route reads the body as text and caps it at 1 MB with a 413", () => {
+  it("the settings route reads the body with readCapped and caps it at 1 MB with a 413", () => {
     const src = read("../app/api/settings/route.ts");
-    assert.ok(src.includes("req.text()"));
+    assert.ok(src.includes("readCapped(req, MAX_BODY_BYTES"));
     assert.ok(src.includes("status: 413"));
     assert.ok(src.includes("Settings are too large to save."));
   });
@@ -118,6 +118,12 @@ describe("hunt 8 polish 7: readCapped", () => {
   it("a content-length over the cap returns null without reading", async () => {
     const res = new Response("tiny", { headers: { "content-length": "5000" } });
     assert.equal(await readCapped(res, 1000), null);
+  });
+  it("a content-length over the cap cancels the body stream", async () => {
+    let cancelled = false;
+    const res = new Response(new ReadableStream({ cancel() { cancelled = true; } }), { headers: { "content-length": "5000" } });
+    assert.equal(await readCapped(res, 1000), null);
+    assert.ok(cancelled);
   });
   it("no content-length header still caps the stream", async () => {
     const res = new Response(new ReadableStream({

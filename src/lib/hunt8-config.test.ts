@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { loadConfigForSave } from "./config.ts";
+import { loadConfig, loadConfigForSave } from "./config.ts";
 import { mergeDashPut } from "./settings/dash-put.ts";
 import type { AppConfig } from "./config.ts";
 
@@ -38,6 +38,11 @@ describe("hunt 8 A1: loadConfigForSave", () => {
     assert.equal(readFileSync(join(dir, "config.json"), "utf8"), bad);
     assert.deepEqual(readdirSync(dir), ["config.json"]);
   });
+  it("a non-object file read tolerantly first is not cached: the strict read still throws", () => {
+    writeFileSync(join(dir, "config.json"), "null");
+    assert.deepEqual(loadConfig().widgets, []);
+    assert.throws(() => loadConfigForSave(), /nothing was saved/);
+  });
   it("a read error other than ENOENT throws", () => {
     // a directory where the file should be: statSync works, readFileSync fails with EISDIR
     mkdirSync(join(dir, "config.json"));
@@ -62,7 +67,7 @@ describe("hunt 8 A1: every save path reads strictly", () => {
     assert.equal(savers.length, 7, savers.join("\n"));
   });
   for (const f of savers) {
-    it(`${f.split(/[\/]app[\/]/).pop()} loads with loadConfigForSave`, () => {
+    it(`${f.split(/[\\/]app[\\/]/).pop()} loads with loadConfigForSave`, () => {
       const src = readFileSync(f, "utf8");
       assert.ok(src.includes("loadConfigForSave()"));
       assert.ok(src.includes("status: 500"));

@@ -16,6 +16,7 @@ import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
+import { readCapped } from "@/lib/read-capped";
 
 export const dynamic = "force-dynamic";
 
@@ -139,8 +140,9 @@ export async function PUT(req: NextRequest) {
   if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) return tooBig();
   let body: unknown;
   try {
-    const text = await req.text();
-    if (text.length > MAX_BODY_BYTES) return tooBig();
+    // one byte past the cap, so a body over it is told apart from a truncated one
+    const text = await readCapped(req, MAX_BODY_BYTES + 1);
+    if (text === null || text.length > MAX_BODY_BYTES) return tooBig();
     body = JSON.parse(text);
   } catch {
     return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
