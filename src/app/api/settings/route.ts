@@ -16,8 +16,11 @@ import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
+import { readCapped } from "@/lib/read-capped";
 
 export const dynamic = "force-dynamic";
+
+const MAX_BODY_BYTES = 1024 * 1024;
 
 interface IntegrationStatus {
   configured: boolean;
@@ -133,9 +136,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const tooBig = () => NextResponse.json({ error: "Settings are too large to save." }, { status: 413 });
+  if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) return tooBig();
   let body: unknown;
   try {
-    body = await req.json();
+    // one byte past the cap, so a body over it is told apart from a truncated one
+    const text = await readCapped(req, MAX_BODY_BYTES + 1);
+    if (text === null || text.length > MAX_BODY_BYTES) return tooBig();
+    body = JSON.parse(text);
   } catch {
     return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   }

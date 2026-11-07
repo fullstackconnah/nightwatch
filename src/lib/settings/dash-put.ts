@@ -68,6 +68,13 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
   for (const [k, label] of [["widgets", "widget"], ["groups", "group"]] as const) {
     if (present.includes(k) && (b[k] as unknown[]).some((x) => !x || typeof x !== "object" || Array.isArray(x))) return { error: `Each ${label} must be an object` };
   }
+  if (present.includes("widgets")) {
+    const w = b.widgets as { id?: unknown }[];
+    if (w.length > 500) return { error: "Too many widgets (the most is 500)" };
+    // label: ids are built from container labels at read time; a saved one would shadow them.
+    if (w.some((x) => typeof x.id === "string" && x.id.startsWith("label:"))) return { error: `Widget ids can't start with "label:"` };
+  }
+  if (present.includes("groups") && (b.groups as unknown[]).length > 200) return { error: "Too many groups (the most is 200)" };
   const fields = Object.fromEntries(present.map((k) => [k, b[k]]));
   if (present.includes("widgets")) fields.widgets = mergeWidgetSecrets(current.widgets ?? [], b.widgets as unknown[]);
   return { next: { ...current, ...fields } as AppConfig };

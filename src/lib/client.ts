@@ -18,13 +18,8 @@ import type { NetworkSnapshot, NetInterface, ListeningSocket, SocketOwner, Inter
 import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
 
-export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) {
-    super(message);
-    this.status = status;
-  }
-}
+import { ApiError } from "@/lib/api-error";
+export { ApiError, serverMessage } from "@/lib/api-error";
 
 export const fetcher = async (url: string) => {
   const res = await fetch(url);

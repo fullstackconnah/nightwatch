@@ -8,7 +8,7 @@ import { Minus, Moon, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 import { parseTime, type AutoOffStatus } from "@/lib/climate-auto-off";
-import type { UseClimateAutoOffResult } from "@/lib/kiosk/use-climate-auto-off";
+import { SAVE_FAILED, type UseClimateAutoOffResult } from "@/lib/kiosk/use-climate-auto-off";
 import { aimCatch, SunCatch, SunSwitchTrack } from "@/components/kiosk/kiosk-sun-catch";
 
 const SAVE_DEBOUNCE_MS = 600;
@@ -85,7 +85,7 @@ function ClimateAutoOffSheet({
   const firstFocusRef = useRef<HTMLButtonElement>(null);
   const closingRef = useRef(false);
   const closeFiredRef = useRef(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Kept current every render so failure callbacks (which resolve well after
   // the render that started them) read the LATEST server value, not the one
@@ -114,15 +114,15 @@ function ClimateAutoOffSheet({
         ? `${pad2((t.hour + dir + 24) % 24)}:${pad2(t.minute)}`
         : `${pad2(t.hour)}:${pad2((t.minute + dir * 15 + 60) % 60)}`;
     setLocalTime(next);
-    setSaveError(false);
+    setSaveError(null);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       saveTimer.current = null;
-      void update({ time: next }).then((ok) => {
-        setSaveError(!ok);
+      void update({ time: next }).then((err) => {
+        setSaveError(err);
         // Failed save: the readout must not keep showing an unsaved time as
         // if it were live — drop back to whatever the server actually has.
-        if (!ok && stateRef.current) setLocalTime(stateRef.current.time);
+        if (err && stateRef.current) setLocalTime(stateRef.current.time);
       });
     }, SAVE_DEBOUNCE_MS);
   }
@@ -317,10 +317,10 @@ function ClimateAutoOffSheet({
             role="switch"
             aria-checked={enabled}
             onClick={() => {
-              setSaveError(false);
-              void update({ enabled: !enabled }).then((ok) => {
-                setSaveError(!ok);
-                if (!ok && stateRef.current) setLocalTime(stateRef.current.time);
+              setSaveError(null);
+              void update({ enabled: !enabled }).then((err) => {
+                setSaveError(err);
+                if (err && stateRef.current) setLocalTime(stateRef.current.time);
               });
             }}
             onPointerDown={aimCatch}
@@ -354,8 +354,8 @@ function ClimateAutoOffSheet({
             <button
               type="button"
               onClick={() => {
-                setSaveError(false);
-                void update({ skipDate: null }).then((ok) => setSaveError(!ok));
+                setSaveError(null);
+                void update({ skipDate: null }).then(setSaveError);
               }}
               className="kiosk-press h-11 w-full rounded-md border border-line text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
             >
@@ -366,15 +366,15 @@ function ClimateAutoOffSheet({
             <button
               type="button"
               onClick={() => {
-                setSaveError(false);
-                void skipTonight().then((ok) => setSaveError(!ok));
+                setSaveError(null);
+                void skipTonight().then(setSaveError);
               }}
               className="kiosk-press h-11 w-full rounded-md border border-line text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
             >
               Skip tonight
             </button>
           )}
-          {saveError && <p className="text-xs text-warn">Couldn't save — try again.</p>}
+          {saveError && <p className="text-xs text-warn">{saveError}</p>}
         </div>
       </div>
     </div>
@@ -384,7 +384,7 @@ function ClimateAutoOffSheet({
 
 export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffResult }) {
   const { warn, onCount, notice, skipTonight, state, dismissNotice } = autoOff;
-  const [skipFailed, setSkipFailed] = useState(false);
+  const [skipFailed, setSkipFailed] = useState<string | null>(null);
   if (notice) {
     return (
       <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
@@ -411,12 +411,12 @@ export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffRe
         {onCount === 1 ? "1 AC" : `${onCount} ACs`} turning off at{" "}
         <span className="font-mono tabular-nums text-ink">{state.time}</span>
       </span>
-      {skipFailed && <span className="text-xs text-warn">Couldn't skip — try again.</span>}
+      {skipFailed && <span className="text-xs text-warn">{skipFailed === SAVE_FAILED ? "Couldn't skip — try again." : skipFailed}</span>}
       <button
         type="button"
         onClick={() => {
-          setSkipFailed(false);
-          void skipTonight().then((ok) => setSkipFailed(!ok));
+          setSkipFailed(null);
+          void skipTonight().then(setSkipFailed);
         }}
         className="kiosk-press ml-auto h-11 rounded-md border border-line px-3 text-xs font-semibold text-ink outline-none hover:border-line-bright focus-visible:ring-1 focus-visible:ring-accent"
       >
