@@ -17,6 +17,7 @@ export function highlightRanges(texts: string[], highlight: RegExp | null | unde
     starts.push(at);
     at += t.length;
   }
+  let first = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(joined)) !== null) {
     if (m[0].length === 0) {
@@ -25,11 +26,13 @@ export function highlightRanges(texts: string[], highlight: RegExp | null | unde
     }
     const from = m.index;
     const to = from + m[0].length;
-    texts.forEach((t, i) => {
+    // Matches arrive in order, so `first` only moves forward past segments that end before this match.
+    while (first < texts.length && starts[first] + texts[first].length <= from) first++;
+    for (let i = first; i < texts.length && starts[i] < to; i++) {
       const s = Math.max(from, starts[i]);
-      const e = Math.min(to, starts[i] + t.length);
+      const e = Math.min(to, starts[i] + texts[i].length);
       if (e > s) out[i].push([s - starts[i], e - starts[i]]);
-    });
+    }
   }
   return out;
 }

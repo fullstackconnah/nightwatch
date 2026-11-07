@@ -283,11 +283,7 @@ interface HighlightPart {
   marked: boolean;
 }
 
-/** Splits `text` around every match of `highlight`, never mutating the caller's
- * regex (a fresh `g`-flagged clone is used) and never trusting `lastIndex`
- * across calls. Zero-length matches (e.g. a pattern like `x*`, which can match
- * an empty string) are guarded so they cannot spin forever — a non-advancing
- * match consumes one character as unmarked text and moves on. */
+/** Splits `text` at precomputed [start, end) ranges into marked and unmarked parts. */
 function splitByRanges(text: string, ranges: [number, number][]): HighlightPart[] {
   if (text.length === 0) return [{ text, marked: false }];
   const parts: HighlightPart[] = [];
