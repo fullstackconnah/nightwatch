@@ -1,3 +1,5 @@
+import { secretForUrl } from "../settings/dash-put.ts";
+
 /** The Media integration's save: the URL is a plain field, the token only changes when a new one is sent. */
 export interface MediaBlock {
   workerUrl?: string;
@@ -9,7 +11,7 @@ const str = (v: unknown) => (typeof v === "string" ? v.trim() : undefined);
 
 export function mergeMedia(patch: { workerUrl?: unknown; workerToken?: unknown }, current: MediaBlock | undefined, now: string): { media: MediaBlock } | { error: string } {
   const workerUrl = str(patch.workerUrl) || current?.workerUrl;
-  const workerToken = str(patch.workerToken) || current?.workerToken;
+  const workerToken = str(patch.workerToken) || secretForUrl(current?.workerToken, current?.workerUrl, workerUrl);
   if (!workerUrl) return { error: "Media needs the worker URL" };
   if (!workerToken) return { error: "Media needs the worker token" };
   return { media: { workerUrl, workerToken, updatedAt: now } };
