@@ -509,8 +509,10 @@ async function cropEl(page, s, loc, name) {
     const hh = head && getComputedStyle(head).display !== "none" ? head.getBoundingClientRect().height : 0;
     let box = union();
     if (box.bottom - box.top + hh <= innerHeight) {
-      scrollTo({ top: Math.max(0, scrollY + box.top - hh), behavior: "instant" });
+      scrollTo({ top: Math.max(0, scrollY + box.top - hh - 1), behavior: "instant" }); // 1 px spare: fractional header heights left a sub-pixel overlap
       box = union();
+      // A page that cannot scroll further leaves the padded top under the bar: clip from just below the bar (whole target stays inside, only padding is trimmed).
+      if (hh) box.top = Math.max(box.top, Math.ceil(head.getBoundingClientRect().bottom));
     } else if (head) head.style.visibility = "hidden";
     const covered = [...document.querySelectorAll("body *")].filter((e) => {
       const cs = getComputedStyle(e);
