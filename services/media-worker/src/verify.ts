@@ -15,8 +15,11 @@ export interface Proc { code: number | null; stdout: string; stderr: string }
 /** B1: one verify child (ffprobe, or an ffmpeg decode) that runs longer than this is hung. */
 export const VERIFY_CHILD_MS = 15 * 60_000;
 
+/** setTimeout treats any delay above this as 1 ms, so a longer timer would fire at once. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /** R1: a full-file decode or packet count may take up to twice the film's length; a missing duration keeps the flat cap. */
-export const fullReadMs = (durSec?: number): number => Math.max(VERIFY_CHILD_MS, (durSec || 0) * 2000);
+export const fullReadMs = (durSec?: number): number => Math.min(MAX_TIMER_MS, Math.max(VERIFY_CHILD_MS, (durSec || 0) * 2000));
 
 /** Runs argv in its own process group (so Cancel can kill the whole group); `onChild` lets the caller track it.
  *  Past `timeoutMs` the group is SIGKILLed and the result is code -1, which verify reports as a failed check. */

@@ -627,7 +627,7 @@ export async function performHaAction(req: HaActionRequest): Promise<HaActionRes
 
 // --- entity registry (settings entities) -------------------------------------
 
-/** Config/diagnostic entity ids: cached 10 min, a failure cached empty for 60 s (kiosk then shows everything). */
+/** Config/diagnostic entity ids: cached 10 min; a failed read is cached for 60 s (kiosk display shows everything, light and switch actions are refused). */
 const cachedHiddenIds = createHiddenIdsCache({
   read: async () => {
     const creds = haCredentials();
@@ -635,6 +635,6 @@ const cachedHiddenIds = createHiddenIdsCache({
   },
   ttlMs: 10 * 60 * 1000,
   failTtlMs: 60 * 1000,
-  onFail: () => console.warn("[ha] entity registry read failed; showing all entities for 60s"),
+  onFail: () => console.warn("[ha] entity registry read failed; kiosk shows all entities and refuses light and switch actions for 60s"),
 });
 export const getHiddenSettingsIds = cachedHiddenIds;
