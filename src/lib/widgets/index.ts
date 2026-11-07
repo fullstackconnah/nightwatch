@@ -2,6 +2,7 @@ import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { parseDashboardLabels } from "@/lib/labels";
 import type { ContainerSummary } from "@/lib/docker";
 import { BUILTIN_WIDGETS } from "./builtins";
+import { LABEL_URL_ERROR, labelUrlInvalid, pickOwn } from "./target";
 import { WidgetError, type WidgetData } from "./types";
 import { KeyedMemo } from "@/lib/cache";
 
@@ -67,8 +68,9 @@ const widgetMemo = new KeyedMemo<WidgetData>({
   ttlMs: TTL_MS,
   load: async (id) => {
     const instance = pendingInstances.get(id)!;
-    const fetcher = BUILTIN_WIDGETS[instance.type] || BUILTIN_WIDGETS.generic;
+    const fetcher = pickOwn(BUILTIN_WIDGETS, instance.type, BUILTIN_WIDGETS.generic);
     try {
+      if (labelUrlInvalid(instance)) throw new WidgetError(LABEL_URL_ERROR);
       const fields = await fetcher(instance);
       return { type: instance.type, fields, fetchedAt: Date.now() };
     } catch (e) {
