@@ -68,3 +68,20 @@ describe("redactLogText", () => {
     assert.equal(out.split("\n").length, 8);
   });
 });
+
+describe("redactLogText hunt 10 review", () => {
+  it("masks a quoted secret that holds a space", () => {
+    const out = redactLogText('POSTGRES_PASSWORD="s3cret pw"');
+    assert.ok(!out.includes("s3cret") && !out.includes("pw"), out);
+  });
+  it("still masks --password=x command lines", () => {
+    assert.ok(!redactLogText("app --password=hunter2 --x").includes("hunter2"));
+  });
+  it("masks a JSON value with an escaped quote", () => {
+    const out = redactLogText('{"password":"a\\"b c"}');
+    assert.ok(!out.includes("b c") && !out.includes("a\\"), out);
+  });
+  it("masks a Ruby-style password => x", () => {
+    assert.ok(!redactLogText("password => hunter2").includes("hunter2"));
+  });
+});

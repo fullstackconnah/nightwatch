@@ -10,7 +10,7 @@ export function splitLines(combined: string): { lines: string[]; rest: string } 
   const parts = (tail ? combined.slice(0, -1) : combined).split(/\r\n|\r|\n/);
   const rest = (parts.pop() ?? "") + tail;
   if (rest.length > MAX_PARTIAL) {
-    parts.push(rest);
+    parts.push(rest.replace(/\r$/, ""));
     return { lines: parts, rest: "" };
   }
   return { lines: parts, rest };

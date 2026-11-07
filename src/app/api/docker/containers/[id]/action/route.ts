@@ -68,6 +68,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       return NextResponse.json({ ok: true, noop: true });
     }
     const status = (e as { statusCode?: number }).statusCode;
+    console.error("docker action failed", id, action, e);
     return NextResponse.json(
       { error: explain(e, action) },
       { status: status === 404 || status === 403 || status === 409 ? status : 500 },

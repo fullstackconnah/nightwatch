@@ -34,3 +34,10 @@ describe("splitLines", () => {
     assert.deepEqual(feed(["a\r", "\nb\n"]).out, ["a", "b"]);
   });
 });
+describe("cap emit", () => {
+  it("a capped line ending in CR drops the CR", () => {
+    const r = splitLines("z".repeat(70 * 1024) + "\r");
+    assert.equal(r.lines.length, 1);
+    assert.ok(!r.lines[0].endsWith("\r"));
+  });
+});
