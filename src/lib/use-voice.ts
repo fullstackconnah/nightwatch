@@ -416,7 +416,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
     state,
     levels: recorder.levels,
     exchanges,
-    error: pipelineError ?? recorder.error ?? run.startError,
+    error: pipelineError ?? recorder.error, // a failed run.start already shows on its exchange
     askStartedAt: run.job?.ok ? run.job.job.startedAt : null,
     toggleRecording,
     submitText,

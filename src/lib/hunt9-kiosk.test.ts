@@ -20,6 +20,7 @@ describe("hunt 9 kiosk client", () => {
   });
   it("B2: start() guards a second tap and releases the mic on failure", () => {
     assert.match(voice, /startingRef\.current/);
+    assert.match(voice, /\} finally \{\s*startingRef\.current = false;\s*\}/);
     assert.match(voice, /catch \{\s*teardownStream\(\);[^\n]*\n\s*setError\("Could not access the microphone/);
   });
   it("B3: unmount detaches onstop before teardown", () => {
@@ -27,6 +28,11 @@ describe("hunt 9 kiosk client", () => {
   });
   it("B6: a failed run.start sets the exchange error", () => {
     assert.match(voice, /await run\.start\("ask", text\)/);
+    assert.match(
+      voice,
+      /if \(failure\) \{\s*setExchanges\([^\n]*error: failure[^\n]*\n\s*if \(activeExchangeId\.current === id\) activeExchangeId\.current = null;/,
+    );
+    assert.doesNotMatch(voice, /run\.startError/); // shown once, on the exchange
   });
   it("B4: timers create the AudioContext on the first pointerdown", () => {
     assert.match(timers, /addEventListener\("pointerdown"/);

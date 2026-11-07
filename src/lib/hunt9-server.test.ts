@@ -17,6 +17,11 @@ describe("hunt 9 A3: radar frame product", () => {
   it("accepts nothing when the kiosk has no radar configured", () => {
     assert.equal(isKioskRadarProduct("IDR023", null), false);
   });
+  it("the frame route calls both guards", () => {
+    const route = read("../app/kiosk/api/weather/radar/frame/route.ts");
+    assert.match(route, /isKioskRadarProduct\(/);
+    assert.match(route, /isPngBytes\(/);
+  });
 });
 
 describe("hunt 9 A2: PNG signature", () => {
