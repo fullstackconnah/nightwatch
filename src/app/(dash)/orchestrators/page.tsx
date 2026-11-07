@@ -21,7 +21,7 @@ export default function OrchestratorsPage() {
   const { stale, connected } = pageFreshness({ status: data?.status, hasError: Boolean(error), hasLastOk: lastOk !== null });
   const lanes = data?.status === "ok" ? data.orchestrators : stale ? (lastOk?.orchestrators ?? []) : [];
   const sentence = kind === "band" && data?.status === "ok" ? laneSentence(lanes, { stale }) : null;
-  const segments = data?.status === "ok" ? tallySegments(laneTally(lanes)) : [];
+  const segments = connected ? tallySegments(laneTally(lanes)) : [];
 
   return (
     <div className="ol-page pb-2">

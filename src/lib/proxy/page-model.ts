@@ -54,7 +54,7 @@ export function certVariant(daysLeft: number | null): "neutral" | "warn" | "bad"
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const domainOf = (x: { domains: string[] }, fallback: string) => x.domains[0] || fallback;
-const days = (n: number) => plural(n, "day", "days");
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`; // no-break space: "1 day" never wraps between number and unit
 const head = (c: ReturnType<typeof connectionHead>): Model => ({
   chip: c.chip, answer: c.answer, evidence: c.evidence, notice: null, link: c.link, strips: [], autoTarget: c.autoTarget, detailLead: null, stale: false,
 });
