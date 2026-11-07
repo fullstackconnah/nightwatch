@@ -7,6 +7,7 @@
 import { AlertTriangle, PlayCircle } from "lucide-react";
 import { WriteAction } from "@/components/strips/write-action";
 import { jobFor } from "@/lib/hermes/page-model";
+import { failedRunText } from "@/lib/resource-ui-view";
 import type { UseHermesRunResult } from "@/lib/use-hermes";
 
 const TAP = "min-h-11 min-w-11 md:min-h-0 md:min-w-0";
@@ -61,7 +62,7 @@ export function RunsDetail({ run, enabled, reason }: { run: UseHermesRunResult; 
         <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">run failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
-            {job.error ?? "Hermes reported an error with no further detail."}
+            {failedRunText(job.error)}
           </p>
         </div>
       )}
