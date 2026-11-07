@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
-import { loadConfig, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +80,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
   }
 
-  const current = loadConfig();
+  let current: AppConfig;
+  try {
+    current = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const existing = current.system ?? {};
 
   // --- MCP token: manual set, explicit clear, or server-generated ---------

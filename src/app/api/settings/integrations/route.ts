@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
-import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { mergeMedia } from "@/lib/media/settings";
 import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
 
@@ -69,7 +69,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
   }
 
-  const current = loadConfig();
+  let current: AppConfig;
+  try {
+    current = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const next: AppConfig = { ...current };
   const now = new Date().toISOString();
 

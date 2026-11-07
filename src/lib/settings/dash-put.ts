@@ -65,6 +65,9 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
     const good = FIELDS[k] === "array" ? Array.isArray(v) : v !== null && typeof v === "object" && !Array.isArray(v);
     if (!good) return { error: `${k} must be ${FIELDS[k] === "array" ? "an array" : "an object"}` };
   }
+  for (const [k, label] of [["widgets", "widget"], ["groups", "group"]] as const) {
+    if (present.includes(k) && (b[k] as unknown[]).some((x) => !x || typeof x !== "object" || Array.isArray(x))) return { error: `Each ${label} must be an object` };
+  }
   const fields = Object.fromEntries(present.map((k) => [k, b[k]]));
   if (present.includes("widgets")) fields.widgets = mergeWidgetSecrets(current.widgets ?? [], b.widgets as unknown[]);
   return { next: { ...current, ...fields } as AppConfig };

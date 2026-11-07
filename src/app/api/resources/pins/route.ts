@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadConfig, saveConfig } from "@/lib/config";
+import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { resolveAbsolutePath } from "@/lib/disk-usage";
 import { applyPin, MAX_PIN_PATH } from "@/lib/settings-checks";
 
@@ -47,7 +47,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "path must be a non-empty absolute path" }, { status: 400 });
   }
 
-  const config = loadConfig();
+  let config: AppConfig;
+  try {
+    config = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const result = applyPin(config.pinnedFolders ?? [], action, normalized, norm);
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
   const next = result.pins;
