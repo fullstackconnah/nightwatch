@@ -411,4 +411,6 @@ const passed = checks.filter((c) => c.pass).length;
 for (const c of checks) console.log(`${c.pass ? "PASS" : "FAIL"} ${c.name}${c.pass ? "" : ` (${c.detail})`}`);
 writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ passed, total: checks.length, checks }, null, 2));
 console.log(`${passed}/${checks.length} checks passed`);
+// shots-json.sh reads the last line as JSON: a name maps to false when that check failed.
+console.log(JSON.stringify(Object.fromEntries(checks.map((c) => [c.name, c.pass]))));
 process.exit(passed === checks.length ? 0 : 1);

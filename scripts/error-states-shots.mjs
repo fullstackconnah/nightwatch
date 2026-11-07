@@ -62,7 +62,16 @@ async function mockDetail(page, { running = true, inspectFailsAfter = Infinity, 
 /** Padded crop of the union of the given locators. Fails (returns false) when a fixed or sticky element covers it. */
 async function crop(page, locators, file) {
   for (const l of locators) await l.first().scrollIntoViewIfNeeded();
-  await page.evaluate(() => window.scrollTo({ top: window.scrollY, behavior: "instant" }));
+  // Clear the sticky top bar (mobile header): scroll up by its height so the crop sits below it.
+  await page.evaluate(() => {
+    let h = 0;
+    for (const el of document.querySelectorAll("body *")) {
+      if (getComputedStyle(el).position !== "sticky") continue;
+      const r = el.getBoundingClientRect();
+      if (r.height && r.top <= 1 && r.bottom < innerHeight / 2) h = Math.max(h, r.bottom);
+    }
+    window.scrollTo({ top: Math.max(0, window.scrollY - h), behavior: "instant" });
+  });
   const boxes = [];
   for (const l of locators) boxes.push(await l.first().boundingBox());
   const vp = page.viewportSize();
@@ -117,7 +126,8 @@ try {
       await notice.waitFor({ timeout: 20_000 });
       check(`detail-refresh-error ${vp}: exact copy`, (await notice.innerText()).trim() === "Couldn't refresh. Showing the last update.");
       check(`detail-refresh-error ${vp}: page kept (name heading, no not-found)`, (await p.locator("h1").innerText()) === NAME && !(await p.getByText("Container not found").count()));
-      await shot([p.locator("header").first(), notice]);
+      // The first <header> is the mobile-only bar (hidden at 1440), so crop from the page heading instead.
+      await shot([p.locator("h1").first(), notice]);
     });
 
     await run("detail-stopped", (p) => mockDetail(p, { running: false }), async (p, shot) => {
@@ -161,4 +171,6 @@ const passed = checks.filter((c) => c.pass).length;
 for (const c of checks) console.log(`${c.pass ? "PASS" : "FAIL"} ${c.name}${c.pass ? "" : ` (${c.detail})`}`);
 writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ passed, total: checks.length, checks }, null, 2));
 console.log(`${passed}/${checks.length} checks passed`);
+// shots-json.sh reads the last line as JSON: a name maps to false when that check failed.
+console.log(JSON.stringify(Object.fromEntries(checks.map((c) => [c.name, c.pass]))));
 process.exit(passed === checks.length ? 0 : 1);
