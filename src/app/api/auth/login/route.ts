@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 const limiter = createAttemptLimiter();
 
 export async function POST(req: NextRequest) {
-  if (limiter.isLocked()) {
+  const { password } = ((await req.json().catch(() => null)) ?? {}) as { password?: string };
+  if (!limiter.attempt()) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
-  const { password } = ((await req.json().catch(() => null)) ?? {}) as { password?: string };
   // Tries every configured hash (config.json's system.adminPasswordHash, then
   // env ADMIN_PASSWORD_HASH) and accepts a match against any of them — see
   // candidatePasswordHashes()'s own comment for why this checks both rather
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest) {
   await new Promise((r) => setTimeout(r, 1000));
 
   if (!ok) {
-    limiter.fail();
     const reason = !candidates.length && process.env.NODE_ENV !== "development"
       ? "No admin password is configured — login disabled"
       : "Wrong password";

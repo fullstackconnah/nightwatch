@@ -31,15 +31,15 @@ const BCRYPT_ROUNDS = 12;
  * affordance and deliberately does not extend to this destructive write.
  */
 export async function POST(req: NextRequest) {
-  if (limiter.isLocked()) {
-    return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
-  }
   let body: { currentPassword?: unknown; newPassword?: unknown };
   try {
     const parsed = await req.json();
     body = parsed && typeof parsed === "object" ? parsed : {};
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
+  }
+  if (!limiter.attempt()) {
+    return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
 
   const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
@@ -69,7 +69,6 @@ export async function POST(req: NextRequest) {
   }
   if (!verified) {
     await new Promise((r) => setTimeout(r, 1000));
-    limiter.fail();
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
 

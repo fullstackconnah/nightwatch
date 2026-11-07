@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  applyPin, budgetError, httpUrlError, mcpTokenError, rconHostError, rconPortError, webhookError,
+  applyPin, budgetChangeError, budgetError, httpUrlError, mcpTokenError, rconHostError, rconPortError, webhookError,
 } from "./settings-checks.ts";
 
 describe("settings checks", () => {
@@ -38,6 +38,14 @@ describe("settings checks", () => {
     assert.notEqual(budgetError(-1), null);
     assert.notEqual(budgetError("5"), null);
   });
+  it("budget cap applies only to a changed value", () => {
+    assert.equal(budgetChangeError(2000, 2000), null); // stored over the cap before the cap existed
+    assert.notEqual(budgetChangeError(2000, 5), null);
+    assert.equal(budgetChangeError(1000, 5), null);
+    assert.notEqual(budgetChangeError(-1, -1), null);
+    assert.notEqual(budgetChangeError("", 5), null);
+    assert.notEqual(budgetChangeError(null, 5), null);
+  });
   it("webhook: https only, blank passes", () => {
     assert.equal(webhookError(undefined), null);
     assert.equal(webhookError("https://example.test/hook"), null);
@@ -52,6 +60,10 @@ describe("settings checks", () => {
     });
     it("unpin removes a stored pin that normalises to the same path", () => {
       assert.deepEqual(applyPin(["/a/", "/b"], "unpin", "/a", norm), { pins: ["/b"] });
+    });
+    it("the pin cap counts distinct normalised pins", () => {
+      const stored = ["/a", "/a/", ...Array.from({ length: 48 }, (_, i) => `/p${i}`)];
+      assert.deepEqual(applyPin(stored, "pin", "/new", norm), { pins: [...stored, "/new"] });
     });
     it("a 51st pin is refused, re-pinning at 50 is not", () => {
       const fifty = Array.from({ length: 50 }, (_, i) => `/p${i}`);

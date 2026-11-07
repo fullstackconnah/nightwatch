@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readHermesSettingsFile, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
-import { budgetError, webhookError } from "@/lib/settings-checks";
+import { budgetChangeError, webhookError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -102,12 +102,9 @@ export async function POST(req: NextRequest) {
 
   let pipelineDailyBudgetUsd = existing.pipelineDailyBudgetUsd;
   if (body.pipelineDailyBudgetUsd !== undefined) {
-    if (typeof body.pipelineDailyBudgetUsd !== "number" || !Number.isFinite(body.pipelineDailyBudgetUsd) || body.pipelineDailyBudgetUsd < 0) {
-      return NextResponse.json({ error: "pipelineDailyBudgetUsd must be a non-negative number" }, { status: 400 });
-    }
-    const overBudget = budgetError(body.pipelineDailyBudgetUsd);
+    const overBudget = budgetChangeError(body.pipelineDailyBudgetUsd, existing.pipelineDailyBudgetUsd);
     if (overBudget) return NextResponse.json({ error: overBudget }, { status: 400 });
-    pipelineDailyBudgetUsd = body.pipelineDailyBudgetUsd;
+    pipelineDailyBudgetUsd = body.pipelineDailyBudgetUsd as number; // budgetChangeError passed it
   }
 
   const pipelineModel = "pipelineModel" in body ? (str(body.pipelineModel) ?? existing.pipelineModel) : existing.pipelineModel;
