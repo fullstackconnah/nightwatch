@@ -64,7 +64,7 @@ async function crop(page, locators, file) {
   for (const l of locators) await l.first().scrollIntoViewIfNeeded();
   // Put the crop's top just below the sticky top bar (mobile header), clear of it and of the bottom nav.
   const top = Math.min(...(await Promise.all(locators.map(async (l) => (await l.first().boundingBox()).y))));
-  await page.evaluate(([y, pad]) => {
+  const barH = await page.evaluate(([y, pad]) => {
     let h = 0;
     for (const el of document.querySelectorAll("body *")) {
       if (getComputedStyle(el).position !== "sticky") continue;
@@ -72,12 +72,13 @@ async function crop(page, locators, file) {
       if (r.height && r.top <= 1 && r.bottom < innerHeight / 2) h = Math.max(h, r.bottom);
     }
     window.scrollBy({ top: y - h - pad, behavior: "instant" });
+    return h;
   }, [top, PAD]);
   const boxes = [];
   for (const l of locators) boxes.push(await l.first().boundingBox());
   const vp = page.viewportSize();
   const x0 = Math.max(0, Math.min(...boxes.map((b) => b.x)) - PAD);
-  const y0 = Math.max(0, Math.min(...boxes.map((b) => b.y)) - PAD);
+  const y0 = Math.max(barH, Math.min(...boxes.map((b) => b.y)) - PAD);
   const x1 = Math.min(vp.width, Math.max(...boxes.map((b) => b.x + b.width)) + PAD);
   const y1 = Math.min(vp.height, Math.max(...boxes.map((b) => b.y + b.height)) + PAD);
   const covered = await page.evaluate(([a, b, c, d]) => {
