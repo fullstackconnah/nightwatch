@@ -46,6 +46,22 @@ export async function readHiddenFailOpen(read: () => Promise<Set<string>>): Prom
   }
 }
 
+/** Write-side twin of the filter above: only lights and switches can be hidden. A null set (read failed) fails closed for those two. */
+export function kioskActionRefusal(entityId: string, hidden: ReadonlySet<string> | null): null | "hidden" | "unknown" {
+  if (!/^(light|switch)\./.test(entityId)) return null;
+  if (!hidden) return "unknown";
+  return hidden.has(entityId.toLowerCase()) ? "hidden" : null; // HA lowercases ids
+}
+
+/** Entities the voice route may match: the kiosk view, and with no hidden set (read failed) no lights or switches. */
+export function kioskVoiceEntities<T extends { locks: { entityId: string }[] }>(
+  entities: T,
+  hidden: ReadonlySet<string> | null,
+): T {
+  if (hidden) return kioskEntities(entities, hidden);
+  return { ...kioskEntities(entities, new Set()), lights: [], switches: [] };
+}
+
 /** Opens the HA websocket once and lists the registry. Rejects on any failure; callers fail open. */
 export function fetchRegistryHiddenIds(creds: { url: string; token: string }, timeoutMs: number): Promise<Set<string>> {
   return new Promise((resolve, reject) => {
@@ -75,7 +91,7 @@ export function fetchRegistryHiddenIds(creds: { url: string; token: string }, ti
   });
 }
 
-/** Cached, single-flight registry read. A failure caches an empty set for failTtlMs so a down websocket costs one wait per window, not one per poll. */
+/** Cached, single-flight registry read. A failure is cached for failTtlMs and the getter rejects until it expires, so a down websocket costs one wait per window, not one per poll. */
 export function createHiddenIdsCache(opts: {
   read: () => Promise<Set<string>>;
   ttlMs: number;
@@ -84,13 +100,13 @@ export function createHiddenIdsCache(opts: {
   onFail?: () => void;
 }): () => Promise<Set<string>> {
   const now = opts.now ?? Date.now;
-  let cached: { until: number; ids: Set<string> } | null = null;
+  let cached: { until: number; ids: Set<string> | null } | null = null;
   let inflight: Promise<Set<string>> | null = null;
   return () => {
-    if (cached && now() < cached.until) return Promise.resolve(cached.ids);
+    if (cached && now() < cached.until) return cached.ids ? Promise.resolve(cached.ids) : Promise.reject(new Error("registry unavailable"));
     inflight ??= opts.read().then(
       (ids) => { cached = { until: now() + opts.ttlMs, ids }; return ids; },
-      () => { opts.onFail?.(); const ids = new Set<string>(); cached = { until: now() + opts.failTtlMs, ids }; return ids; },
+      (err) => { opts.onFail?.(); cached = { until: now() + opts.failTtlMs, ids: null }; throw err; },
     ).finally(() => { inflight = null; });
     return inflight;
   };

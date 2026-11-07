@@ -120,14 +120,21 @@ test("cache: a failure is not retried within 60s, then retried", async () => {
     read: () => { reads++; return Promise.reject(new Error("down")); },
     ttlMs: 600_000, failTtlMs: 60_000, now: () => t, onFail: () => { fails++; },
   });
-  assert.equal((await get()).size, 0);
+  await assert.rejects(get());
   t = 59_000;
-  assert.equal((await get()).size, 0);
+  await assert.rejects(get());
   assert.equal(reads, 1);
   assert.equal(fails, 1);
   t = 61_000;
-  await get();
+  await assert.rejects(get());
   assert.equal(reads, 2);
+});
+test("cache: the display stays fail-open inside the failure window", async () => {
+  let t = 0;
+  const get = createHiddenIdsCache({ read: () => Promise.reject(new Error("down")), ttlMs: 600_000, failTtlMs: 60_000, now: () => t });
+  await assert.rejects(get());
+  t = 30_000;
+  assert.equal((await readHiddenFailOpen(get)).size, 0);
 });
 test("cache: a success is kept for the ttl", async () => {
   let t = 0, reads = 0;
@@ -140,9 +147,8 @@ test("cache: two concurrent calls open one read", () => withFake(async () => {
   class Counting extends FakeWs { constructor(u: string) { super(u); opened++; } }
   (globalThis as unknown as { WebSocket: unknown }).WebSocket = Counting;
   const get = createHiddenIdsCache({ read: () => fetchRegistryHiddenIds(creds, 20), ttlMs: 600_000, failTtlMs: 60_000 });
-  const [a, b] = await Promise.all([get(), get()]);
+  await Promise.all([assert.rejects(get()), assert.rejects(get())]);
   assert.equal(opened, 1);
-  assert.equal(a.size + b.size, 0);
 }));
 
 // --- controls only: sensors (battery) must survive; the route body is kioskEntities ---
@@ -163,4 +169,41 @@ test("kioskEntities: hidden switches and lights drop, a hidden battery sensor st
   assert.deepEqual(out.scenes, [e("scene.hide")]);
   assert.deepEqual(out.mediaPlayers, [e("media_player.hide")]);
   assert.deepEqual(out.locks, []);
+});
+
+// --- kiosk action route: hidden ids are not writable (hunt 15 H15K) ---
+import { kioskActionRefusal } from "./ha-settings-entities.ts";
+
+test("kioskActionRefusal: a hidden switch or light is refused", () => {
+  const hidden = new Set(["switch.fake_cfg", "light.fake_cfg"]);
+  assert.equal(kioskActionRefusal("switch.fake_cfg", hidden), "hidden");
+  assert.equal(kioskActionRefusal("light.fake_cfg", hidden), "hidden");
+});
+test("kioskActionRefusal: capitals in the object id do not skip the check", () => {
+  assert.equal(kioskActionRefusal("switch.FAKE_cfg", new Set(["switch.fake_cfg"])), "hidden");
+});
+import { kioskVoiceEntities } from "./ha-settings-entities.ts";
+test("kioskVoiceEntities: hidden lights drop, visible stay, null drops lights and switches, locks always empty", () => {
+  const ent = { lights: [e("light.x"), e("light.hide")], switches: [e("switch.x")], climates: [e("climate.x")], locks: [e("lock.x")], scenes: [e("scene.x")] };
+  const out = kioskVoiceEntities(ent, new Set(["light.hide"]));
+  assert.deepEqual(out.lights, [e("light.x")]);
+  assert.deepEqual(out.switches, [e("switch.x")]);
+  assert.deepEqual(out.locks, []);
+  const failed = kioskVoiceEntities(ent, null);
+  assert.deepEqual(failed.lights, []);
+  assert.deepEqual(failed.switches, []);
+  assert.deepEqual(failed.climates, ent.climates);
+  assert.deepEqual(failed.scenes, ent.scenes);
+  assert.deepEqual(failed.locks, []);
+});
+test("kioskActionRefusal: a visible switch or light is allowed", () => {
+  const hidden = new Set(["switch.fake_cfg"]);
+  assert.equal(kioskActionRefusal("switch.fake_plug", hidden), null);
+  assert.equal(kioskActionRefusal("light.fake_lamp", hidden), null);
+});
+test("kioskActionRefusal: an unreadable hidden set fails closed for light and switch only", () => {
+  assert.equal(kioskActionRefusal("light.fake_lamp", null), "unknown");
+  assert.equal(kioskActionRefusal("switch.fake_plug", null), "unknown");
+  assert.equal(kioskActionRefusal("scene.fake_movie", null), null);
+  assert.equal(kioskActionRefusal("climate.fake_ac", null), null);
 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { performHaAction } from "@/lib/ha";
+import { getHiddenSettingsIds, performHaAction } from "@/lib/ha";
+import { kioskActionRefusal } from "@/lib/ha-settings-entities";
 import type { HaActionRequest, HaActionResult } from "@/lib/types/ha";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ export const dynamic = "force-dynamic";
  * Because this is unauthenticated on the LAN, it carries its OWN allowlist
  * below rather than trusting performHaAction()'s domain checks alone —
  * defense in depth, so a bug or future loosening in ha.ts can't quietly
- * widen what an anonymous device on the network can do.
+ * widen what an anonymous device on the network can do. Light and switch
+ * ids the states route hides (config/diagnostic) are refused here too.
  *
  * "lock" / "unlock" are excluded on purpose and permanently: locks are a
  * physical-security boundary (who can get into the house), not a comfort
@@ -181,11 +183,21 @@ export async function POST(req: NextRequest) {
     swingMode: parsed.swingMode,
   };
 
+  const hidden = await getHiddenSettingsIds().catch((err: unknown) => {
+    console.error("kiosk ha action: hidden-id read failed", err);
+    return null;
+  });
+  const refusal = kioskActionRefusal(parsed.entityId, hidden);
+  if (refusal === "hidden") return validationError("entityId is not exposed on the kiosk.");
+  if (refusal === "unknown") return NextResponse.json({ error: "Home Assistant action failed" }, { status: 503 });
+
   const result = await performHaAction(actionReq);
   if (result.ok) return NextResponse.json({ ok: true });
 
+  // HA's own error text stays in the server log; the anonymous caller gets the generic line.
+  console.error("kiosk ha action failed:", result.status, result.detail);
   return NextResponse.json(
-    { error: result.detail ?? "Home Assistant action failed" },
+    { error: "Home Assistant action failed" },
     { status: statusCodeFor(result.status) },
   );
 }
