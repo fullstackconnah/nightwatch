@@ -274,7 +274,7 @@ for (const [which, key, chip, phrase, open] of STATES) {
   const name = shotName(which, key);
   await each(async (s) => {
     const { page } = await visit(s, which, key);
-    const answer = await text(page, "[data-feature=answer]");
+    const answer = (await text(page, "[data-feature=answer]")).replace(/\s+/g, " "); // day counts use a no-break space
     record("C11 honest chip and answer", `${name}@${s.name}`, (await text(page, "[data-feature=chip]")).trim() === chip && answer.includes(phrase));
     const a = await perState(page, name, s.name);
     if (key === "calm") {
