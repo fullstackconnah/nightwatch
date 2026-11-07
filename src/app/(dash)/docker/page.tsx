@@ -96,7 +96,7 @@ function DockerPage() {
         sizesPending={sizesPending}
         segments={{
           dangling: reclaim?.images.danglingBytes ?? 0,
-          orphans: sizesPending ? 0 : (reclaim?.volumes.orphanBytes ?? 0),
+          orphans: sizesPending ? null : (reclaim?.volumes.orphanBytes ?? 0),
           unused: unusedTaggedBytes(images),
           cache: reclaim?.buildCacheBytes ?? null,
         }}

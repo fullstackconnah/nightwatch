@@ -280,6 +280,10 @@ try {
         await page.clock.runFor(35_000);
         await page.locator('.dk-slot[data-state="error"]').waitFor({ timeout: 15_000 });
       }
+      if (scenario === "partial") {
+        const label = (await page.locator(".dk-bar[role=img]").first().getAttribute("aria-label").catch(() => null)) ?? "";
+        check(`${name} partial: orphans aria-label reads "…" not "0 B"`, /orphan volumes …(,|$)/.test(label), label);
+      }
       if (scenario === "down-cold") {
         const band = (await page.locator('.dk-slot[data-state="error"]').first().innerText()).trim();
         check(`${name} down-cold: band has no "last list" clause`, /^Docker (unreachable: |is not reachable)/.test(band) && !/last list/i.test(band), band);

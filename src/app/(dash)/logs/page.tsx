@@ -58,7 +58,8 @@ export default async function LogsPage({
         return ar !== br ? ar - br : a.name.localeCompare(b.name);
       });
   } catch (err) {
-    error = err instanceof Error ? err.message : "could not reach the docker socket";
+    console.error("logs page: listContainers failed", err); // the detail (host, port) stays server side
+    error = "Couldn't read logs from Docker.";
   }
 
   const initialSelection = (c ?? "")
