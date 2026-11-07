@@ -6,15 +6,13 @@ export function createAttemptLimiter(opts: { threshold?: number; lockMs?: number
   let count = 0;
   let lockedUntil = 0;
   return {
-    /** Synchronous. False when locked; the try after 'threshold' counted ones is refused and starts the lock, so a correct password never leaves one. */
+    /** Synchronous. False while locked. The 'threshold'-th try is still let through and starts the lock; reset() on a correct password clears it, so only wrong guesses leave one. */
     attempt() {
       if (now() < lockedUntil) return false;
-      if (count >= threshold) {
+      if (++count >= threshold) {
         lockedUntil = now() + lockMs;
         count = 0;
-        return false;
       }
-      count++;
       return true;
     },
     reset() {
