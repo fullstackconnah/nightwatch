@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const [networks, containers] = await Promise.all([
       docker.listNetworks(),
-      docker.listContainers({ all: false }),
+      docker.listContainers({ all: true }),
     ]);
     const attached = new Map<string, string[]>();
     for (const c of containers) {
@@ -30,9 +30,7 @@ export async function GET() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker networks failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }

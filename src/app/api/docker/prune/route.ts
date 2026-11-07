@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PRUNE_TARGETS, pruneReclaimable, type PruneTarget } from "@/lib/docker";
+import { VolumePruneError } from "@/lib/orphan-volumes";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +29,9 @@ function explain(e: unknown, target: PruneTarget): string {
     const scope = target === "images" ? "IMAGES=1" : "VOLUMES=1";
     return `The socket proxy refused to prune ${target}. It needs POST=1 and ${scope} to allow this.`;
   }
-  if (status === 500) return `Docker failed to prune ${target}: ${message}`;
-  return message;
+  console.error("docker prune failed", e);
+  if (e instanceof VolumePruneError) return e.message;
+  return `Docker failed to prune ${target}.`;
 }
 
 export async function POST(req: NextRequest) {

@@ -8,9 +8,7 @@ export async function GET() {
     const snapshot = await getDiskReclaimSnapshot();
     return NextResponse.json(snapshot);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker disk usage failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }
