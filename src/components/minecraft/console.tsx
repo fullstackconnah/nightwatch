@@ -14,10 +14,15 @@ import { Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
+/** Scrollback kept in state; older entries drop so a long session cannot grow without bound. */
+const SCROLLBACK = 500;
+
 interface Line {
   text: string;
   kind: "cmd" | "resp" | "error";
 }
+
+const append = (l: Line[], entry: Line): Line[] => [...l, entry].slice(-SCROLLBACK);
 
 function rconHint(rcon: "ok" | "unavailable" | "unconfigured"): string | null {
   if (rcon === "unavailable") return "booting — console unavailable";
@@ -50,14 +55,14 @@ export function Console({
     const cmd = command.trim();
     if (!cmd || sending || disabled) return;
     setSending(true);
-    setLines((l) => [...l, { text: `> ${cmd}`, kind: "cmd" }]);
+    setLines((l) => append(l, { text: `> ${cmd}`, kind: "cmd" }));
     setCommand("");
     try {
       const res = await postJson("/api/minecraft/rcon", { command: cmd });
-      setLines((l) => [...l, { text: String(res?.response ?? ""), kind: "resp" }]);
+      setLines((l) => append(l, { text: String(res?.response ?? ""), kind: "resp" }));
     } catch (e) {
       const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "command failed";
-      setLines((l) => [...l, { text: message, kind: "error" }]);
+      setLines((l) => append(l, { text: message, kind: "error" }));
     } finally {
       setSending(false);
     }

@@ -15,6 +15,7 @@ import {
   toLogLine,
 } from "@/lib/log-archive";
 import { downloadLines, type ExportFormat } from "@/lib/log-export";
+import { countNewLines, pickArrived } from "@/lib/log-arrival";
 import {
   CLOCK_TICK_MS,
   LEVEL_CODE,
@@ -433,10 +434,13 @@ export function LogTrack({
   // counts — toggling a level pill changes `filtered.length` without a
   // single new line having arrived, and that must never masquerade as new
   // arrivals held back.
-  const prevLineCountRef = useRef(lines.length);
+  // Counted by newest line id, not length: a full ring buffer holds at
+  // LOG_BUFFER_CAP while old lines drop off, so its length never grows.
+  const lastId = lines[lines.length - 1]?.id;
+  const prevLastIdRef = useRef(lastId);
   useEffect(() => {
-    const grew = lines.length - prevLineCountRef.current;
-    prevLineCountRef.current = lines.length;
+    const grew = countNewLines(prevLastIdRef.current, lines);
+    prevLastIdRef.current = lastId;
     const el = scrollRef.current;
     if (!el || collapsed) return;
     if (paused) {
@@ -448,7 +452,8 @@ export function LogTrack({
     // the tail and clear the held-back count.
     el.scrollTop = el.scrollHeight;
     setPendingCount(0);
-  }, [lines.length, collapsed, paused]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `lines` is read only when the newest id changes
+  }, [lastId, collapsed, paused]);
 
   function handleScroll() {
     const el = scrollRef.current;
@@ -475,14 +480,10 @@ export function LogTrack({
   // below — mutating a ref mid-render is unsafe under Strict Mode's
   // double-invoke, which would mark the first line "seen" on a throwaway
   // pass and silently skip its animation for real.
-  const arrivedIds = useMemo(() => {
-    if (!seededRef.current) return new Set<string>();
-    const arrived = new Set<string>();
-    for (const l of filtered) {
-      if (!seenIds.current.has(l.id)) arrived.add(l.id);
-    }
-    return arrived;
-  }, [filtered]);
+  const arrivedIds = useMemo(
+    () => pickArrived(filtered, seenIds.current, seededRef.current),
+    [filtered],
+  );
 
   useEffect(() => {
     if (seededRef.current) return;
@@ -526,6 +527,14 @@ export function LogTrack({
     if (parts.length === 0) return;
     setAnnouncement((prev) => ({ text: `${container}: ${parts.join(", ")}`, seq: prev.seq + 1 }));
   }, [arrivedIds, filtered, container]);
+
+  // Once announced, a line is no longer an arrival: without this live lines
+  // never join seenIds, so every later filter change would re-announce and
+  // re-animate them. Declared below the announce effect so that one reads the
+  // set first; effects run in declaration order.
+  useEffect(() => {
+    for (const id of arrivedIds) seenIds.current.add(id);
+  }, [arrivedIds]);
 
   // Clear the announcement a few seconds after it lands rather than leaving
   // it to sit in the accessibility tree forever — an unbounded announcement

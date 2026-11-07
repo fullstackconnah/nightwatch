@@ -37,7 +37,7 @@ const BACKSLASH = String.fromCharCode(92);
  */
 export const ANSI_SEQUENCE = new RegExp(
   ESC +
-    "\\[([0-9;:]*)([a-zA-Z])" + // CSI ... final letter (SGR when final is "m")
+    "\\[([0-9;:<=>?]*)([@-~])" + // CSI ... final byte (SGR when final is "m"); <=>? covers private modes like ESC[?25l
     "|" +
     ESC +
     "\\][^" +
