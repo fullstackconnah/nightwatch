@@ -16,6 +16,16 @@ describe("fullReadMs (R1)", () => {
     assert.equal(fullReadMs(undefined), VERIFY_CHILD_MS);
     assert.equal(fullReadMs(60), VERIFY_CHILD_MS);
   });
+  it("is capped at the setTimeout ceiling, so a huge duration does not fire at once", () => {
+    assert.equal(fullReadMs(1e9), 2_147_483_647);
+  });
+});
+
+describe("verify full-read wiring (D2)", () => {
+  it("sets fullMs from fullReadMs on the duration line", () => {
+    const src = readFileSync(new URL("./verify.ts", import.meta.url), "utf8");
+    assert.match(src, /^\s*fullMs = fullReadMs\(s\.dur\);/m);
+  });
 });
 
 describe("execProc timeout (B1)", () => {
