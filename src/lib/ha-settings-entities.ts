@@ -46,6 +46,13 @@ export async function readHiddenFailOpen(read: () => Promise<Set<string>>): Prom
   }
 }
 
+/** Write-side twin of the filter above: only lights and switches can be hidden. A null set (read failed) fails closed for those two. */
+export function kioskActionRefusal(entityId: string, hidden: ReadonlySet<string> | null): null | "hidden" | "unknown" {
+  if (!/^(light|switch)\./.test(entityId)) return null;
+  if (!hidden) return "unknown";
+  return hidden.has(entityId) ? "hidden" : null;
+}
+
 /** Opens the HA websocket once and lists the registry. Rejects on any failure; callers fail open. */
 export function fetchRegistryHiddenIds(creds: { url: string; token: string }, timeoutMs: number): Promise<Set<string>> {
   return new Promise((resolve, reject) => {

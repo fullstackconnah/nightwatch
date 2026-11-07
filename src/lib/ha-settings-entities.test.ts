@@ -164,3 +164,23 @@ test("kioskEntities: hidden switches and lights drop, a hidden battery sensor st
   assert.deepEqual(out.mediaPlayers, [e("media_player.hide")]);
   assert.deepEqual(out.locks, []);
 });
+
+// --- kiosk action route: hidden ids are not writable (hunt 15 H15K) ---
+import { kioskActionRefusal } from "./ha-settings-entities.ts";
+
+test("kioskActionRefusal: a hidden switch or light is refused", () => {
+  const hidden = new Set(["switch.fake_cfg", "light.fake_cfg"]);
+  assert.equal(kioskActionRefusal("switch.fake_cfg", hidden), "hidden");
+  assert.equal(kioskActionRefusal("light.fake_cfg", hidden), "hidden");
+});
+test("kioskActionRefusal: a visible switch or light is allowed", () => {
+  const hidden = new Set(["switch.fake_cfg"]);
+  assert.equal(kioskActionRefusal("switch.fake_plug", hidden), null);
+  assert.equal(kioskActionRefusal("light.fake_lamp", hidden), null);
+});
+test("kioskActionRefusal: an unreadable hidden set fails closed for light and switch only", () => {
+  assert.equal(kioskActionRefusal("light.fake_lamp", null), "unknown");
+  assert.equal(kioskActionRefusal("switch.fake_plug", null), "unknown");
+  assert.equal(kioskActionRefusal("scene.fake_movie", null), null);
+  assert.equal(kioskActionRefusal("climate.fake_ac", null), null);
+});
