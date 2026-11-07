@@ -14,7 +14,15 @@ describe("hunt 7 settings and auth wiring", () => {
       assert.ok(src.includes('status: 429'));
     }
     assert.ok(!login.includes("lockedUntil"));
-    assert.ok(pw.includes("limiter.fail()") && pw.includes("limiter.reset()"));
+    assert.ok(pw.includes("limiter.reset()"));
+    // only a request that reaches the compare uses up an attempt
+    assert.ok(pw.indexOf("Current password is required") < pw.indexOf("limiter.attempt()"));
+    assert.ok(pw.indexOf("limiter.attempt()") < pw.indexOf("bcrypt.compare"));
+    for (const src of [login, pw]) {
+      assert.ok(src.includes("limiter.attempt()") && !src.includes("limiter.fail()") && !src.includes("isLocked"));
+      // the count and the check are one synchronous statement
+      assert.ok(src.split("\n").every((l) => !l.includes("limiter.attempt()") || !l.includes("await")));
+    }
   });
   it("B3 B5: system route checks the token length and every URL field", () => {
     const src = read("../app/api/settings/system/route.ts");
@@ -35,6 +43,6 @@ describe("hunt 7 settings and auth wiring", () => {
   });
   it("B8: hermes daemon route bounds the budget and requires an https webhook", () => {
     const src = read("../app/api/settings/hermes-daemon/route.ts");
-    assert.ok(src.includes("budgetError(") && src.includes("webhookError("));
+    assert.ok(src.includes("budgetChangeError(") && src.includes("webhookError("));
   });
 });

@@ -33,6 +33,11 @@ export function budgetError(v: unknown): string | null {
   return v > MAX_BUDGET_USD ? `pipelineDailyBudgetUsd must be at most ${MAX_BUDGET_USD}` : null;
 }
 
+/** The cap applies to a changed value only, so a budget stored above it before the cap existed doesn't block other saves. */
+export function budgetChangeError(v: unknown, stored: number | undefined): string | null {
+  return typeof v === "number" && v === stored && v >= 0 ? null : budgetError(v);
+}
+
 export function webhookError(v: string | undefined): string | null {
   if (!v) return null;
   return URL.canParse(v) && new URL(v).protocol === "https:" ? null : "discordWebhookUrl must be an https URL";
@@ -48,6 +53,6 @@ export function applyPin(
   const key = (p: string) => norm(p) ?? p;
   if (action === "unpin") return { pins: current.filter((p) => key(p) !== path) };
   if (current.some((p) => key(p) === path)) return { pins: current };
-  if (current.length >= MAX_PINS) return { error: `At most ${MAX_PINS} pins` };
+  if (new Set(current.map(key)).size >= MAX_PINS) return { error: `At most ${MAX_PINS} pins` };
   return { pins: [...current, path] };
 }
