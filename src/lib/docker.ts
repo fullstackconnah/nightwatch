@@ -4,7 +4,7 @@ import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { classifyImages } from "@/lib/image-reclaim";
-import { isOrphanVolume, orphanVolumeNames, removeVolumes, usedVolumeNames, VolumePruneError } from "@/lib/orphan-volumes";
+import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 
@@ -573,9 +573,10 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   // Not getDiskReclaimSnapshot(): it awaits a 20-70 s df that can fail, and Clear needs no sizes.
   const [volumeList, containers] = await Promise.all([docker.listVolumes(), docker.listContainers({ all: true })]);
   const names = orphanVolumeNames(volumeList.Volumes, containers);
-  const { removed, failed } = await removeVolumes(names, (name) => docker.getVolume(name).remove());
+  const res = await removeVolumes(names, (name) => docker.getVolume(name).remove());
+  const { removed } = res;
   dfSwr.clear();
-  if (failed.length > 0) throw new VolumePruneError(removed.length, names.length);
+  if (res.failed.length > 0) throw pruneFailure(res, names.length);
   // shortcut: sizes come from df, which Clear no longer waits on, so reclaimedBytes is 0 (no UI reads it); upgrade if one needs it.
   return { reclaimedBytes: 0, deleted: removed };
 }

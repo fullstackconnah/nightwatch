@@ -31,8 +31,7 @@ function explain(e: unknown, target: PruneTarget): string {
   }
   console.error("docker prune failed", e);
   if (e instanceof VolumePruneError) return e.message;
-  if (status === 500) return `Docker failed to prune ${target}.`;
-  return message;
+  return `Docker failed to prune ${target}.`;
 }
 
 export async function POST(req: NextRequest) {

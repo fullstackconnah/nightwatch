@@ -25,10 +25,11 @@ export class VolumePruneError extends Error {
 export async function removeVolumes(
   names: readonly string[],
   remove: (name: string) => Promise<void>,
-): Promise<{ removed: string[]; skipped: string[]; failed: string[] }> {
+): Promise<{ removed: string[]; skipped: string[]; failed: string[]; firstError?: unknown }> {
   const removed: string[] = [];
   const skipped: string[] = [];
   const failed: string[] = [];
+  let firstError: unknown;
   for (const name of names) {
     try {
       await remove(name);
@@ -38,11 +39,22 @@ export async function removeVolumes(
       if (status === 409 || status === 404) skipped.push(name);
       else {
         console.error("docker volume remove failed", name, e);
+        if (failed.length === 0) firstError = e;
         failed.push(name);
       }
     }
   }
-  return { removed, skipped, failed };
+  return failed.length > 0 ? { removed, skipped, failed, firstError } : { removed, skipped, failed };
+}
+
+/** What to throw after removeVolumes: nothing if all went; Docker's own error if none was removed
+ *  (keeps the proxy 403 hint); a partial-removal error only when some volumes did go. */
+export function pruneFailure(
+  res: { removed: string[]; failed: string[]; firstError?: unknown },
+  total: number,
+): unknown {
+  if (res.failed.length === 0) return undefined;
+  return res.removed.length === 0 ? res.firstError : new VolumePruneError(res.removed.length, total);
 }
 
 /** Names of volumes mounted by any container, running or stopped. */

@@ -30,8 +30,7 @@ function explain(e: unknown): string {
   if (status === 404) return "That image no longer exists.";
   if (status === 409) return "Docker won't delete this image. It may have more than one tag, or a container just started using it.";
   console.error("docker image delete failed", e);
-  if (status === 500) return "Docker failed to delete it.";
-  return message;
+  return "Docker failed to delete it.";
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

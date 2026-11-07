@@ -24,8 +24,12 @@ test("A8: prune and image-delete explain() return no upstream message on a 500",
     assert.doesNotMatch(src, /\$\{message\}/, p);
     assert.match(src, /console\.error\(/, p);
   }
-  assert.match(ROUTE("prune"), /status === 500\) return `Docker failed to prune \$\{target\}\.`/);
-  assert.match(ROUTE("images/[id]"), /status === 500\) return "Docker failed to delete it\."/);
+  assert.match(ROUTE("prune"), /\n  return `Docker failed to prune \$\{target\}\.`;/);
+  assert.match(ROUTE("images/[id]"), /\n  return "Docker failed to delete it\.";/);
+});
+
+test("A8: explain() never falls back to the raw error message", () => {
+  for (const p of ["prune", "images/[id]"]) assert.doesNotMatch(ROUTE(p), /return message;/, p);
 });
 
 test("A3: a Docker 409 on image delete is not claimed to be an in-use container", () => {
@@ -44,7 +48,7 @@ test("A5: one failed removal keeps the others and is reported", async () => {
     if (n === "b") throw Object.assign(new Error("boom"), { statusCode: 500 });
   });
   assert.deepEqual(seen, ["a", "b", "c"]);
-  assert.deepEqual(res, { removed: ["a", "c"], skipped: [], failed: ["b"] });
+  assert.deepEqual([res.removed, res.skipped, res.failed], [["a", "c"], [], ["b"]]);
   const err = new VolumePruneError(res.removed.length, 3);
   assert.equal(err.message, "Removed 2 of 3 volumes. Docker refused to remove the rest.");
   assert.deepEqual(err.removed, 2);
