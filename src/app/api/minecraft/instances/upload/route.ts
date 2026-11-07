@@ -94,8 +94,10 @@ export async function POST(req: NextRequest) {
 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const detail = typeof body?.detail === "string" ? body.detail : `mc-manager returned HTTP ${res.status}`;
-    return NextResponse.json({ error: detail }, { status: res.status });
+    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 200) : `mc-manager returned HTTP ${res.status}`;
+    // The manager's own 401/403 is our server-to-server auth failing, not the browser's.
+    const status = res.status === 401 || res.status === 403 ? 502 : res.status;
+    return NextResponse.json({ error: detail }, { status });
   }
 
   return NextResponse.json(body, { status: res.status });

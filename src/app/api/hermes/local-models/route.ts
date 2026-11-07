@@ -1,4 +1,5 @@
 import { publicHost } from "../../../../lib/config.ts";
+import { readJsonCapped } from "../../../../lib/read-capped.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export async function GET() {
 
   let body: OllamaTagsResponse;
   try {
-    body = (await res.json()) as OllamaTagsResponse;
+    body = await readJsonCapped<OllamaTagsResponse>(res, 2 * 1024 * 1024);
   } catch {
     return Response.json({
       reachable: false,

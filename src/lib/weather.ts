@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
 import { cachedByKey } from "./weather-cache";
+import { readJsonCapped } from "./read-capped";
 
 /**
  * Server-only Open-Meteo client for the public /kiosk weather card.
@@ -474,7 +475,7 @@ async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
 
   let body: unknown;
   try {
-    body = await res.json();
+    body = await readJsonCapped<unknown>(res, 2 * 1024 * 1024);
   } catch {
     return { status: "unreachable", detail: "Open-Meteo returned a non-JSON response." };
   }

@@ -31,9 +31,7 @@ export async function GET() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker volumes failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }

@@ -84,10 +84,8 @@ export async function POST(req: NextRequest) {
     saveConfig(next);
     writeHermesModelFile({ tier: tierTyped, model, openrouterApiKey, anthropicApiKey, updatedAt });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "save failed" },
-      { status: 500 },
-    );
+    console.error("hermes model save failed", e);
+    return NextResponse.json({ error: "Save failed." }, { status: 500 });
   }
 
   return NextResponse.json({

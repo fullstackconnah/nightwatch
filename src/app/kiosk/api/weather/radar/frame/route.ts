@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildRadarLoop } from "@/lib/kiosk-radar";
 import { isKioskRadarProduct, isPngBytes } from "@/lib/radar-frame";
+import { createRadarFrameCache } from "@/lib/radar-frame-cache";
+
+const frameCache = createRadarFrameCache();
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +86,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "missing layer or t" }, { status: 400 });
   }
 
+  const cached = frameCache.get(upstreamPath);
+  if (cached) return new NextResponse(cached, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
+
   try {
     const res = await fetch(`https://www.bom.gov.au${upstreamPath}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -97,6 +103,7 @@ export async function GET(req: NextRequest) {
     const body = await res.arrayBuffer();
     // A 200 that isn't a PNG (an HTML block page) must not get the immutable image cache header.
     if (!isPngBytes(body)) return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
+    frameCache.set(upstreamPath, body);
     return new NextResponse(body, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
   } catch {
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });

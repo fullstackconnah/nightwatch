@@ -16,9 +16,16 @@ export async function readCapped(res: { headers: Headers; body: ReadableStream<U
     got += value.byteLength;
     out += dec.decode(value, { stream: true });
     if (got >= max) {
-      await reader.cancel();
+      await reader.cancel().catch(() => {});
       break;
     }
   }
   return out.slice(0, max);
+}
+
+/** JSON.parse of a capped body; throws (like res.json() on bad JSON) when the body is over `max` or not JSON. */
+export async function readJsonCapped<T>(res: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number): Promise<T> {
+  const text = await readCapped(res, max);
+  if (text === null) throw new Error("upstream body over cap");
+  return JSON.parse(text) as T;
 }
