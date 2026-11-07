@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { certVariant } from "@/lib/proxy/page-model";
+import { certVariant, daysSinceExpiry } from "@/lib/proxy/page-model";
 import type { ProxyRoute, RouteCertRef, RouteHealth } from "@/lib/types/npm";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,9 @@ export function CertBadge({ cert }: { cert: RouteCertRef | null }) {
     cert.daysLeft === null
       ? "no expiry"
       : cert.daysLeft < 0
-        ? `expired ${Math.abs(cert.daysLeft)}d ago`
+        ? daysSinceExpiry(cert.daysLeft) === 0
+          ? "expired today"
+          : `expired ${daysSinceExpiry(cert.daysLeft)}d ago`
         : `${cert.daysLeft}d`;
   return <Badge variant={variant}>{label}</Badge>;
 }

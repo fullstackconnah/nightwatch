@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ProxyCertificate, ProxyManagerSnapshot, ProxyRoute } from "../types/npm.ts";
-import { certVariant, proxyModel, type Model, type ModelInput } from "./page-model.ts";
+import { certVariant, daysSinceExpiry, proxyModel, type Model, type ModelInput } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-06T10:00:00Z");
 const NPM = "http://npm.test:81";
@@ -104,14 +104,18 @@ test("C23: down outranks a bad cert, a bad cert outranks a warn cert, the soones
 });
 
 test("expired and same-day certificates", () => {
-  const gone = proxyModel(input({ data: ok({ certificates: [cert(1, -2, "old.example.test")] }) }));
+  const gone = proxyModel(input({ data: ok({ certificates: [cert(1, -8, "old.example.test")] }) }));
   assert.equal(gone.chip.label, "Cert expiring");
-  assert.equal(gone.answer, "The certificate for old.example.test expired 2 days ago.");
-  assert.equal(strip(gone, "certs").state, "old.example.test expired 2 days ago");
+  assert.equal(gone.answer, "The certificate for old.example.test expired 7 days ago.");
+  assert.equal(strip(gone, "certs").state, "old.example.test expired 7 days ago");
   assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, 0)] }) })).answer, "The certificate for c1.example.test expires today.");
   // B3: daysLeft is floored, so -1 is "expired less than 24 h ago".
   assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -1)] }) })).answer, "The certificate for c1.example.test expired today.");
-  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -2)] }) })).answer, "The certificate for c1.example.test expired 2 days ago.");
+  // 25 h ago floors to -2: one whole day since expiry.
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -2)] }) })).answer, "The certificate for c1.example.test expired 1 day ago.");
+  assert.equal(daysSinceExpiry(-1), 0);
+  assert.equal(daysSinceExpiry(-2), 1);
+  assert.equal(daysSinceExpiry(-8), 7);
   assert.equal(certVariant(null), "neutral");
   assert.equal(certVariant(6), "bad");
   assert.equal(certVariant(7), "warn");

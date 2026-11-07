@@ -60,8 +60,13 @@ const head = (c: ReturnType<typeof connectionHead>): Model => ({
 });
 
 /** "expires in 3 days" / "expires today" / "expired 2 days ago". */
-// daysLeft is floored, so -1 means expired less than 24 h ago.
-const expiry = (d: number) => (d === -1 ? "expired today" : d < 0 ? `expired ${days(-d)} ago` : d === 0 ? "expires today" : `expires in ${days(d)}`);
+/** Whole days since expiry for a negative daysLeft; daysLeft is floored, so -1 is under 24 h ago (0). */
+export const daysSinceExpiry = (daysLeft: number) => -daysLeft - 1;
+const expiry = (d: number) => {
+  if (d >= 0) return d === 0 ? "expires today" : `expires in ${days(d)}`;
+  const n = daysSinceExpiry(d);
+  return n === 0 ? "expired today" : `expired ${days(n)} ago`;
+};
 
 export function proxyModel(i: ModelInput): Model {
   const { data, now } = i;
