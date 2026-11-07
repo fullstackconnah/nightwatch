@@ -109,6 +109,9 @@ test("expired and same-day certificates", () => {
   assert.equal(gone.answer, "The certificate for old.example.test expired 2 days ago.");
   assert.equal(strip(gone, "certs").state, "old.example.test expired 2 days ago");
   assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, 0)] }) })).answer, "The certificate for c1.example.test expires today.");
+  // B3: daysLeft is floored, so -1 is "expired less than 24 h ago".
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -1)] }) })).answer, "The certificate for c1.example.test expired today.");
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -2)] }) })).answer, "The certificate for c1.example.test expired 2 days ago.");
   assert.equal(certVariant(null), "neutral");
   assert.equal(certVariant(6), "bad");
   assert.equal(certVariant(7), "warn");

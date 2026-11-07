@@ -19,6 +19,7 @@ import {
   laneTally,
   loadErrorCopy,
   orchestraAttention,
+  pageFreshness,
   pageKind,
   partialBand,
   slotLayout,
@@ -39,6 +40,22 @@ describe("pageKind", () => {
     assert.equal(pageKind({ isLoading: false, hasData: false, hasError: true }), "load-error");
     assert.equal(pageKind({ isLoading: false, hasData: true, hasError: true, status: "unconfigured" }), "unconfigured");
     assert.equal(pageKind({ isLoading: false, hasData: true, hasError: false, status: "ok" }), "band");
+  });
+});
+
+describe("pageFreshness (B1)", () => {
+  it("a failed poll with a snapshot from earlier is stale and drops the connected dot", () => {
+    assert.deepEqual(pageFreshness({ status: "ok", hasError: true, hasLastOk: true }), { stale: true, connected: false });
+  });
+  it("a good poll is connected and fresh", () => {
+    assert.deepEqual(pageFreshness({ status: "ok", hasError: false, hasLastOk: true }), { stale: false, connected: true });
+  });
+  it("unreachable keeps today's behaviour: stale only with a last good snapshot", () => {
+    assert.deepEqual(pageFreshness({ status: "unreachable", hasError: false, hasLastOk: true }), { stale: true, connected: false });
+    assert.deepEqual(pageFreshness({ status: "unreachable", hasError: false, hasLastOk: false }), { stale: false, connected: false });
+  });
+  it("an error with nothing good to show is not stale", () => {
+    assert.deepEqual(pageFreshness({ status: undefined, hasError: true, hasLastOk: false }), { stale: false, connected: false });
   });
 });
 

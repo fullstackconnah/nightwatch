@@ -61,9 +61,10 @@ const STATES = [
   ["proxy", "routesDown", "2 down", "2 routes are down: app3.example.test, app5.example.test.", "routes"],
   ["proxy", "certUnder7", "Cert expiring", "The certificate for app1.example.test expires in 3 days.", "certs"],
   ["proxy", "certUnder30", "Cert soon", "The certificate for app1.example.test expires in 21 days.", "certs"],
+  ["proxy", "expiredToday", "Cert expiring", "The certificate for app1.example.test expired today.", "certs"],
   ["proxy", "noRoutes", "No routes", "Nginx Proxy Manager has no proxy or redirection hosts yet.", null],
 ];
-const SHOT = { loadError: "load-error", noMirrors: "no-mirrors", mirrorError: "mirror-error", noRepos: "no-repos", healthUnknown: "health-unknown", routesDown: "routes-down", certUnder7: "cert-under-7-days", certUnder30: "cert-under-30-days", noRoutes: "no-routes" };
+const SHOT = { loadError: "load-error", noMirrors: "no-mirrors", mirrorError: "mirror-error", noRepos: "no-repos", healthUnknown: "health-unknown", routesDown: "routes-down", certUnder7: "cert-under-7-days", certUnder30: "cert-under-30-days", expiredToday: "expired-today", noRoutes: "no-routes" };
 const shotName = (page, key) => `${page}-${SHOT[key] ?? key}`;
 
 // C13: what the old panels held, each looked up after opening its strip.

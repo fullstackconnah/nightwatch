@@ -26,6 +26,14 @@ export function pageKind(a: { isLoading: boolean; hasData: boolean; hasError: bo
   return a.status === "unconfigured" ? "unconfigured" : "band";
 }
 
+/** Stale when the service is unreachable or the poll itself failed, and there is a last good snapshot to show. */
+export function pageFreshness(a: { status?: string; hasError: boolean; hasLastOk: boolean }): { stale: boolean; connected: boolean } {
+  return {
+    stale: (a.status === "unreachable" || a.hasError) && a.hasLastOk,
+    connected: a.status === "ok" && !a.hasError,
+  };
+}
+
 export function loadErrorCopy(httpStatus?: number): string {
   return httpStatus === 403
     ? "This page needs a full sign-in. The kiosk PIN does not open it."

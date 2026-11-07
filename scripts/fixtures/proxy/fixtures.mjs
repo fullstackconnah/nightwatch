@@ -22,6 +22,8 @@ export const FIXTURES = {
   calm: ok(),
   routesDown: ok({ routes: routes(12, { 3: { health: "down" }, 5: { health: "down" } }) }),
   certUnder7: ok({ certificates: [cert(1, 3, "app1.example.test"), cert(2, 21, "app2.example.test"), cert(3, 60)] }),
+  // H14U: expired 2 h ago; the server floors that to -1 day, and the page must say "expired today".
+  expiredToday: ok({ certificates: [cert(1, -1, "app1.example.test"), cert(2, 60)] }),
   certUnder30: ok({ certificates: [cert(1, 21, "app1.example.test"), cert(2, 60)] }),
   healthUnknown: ok({ routes: routes(12, { 3: { health: "unknown" }, 4: { health: "unknown", kind: "redirection" } }) }),
   noRoutes: ok({ routes: [], certificates: [] }),

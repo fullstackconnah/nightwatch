@@ -49,6 +49,9 @@ export const STOPPED_STATES: readonly string[] = ["created", "exited", "dead"];
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** Image sizes are summed per image, so layers shared between images count more than once: an image figure is an upper bound. */
+export const reclaimPrefix = (target: string): string => (target === "images" ? "up to " : "");
+
 /** Tagged, not in use. Not `images.unusedBytes`: that one also counts dangling images. */
 export function unusedTaggedBytes(images: readonly ImageItem[]): number {
   return images.reduce((a, i) => (!i.inUse && i.tags.length ? a + i.size : a), 0);

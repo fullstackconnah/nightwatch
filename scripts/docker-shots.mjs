@@ -227,6 +227,21 @@ try {
         return s.color === bad || s.backgroundColor === bad;
       });
       check(`${name} full: only the Yes step is danger-coloured`, danger);
+      // H14U A2: the image prune says "up to" in the chore size and in its confirm; numbers unchanged.
+      const row = page.locator("[data-chore=dangling]");
+      const sizeText = (await row.locator(".dk-size").innerText()).trim();
+      const confirmText = (await row.locator(".nw-confirm").innerText()).trim();
+      check(`${name} prune-up-to: chore size starts "up to "`, /^up to \d/.test(sizeText), sizeText);
+      check(`${name} prune-up-to: confirm says "reclaim up to "`, /reclaim up to \d/.test(confirmText), confirmText);
+      {
+        const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
+        await row.scrollIntoViewIfNeeded();
+        const b = await row.boundingBox();
+        const pad = 16;
+        const x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+        await page.screenshot({ path: join(OUT_DIR, `docker-prune-up-to-${name}.png`), fullPage: true, clip: { x, y, width: Math.min(b.width + 2 * pad, (opts.viewport?.width ?? 1440) - x), height: b.height + 2 * pad } });
+        await tag.evaluate((el) => el.remove());
+      }
       if (name === "390") {
         await yes.scrollIntoViewIfNeeded();
         const vis = await page.evaluate(() => {

@@ -26,11 +26,11 @@ export interface VolumeItem {
 }
 
 /** A size cell that never jitters: tabular, fixed min-width, "sizing…" while unknown. */
-export function Size({ bytes, pending }: { bytes: number | null; pending?: boolean }) {
+export function Size({ bytes, pending, prefix = "" }: { bytes: number | null; pending?: boolean; prefix?: string }) {
   const wait = pending || bytes == null;
   return (
     <span className="dk-size" data-pending={wait ? "1" : undefined}>
-      {wait ? "sizing…" : formatBytes(bytes, 1)}
+      {wait ? "sizing…" : `${prefix}${formatBytes(bytes, 1)}`}
     </span>
   );
 }
