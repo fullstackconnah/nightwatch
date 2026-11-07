@@ -106,7 +106,7 @@ export async function callTool(name: string, args: unknown): Promise<McpToolResu
     if ((e as { statusCode?: number }).statusCode === 304) {
       return textResult(`"${containerName}" was already in the target state.`);
     }
-    const message = e instanceof Error ? e.message : String(e);
-    return textResult(`Failed to ${action} "${containerName}": ${message}`, true);
+    console.error(`mcp tool ${action} failed`, e);
+    return textResult(`Failed to ${action} "${containerName}"`, true);
   }
 }

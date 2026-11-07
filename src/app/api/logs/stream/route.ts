@@ -92,11 +92,11 @@ export async function GET(request: Request): Promise<Response> {
           const payload: LogSeedEvent = { container: name, lines, short };
           safeEnqueue(`event: seed\ndata: ${JSON.stringify(payload)}\n\n`);
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
+          console.error(`log scrollback read failed for ${name}`, err);
           const state: LogTrackState = {
             container: name,
             status: "error",
-            detail: `could not read scrollback: ${message}`,
+            detail: `could not read scrollback`,
           };
           safeEnqueue(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
         }

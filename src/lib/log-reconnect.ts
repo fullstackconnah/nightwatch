@@ -44,8 +44,11 @@ export function attemptsSoFar(attempts: number, liveForMs: number | null): numbe
   return liveForMs !== null && liveForMs >= SETTLED_MS ? 0 : attempts;
 }
 
+/** Older resume points fall back to the normal tail instead of asking docker for the whole log. */
+const RESUME_MAX_AGE_MS = 3_600_000;
+
 /**
- * Parses `resume=name:lastTs,...`. Only 0 < ts <= now is kept: a 0 or missing ts
+ * Parses `resume=name:lastTs,...`. Only now - 1 h < ts <= now is kept: a 0, missing or ancient ts
  * would make docker read the whole log, and a future one can replay nothing.
  */
 export function parseResume(raw: string | null, now: number): Map<string, number> {
@@ -54,7 +57,7 @@ export function parseResume(raw: string | null, now: number): Map<string, number
     const p = part.trim();
     const i = p.lastIndexOf(":");
     const ts = Number(p.slice(i + 1));
-    if (i > 0 && ts > 0 && ts <= now) out.set(p.slice(0, i), ts);
+    if (i > 0 && ts > 0 && ts > now - RESUME_MAX_AGE_MS && ts <= now) out.set(p.slice(0, i), ts);
   }
   return out;
 }

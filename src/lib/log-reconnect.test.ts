@@ -73,3 +73,9 @@ test("line ids from separate reads never collide, and replay ids never equal see
   assert.ok(readIdPrefix("r").startsWith("r"));
   assert.notEqual(readIdPrefix("s").slice(1), readIdPrefix("s").slice(1));
 });
+
+test("parseResume drops a ts older than an hour (hunt 8 B2)", () => {
+  const now = 10_000_000_000;
+  const got = parseResume(`old:${now - 7_200_000},new:${now - 600_000},zero:0,one:1`, now);
+  assert.deepEqual([...got], [["new", now - 600_000]]);
+});

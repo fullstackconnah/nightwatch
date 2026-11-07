@@ -25,8 +25,9 @@ export async function GET(request: Request) {
     const result = await queryMetricsHistory(range, containers, parseSummary(searchParams.get("summary")));
     return NextResponse.json(result);
   } catch (e) {
+    console.error("metrics history query failed", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "metrics history query failed" },
+      { error: "Couldn't read history" },
       { status: 502 },
     );
   }

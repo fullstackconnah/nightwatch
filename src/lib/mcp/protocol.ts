@@ -109,8 +109,8 @@ export async function handleJsonRpcRequest(body: JsonRpcRequestBody): Promise<Js
     }
   } catch (e) {
     if (e instanceof McpError) return errorBody(id, e.code, e.message, e.data);
-    const message = e instanceof Error ? e.message : String(e);
-    return errorBody(id, JSON_RPC_ERROR_CODES.INTERNAL_ERROR, message);
+    console.error("mcp internal error", e);
+    return errorBody(id, JSON_RPC_ERROR_CODES.INTERNAL_ERROR, "Internal error");
   }
 }
 

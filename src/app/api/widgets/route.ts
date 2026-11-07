@@ -9,8 +9,9 @@ export async function GET() {
     const containers = await listContainers();
     return NextResponse.json({ widgets: await fetchAllWidgets(containers) });
   } catch (e) {
+    console.error("widgets load failed", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "widgets failed" },
+      { error: "Couldn't load widgets" },
       { status: 502 },
     );
   }

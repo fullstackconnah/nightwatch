@@ -31,3 +31,23 @@ describe("hunt 6 robustness", () => {
     assert.ok(src.includes("Math.abs(v.delta) > 10"));
   });
 });
+
+describe("hunt 8 error text (A5 B4)", () => {
+  const sites: [string, string][] = [
+    ["./mcp/protocol.ts", "Internal error"],
+    ["./mcp/tools.ts", "Failed to ${action}"],
+    ["../app/api/widgets/route.ts", "Couldn't load widgets"],
+    ["../app/api/telemetry/history/route.ts", "Couldn't read history"],
+    ["../app/api/logs/stream/route.ts", "could not read scrollback`"],
+  ];
+  for (const [file, text] of sites) {
+    it(`${file} sends fixed text, not the caught error`, () => {
+      const src = read(file);
+      assert.ok(src.includes(text), text);
+      assert.ok(!/e instanceof Error \? e\.message/.test(src.slice(src.indexOf("catch"))) || file.includes("tools"), "raw e.message");
+      assert.ok(!src.includes("scrollback: ${message}"));
+      assert.ok(!src.includes("${message}\", true") && !src.includes("${message}`, true"));
+      assert.ok(!/INTERNAL_ERROR, message/.test(src));
+    });
+  }
+});

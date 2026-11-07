@@ -259,3 +259,20 @@ describe("matchIntent", () => {
     });
   });
 });
+
+describe("whole-word name matching (hunt 8 A6)", () => {
+  const ctx: IntentContext = {
+    entities: {
+      ...house.entities!,
+      lights: [light("light.den", "Den Light"), light("light.garden", "Garden Light")],
+    },
+  };
+  it("garden does not match Den", () => {
+    const got = matchIntent("turn off the garden light", ctx);
+    assert.equal(got.kind === "light" && got.entityId, "light.garden");
+  });
+  it("den still matches Den", () => {
+    const got = matchIntent("turn off the den light", ctx);
+    assert.equal(got.kind === "light" && got.entityId, "light.den");
+  });
+});
