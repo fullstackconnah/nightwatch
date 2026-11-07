@@ -85,3 +85,27 @@ describe("redactLogText hunt 10 review", () => {
     assert.ok(!redactLogText("password => hunter2").includes("hunter2"));
   });
 });
+
+describe("redactLogText hunt 10 review 2", () => {
+  it("masks a bearer token behind a token key", () => {
+    assert.ok(!redactLogText("token: Bearer abc").includes("abc"));
+  });
+  it("masks an unclosed quoted value", () => {
+    assert.ok(!redactLogText('password="abc').includes("abc"));
+  });
+  it("keeps real keys matching", () => {
+    for (const k of ["POSTGRES_PASSWORD", "x_api_key", '"client_secret"']) assert.ok(!redactLogText(`${k}=zzz1`).includes("zzz1"), k);
+  });
+  const long: [string, string][] = [
+    ["a", "a".repeat(65536)],
+    ["password repeated", "password".repeat(8192)],
+    ["unclosed quote", 'password="' + "a".repeat(65536)],
+  ];
+  for (const [name, line] of long) {
+    it(`handles a 64 KB line fast: ${name}`, () => {
+      const t = performance.now();
+      redactLogText(line);
+      assert.ok(performance.now() - t < 100);
+    });
+  }
+});
