@@ -50,6 +50,16 @@ export function parseProgress(block: string, durationSec: number | null, srcFps:
   };
 }
 
+export interface Seen { frame?: string; us?: string }
+
+/** R2: a block counts as progress only if `frame=` changed (or, with no `frame=`, `out_time_us=` did); the first block always counts. */
+export function progressAdvanced(block: string, last: Seen | null): { advanced: boolean; seen: Seen } {
+  const val = (k: string) => new RegExp(`^${k}=(.*)$`, "m").exec(block)?.[1]?.trim();
+  const seen = { frame: val("frame"), us: val("out_time_us") };
+  const advanced = last === null || (seen.frame !== undefined ? seen.frame !== last.frame : seen.us !== last.us);
+  return { advanced, seen };
+}
+
 /** B1: an encode that reports no progress for this long is hung. Not a total-time cap: a long film encodes for hours. */
 export const STALL_MS = 10 * 60_000;
 
@@ -147,6 +157,7 @@ export function createRunner(o: RunnerOpts) {
     let diskAbort = false;
     let progressWarned = false;
     let stalled = false;
+    let lastSeen: Seen | null = null;
     const stall = stallWatch(o.stallMs ?? STALL_MS, () => {
       stalled = true;
       o.log?.(`encoder for ${id} made no progress for ${Math.round((o.stallMs ?? STALL_MS) / 1000)} s; killing it`);
@@ -156,8 +167,10 @@ export function createRunner(o: RunnerOpts) {
       buf += d;
       let i;
       while ((i = buf.search(/progress=\w+\n/)) >= 0) {
-        stall.kick();
         const end = buf.indexOf("\n", i) + 1;
+        const adv = progressAdvanced(buf.slice(0, end), lastSeen);
+        lastSeen = adv.seen;
+        if (adv.advanced) stall.kick();
         const p = parseProgress(buf.slice(0, end), input.durationSec, srcFps);
         buf = buf.slice(end);
         if (p) {

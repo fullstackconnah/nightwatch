@@ -7,7 +7,16 @@ import { makeClip } from "./clips.ts";
 import { encodeArgs, streamInfos, type StreamInfo } from "./encode-args.ts";
 import { ffprobeJson } from "./probe.ts";
 import { needFfmpeg, tempDir } from "./testkit.ts";
-import { execProc, verifyOutput, type VerifyResult } from "./verify.ts";
+import { execProc, fullReadMs, verifyOutput, VERIFY_CHILD_MS, type VerifyResult } from "./verify.ts";
+
+describe("fullReadMs (R1)", () => {
+  it("is twice the duration for a long film and the flat cap for a missing duration", () => {
+    assert.equal(fullReadMs(2.5 * 3600), 5 * 3600_000);
+    assert.equal(fullReadMs(0), VERIFY_CHILD_MS);
+    assert.equal(fullReadMs(undefined), VERIFY_CHILD_MS);
+    assert.equal(fullReadMs(60), VERIFY_CHILD_MS);
+  });
+});
 
 describe("execProc timeout (B1)", () => {
   it("kills a child that never exits and resolves code -1", async () => {

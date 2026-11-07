@@ -141,6 +141,18 @@ describe("recoverSwap (M2)", () => {
     assert.equal(readFileSync(p.holdFile, "utf8"), "ORIGINAL");
   });
 
+  it("answer 4: recovering an already completed swap again touches nothing and stays done", { skip: NTFS_INO }, () => {
+    const p = fixture();
+    const r = swapIn(realFs, guard, p, () => {});
+    for (const holdGone of [false, true]) {
+      if (holdGone) { rmSync(p.holdFile); rmSync(p.holdDir, { recursive: true }); }
+      const rec = recoverSwap(realFs, guard, p, r.newIno);
+      assert.deepEqual(rec, { result: "done", newIno: r.newIno, newSize: r.newSize });
+      assert.equal(readFileSync(p.src, "utf8"), "OUTPUT");
+      assert.equal(existsSync(p.holdFile), !holdGone);
+    }
+  });
+
   it("M2: the source replaced by a third file and the hold file linked twice: keepHold, hold file stays", () => {
     const p = fixture();
     const { fs } = spy("rename");

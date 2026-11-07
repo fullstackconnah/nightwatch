@@ -15,6 +15,9 @@ export interface Proc { code: number | null; stdout: string; stderr: string }
 /** B1: one verify child (ffprobe, or an ffmpeg decode) that runs longer than this is hung. */
 export const VERIFY_CHILD_MS = 15 * 60_000;
 
+/** R1: a full-file decode or packet count may take up to twice the film's length; a missing duration keeps the flat cap. */
+export const fullReadMs = (durSec?: number): number => Math.max(VERIFY_CHILD_MS, (durSec || 0) * 2000);
+
 /** Runs argv in its own process group (so Cancel can kill the whole group); `onChild` lets the caller track it.
  *  Past `timeoutMs` the group is SIGKILLed and the result is code -1, which verify reports as a failed check. */
 export function execProc(argv: string[], onChild?: (c: ChildProcess) => void, timeoutMs = VERIFY_CHILD_MS): Promise<Proc> {
@@ -74,14 +77,15 @@ export interface VerifyOpts {
 export async function verifyOutput(o: VerifyOpts): Promise<VerifyResult> {
   const pre = o.prefix ?? NICE;
   const fail = (check: Check, message: string, value?: number): VerifyResult => ({ ok: false, check, message, ...(value === undefined ? {} : { value }) });
-  const run = (argv: string[]) => execProc([...pre, ...argv], o.onChild);
+  const run = (argv: string[], ms?: number) => execProc([...pre, ...argv], o.onChild, ms);
   const probe = async (file: string): Promise<Full | null> => {
     const r = await run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-show_chapters", "-of", "json", file]);
     if (r.code !== 0) return null;
     try { return JSON.parse(r.stdout) as Full; } catch { return null; }
   };
+  let fullMs = VERIFY_CHILD_MS; // set once the duration is known; the full-file reads use it
   const packets = async (file: string, idx: number): Promise<number | null> => {
-    const r = await run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", String(idx), "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", file]);
+    const r = await run(["ffprobe", "-v", "error", "-count_packets", "-select_streams", String(idx), "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", file], fullMs);
     const n = Number(r.stdout.trim().split(/\s+/)[0]);
     return r.code === 0 && Number.isFinite(n) ? n : null;
   };
@@ -103,6 +107,7 @@ export async function verifyOutput(o: VerifyOpts): Promise<VerifyResult> {
   // 2. duration
   const s = summary(sj);
   const t = summary(oj);
+  fullMs = fullReadMs(s.dur);
   const diff = Math.abs(s.dur - t.dur);
   if (diff > Math.max(1.0, s.dur * 0.001)) return fail("duration", `The new file is ${Math.round(diff)} s ${t.dur < s.dur ? "shorter" : "longer"}`, Math.round(diff));
 
@@ -117,8 +122,8 @@ export async function verifyOutput(o: VerifyOpts): Promise<VerifyResult> {
   if (bad) return fail("streams", "A track went missing or changed");
 
   // 4. decode (the main video by index, since cover art can come first, then every audio track)
-  const dv = await run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", o.out, "-map", `0:${tv.index}`, "-f", "null", "-"]);
-  const da = await run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", o.out, "-map", "0:a?", "-f", "null", "-"]);
+  const dv = await run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", o.out, "-map", `0:${tv.index}`, "-f", "null", "-"], fullMs);
+  const da = await run(["ffmpeg", "-nostdin", "-v", "error", "-xerror", "-i", o.out, "-map", "0:a?", "-f", "null", "-"], fullMs);
   if (dv.code !== 0 || dv.stderr.trim() || da.code !== 0 || da.stderr.trim()) return fail("decode", "The new file has decode errors");
 
   // 5. frames

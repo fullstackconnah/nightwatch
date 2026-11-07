@@ -9,7 +9,7 @@ import { checkReady } from "./disk.ts";
 import { createGuard } from "./fsguard.ts";
 import { createQueue, type JobRecord } from "./jobs.ts";
 import { ffprobeJson } from "./probe.ts";
-import { createRunner, parseProgress, stallWatch } from "./runner.ts";
+import { createRunner, parseProgress, progressAdvanced, stallWatch, type Seen } from "./runner.ts";
 import { realFs } from "./swap.ts";
 import { needFfmpeg, tempDir } from "./testkit.ts";
 
@@ -73,6 +73,26 @@ describe("parseProgress (B3)", () => {
     const block = "frame=2400\nfps=30\nout_time_us=N/A\nspeed=N/A\nprogress=continue\n";
     assert.deepEqual(parseProgress(block, 1000, 24), { pct: 10, fps: 30, etaSec: 720 });
     assert.equal(parseProgress(block, 1000, null), null);
+  });
+});
+
+describe("progressAdvanced (R2)", () => {
+  const run = (blocks: string[]) => {
+    let last: Seen | null = null;
+    return blocks.map((b) => { const r = progressAdvanced(b, last); last = r.seen; return r.advanced; });
+  };
+  it("repeated identical blocks do not count; the first does", () => {
+    const b = "frame=10\nout_time_us=1000\nprogress=continue\n";
+    assert.deepEqual(run([b, b, b]), [true, false, false]);
+  });
+  it("a changed frame counts, even with the same out_time", () => {
+    assert.deepEqual(run(["frame=10\nout_time_us=5\nprogress=continue\n", "frame=11\nout_time_us=5\nprogress=continue\n"]), [true, true]);
+  });
+  it("no frame but a changed out_time counts", () => {
+    assert.deepEqual(run(["out_time_us=5\nprogress=continue\n", "out_time_us=6\nprogress=continue\n", "out_time_us=6\nprogress=continue\n"]), [true, true, false]);
+  });
+  it("a block with neither counts once only", () => {
+    assert.deepEqual(run(["progress=continue\n", "progress=continue\n", "progress=continue\n"]), [true, false, false]);
   });
 });
 
