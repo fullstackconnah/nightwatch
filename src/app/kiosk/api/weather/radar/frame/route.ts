@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { buildRadarLoop } from "@/lib/kiosk-radar";
+import { isKioskRadarProduct, isPngBytes } from "@/lib/radar-frame";
 
 export const dynamic = "force-dynamic";
 
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
   const layer = searchParams.get("layer");
   const t = searchParams.get("t");
 
-  if (!PRODUCT_RE.test(product)) {
+  if (!PRODUCT_RE.test(product) || !isKioskRadarProduct(product, buildRadarLoop())) {
     return NextResponse.json({ error: "invalid product" }, { status: 400 });
   }
 
@@ -93,6 +95,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
     }
     const body = await res.arrayBuffer();
+    // A 200 that isn't a PNG (an HTML block page) must not get the immutable image cache header.
+    if (!isPngBytes(body)) return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
     return new NextResponse(body, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
   } catch {
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });

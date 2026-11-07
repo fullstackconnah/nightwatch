@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { OIDC_FLOW_COOKIE, buildAuthorizationUrl, createOidcFlowToken, oidcConfig, oidcFlowCookieOptions } from "@/lib/oidc";
-
-/** Browser-facing origin. req.nextUrl.origin reflects the server's BIND
- *  address (0.0.0.0:3005 inside the container), not what the user typed —
- *  which broke the OIDC redirect_uri exact-match check (observed live
- *  2026-08-02). The Host header carries the address the browser actually
- *  used; protocol honors x-forwarded-proto when a proxy fronts us. */
-function requestOrigin(req: NextRequest): string {
-  const host = req.headers.get("host") ?? req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
 
 
 export const dynamic = "force-dynamic";
@@ -39,10 +29,6 @@ export async function GET(req: NextRequest) {
   } catch {
     // Discovery failed (issuer unreachable, malformed document, etc). Every
     // failure here collapses to "config" — the raw error never reaches the URL.
-    const login = req.nextUrl.clone();
-    login.pathname = "/login";
-    login.search = "";
-    login.searchParams.set("sso_error", "config");
-    return NextResponse.redirect(login);
+    return NextResponse.redirect(ssoErrorUrl(req, "config"));
   }
 }
