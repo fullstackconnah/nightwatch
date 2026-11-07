@@ -10,7 +10,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 // cookie (state/nonce/PKCE verifier) with the same secret/pattern as the
 // session and kiosk-elevation tokens below — no behavior change here.
 export function secretKey(): Uint8Array {
-  const secret = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD_HASH; // fallback: sessions die if the password changes
+  const secret = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD_HASH; // fallback: a Settings password change does not end sessions; rotate SESSION_SECRET to end them (README)
   if (secret) return new TextEncoder().encode(secret);
   // The literal below is public; production must never sign with it. The verify functions catch this and fail closed.
   if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET is not set (nor ADMIN_PASSWORD_HASH)");

@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ response });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "rcon command failed";
-    return NextResponse.json({ error: message }, { status: 502 });
+    console.error("rcon command failed", e);
+    return NextResponse.json({ error: "RCON command failed." }, { status: 502 });
   }
 }

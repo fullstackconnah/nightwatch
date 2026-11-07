@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readJsonCapped } from "@/lib/read-capped";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ async function fetchModels(): Promise<OpenRouterModel[]> {
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`openrouter returned HTTP ${res.status}`);
-  const body = (await res.json()) as { data?: OpenRouterRawModel[] };
+  const body = await readJsonCapped<{ data?: OpenRouterRawModel[] }>(res, 2 * 1024 * 1024);
   if (!Array.isArray(body.data)) throw new Error("openrouter response had no data[] array");
 
   return body.data

@@ -196,8 +196,22 @@ export async function searchPacks(
   modrinth: "ok" | "error";
 }> {
   const key = loadConfig().minecraft?.curseforgeKey?.trim() || undefined;
+  return searchSelected(q, source, key, searchCurseforge, searchModrinth);
+}
 
-  const [cf, mr] = await Promise.all([searchCurseforge(q, key), searchModrinth(q)]);
+/** Runs only the named provider's search (both for "all"); the skipped one reports an empty "ok". */
+export async function searchSelected(
+  q: string,
+  source: "all" | "curseforge" | "modrinth",
+  key: string | undefined,
+  cfSearch: typeof searchCurseforge,
+  mrSearch: typeof searchModrinth,
+) {
+  const skipped = { status: "ok" as const, results: [] as PackResult[] };
+  const [cf, mr] = await Promise.all([
+    source === "modrinth" ? skipped : cfSearch(q, key),
+    source === "curseforge" ? skipped : mrSearch(q),
+  ]);
 
   const merged = interleave(cf.results, mr.results);
   const results =

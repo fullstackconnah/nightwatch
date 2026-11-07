@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
 import { Memo } from "@/lib/cache";
+import { readJsonCapped } from "@/lib/read-capped";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -82,7 +83,7 @@ async function forgejoFetch<T>(baseUrl: string, token: string, path: string): Pr
     return { ok: false, kind: "error", detail: `Forgejo returned HTTP ${res.status} for ${path}.` };
   }
   try {
-    return { ok: true, data: (await res.json()) as T };
+    return { ok: true, data: await readJsonCapped<T>(res, 1024 * 1024) };
   } catch {
     return { ok: false, kind: "error", detail: `Forgejo returned a non-JSON response for ${path}.` };
   }
