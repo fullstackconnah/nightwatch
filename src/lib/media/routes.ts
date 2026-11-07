@@ -34,7 +34,8 @@ export async function scanResponse(client: MediaWorkerClient = mediaWorker): Pro
 /* Jobs (PR B). The worker's reason text goes to the page only when it is a plain sentence: no path, host, address or JSON. */
 const ID = /^[a-z0-9-]{8,40}$/;
 export const validJobId = (id: string | null | undefined): id is string => !!id && ID.test(id);
-const IPV4 = /\b\d{1,3}(\.\d{1,3}){3}\b/;
+const MAX_PATH = 4096;
+const IPV4 =/\b\d{1,3}(\.\d{1,3}){3}\b/;
 
 export function safeReason(detail: string): string | null {
   const m = /HTTP \d+: (\{.*\})$/.exec(detail);
@@ -49,14 +50,15 @@ export function safeReason(detail: string): string | null {
 const JOB_FALLBACK: Record<number, string> = {
   400: "That request isn’t valid.",
   404: "That job isn’t there.",
-  409: "it can't be compressed right now",
+  409: "That job can't be changed right now.",
   410: "The original has been deleted.",
   507: "The disk is too full to compress this.",
 };
+const COMPRESS_FALLBACK = { ...JOB_FALLBACK, 409: "it can't be compressed right now" };
 
-function jobFailure(p: ProbeFail): Response {
+function jobFailure(p: ProbeFail, fallback: Record<number, string> = JOB_FALLBACK): Response {
   const { httpStatus: s, detail } = p; // detail only ever leaves through safeReason
-  if (s !== undefined && JOB_FALLBACK[s]) return json({ error: safeReason(detail) ?? JOB_FALLBACK[s], worker: p.status }, s);
+  if (s !== undefined && fallback[s]) return json({ error: safeReason(detail) ?? fallback[s], worker: p.status }, s);
   return failure(p, {});
 }
 
@@ -69,11 +71,12 @@ export async function jobsResponse(client: MediaWorkerClient = mediaWorker): Pro
 export async function enqueueResponse(body: unknown, client: MediaWorkerClient = mediaWorker): Promise<Response> {
   const b = body as { path?: unknown; paths?: unknown } | null;
   let target: string | string[];
-  if (b && typeof b.path === "string" && b.path) target = b.path;
-  else if (b && Array.isArray(b.paths) && b.paths.length > 0 && b.paths.length <= 200 && b.paths.every((x) => typeof x === "string" && x)) target = b.paths as string[];
+  const okPath = (x: unknown): x is string => typeof x === "string" && x.length > 0 && x.length <= MAX_PATH;
+  if (b && okPath(b.path)) target = b.path;
+  else if (b && Array.isArray(b.paths) && b.paths.length > 0 && b.paths.length <= 200 && b.paths.every(okPath)) target = b.paths as string[];
   else return json({ error: "Send one path or up to 200 paths." }, 400);
   const p = await client.enqueue(target);
-  return isProbeOk(p) ? json(p.data, 201) : jobFailure(p);
+  return isProbeOk(p) ? json(p.data, 201) : jobFailure(p, COMPRESS_FALLBACK);
 }
 
 export async function cancelResponse(id: string | null, client: MediaWorkerClient = mediaWorker): Promise<Response> {

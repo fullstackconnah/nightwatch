@@ -7,18 +7,8 @@ import {
   verifyIdToken,
   verifyOidcFlowToken,
 } from "@/lib/oidc";
+import { requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
-
-/** Browser-facing origin. req.nextUrl.origin reflects the server's BIND
- *  address (0.0.0.0:3005 inside the container), not what the user typed —
- *  which broke the OIDC redirect_uri exact-match check (observed live
- *  2026-08-02). The Host header carries the address the browser actually
- *  used; protocol honors x-forwarded-proto when a proxy fronts us. */
-function requestOrigin(req: NextRequest): string {
-  const host = req.headers.get("host") ?? req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
-}
 
 
 export const dynamic = "force-dynamic";
@@ -28,11 +18,7 @@ export const dynamic = "force-dynamic";
  *  regardless of outcome — see src/lib/oidc.ts). The raw error never reaches
  *  the URL, only one of the four codes the login page knows how to render. */
 function ssoErrorRedirect(req: NextRequest, code: "denied" | "exchange_failed" | "verify_failed" | "config") {
-  const login = req.nextUrl.clone();
-  login.pathname = "/login";
-  login.search = "";
-  login.searchParams.set("sso_error", code);
-  const res = NextResponse.redirect(login);
+  const res = NextResponse.redirect(ssoErrorUrl(req, code));
   res.cookies.set(OIDC_FLOW_COOKIE, "", clearedOidcFlowCookieOptions());
   return res;
 }
