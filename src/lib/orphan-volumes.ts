@@ -10,25 +10,39 @@ export function isOrphanVolume(
   return !!v.Labels && ANONYMOUS_LABEL in v.Labels && !usedNames.has(v.Name);
 }
 
+/** Thrown when some removals failed; the volumes that did go are already gone. */
+export class VolumePruneError extends Error {
+  removed: number;
+  constructor(removed: number, total: number) {
+    super(`Removed ${removed} of ${total} volumes. Docker refused to remove the rest.`);
+    this.removed = removed;
+  }
+}
+
 /** Removes exactly `names`, one by one. Docker refuses an in-use volume (409),
- *  and a volume that vanished (404) is already gone; both count as skipped. */
+ *  and a volume that vanished (404) is already gone; both count as skipped.
+ *  Any other failure is logged and listed in `failed`; the rest still go. */
 export async function removeVolumes(
   names: readonly string[],
   remove: (name: string) => Promise<void>,
-): Promise<{ removed: string[]; skipped: string[] }> {
+): Promise<{ removed: string[]; skipped: string[]; failed: string[] }> {
   const removed: string[] = [];
   const skipped: string[] = [];
+  const failed: string[] = [];
   for (const name of names) {
     try {
       await remove(name);
       removed.push(name);
     } catch (e) {
       const status = (e as { statusCode?: number }).statusCode;
-      if (status !== 409 && status !== 404) throw e;
-      skipped.push(name);
+      if (status === 409 || status === 404) skipped.push(name);
+      else {
+        console.error("docker volume remove failed", name, e);
+        failed.push(name);
+      }
     }
   }
-  return { removed, skipped };
+  return { removed, skipped, failed };
 }
 
 /** Names of volumes mounted by any container, running or stopped. */

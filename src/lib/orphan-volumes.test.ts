@@ -25,13 +25,12 @@ test("removes only the listed names, skips an in-use refusal, keeps going", asyn
     if (n === "b") throw Object.assign(new Error("in use"), { statusCode: 409 });
   });
   assert.deepEqual(seen, ["a", "b", "c"]);
-  assert.deepEqual(res, { removed: ["a", "c"], skipped: ["b"] });
+  assert.deepEqual(res, { removed: ["a", "c"], skipped: ["b"], failed: [] });
 });
 
-test("other failures still surface", async () => {
-  await assert.rejects(
-    removeVolumes(["a"], async () => { throw Object.assign(new Error("x"), { statusCode: 403 }); }),
-  );
+test("other failures are listed, not thrown", async () => {
+  const res = await removeVolumes(["a"], async () => { throw Object.assign(new Error("x"), { statusCode: 403 }); });
+  assert.deepEqual(res, { removed: [], skipped: [], failed: ["a"] });
 });
 
 test("orphanVolumeNames: only the anonymous unused name; null volumes gives []", () => {

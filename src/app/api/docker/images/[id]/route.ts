@@ -28,8 +28,9 @@ function explain(e: unknown): string {
     return "The socket proxy refused to delete this image. It needs POST=1 and IMAGES=1 to allow image removal.";
   }
   if (status === 404) return "That image no longer exists.";
-  if (status === 409) return "Docker won't delete this image — a container is still using it.";
-  if (status === 500) return `Docker failed to delete it: ${message}`;
+  if (status === 409) return "Docker won't delete this image. It may have more than one tag, or a container just started using it.";
+  console.error("docker image delete failed", e);
+  if (status === 500) return "Docker failed to delete it.";
   return message;
 }
 
