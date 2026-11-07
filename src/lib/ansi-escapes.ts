@@ -37,7 +37,7 @@ const BACKSLASH = String.fromCharCode(92);
  */
 export const ANSI_SEQUENCE = new RegExp(
   ESC +
-    "\\[([0-9;:]*)([a-zA-Z])" + // CSI ... final letter (SGR when final is "m")
+    "\\[([0-9;:<=>?]*)([A-Za-z@\\x60~])" + // CSI ... final byte (SGR when final is "m"); <=>? covers private modes like ESC[?25l; a lone ESC[ must not eat a following "["
     "|" +
     ESC +
     "\\][^" +
@@ -59,6 +59,11 @@ export const ANSI_SEQUENCE = new RegExp(
     "]^_]", // bare ESC + one Fe byte
   "g",
 );
+
+/** SGR is `ESC[...m` with no private-mode marker; `ESC[>4;1m` is not a style change. */
+export function isSgr(params: string | undefined, final: string): boolean {
+  return final === "m" && !/[<=>?]/.test(params ?? "");
+}
 
 export function hasAnsi(text: string): boolean {
   return text.indexOf(ESC) !== -1;

@@ -20,7 +20,7 @@ import * as React from "react";
 // ESC, the escape-sequence regex and the two predicates live in an import-free
 // leaf module because the server needs them too (the level classifier strips
 // escapes before matching). Re-exported here so client callers keep one import.
-import { ANSI_SEQUENCE, ESC, hasAnsi, stripAnsi } from "@/lib/ansi-escapes";
+import { ANSI_SEQUENCE, ESC, hasAnsi, isSgr, stripAnsi } from "@/lib/ansi-escapes";
 
 export { hasAnsi, stripAnsi };
 
@@ -254,7 +254,7 @@ function segmentAnsi(text: string): AnsiSegment[] {
       segments.push({ text: text.slice(lastIndex, match.index), style: styleFromState(state) });
     }
     const [, paramsStr, final] = match;
-    if (final === "m") {
+    if (isSgr(paramsStr, final)) {
       const params =
         paramsStr === undefined || paramsStr.length === 0
           ? [0]

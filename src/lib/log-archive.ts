@@ -202,10 +202,18 @@ function openDb(): Promise<IDBDatabase> {
       };
       resolve(db);
     };
-    open.onerror = () => reject(open.error ?? new Error("could not open the log archive"));
+    // Both reject paths clear the cache so the next flush retries the open
+    // instead of replaying one transient failure forever.
+    open.onerror = () => {
+      dbPromise = null;
+      reject(open.error ?? new Error("could not open the log archive"));
+    };
     // Private-mode Firefox and a few enterprise policies never fire either
     // handler; without this the archive would hang every caller forever.
-    open.onblocked = () => reject(new Error("the log archive is blocked by another tab"));
+    open.onblocked = () => {
+      dbPromise = null;
+      reject(new Error("the log archive is blocked by another tab"));
+    };
   });
   return dbPromise;
 }
