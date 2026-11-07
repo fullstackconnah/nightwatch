@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SignJWT } from "jose";
-import { createKioskElevationToken, createOidcFlowToken, createSessionToken, secretKey } from "./auth.ts";
-import { uploadAuthorized } from "./upload-auth.ts";
+import { createKioskElevationToken, createOidcFlowToken, createSessionToken, secretKey, verifySessionToken } from "./auth.ts";
+
+// Full admin session only: typ "session" is required, so kiosk and oidc-flow tokens (same secret) are refused.
+const uploadAuthorized = verifySessionToken;
 
 test("no cookie is unauthorized", async () => {
   assert.equal(await uploadAuthorized(undefined), false);

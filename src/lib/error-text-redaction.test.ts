@@ -27,3 +27,21 @@ describe("hunt 6 secrets", () => {
     assert.ok(read("./processes.ts").includes("redactCmdline(cleaned)"));
   });
 });
+
+describe("hunt 10 fixed error text", () => {
+  it("the upload proxy answers 502 with a fixed message and logs the real error", () => {
+    const src = read("../app/api/minecraft/instances/upload/route.ts");
+    assert.ok(!src.includes("e.message"));
+    assert.ok(src.includes('"Could not reach the Minecraft manager."'));
+    assert.ok(src.includes("console.error("));
+  });
+  it("the log stream emits fixed text for stream and start errors", () => {
+    const src = read("./log-stream.ts");
+    assert.ok(!src.includes("err.message"));
+    assert.ok(src.includes('detail: "Log stream failed."'));
+  });
+  it("the container action fallback is a fixed message", () => {
+    const src = read("../app/api/docker/containers/[id]/action/route.ts");
+    assert.ok(src.includes('return "Docker action failed."'));
+  });
+});

@@ -1,5 +1,6 @@
 import { docker, listContainers } from "@/lib/docker";
 import { classifyLevel } from "@/lib/log-levels";
+import { splitLines } from "@/lib/log-split";
 import { readIdPrefix, UNKNOWN_CONTAINER } from "@/lib/log-reconnect";
 import type { LogLine, LogStream, LogTrackState } from "@/lib/types/log";
 
@@ -92,12 +93,9 @@ export function createLogDemuxer(
   }
 
   function feedText(stream: LogStream, chunkText: string) {
-    const combined = partial[stream] + chunkText;
-    const parts = combined.split("\n");
-    partial[stream] = parts.pop() ?? "";
-    for (const part of parts) {
-      emitLine(stream, part.endsWith("\r") ? part.slice(0, -1) : part);
-    }
+    const { lines, rest } = splitLines(partial[stream] + chunkText);
+    partial[stream] = rest;
+    for (const line of lines) emitLine(stream, line);
   }
 
   function push(chunk: Buffer) {
@@ -319,8 +317,9 @@ export function subscribeContainerLogs(
       dockerStream.on("error", (err) => {
         if (feed.destroyed) return;
         feed.destroyed = true;
+        console.error("log stream failed", name, err);
         for (const sub of feed.subscribers) {
-          sub.onState({ container: name, status: "error", detail: err.message });
+          sub.onState({ container: name, status: "error", detail: "Log stream failed." });
         }
         dockerStream.destroy?.();
         if (registry.get(name) === feed) registry.delete(name);
@@ -331,10 +330,10 @@ export function subscribeContainerLogs(
         sub.onState({ container: name, status: "live", detail: null });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      console.error("log stream failed to start", name, err);
       feed.destroyed = true;
       for (const sub of feed.subscribers) {
-        sub.onState({ container: name, status: "error", detail: message });
+        sub.onState({ container: name, status: "error", detail: "Log stream failed." });
       }
       if (registry.get(name) === feed) registry.delete(name);
     }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { redactCmdline } from "./redact.ts";
+import { redactCmdline, redactLogText } from "./redact.ts";
 
 describe("redactCmdline", () => {
   const cases: [string, string][] = [
@@ -47,5 +47,65 @@ describe("redactCmdline", () => {
   ];
   for (const [input, want] of cases) {
     it(input, () => assert.equal(redactCmdline(input), want));
+  }
+});
+
+describe("redactLogText", () => {
+  const log = [
+    "token=abc",
+    '{"password":"p"}',
+    "Authorization: Bearer abc",
+    "Bearer abc",
+    "api_key=abc",
+    "password: hunter2",
+    '"api_key": "k"',
+    "GET /health 200 3ms",
+  ].join("\n");
+  it("masks every secret value, line by line", () => {
+    const out = redactLogText(log);
+    for (const v of ["=abc", '"p"', "Bearer abc", "hunter2", '"k"']) assert.ok(!out.includes(v), v);
+    assert.ok(out.includes("GET /health 200 3ms"));
+    assert.equal(out.split("\n").length, 8);
+  });
+});
+
+describe("redactLogText hunt 10 review", () => {
+  it("masks a quoted secret that holds a space", () => {
+    const out = redactLogText('POSTGRES_PASSWORD="s3cret pw"');
+    assert.ok(!out.includes("s3cret") && !out.includes("pw"), out);
+  });
+  it("still masks --password=x command lines", () => {
+    assert.ok(!redactLogText("app --password=hunter2 --x").includes("hunter2"));
+  });
+  it("masks a JSON value with an escaped quote", () => {
+    const out = redactLogText('{"password":"a\\"b c"}');
+    assert.ok(!out.includes("b c") && !out.includes("a\\"), out);
+  });
+  it("masks a Ruby-style password => x", () => {
+    assert.ok(!redactLogText("password => hunter2").includes("hunter2"));
+  });
+});
+
+describe("redactLogText hunt 10 review 2", () => {
+  it("masks a bearer token behind a token key", () => {
+    assert.ok(!redactLogText("token: Bearer abc").includes("abc"));
+  });
+  it("masks an unclosed quoted value", () => {
+    assert.ok(!redactLogText('password="abc').includes("abc"));
+  });
+  it("keeps real keys matching", () => {
+    for (const k of ["POSTGRES_PASSWORD", "x_api_key", '"client_secret"']) assert.ok(!redactLogText(`${k}=zzz1`).includes("zzz1"), k);
+  });
+  const long: [string, string][] = [
+    ["a", "a".repeat(65536)],
+    ["password repeated", "password".repeat(8192)],
+    ["unclosed quote", 'password="' + "a".repeat(65536)],
+  ];
+  for (const [name, line] of long) {
+    it(`handles a 64 KB line fast: ${name}`, () => {
+      const t = performance.now();
+      redactLogText(line);
+      assert.ok(performance.now() - t < 100);
+    });
   }
 });
