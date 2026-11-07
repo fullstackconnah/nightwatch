@@ -7,8 +7,10 @@
  * units take up to ~7.6s to report a write back (climate-controls.ts's
  * measurements), and a human who turns an AC back ON after the sweep must
  * be respected until tomorrow. lastRunDate/skipDate live server-side so a
- * reload or a second kiosk can't double-fire; set_hvac_mode "off" is
- * idempotent anyway, so the worst race is a harmless duplicate. */
+ * reload can't double-fire. A second kiosk is held back only
+ * once the marker has landed and refreshed (up to ~30s, TICK_MS); before
+ * that both may fire, and set_hvac_mode "off" is idempotent, so the worst
+ * race is a harmless duplicate. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
@@ -22,6 +24,7 @@ import {
   type ClimateAutoOffPatch,
   type SweepWindow,
 } from "@/lib/climate-auto-off";
+import { climatesToTurnOff, gaveUpForWindow } from "@/lib/kiosk/auto-off-targets";
 import type { UseKioskHaResult } from "@/components/kiosk/kiosk-hub";
 
 const CONFIG_KEY = "/kiosk/api/climate-auto-off";
@@ -103,10 +106,12 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
   const [saving, setSaving] = useState(false);
   const busyRef = useRef(false);
   const attemptsRef = useRef(0);
+  // dateKey of the window we gave up on; stops a fresh retry cycle when the closing POST failed.
+  const gaveUpRef = useRef<string | null>(null);
 
   const entities = ha.data?.entities;
   const onCount = useMemo(
-    () => entities?.climates.filter((c) => c.hvacMode !== "off").length ?? 0,
+    () => (entities ? climatesToTurnOff(entities.climates).length : 0),
     [entities],
   );
 
@@ -131,7 +136,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
   useEffect(() => {
     if (!state || busyRef.current) return;
     const win = shouldFire(toConfig(state), new Date(nowMs));
-    if (!win) return;
+    if (!win || gaveUpForWindow(gaveUpRef.current, win.dateKey)) return;
 
     busyRef.current = true;
     void (async () => {
@@ -142,7 +147,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
           // failed attempt; the volley can't even be aimed yet.
           attemptsRef.current += 1;
         } else {
-          const on = entities.climates.filter((c) => c.hvacMode !== "off");
+          const on = climatesToTurnOff(entities.climates);
           let allOk = true;
           // Cumulative optimistic entities: each confirmed send flips its
           // tile immediately, same feel as a manual tap.
@@ -191,6 +196,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
           // engine would re-volley every tick for the rest of the hour,
           // fighting a human who turned a unit back on mid-outage.
           await postJson(CONFIG_KEY, { lastRunDate: win.dateKey }).catch(() => {});
+          gaveUpRef.current = win.dateKey;
           setNotice("Auto-off couldn't reach every AC tonight — check Home Assistant.");
           attemptsRef.current = 0;
           await mutate();

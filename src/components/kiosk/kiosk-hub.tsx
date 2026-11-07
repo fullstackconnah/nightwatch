@@ -136,7 +136,7 @@ export interface UseKioskHaResult {
 }
 
 export function useKioskHa(): UseKioskHaResult {
-  const [paused, setPaused] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const isIdle = useKioskIdle(KIOSK_IDLE_AFTER_MS);
   const isNight = useKioskNight();
   // Recomputed every render, so a touch (isIdle -> false) or the clock
@@ -150,14 +150,13 @@ export function useKioskHa(): UseKioskHaResult {
     isNight,
   });
   const { data, error, isLoading, mutate } = useSWR<HaStatesResponse>(HA_STATES_KEY, fetcher, {
-    // `paused` still wins outright over the backoff — an action in flight
-    // must not resync mid-tap regardless of how slow the idle/night tier is.
-    refreshInterval: paused ? 0 : pollMs,
+    // Any action in flight wins outright over the backoff — it must not resync
+    // mid-tap, and the last one to finish is the one that resumes the poll.
+    refreshInterval: pendingIds.size > 0 ? 0 : pollMs,
     keepPreviousData: true,
   });
 
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
-  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const errorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const dismissActionError = useCallback((entityId: string) => {
@@ -184,7 +183,6 @@ export function useKioskHa(): UseKioskHaResult {
         await mutate({ ...previous, entities: optimisticEntities }, { revalidate: false });
       }
 
-      setPaused(true);
       let ok = true;
       try {
         await postJson("/kiosk/api/ha/action", req);
@@ -203,7 +201,6 @@ export function useKioskHa(): UseKioskHaResult {
           next.delete(req.entityId);
           return next;
         });
-        setPaused(false);
         void mutate();
       }
       return ok;

@@ -17,6 +17,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "q is required" }, { status: 400 });
   }
 
-  const result = await searchPacks(q, source);
+  const result = await searchPacks(q.slice(0, 100), source);
   return NextResponse.json(result);
 }
