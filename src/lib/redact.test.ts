@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { redactCmdline } from "./redact.ts";
+import { redactCmdline, redactLogText } from "./redact.ts";
 
 describe("redactCmdline", () => {
   const cases: [string, string][] = [
@@ -48,4 +48,23 @@ describe("redactCmdline", () => {
   for (const [input, want] of cases) {
     it(input, () => assert.equal(redactCmdline(input), want));
   }
+});
+
+describe("redactLogText", () => {
+  const log = [
+    "token=abc",
+    '{"password":"p"}',
+    "Authorization: Bearer abc",
+    "Bearer abc",
+    "api_key=abc",
+    "password: hunter2",
+    '"api_key": "k"',
+    "GET /health 200 3ms",
+  ].join("\n");
+  it("masks every secret value, line by line", () => {
+    const out = redactLogText(log);
+    for (const v of ["=abc", '"p"', "Bearer abc", "hunter2", '"k"']) assert.ok(!out.includes(v), v);
+    assert.ok(out.includes("GET /health 200 3ms"));
+    assert.equal(out.split("\n").length, 8);
+  });
 });

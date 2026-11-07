@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createKioskElevationToken, createOidcFlowToken, createSessionToken } from "./auth.ts";
 import { kioskMayCall } from "./kiosk-access.ts";
-import { fullSessionAllowed } from "./require-full-session.ts";
+import { verifySessionToken as fullSessionAllowed } from "./auth.ts";
 
-describe("fullSessionAllowed", () => {
+// The kiosk elevation cookie is deliberately ignored: the orchestra routes control the owner's PC.
+describe("verifySessionToken (orchestra guard)", () => {
   it("allows a real session token only", async () => {
     assert.equal(await fullSessionAllowed(await createSessionToken()), true);
     assert.equal(await fullSessionAllowed(await createKioskElevationToken()), false);

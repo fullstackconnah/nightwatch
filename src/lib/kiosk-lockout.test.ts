@@ -70,3 +70,25 @@ describe("kiosk PIN lockout", () => {
     assert.equal(trip(s) - s.now(), 30_000);
   });
 });
+
+describe("kiosk PIN lockout decay", () => {
+  it("failures older than 10 minutes are forgotten", () => {
+    const s = setup();
+    for (let i = 0; i < 4; i++) s.lock.fail();
+    s.advance(11 * 60_000);
+    assert.equal(s.lock.fail(), 0);
+  });
+  it("lockouts spaced 2 days apart each lock for the base 30 s", () => {
+    const s = setup();
+    for (let i = 0; i < 5; i++) {
+      assert.equal(trip(s) - s.now(), 30_000);
+      s.advance(2 * 24 * 3_600_000);
+    }
+  });
+  it("escalation inside a day still escalates", () => {
+    const s = setup();
+    const first = trip(s);
+    s.advance(first - s.now());
+    assert.equal(trip(s) - s.now(), 60_000);
+  });
+});

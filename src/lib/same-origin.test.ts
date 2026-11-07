@@ -64,10 +64,10 @@ test("middleware calls the guard before PUBLIC_PATHS and exempts /api/mcp", () =
   assert.match(src, REFUSE);
 });
 
-test("upload route calls the guard before uploadAuthorized", () => {
+test("upload route calls the guard before verifySessionToken", () => {
   const src = read("../app/api/minecraft/instances/upload/route.ts");
   const guard = src.indexOf("crossSiteWriteRefused(");
   assert.ok(guard > 0, "guard not called");
-  assert.ok(guard < src.indexOf("await uploadAuthorized("), "guard must precede uploadAuthorized");
+  assert.ok(guard < src.indexOf("await verifySessionToken("), "guard must precede verifySessionToken");
   assert.match(src, REFUSE);
 });

@@ -1,6 +1,9 @@
 const MAX_FAILURES = 5;
 const BASE_LOCKOUT_MS = 30_000;
 const MAX_LOCKOUT_MS = 15 * 60_000;
+// Old failures and old lockouts stop counting, so a stray typo a week ago can't tip today's lock.
+const FAILURE_DECAY_MS = 10 * 60_000;
+const LOCKOUT_DECAY_MS = 24 * 3_600_000;
 
 /**
  * One global record for kiosk PIN attempts. Not per-IP: the only client
@@ -13,12 +16,17 @@ export function createKioskLockout(now: () => number = Date.now) {
   let failures = 0;
   let lockouts = 0;
   let until = 0;
+  let lastFail = 0;
 
   return {
     /** Epoch ms the lock lasts until, or 0 when not locked. */
     lockedUntil: () => (now() < until ? until : 0),
     /** Record a wrong PIN; returns the new lockedUntil, or 0 if not locked. */
     fail(): number {
+      const t = now();
+      if (lastFail && t - lastFail > FAILURE_DECAY_MS) failures = 0;
+      if (until && t - until > LOCKOUT_DECAY_MS) lockouts = 0;
+      lastFail = t;
       if (++failures >= MAX_FAILURES) {
         failures = 0;
         until = now() + Math.min(BASE_LOCKOUT_MS * 2 ** lockouts, MAX_LOCKOUT_MS);
@@ -37,7 +45,7 @@ export function createKioskLockout(now: () => number = Date.now) {
       return { status: 401, lockedUntil: this.fail() };
     },
     reset() {
-      failures = lockouts = until = 0;
+      failures = lockouts = until = lastFail = 0;
     },
   };
 }

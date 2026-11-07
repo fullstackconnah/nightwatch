@@ -35,7 +35,7 @@ function explain(e: unknown, action: ContainerAction): string {
   if (status === 404) return "That container no longer exists.";
   if (status === 409) return `Docker won't ${action} this container in its current state.`;
   if (status === 500) return `Docker failed to ${action} it: ${message}`;
-  return message;
+  return "Docker action failed.";
 }
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {

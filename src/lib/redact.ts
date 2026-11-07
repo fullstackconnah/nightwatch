@@ -13,6 +13,18 @@ const URL_PASS = /(\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]*):[^\s/@]*@/gi;
 // Short flags that are only secrets for these commands; the word may sit anywhere (sh -c "mysqladmin ping -pX").
 const MYSQL = /\b(?:mysql\w*|mariadb\w*)\b/i;
 
+// "key": "value", key=value, key: value where the key holds a secret word; quoted or bare value.
+const KV = /(["']?[\w.-]*(?:pass|token|secret|api[-_]?key)[\w.-]*["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;}&"']+)/gi;
+const BEARER = /\bBearer\s+[\w.~+/=-]+/gi;
+
+/** Container log text for the MCP client: cmdline masking plus key-value secrets and bare bearer tokens. */
+export function redactLogText(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => redactCmdline(line).replace(BEARER, "Bearer ***").replace(KV, "$1***"))
+    .join("\n");
+}
+
 export function redactCmdline(s: string): string {
   let out = s.replace(URL_PASS, "$1:***@");
   // mysql form: -psecret attached; runs before FLAG so "-psecret db" is not read as a flag.

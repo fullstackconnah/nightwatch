@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
-import { uploadAuthorized } from "@/lib/upload-auth";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
@@ -28,7 +27,7 @@ export async function POST(req: NextRequest) {
   if (crossSiteWriteRefused(req.method, req.headers)) {
     return NextResponse.json({ error: "cross-site request refused" }, { status: 403 });
   }
-  if (!(await uploadAuthorized(req.cookies.get(SESSION_COOKIE)?.value))) {
+  if (!(await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -89,10 +88,8 @@ export async function POST(req: NextRequest) {
       duplex: "half",
     } as RequestInit & { duplex: "half" });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "mc-manager did not respond" },
-      { status: 502 },
-    );
+    console.error("minecraft upload proxy failed", e);
+    return NextResponse.json({ error: "Could not reach the Minecraft manager." }, { status: 502 });
   }
 
   const body = await res.json().catch(() => ({}));

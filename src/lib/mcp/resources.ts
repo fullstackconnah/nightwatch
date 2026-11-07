@@ -1,5 +1,6 @@
 import { containerLogs, listContainers } from "@/lib/docker";
 import { getHostVitals } from "@/lib/host-metrics";
+import { redactLogText } from "@/lib/redact";
 import { getSmartSnapshot } from "@/lib/smart";
 import { JSON_RPC_ERROR_CODES, McpError } from "./errors";
 
@@ -120,7 +121,7 @@ export async function readResource(uri: string): Promise<McpResourceContent> {
     if (!container) {
       throw new McpError(JSON_RPC_ERROR_CODES.RESOURCE_NOT_FOUND, `No container named "${name}".`);
     }
-    const text = await containerLogs(container.id, 200);
+    const text = redactLogText(await containerLogs(container.id, 200));
     return { uri, mimeType: "text/plain", text };
   }
 
