@@ -25,6 +25,8 @@ const VIEWPORTS = [
   { name: "1440", viewport: { width: 1440, height: 900 } },
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
 ];
+// The Orchestra subsection of the Access panel (settings-access.tsx <Sub title="Orchestra">): its own Save, not the panel's others.
+const ORCHESTRA_CARD = "section:has(> div > h3:text-is('Orchestra'))"; // not the detail pane, also a <section>, which holds every subsection
 const SLOW = 40_000; // dev-server cold compile plus 2 x 10 s polls
 
 mkdirSync(OUT_DIR, { recursive: true });
@@ -274,7 +276,7 @@ try {
   await each(async (s) => { await goto(s.page, "/orchestrators", text("Orchestra is not connected")); await shoot(s, "01-unconfigured"); record("unconfigured", s.name, { h1: await s.page.locator("h1").textContent(), nothingNeedsYou: (await mainText(s.page)).includes("Nothing needs you") }); });
   // 2 settings card unset
   stage = "step 2";
-  await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "02-settings-unset", "text=Service URL >> xpath=ancestor::div[contains(@class,'panel')]"); });
+  await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "02-settings-unset", ORCHESTRA_CARD); });
 
   // 3 save URL + mock-slow through the card, then catch the loading skeleton
   stage = "step 3";
@@ -282,7 +284,7 @@ try {
   await guarded("step 3 save", async () => {
     await first.getByLabel("Service URL").fill(MOCK_URL);
     await first.getByLabel("Service token").fill("mock-slow");
-    await first.locator(".panel", { has: first.getByLabel("Service URL") }).getByRole("button", { name: "Save" }).click();
+    await first.locator(ORCHESTRA_CARD).getByRole("button", { name: "Save" }).click();
     await first.getByText("saved").first().waitFor({ timeout: SLOW });
   });
   stage = "step 3";
@@ -295,7 +297,7 @@ try {
   });
   // 4 settings card set
   stage = "step 4";
-  await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "04-settings-set", "text=Service URL >> xpath=ancestor::div[contains(@class,'panel')]"); });
+  await each(async (s) => { await goto(s.page, "/settings#access", text("Service URL")); await shoot(s, "04-settings-set", ORCHESTRA_CARD); });
 
   // 5 ok-mixed: running, stopped, stalled and one the service could not read (the odip lane opens on first paint)
   stage = "step 5";
@@ -491,7 +493,8 @@ try {
     await goto(s.page, "/orchestrators", strips(4));
     await s.page.waitForTimeout(11_000);
   });
-  await setCfg(first, { orchestraUrl: UNREACHABLE_URL });
+  // The token travels with the URL: a save that changes the origin drops the stored token (hunt 11), which would read as unauthorized.
+  await setCfg(first, { orchestraToken: "mock-stuck", orchestraUrl: UNREACHABLE_URL });
   await each(async (s) => {
     await s.page.getByText("is not answering").first().waitFor({ timeout: SLOW });
     await shoot(s, "15-unreachable-stale", "main");
