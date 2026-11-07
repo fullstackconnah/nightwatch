@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Pin, PinOff, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes, relativeTime } from "@/lib/format";
-import { fetcher, postJson, type DiskUsageScan } from "@/lib/client";
+import { fetcher, postJson, serverMessage, type DiskUsageScan } from "@/lib/client";
 
 /**
  * PINNED folders (G5): the owner marks a media folder (or anything else) from
@@ -46,19 +46,25 @@ export function PinToggleButton({ path, className }: { path: string; className?:
   const { isPinned, toggle } = usePins();
   const pinned = isPinned(path);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleClick(e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
     setBusy(true);
+    setError(null);
     try {
       await toggle(path);
+    } catch (err) {
+      setError(serverMessage(err) ?? "Couldn’t save the pin.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
+    <>
+    {error && <PinError>{error}</PinError>}
     <button
       type="button"
       onClick={handleClick}
@@ -74,10 +80,16 @@ export function PinToggleButton({ path, className }: { path: string; className?:
     >
       <Pin size={13} fill={pinned ? "currentColor" : "none"} />
     </button>
+    </>
   );
 }
 
-function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => void }) {
+/** The server’s reason a pin or unpin was not saved, beside the pin button (same warn text the row’s scan error uses). */
+function PinError({ children }: { children: React.ReactNode }) {
+  return <span role="alert" className="text-[0.7rem] text-warn max-w-[14rem] text-right">{children}</span>;
+}
+
+function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<void> }) {
   const key = `/api/resources/contents?path=${encodeURIComponent(path)}`;
   const { data: scan, isLoading, error, mutate } = useSWR<DiskUsageScan>(key, fetcher, {
     revalidateOnFocus: false,
@@ -86,6 +98,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => void }) {
   });
   const [refreshing, setRefreshing] = useState(false);
   const [unpinning, setUnpinning] = useState(false);
+  const [unpinError, setUnpinError] = useState<string | null>(null);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -101,8 +114,11 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => void }) {
 
   async function handleUnpin() {
     setUnpinning(true);
+    setUnpinError(null);
     try {
-      onUnpin();
+      await onUnpin();
+    } catch (err) {
+      setUnpinError(serverMessage(err) ?? "Couldn’t save the unpin.");
     } finally {
       setUnpinning(false);
     }
@@ -128,6 +144,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => void }) {
       >
         <RotateCw size={13} className={refreshing ? "animate-spin motion-reduce:animate-none" : ""} />
       </button>
+      {unpinError && <PinError>{unpinError}</PinError>}
       <button
         type="button"
         onClick={handleUnpin}
@@ -155,7 +172,7 @@ export function PinnedFoldersPanel() {
           </p>
         </div>
       ) : (
-        pinned.map((p) => <PinnedRow key={p} path={p} onUnpin={() => void toggle(p)} />)
+        pinned.map((p) => <PinnedRow key={p} path={p} onUnpin={() => toggle(p)} />)
       )}
     </div>
   );

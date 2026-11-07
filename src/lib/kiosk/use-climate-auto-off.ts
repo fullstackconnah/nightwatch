@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { fetcher, postJson } from "@/lib/client";
+import { fetcher, postJson, serverMessage } from "@/lib/client";
 import {
   shouldFire,
   statusFor,
@@ -33,6 +33,8 @@ const TICK_MS = 30_000;
  *  20 ticks ≈ 10 minutes (spec), then give up loudly-but-quietly. */
 const MAX_FIRE_ATTEMPTS = 20;
 
+export const SAVE_FAILED = "Couldn't save — try again.";
+
 export interface ClimateAutoOffServerState {
   enabled: boolean;
   time: string;
@@ -47,8 +49,9 @@ export interface UseClimateAutoOffResult {
   onCount: number;
   notice: string | null;
   saving: boolean;
-  update: (patch: ClimateAutoOffPatch) => Promise<boolean>;
-  skipTonight: () => Promise<boolean>;
+  /** Resolves null when saved, else the reason: the server’s own message, or SAVE_FAILED when it sent none (offline, timeout). */
+  update: (patch: ClimateAutoOffPatch) => Promise<string | null>;
+  skipTonight: () => Promise<string | null>;
   dismissNotice: () => void;
 }
 
@@ -204,9 +207,9 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
       try {
         await postJson(CONFIG_KEY, patch);
         await mutate();
-        return true;
-      } catch {
-        return false;
+        return null;
+      } catch (e) {
+        return serverMessage(e) ?? SAVE_FAILED;
       } finally {
         setSaving(false);
       }
@@ -259,7 +262,7 @@ export function useClimateAutoOff(ha: UseKioskHaResult): UseClimateAutoOffResult
     const target =
       warn ??
       (status && (status.kind === "scheduled" || status.kind === "skipped") ? status.window : null);
-    if (!target) return false;
+    if (!target) return SAVE_FAILED;
     return update({ skipDate: target.dateKey });
   }, [warn, status, update]);
 

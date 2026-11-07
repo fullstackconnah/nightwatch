@@ -1,5 +1,6 @@
 import { loadConfig } from "@/lib/config";
 import { Memo } from "@/lib/cache";
+import { readCapped } from "./read-capped";
 import { getHermesActivity, getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
 import type { HermesActivityItem } from "@/lib/types/hermes";
 
@@ -16,6 +17,7 @@ import type { HermesActivityItem } from "@/lib/types/hermes";
  */
 
 const FEED_TIMEOUT_MS = 6000;
+const FEED_MAX_BYTES = 1024 * 1024;
 const ASK_POLL_INTERVAL_MS = 2000;
 const ASK_CEILING_MS = 45000;
 const MAX_HEADLINES_CONSIDERED = 8;
@@ -157,7 +159,8 @@ async function fetchFeedTitles(url: string): Promise<string[]> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS), cache: "no-store" });
     if (!res.ok) return [];
-    return extractTitles(await res.text());
+    const xml = await readCapped(res, FEED_MAX_BYTES);
+    return xml === null ? [] : extractTitles(xml);
   } catch {
     // One dead feed must not sink the others — swallow and contribute nothing.
     return [];

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { loadConfigForSave } from "./config.ts";
 import { mergeDashPut } from "./settings/dash-put.ts";
@@ -45,19 +46,24 @@ describe("hunt 8 A1: loadConfigForSave", () => {
 });
 
 describe("hunt 8 A1: every save path reads strictly", () => {
-  const routes = [
-    "../app/api/hermes/model/route.ts",
-    "../app/api/resources/pins/route.ts",
-    "../app/api/settings/integrations/route.ts",
-    "../app/api/settings/password/route.ts",
-    "../app/api/settings/route.ts",
-    "../app/api/settings/system/route.ts",
-    "../app/kiosk/api/climate-auto-off/route.ts",
-  ];
-  for (const r of routes) {
-    it(`${r.split("/api/").pop()?.replace("../app/", "")} loads with loadConfigForSave`, () => {
-      const src = read(r);
-      assert.ok(src.includes("saveConfig("));
+  // The count is pinned so a new save route is added here on purpose, with its strict read.
+  const files: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.name.endsWith(".ts") || e.name.endsWith(".tsx")) files.push(p);
+    }
+  };
+  walk(fileURLToPath(new URL("../app", import.meta.url)));
+  const calls = (src: string) => src.split("\n").some((l) => /\bsaveConfig\(/.test(l) && !/^\s*(\*|\/\/|\/\*)/.test(l));
+  const savers = files.filter((f) => calls(readFileSync(f, "utf8")));
+  it("there are exactly 7 routes that call saveConfig", () => {
+    assert.equal(savers.length, 7, savers.join("\n"));
+  });
+  for (const f of savers) {
+    it(`${f.split(/[\/]app[\/]/).pop()} loads with loadConfigForSave`, () => {
+      const src = readFileSync(f, "utf8");
       assert.ok(src.includes("loadConfigForSave()"));
       assert.ok(src.includes("status: 500"));
     });

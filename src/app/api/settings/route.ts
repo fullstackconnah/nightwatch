@@ -19,6 +19,8 @@ import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 
 export const dynamic = "force-dynamic";
 
+const MAX_BODY_BYTES = 1024 * 1024;
+
 interface IntegrationStatus {
   configured: boolean;
   updatedAt?: string;
@@ -133,9 +135,13 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const tooBig = () => NextResponse.json({ error: "Settings are too large to save." }, { status: 413 });
+  if (Number(req.headers.get("content-length")) > MAX_BODY_BYTES) return tooBig();
   let body: unknown;
   try {
-    body = await req.json();
+    const text = await req.text();
+    if (text.length > MAX_BODY_BYTES) return tooBig();
+    body = JSON.parse(text);
   } catch {
     return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   }

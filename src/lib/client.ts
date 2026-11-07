@@ -26,6 +26,11 @@ export class ApiError extends Error {
   }
 }
 
+/** The error text the server sent, or null for an offline/timeout failure or a bare "HTTP 500" (nothing worth showing). */
+export function serverMessage(e: unknown): string | null {
+  return e instanceof ApiError && !/^HTTP d+$/.test(e.message) ? e.message : null;
+}
+
 export const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (res.status === 401 && typeof window !== "undefined") {

@@ -1,4 +1,5 @@
 import { loadConfig } from "@/lib/config";
+import { cachedByKey } from "./weather-cache";
 
 /**
  * Server-only Open-Meteo client for the public /kiosk weather card.
@@ -169,7 +170,8 @@ function displayConfig(): DisplayConfig | null {
 // Long-lived Node server (not serverless), so a plain module variable is a
 // valid cache — one Open-Meteo call feeds every kiosk tab/poll for 10 minutes
 // rather than one call per request.
-let cache: { at: number; data: WeatherResponse } | null = null;
+// Keyed on location and timezone, one shared in-flight fetch; a failed fetch is remembered for 30 s so a dead network is not hammered.
+const cachedWeather = cachedByKey<WeatherResponse>((w) => (w.status === "ok" ? CACHE_MS : 30_000));
 
 interface RawCurrent {
   time?: unknown;
@@ -446,10 +448,12 @@ function buildRain(minutely: RawMinutely15, hourly: RawHourly, nowIso: string | 
 }
 
 export async function getWeather(): Promise<WeatherResponse> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return cache.data;
-
   const cfg = displayConfig();
   if (!cfg) return { status: "unconfigured", detail: WEATHER_UNCONFIGURED_DETAIL };
+  return cachedWeather(`${cfg.lat},${cfg.lon},${cfg.timezone}`, () => fetchWeather(cfg));
+}
+
+async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
 
   const url =
     "https://api.open-meteo.com/v1/forecast" +
@@ -492,6 +496,5 @@ export async function getWeather(): Promise<WeatherResponse> {
     sun: buildSun(cfg, nowIso, days[0]?.sunrise ?? null, days[0]?.sunset ?? null),
     rain: buildRain(b.minutely_15 ?? {}, b.hourly ?? {}, nowIso),
   };
-  cache = { at: Date.now(), data };
   return data;
 }
