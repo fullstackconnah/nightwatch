@@ -38,10 +38,6 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "invalid JSON body" }, { status: 400 });
   }
-  if (!limiter.attempt()) {
-    return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
-  }
-
   const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
   const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
 
@@ -58,6 +54,11 @@ export async function POST(req: NextRequest) {
   }
   if (!currentPassword) {
     return NextResponse.json({ error: "Current password is required" }, { status: 400 });
+  }
+
+  // Only a request that reaches the compare uses up an attempt; no await sits between this and the loop.
+  if (!limiter.attempt()) {
+    return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
 
   let verified = false;

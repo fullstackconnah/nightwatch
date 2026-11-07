@@ -21,6 +21,13 @@ describe("attempt limiter", () => {
     t += 1;
     assert.equal(l.attempt(), true);
   });
+  it("a correct password never leaves a lock: reset() after the threshold-th try, the next try passes", () => {
+    const l = createAttemptLimiter({ now: () => 0 });
+    for (let i = 0; i < 4; i++) l.attempt();
+    assert.equal(l.attempt(), true);
+    l.reset();
+    assert.equal(l.attempt(), true);
+  });
   it("instances are independent", () => {
     const a = createAttemptLimiter({ now: () => 0 });
     const b = createAttemptLimiter({ now: () => 0 });

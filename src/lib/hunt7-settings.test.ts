@@ -15,6 +15,9 @@ describe("hunt 7 settings and auth wiring", () => {
     }
     assert.ok(!login.includes("lockedUntil"));
     assert.ok(pw.includes("limiter.reset()"));
+    // only a request that reaches the compare uses up an attempt
+    assert.ok(pw.indexOf("Current password is required") < pw.indexOf("limiter.attempt()"));
+    assert.ok(pw.indexOf("limiter.attempt()") < pw.indexOf("bcrypt.compare"));
     for (const src of [login, pw]) {
       assert.ok(src.includes("limiter.attempt()") && !src.includes("limiter.fail()") && !src.includes("isLocked"));
       // the count and the check are one synchronous statement
