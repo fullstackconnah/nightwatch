@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
+import useSWR, { type SWRResponse } from "swr";
 import { Copy, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBytes, relativeTime } from "@/lib/format";
 import { fetcher, postJson, ApiError } from "@/lib/client";
+import { SCAN_STATUS_LOST, scanPollInterval, scanView } from "@/lib/resource-ui-view";
 
 /**
  * Largest-files and duplicates job UIs (G5) — opt-in, per-path recursive
@@ -71,18 +72,18 @@ function capLabel(capHit: CapReason): string | null {
  *  poll it never asked for. Polls fast while running, stops once settled. */
 function useScanJob<T>(kind: JobKind, watch: boolean) {
   const key = watch ? `/api/resources/scan/${kind}` : null;
-  const { data, mutate } = useSWR<ScanJobDto<T>>(key, fetcher, {
-    refreshInterval: (latest) => (latest && latest.state === "running" ? 800 : 0),
+  const { data, error, mutate }: SWRResponse<ScanJobDto<T>, Error> = useSWR<ScanJobDto<T>, Error>(key, fetcher, {
+    refreshInterval: (latest): number => scanPollInterval(latest, error),
     revalidateOnFocus: false,
   });
-  return { job: data ?? null, mutate };
+  return { job: data ?? null, error, mutate };
 }
 
 export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
   const [watching, setWatching] = useState(false);
-  const { job, mutate } = useScanJob<LargestFilesResult>("largest-files", watching);
+  const { job, error, mutate } = useScanJob<LargestFilesResult>("largest-files", watching);
   const [startError, setStartError] = useState<string | null>(null);
-  const running = job?.state === "running";
+  const { running, statusLost } = scanView(job, error, scanRoot);
   const showResults = job && job.root === scanRoot && job.state !== "running";
 
   async function handleStart() {
@@ -112,7 +113,7 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
         )}
       </div>
 
-      {running && job && job.root === scanRoot && (
+      {running && job && (
         <div className="flex items-center gap-2 text-ink-dim text-xs">
           <Loader2 size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
           <span className="font-mono tabular-nums">
@@ -122,6 +123,7 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
       )}
 
       {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
+      {statusLost && <div role="alert" className="microlabel !text-warn/80">{SCAN_STATUS_LOST}</div>}
       {showResults && job.state === "error" && (
         <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
       )}
@@ -166,9 +168,9 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
 
 export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
   const [watching, setWatching] = useState(false);
-  const { job, mutate } = useScanJob<DuplicatesResult>("duplicates", watching);
+  const { job, error, mutate } = useScanJob<DuplicatesResult>("duplicates", watching);
   const [startError, setStartError] = useState<string | null>(null);
-  const running = job?.state === "running";
+  const { running, statusLost } = scanView(job, error, scanRoot);
   const showResults = job && job.root === scanRoot && job.state !== "running";
 
   async function handleStart() {
@@ -202,7 +204,7 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
         <span className="text-ink">likely duplicates (size + partial content match)</span>, never a certainty.
       </p>
 
-      {running && job && job.root === scanRoot && (
+      {running && job && (
         <div className="flex items-center gap-2 text-ink-dim text-xs">
           <Loader2 size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden />
           <span className="font-mono tabular-nums">
@@ -212,6 +214,7 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
       )}
 
       {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
+      {statusLost && <div role="alert" className="microlabel !text-warn/80">{SCAN_STATUS_LOST}</div>}
       {showResults && job.state === "error" && (
         <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
       )}
