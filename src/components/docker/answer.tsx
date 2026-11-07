@@ -11,7 +11,7 @@ export interface AnswerProps {
   diskError: boolean;
   bytes: number;
   plus: boolean;
-  segments: { dangling: number; orphans: number; unused: number; cache: number | null };
+  segments: { dangling: number; orphans: number | null; unused: number; cache: number | null };
   sizesPending: boolean;
   slot: { kind: SlotKind; text: string } | null;
 }

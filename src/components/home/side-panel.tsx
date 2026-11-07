@@ -25,7 +25,8 @@ function Cell({ label, width, tone, children }: { label: string; width: string; 
 
 /** The box in one line. Numbers only change text, in fixed-width cells. */
 function Digest() {
-  const { data: x } = useHost(5000);
+  const { data, error } = useHost(5000);
+  const x = error ? undefined : data; // a failing poll shows dashes, not frozen numbers
   const days = x ? Math.floor(x.uptimeSeconds / 86400) : 0;
   const hours = x ? Math.floor((x.uptimeSeconds % 86400) / 3600) : 0;
   return (
@@ -52,11 +53,11 @@ function Digest() {
 }
 
 function Lanes() {
-  const { data } = useOrchestraStatus();
+  const { data, error } = useOrchestraStatus();
   let text = "checking…";
   if (data?.status === "ok") {
     text = homeLanesText(data.orchestrators);
-  } else if (data) text = "not reachable";
+  } else if (data || error) text = "not reachable";
   return (
     <Link href="/orchestrators" className="hm-lanes" data-feature="orchestra-link">
       <span className="microlabel">AI lanes</span>

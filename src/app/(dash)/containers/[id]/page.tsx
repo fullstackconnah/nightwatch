@@ -23,6 +23,7 @@ import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
 import { processesHref } from "@/lib/container-rank";
 import { REMOVABLE_STATES } from "@/lib/container-remove";
 import { isProtectedContainer } from "@/lib/protected-containers";
+import { LOGS_FAILED, detailNotice, nearBottom, statsWhileRunning } from "@/lib/detail-states";
 import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -82,15 +83,17 @@ function useStatsHistory(id: string, running: boolean) {
 function Logs({ id, name }: { id: string; name: string | null }) {
   const [tail, setTail] = useState(200);
   const [paused, setPaused] = useState(false);
-  const { data } = useSWR<{ logs: string }>(
+  const { data, error } = useSWR<{ logs: string }>(
     paused ? null : `/api/docker/containers/${id}/logs?tail=${tail}`,
     fetcher,
     { refreshInterval: 5000, keepPreviousData: true },
   );
   const boxRef = useRef<HTMLDivElement>(null);
+  // A reader scrolled up stays put; the view follows new lines only from within 32 px of the bottom (and on first load).
+  const stick = useRef(true);
   useEffect(() => {
     const el = boxRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [data]);
 
   return (
@@ -128,8 +131,19 @@ function Logs({ id, name }: { id: string; name: string | null }) {
         </div>
       </CardHeader>
       <CardContent>
-        <div ref={boxRef} className="logbox bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim">
-          {data?.logs || "no output"}
+        {error && (
+          <p role="status" className="mb-2 text-xs text-warn">
+            {LOGS_FAILED}
+          </p>
+        )}
+        <div
+          ref={boxRef}
+          onScroll={(e) => {
+            stick.current = nearBottom(e.currentTarget);
+          }}
+          className="logbox bg-bg rounded-md border border-line p-3 h-72 md:h-96 overflow-y-auto text-ink-dim"
+        >
+          {data?.logs || (error ? "" : "no output")}
         </div>
       </CardContent>
     </Card>
@@ -157,7 +171,8 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
     }
   }, [confirmingStop]);
 
-  const history = useStatsHistory(id, info?.state.running ?? false);
+  const running = info?.state.running ?? false;
+  const history = statsWhileRunning(useStatsHistory(id, running), running);
   const latest = history[history.length - 1];
 
   // net rates from cumulative counters
@@ -180,7 +195,8 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
   const hasStarted = Number.isFinite(startedMs) && startedMs > 0;
   const now = useNow(hasStarted && Date.now() - startedMs < TICKING_THRESHOLD_MS);
 
-  if (error) {
+  const notice = detailNotice(error, !!info);
+  if (notice === "not-found") {
     return (
       <div className="space-y-4">
         <Link href="/docker?find=containers" className="text-xs text-ink-dim hover:text-accent flex items-center gap-1">
@@ -272,6 +288,11 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
       </header>
 
       <LifecycleError lifecycle={lifecycle} className="panel px-3 py-2 !text-xs" />
+      {notice && (
+        <p role="status" className="panel px-3 py-2 text-xs text-ink-dim">
+          {notice}
+        </p>
+      )}
 
       {/* live graphs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
