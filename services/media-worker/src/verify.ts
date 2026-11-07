@@ -12,18 +12,26 @@ export type VerifyResult =
 
 export interface Proc { code: number | null; stdout: string; stderr: string }
 
-/** Runs argv in its own process group (so Cancel can kill the whole group); `onChild` lets the caller track it. */
-export function execProc(argv: string[], onChild?: (c: ChildProcess) => void): Promise<Proc> {
+/** B1: one verify child (ffprobe, or an ffmpeg decode) that runs longer than this is hung. */
+export const VERIFY_CHILD_MS = 15 * 60_000;
+
+/** Runs argv in its own process group (so Cancel can kill the whole group); `onChild` lets the caller track it.
+ *  Past `timeoutMs` the group is SIGKILLed and the result is code -1, which verify reports as a failed check. */
+export function execProc(argv: string[], onChild?: (c: ChildProcess) => void, timeoutMs = VERIFY_CHILD_MS): Promise<Proc> {
   return new Promise((resolve) => {
     const [cmd, ...args] = argv;
     const c = spawn(cmd, args, { detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
     onChild?.(c);
     let stdout = "";
     let stderr = "";
+    const timer = setTimeout(() => {
+      try { process.kill(-(c.pid as number), "SIGKILL"); } catch { c.kill("SIGKILL"); }
+      resolve({ code: -1, stdout, stderr: "timed out" }); // a child stuck in the kernel may never close
+    }, timeoutMs);
     c.stdout.on("data", (d: Buffer) => { if (stdout.length < 16 * 1024 * 1024) stdout += d; });
     c.stderr.on("data", (d: Buffer) => { if (stderr.length < 64 * 1024) stderr += d; });
-    c.on("error", (e) => resolve({ code: -1, stdout, stderr: e.message }));
-    c.on("close", (code) => resolve({ code, stdout, stderr }));
+    c.on("error", (e) => { clearTimeout(timer); resolve({ code: -1, stdout, stderr: e.message }); });
+    c.on("close", (code) => { clearTimeout(timer); resolve({ code, stdout, stderr }); });
   });
 }
 

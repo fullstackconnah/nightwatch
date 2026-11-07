@@ -50,6 +50,18 @@ export function parseProgress(block: string, durationSec: number | null, srcFps:
   };
 }
 
+/** B1: an encode that reports no progress for this long is hung. Not a total-time cap: a long film encodes for hours. */
+export const STALL_MS = 10 * 60_000;
+
+/** Calls `onStall` once if `kick()` isn't called within `ms`; `clear()` disarms it. */
+export function stallWatch(ms: number, onStall: () => void) {
+  let t = setTimeout(onStall, ms);
+  return {
+    kick() { clearTimeout(t); t = setTimeout(onStall, ms); },
+    clear() { clearTimeout(t); },
+  };
+}
+
 export interface RunnerOpts {
   dirs: Dirs;
   guard: Guard;
@@ -59,6 +71,8 @@ export interface RunnerOpts {
   th: Thresholds;
   prefix?: string[];
   graceMs?: number;
+  /** Test seam: the no-progress window before a hung encode is killed (default STALL_MS). */
+  stallMs?: number;
   /** Test seam: the re-probe at job start. */
   probe?: typeof ffprobeJson;
   now?: () => Date;
@@ -78,7 +92,13 @@ export function createRunner(o: RunnerOpts) {
     if (!c?.pid) return;
     try { process.kill(-c.pid, sig); } catch { c.kill(sig); }
   };
-  const track = (id: string) => (c: ChildProcess) => { procs.set(id, c); c.once("close", () => procs.delete(id)); };
+  // B3: only the child that is still the tracked one untracks itself, so a second child isn't dropped by the first one's close.
+  const track = (id: string) => (c: ChildProcess) => { procs.set(id, c); c.once("close", () => { if (procs.get(id) === c) procs.delete(id); }); };
+  /** SIGTERM to the process group, SIGKILL after the grace period. */
+  const terminate = (id: string) => {
+    signal(id, "SIGTERM");
+    setTimeout(() => signal(id, "SIGKILL"), o.graceMs ?? 10_000).unref();
+  };
 
   const fail = (rec: JobRecord, check: NonNullable<Job["failedCheck"]>, extra: Partial<JobRecord> = {}) =>
     q.get(rec.id)?.state === "cancelled" ? undefined : q.patch(rec.id, { state: "failed", failedCheck: check, finishedAt: now().toISOString(), ...extra });
@@ -126,10 +146,17 @@ export function createRunner(o: RunnerOpts) {
     let errText = "";
     let diskAbort = false;
     let progressWarned = false;
+    let stalled = false;
+    const stall = stallWatch(o.stallMs ?? STALL_MS, () => {
+      stalled = true;
+      o.log?.(`encoder for ${id} made no progress for ${Math.round((o.stallMs ?? STALL_MS) / 1000)} s; killing it`);
+      terminate(id);
+    });
     child.stdout.on("data", (d: Buffer) => {
       buf += d;
       let i;
       while ((i = buf.search(/progress=\w+\n/)) >= 0) {
+        stall.kick();
         const end = buf.indexOf("\n", i) + 1;
         const p = parseProgress(buf.slice(0, end), input.durationSec, srcFps);
         buf = buf.slice(end);
@@ -142,13 +169,14 @@ export function createRunner(o: RunnerOpts) {
     });
     child.stderr.on("data", (d: Buffer) => { if (errText.length < 4000) errText += d; });
     const code = await new Promise<number | null>((res) => { child.on("close", res); child.on("error", () => res(-1)); });
+    stall.clear();
 
     if (stopping) return; // shutdown: the record stays `encoding`, boot recovery re-queues it
     if (q.isCancelRequested(id)) { cleanPart(rec); return void q.patch(id, { state: "cancelled", finishedAt: now().toISOString(), progress: undefined }); }
     if (diskAbort || /No space left/i.test(errText)) { cleanPart(rec); return void fail(rec, "disk"); }
     if (code !== 0) {
       cleanPart(rec);
-      o.log?.(`encoder stopped for ${id}: ${errText.split("\n")[0]?.slice(0, 120)}`);
+      o.log?.(`encoder stopped for ${id}${stalled ? " (stalled)" : ""}: ${errText.split("\n")[0]?.slice(0, 120)}`);
       return void fail(rec, "encoder");
     }
 
@@ -193,12 +221,12 @@ export function createRunner(o: RunnerOpts) {
 
   return {
     run,
+    track, // exposed for the B3 test
     bind(queue: Queue) { q = queue; },
     /** Cancel or shutdown: SIGTERM to the process group, SIGKILL after the grace period. */
     kill(id: string, why: "cancel" | "shutdown"): void {
       if (why === "shutdown") stopping = true;
-      signal(id, "SIGTERM");
-      setTimeout(() => signal(id, "SIGKILL"), o.graceMs ?? 10_000).unref();
+      terminate(id);
     },
   };
 }

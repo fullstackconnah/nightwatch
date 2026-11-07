@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -8,7 +9,7 @@ import { checkReady } from "./disk.ts";
 import { createGuard } from "./fsguard.ts";
 import { createQueue, type JobRecord } from "./jobs.ts";
 import { ffprobeJson } from "./probe.ts";
-import { createRunner, parseProgress } from "./runner.ts";
+import { createRunner, parseProgress, stallWatch } from "./runner.ts";
 import { realFs } from "./swap.ts";
 import { needFfmpeg, tempDir } from "./testkit.ts";
 
@@ -210,6 +211,51 @@ describe("runner end to end (B3-B5, S2, S7, M4)", () => {
     assert.equal(w.q.get(rec.id)?.state, "cancelled");
     assert.deepEqual(readdirSync(w.dirs.work), []);
     assert.equal(statSync(rec.abs).size, before);
+  });
+});
+
+describe("stall watchdog (B1)", () => {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("fires once when nothing kicks it within the window", async () => {
+    let fired = 0;
+    const w = stallWatch(50, () => fired++);
+    await wait(150);
+    w.clear();
+    assert.equal(fired, 1);
+  });
+
+  it("does not fire while progress keeps arriving past the window, nor after clear()", async () => {
+    let fired = 0;
+    const w = stallWatch(80, () => fired++);
+    for (let i = 0; i < 6; i++) { await wait(40); w.kick(); } // 240 ms in total, three windows
+    assert.equal(fired, 0);
+    w.clear();
+    await wait(150);
+    assert.equal(fired, 0);
+  });
+});
+
+describe("track (B3)", () => {
+  it("the first child's close doesn't untrack the second: cancel still signals it", async () => {
+    const w = world();
+    const sleeper = () => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    const first = sleeper();
+    const second = sleeper();
+    try {
+      w.runner.track("same")(first);
+      w.runner.track("same")(second);
+      const firstClosed = once(first, "close");
+      first.kill();
+      await firstClosed;
+      const secondClosed = once(second, "close");
+      w.runner.kill("same", "cancel");
+      const timeout = new Promise((r) => setTimeout(() => r("still running"), 3000));
+      assert.notEqual(await Promise.race([secondClosed, timeout]), "still running");
+    } finally {
+      first.kill();
+      second.kill();
+    }
   });
 });
 

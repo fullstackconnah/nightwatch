@@ -1,8 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import { bearerOk } from "./auth.ts";
+import { loadConfig } from "./config.ts";
 import { startServer } from "./server.ts";
 import { start, TOKEN, tempDir, type Started } from "./testkit.ts";
+
+describe("loadConfig (B7)", () => {
+  it("trims a token with a trailing space or CR, like the dashboard does", () => {
+    assert.equal(loadConfig({ MEDIA_WORKER_TOKEN: `${TOKEN} \r` }).token, TOKEN);
+  });
+});
 
 describe("bearerOk", () => {
   it("accepts the exact token", () => assert.equal(bearerOk(`Bearer ${TOKEN}`, TOKEN), true));
