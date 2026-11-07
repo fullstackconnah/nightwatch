@@ -3,6 +3,7 @@ import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
 import { loadConfig } from "@/lib/config";
 import type { PackResult } from "@/lib/minecraft/packs";
+import { packFieldsError } from "@/lib/minecraft/pack-check";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest) {
   if (!isPackResult(pack)) {
     return NextResponse.json({ error: "pack (PackResult) is required" }, { status: 400 });
   }
+
+  const packBad = packFieldsError(pack);
+  if (packBad) return NextResponse.json({ error: packBad }, { status: 400 });
 
   const slugOverride = (body as Record<string, unknown>).slug;
   const memoryGbRaw = (body as Record<string, unknown>).memoryGb;

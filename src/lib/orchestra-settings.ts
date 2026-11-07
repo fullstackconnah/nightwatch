@@ -1,5 +1,6 @@
 import type { SystemSettings } from "./config.ts";
 import { httpUrlError } from "./settings-checks.ts";
+import { secretForUrl } from "./settings/dash-put.ts";
 
 type Orchestra = Pick<SystemSettings, "orchestraUrl" | "orchestraToken">;
 
@@ -17,7 +18,9 @@ export function mergeOrchestraSettings(
   }
   const typed = typeof body.orchestraToken === "string" ? body.orchestraToken.trim() : "";
   // An explicit clear wins over a typed token, like clearMcpToken.
-  return { orchestraUrl, orchestraToken: body.clearOrchestraToken === true ? undefined : typed || existing.orchestraToken };
+  // A stored token follows only the same origin; a new host never receives it.
+  const kept = secretForUrl(existing.orchestraToken, existing.orchestraUrl, orchestraUrl);
+  return { orchestraUrl, orchestraToken: body.clearOrchestraToken === true ? undefined : typed || kept };
 }
 
 /** The `system` fields GET /api/settings may send to the browser: plain-text settings only, never a secret. */

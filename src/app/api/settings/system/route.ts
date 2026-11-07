@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfigForSave, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
+import { secretForUrl } from "@/lib/settings/dash-put";
 
 export const dynamic = "force-dynamic";
 
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
   const hermesApiUrl = "hermesApiUrl" in body ? (str(body.hermesApiUrl) ?? existing.hermesApiUrl) : existing.hermesApiUrl;
   const hermesApiToken = body.clearHermesApiToken === true
     ? undefined
-    : mergedSecret(str(body.hermesApiToken), existing.hermesApiToken);
+    : mergedSecret(str(body.hermesApiToken), secretForUrl(existing.hermesApiToken, existing.hermesApiUrl, hermesApiUrl));
 
   // --- Orchestra ----------------------------------------------------------
   const orchestra = mergeOrchestraSettings(body, existing);
@@ -147,7 +148,7 @@ export async function POST(req: NextRequest) {
   const oidcClientId = "oidcClientId" in body ? (str(body.oidcClientId) ?? existing.oidcClientId) : existing.oidcClientId;
   const oidcClientSecret = body.clearOidcClientSecret === true
     ? undefined
-    : mergedSecret(str(body.oidcClientSecret), existing.oidcClientSecret);
+    : mergedSecret(str(body.oidcClientSecret), secretForUrl(existing.oidcClientSecret, existing.oidcIssuer, oidcIssuer));
 
   const now = new Date().toISOString();
   const next: AppConfig = {

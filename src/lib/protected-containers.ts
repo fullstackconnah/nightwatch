@@ -38,4 +38,10 @@ export const PROTECTED_MESSAGE =
 /** The only action MCP may run on a protected container: start never takes anything down. */
 export const MCP_ALLOWED_ON_PROTECTED: readonly string[] = ["start"];
 
+/** A full session keeps the UI rule; a kiosk-elevated caller (no session) gets the MCP rule, so it can start but not restart a protected container. */
+export function protectedActionRefused(action: string, hasSession: boolean, isProtected: boolean): boolean {
+  if (!isProtected) return false;
+  return hasSession ? UI_BLOCKED_ACTIONS.includes(action) : !MCP_ALLOWED_ON_PROTECTED.includes(action);
+}
+
 export const LOOKUP_FAILED_MESSAGE = "Couldn't check whether this container is safe to stop. Try again.";

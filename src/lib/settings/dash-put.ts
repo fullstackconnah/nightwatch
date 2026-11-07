@@ -11,9 +11,14 @@ export function publicWidgets(widgets: WidgetInstance[]): WidgetInstance[] {
   }));
 }
 
-const origin = (u: unknown) => {
+export const origin = (u: unknown) => {
   try { return new URL(String(u)).origin; } catch { return String(u); }
 };
+
+/** A stored secret survives a URL change only while the origin stays the same; a new origin (or a removed URL) drops it so it can't be sent to a new host. */
+export function secretForUrl(stored: string | undefined, oldUrl: string | undefined, newUrl: string | undefined): string | undefined {
+  return origin(oldUrl ?? "") === origin(newUrl ?? "") ? stored : undefined;
+}
 
 /** Per widget id: an empty or missing secret keeps the stored one, a value replaces it, clearKey/clearPassword removes it. */
 function mergeWidgetSecrets(stored: WidgetInstance[], incoming: unknown[]): unknown[] {
