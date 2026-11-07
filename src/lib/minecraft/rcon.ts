@@ -35,6 +35,8 @@ export function decodePackets(buf: Buffer): {
 
 const LOGIN = 3;
 const COMMAND = 2;
+/** Fresh limit for the command reply once login has succeeded (save-all can be slow). */
+const COMMAND_REPLY_MS = 15_000;
 
 export function rconCommand(opts: {
   host: string;
@@ -51,7 +53,7 @@ export function rconCommand(opts: {
     const responses: string[] = [];
     let settleTimer: NodeJS.Timeout | null = null;
     let settled = false;
-    const overall = setTimeout(() => fail(new Error("rcon unreachable")), timeoutMs);
+    let overall = setTimeout(() => fail(new Error("rcon unreachable")), timeoutMs);
 
     function done(value: string) {
       if (settled) return;
@@ -82,6 +84,8 @@ export function rconCommand(opts: {
             if (p.type !== 2) continue;
             if (p.id === -1) return fail(new Error("rcon auth failed"));
             authed = true;
+            clearTimeout(overall);
+            overall = setTimeout(() => fail(new Error("rcon unreachable")), COMMAND_REPLY_MS);
             socket.write(encodePacket(2, COMMAND, opts.command));
           } else {
             responses.push(p.payload);

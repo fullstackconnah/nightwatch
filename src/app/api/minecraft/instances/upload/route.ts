@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
   // Only the five known fields go upstream, never the caller's whole query string.
   const query = new URLSearchParams({ slug: sanitizeSlug(rawSlug), name, mcVersion, loader });
-  if (memoryGb !== null) query.set("memoryGb", memoryGb);
+  if (memoryGb !== null) query.set("memoryGb", String(Number(memoryGb)));
   const upstreamUrl = `${creds.url}/instances/upload?${query.toString()}`;
 
   let res: Response;

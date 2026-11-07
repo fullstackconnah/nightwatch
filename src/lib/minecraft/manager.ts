@@ -91,7 +91,7 @@ export class McManagerClient extends IntegrationClient<McManagerCredentials> {
   }
 
   activate(slug: string): Promise<Probe<{ ok: true; active: string }>> {
-    return this.request(`/instances/${encodeURIComponent(slug)}/activate`, { method: "POST", includeErrorBody: true });
+    return this.request(`/instances/${encodeURIComponent(slug)}/activate`, { method: "POST", includeErrorBody: true, timeoutMs: SLOW_MS });
   }
 
   deleteInstance(slug: string): Promise<Probe<{ ok: true }>> {
