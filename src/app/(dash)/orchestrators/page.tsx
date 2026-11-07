@@ -8,7 +8,7 @@
 
 import { ApiError } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
-import { laneSentence, laneTally, pageKind, tallySegments } from "@/lib/orchestra-view";
+import { laneSentence, laneTally, pageFreshness, pageKind, tallySegments } from "@/lib/orchestra-view";
 import { useOrchestraStatus } from "@/lib/use-orchestra";
 import { LaneStrip } from "@/components/integrations/lane-strip";
 import { OrchestraBand } from "@/components/integrations/orchestra-band";
@@ -17,17 +17,17 @@ import { OrchestraLoadError, OrchestraSkeleton, OrchestraUnconfigured } from "@/
 export default function OrchestratorsPage() {
   const { data, lastOk, error, isLoading } = useOrchestraStatus();
   const kind = pageKind({ isLoading, hasData: Boolean(data), hasError: Boolean(error), status: data?.status });
-  // Unreachable with a snapshot from earlier in this tab: show it, marked stale.
-  const stale = data?.status === "unreachable" && lastOk !== null;
+  // Unreachable, or a failed poll, with a snapshot from earlier in this tab: show it, marked stale.
+  const { stale, connected } = pageFreshness({ status: data?.status, hasError: Boolean(error), hasLastOk: lastOk !== null });
   const lanes = data?.status === "ok" ? data.orchestrators : stale ? (lastOk?.orchestrators ?? []) : [];
-  const sentence = kind === "band" && data?.status === "ok" ? laneSentence(lanes, { stale: false }) : null;
-  const segments = data?.status === "ok" ? tallySegments(laneTally(lanes)) : [];
+  const sentence = kind === "band" && data?.status === "ok" ? laneSentence(lanes, { stale }) : null;
+  const segments = connected ? tallySegments(laneTally(lanes)) : [];
 
   return (
     <div className="ol-page pb-2">
       <header className="mb-3 flex flex-wrap items-end justify-between gap-4">
         <h1 className="text-lg font-semibold tracking-tight">AI lanes</h1>
-        {data?.status === "ok" && (
+        {connected && (
           <div className="flex items-center gap-2">
             <span className="dot dot-running" aria-hidden />
             <span className="microlabel">connected</span>

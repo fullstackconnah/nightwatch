@@ -11,6 +11,7 @@ import {
   heroBytes,
   heroLine,
   pillText,
+  reclaimPrefix,
   slotItem,
   unusedTaggedBytes,
   type ChoreInput,
@@ -191,4 +192,9 @@ test("findKind parses the ?find= value", () => {
   assert.equal(findKind("volumes"), "volumes");
   assert.equal(findKind("nope"), "containers");
   assert.equal(findKind(null), "containers");
+});
+
+test("A2: the image prune says 'up to' (shared layers are counted per image); volumes keep their own wording", () => {
+  assert.equal(reclaimPrefix("images"), "up to ");
+  assert.equal(reclaimPrefix("volumes"), "");
 });

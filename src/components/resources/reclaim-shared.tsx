@@ -11,6 +11,7 @@ import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetcher, postJson } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
+import { reclaimPrefix } from "@/lib/docker-chores";
 import type { DiskReclaimSnapshot, PruneResult, PruneTarget } from "@/lib/docker";
 
 export function useDiskReclaim(refreshMs = 30000) {
@@ -71,7 +72,7 @@ export function PruneAction({
             "? Sizes still arriving. Can't be undone."
           ) : (
             <>
-              , reclaim ~<span className="font-mono">{formatBytes(bytes, 1)}</span>? Can&apos;t be undone.
+              , reclaim {reclaimPrefix(target) || "~"}<span className="font-mono">{formatBytes(bytes, 1)}</span>? Can&apos;t be undone.
             </>
           )}
         </span>

@@ -15,6 +15,7 @@ import {
   heldMembers,
   snapAfterWrite,
   pillText,
+  reclaimPrefix,
   type Chore,
   type ChoreId,
   type ChoreInput,
@@ -50,9 +51,9 @@ const PRUNE: Partial<Record<ChoreId, { target: "images" | "volumes"; label: stri
   orphans: { target: "volumes", label: "orphan volumes" },
 };
 
-function CountSize({ bytes, pending }: { bytes: number | null; pending: boolean }) {
+function CountSize({ bytes, pending, prefix }: { bytes: number | null; pending: boolean; prefix?: string }) {
   const v = useCountTo(bytes ?? 0);
-  return <Size bytes={bytes == null ? null : v} pending={pending} />;
+  return <Size bytes={bytes == null ? null : v} pending={pending} prefix={prefix} />;
 }
 
 export function Chores(p: ChoresProps) {
@@ -218,7 +219,7 @@ export function Chores(p: ChoresProps) {
                 </div>
                 <div className="dk-chore-size">
                   {c.kind === "cache" || c.id === "stopped" ? null : (
-                    <CountSize bytes={c.bytes} pending={c.id === "orphans" && p.sizesPending} />
+                    <CountSize bytes={c.bytes} pending={c.id === "orphans" && p.sizesPending} prefix={prune ? reclaimPrefix(prune.target) : ""} />
                   )}
                 </div>
                 <div className="dk-chore-act">

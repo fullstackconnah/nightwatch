@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ProxyCertificate, ProxyManagerSnapshot, ProxyRoute } from "../types/npm.ts";
-import { certVariant, proxyModel, type Model, type ModelInput } from "./page-model.ts";
+import { certVariant, daysSinceExpiry, proxyModel, type Model, type ModelInput } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-06T10:00:00Z");
 const NPM = "http://npm.test:81";
@@ -49,10 +49,10 @@ test("loading, load error, and the three connection states: connection head, no 
 test("calm: All up, next certificate in the answer, two strips, nothing opens, Open NPM admin", () => {
   const m = proxyModel(input());
   assert.deepEqual(m.chip, { tone: "ok", label: "All up" });
-  assert.equal(m.answer, "All 12 routes are up. The next certificate to expire is c1.example.test, in 41 days.");
+  assert.equal(m.answer, "All 12 routes are up. The next certificate to expire is c1.example.test, in 41 days.");
   assert.deepEqual(m.strips.map((s) => s.id), ["routes", "certs"]);
   assert.equal(strip(m, "routes").state, "12 up");
-  assert.equal(strip(m, "certs").state, "Next: c1.example.test in 41 days");
+  assert.equal(strip(m, "certs").state, "Next: c1.example.test in 41 days");
   assert.ok(m.strips.every((s) => s.tone === null));
   assert.equal(m.autoTarget, null);
   assert.equal(m.stale, false);
@@ -89,26 +89,33 @@ test("C23: down outranks a bad cert, a bad cert outranks a warn cert, the soones
   assert.equal(proxyModel(input({ data: ok({ routes: down, certificates: [cert(1, 2)] }) })).chip.label, "1 down");
   const bad = proxyModel(input({ data: ok({ certificates: [cert(1, 21, "warn.example.test"), cert(2, 3, "bad.example.test")] }) }));
   assert.deepEqual(bad.chip, { tone: "bad", label: "Cert expiring" });
-  assert.equal(bad.answer, "The certificate for bad.example.test expires in 3 days.");
-  assert.equal(strip(bad, "certs").state, "bad.example.test expires in 3 days");
+  assert.equal(bad.answer, "The certificate for bad.example.test expires in 3 days.");
+  assert.equal(strip(bad, "certs").state, "bad.example.test expires in 3 days");
   assert.equal(strip(bad, "certs").tone, "bad");
   assert.equal(bad.autoTarget, "certs");
   const warn = proxyModel(input({ data: ok({ certificates: [cert(1, null, "none.example.test"), cert(2, 21, "warn.example.test"), cert(3, 41)] }) }));
   assert.deepEqual(warn.chip, { tone: "warn", label: "Cert soon" });
-  assert.equal(warn.answer, "The certificate for warn.example.test expires in 21 days.");
+  assert.equal(warn.answer, "The certificate for warn.example.test expires in 21 days.");
   assert.equal(strip(warn, "certs").tone, "warn");
   assert.equal(warn.autoTarget, "certs");
   const nullOnly = proxyModel(input({ data: ok({ certificates: [cert(1, null)] }) }));
   assert.equal(nullOnly.chip.label, "All up");
-  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, 3), cert(2, 1)] }) })).answer, "The certificate for c2.example.test expires in 1 day.");
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, 3), cert(2, 1)] }) })).answer, "The certificate for c2.example.test expires in 1 day.");
 });
 
 test("expired and same-day certificates", () => {
-  const gone = proxyModel(input({ data: ok({ certificates: [cert(1, -2, "old.example.test")] }) }));
+  const gone = proxyModel(input({ data: ok({ certificates: [cert(1, -8, "old.example.test")] }) }));
   assert.equal(gone.chip.label, "Cert expiring");
-  assert.equal(gone.answer, "The certificate for old.example.test expired 2 days ago.");
-  assert.equal(strip(gone, "certs").state, "old.example.test expired 2 days ago");
+  assert.equal(gone.answer, "The certificate for old.example.test expired 7 days ago.");
+  assert.equal(strip(gone, "certs").state, "old.example.test expired 7 days ago");
   assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, 0)] }) })).answer, "The certificate for c1.example.test expires today.");
+  // B3: daysLeft is floored, so -1 is "expired less than 24 h ago".
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -1)] }) })).answer, "The certificate for c1.example.test expired today.");
+  // 25 h ago floors to -2: one whole day since expiry.
+  assert.equal(proxyModel(input({ data: ok({ certificates: [cert(1, -2)] }) })).answer, "The certificate for c1.example.test expired 1 day ago.");
+  assert.equal(daysSinceExpiry(-1), 0);
+  assert.equal(daysSinceExpiry(-2), 1);
+  assert.equal(daysSinceExpiry(-8), 7);
   assert.equal(certVariant(null), "neutral");
   assert.equal(certVariant(6), "bad");
   assert.equal(certVariant(7), "warn");

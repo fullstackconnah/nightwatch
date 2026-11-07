@@ -29,6 +29,32 @@ const json = (route, status, body) => route.fulfill({ status, contentType: "appl
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass: !!pass, detail });
 
+// Padded element crop (16 px) after an instant scroll to just under the sticky mobile header; fails when fixed or sticky chrome covers the crop rect (same approach as cropEl in settings-shots.mjs).
+async function cropEl(page, loc, path, label) {
+  await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+  const { clip, covered } = await loc.evaluate((el, pad) => {
+    const head = document.querySelector("header.md\\:hidden");
+    const hh = head && getComputedStyle(head).display !== "none" ? head.getBoundingClientRect().height : 0;
+    const rect = () => { const r = el.getBoundingClientRect(); return { left: r.left - pad, top: r.top - pad, right: r.right + pad, bottom: r.bottom + pad }; };
+    let box = rect();
+    if (box.bottom - box.top + hh <= innerHeight) {
+      scrollTo({ top: Math.max(0, scrollY + box.top - hh - 1), behavior: "instant" });
+      box = rect();
+      if (hh) box.top = Math.max(box.top, Math.ceil(head.getBoundingClientRect().bottom));
+    } else if (head) head.style.visibility = "hidden";
+    const covered = [...document.querySelectorAll("body *")].filter((e) => {
+      const cs = getComputedStyle(e);
+      if (!["fixed", "sticky"].includes(cs.position) || cs.visibility === "hidden" || cs.display === "none" || e.contains(el)) return false;
+      const b = e.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top;
+    }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}`);
+    const x = Math.max(0, box.left + scrollX), y = Math.max(0, box.top + scrollY);
+    return { clip: { x, y, width: Math.min(document.documentElement.scrollWidth, box.right + scrollX) - x, height: Math.min(document.documentElement.scrollHeight, box.bottom + scrollY) - y }, covered };
+  }, 16);
+  check(`${label} crop clear of fixed or sticky chrome`, covered.length === 0, covered.join(", "));
+  await page.screenshot({ path, fullPage: true, clip });
+}
+
 async function mock(page, scenario, state = {}) {
   const kind = ["partial", "down", "down-cold"].includes(scenario) ? "full" : scenario;
   await page.route("**/api/docker/**", (route) => {
@@ -227,6 +253,19 @@ try {
         return s.color === bad || s.backgroundColor === bad;
       });
       check(`${name} full: only the Yes step is danger-coloured`, danger);
+      // H14U A2: the image prune says "up to" in the chore size and in its confirm; numbers unchanged.
+      const row = page.locator("[data-chore=dangling]");
+      const sizeText = (await row.locator(".dk-size").innerText()).trim();
+      const confirmText = (await row.locator(".nw-confirm").innerText()).trim();
+      check(`${name} prune-up-to: chore size starts "up to "`, /^up to \d/.test(sizeText), sizeText);
+      check(`${name} prune-up-to: confirm says "reclaim up to "`, /reclaim up to \d/.test(confirmText), confirmText);
+      {
+        const tag = await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+        const rowText = (await row.innerText()).trim();
+        check(`${name} prune-up-to: cropped row is the dangling images row with "up to"`, /Dangling/i.test(rowText) && /up to/.test(rowText), rowText.replace(/\s+/g, " ").slice(0, 80));
+        await cropEl(page, row, join(OUT_DIR, `docker-prune-up-to-${name}.png`), `${name} prune-up-to`);
+        await tag.evaluate((el) => el.remove());
+      }
       if (name === "390") {
         await yes.scrollIntoViewIfNeeded();
         const vis = await page.evaluate(() => {

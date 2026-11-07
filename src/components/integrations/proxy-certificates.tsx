@@ -1,6 +1,6 @@
 "use client";
 
-import { certVariant } from "@/lib/proxy/page-model";
+import { certVariant, daysSinceExpiry } from "@/lib/proxy/page-model";
 import type { ProxyCertificate } from "@/lib/types/npm";
 import { cn } from "@/lib/utils";
 
@@ -23,12 +23,14 @@ function DaysFigure({ daysLeft }: { daysLeft: number | null }) {
   const variant = certVariant(daysLeft);
   const colorClass = variant === "bad" ? "text-bad" : variant === "warn" ? "text-warn" : "text-ink";
   const expired = daysLeft < 0;
+  const since = expired ? daysSinceExpiry(daysLeft) : 0;
+  const label = !expired ? "days left" : since === 0 ? "expired today" : since === 1 ? "day expired" : "days expired";
   return (
     <div className="text-right shrink-0">
       <div className={cn("font-mono text-sm tabular-nums", colorClass)}>
-        {expired ? Math.abs(daysLeft) : daysLeft}
+        {expired ? since : daysLeft}
       </div>
-      <div className="microlabel">{expired ? "days expired" : "days left"}</div>
+      <div className="microlabel">{label}</div>
     </div>
   );
 }

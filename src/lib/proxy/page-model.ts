@@ -54,13 +54,19 @@ export function certVariant(daysLeft: number | null): "neutral" | "warn" | "bad"
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const domainOf = (x: { domains: string[] }, fallback: string) => x.domains[0] || fallback;
-const days = (n: number) => plural(n, "day", "days");
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`; // no-break space: "1 day" never wraps between number and unit
 const head = (c: ReturnType<typeof connectionHead>): Model => ({
   chip: c.chip, answer: c.answer, evidence: c.evidence, notice: null, link: c.link, strips: [], autoTarget: c.autoTarget, detailLead: null, stale: false,
 });
 
 /** "expires in 3 days" / "expires today" / "expired 2 days ago". */
-const expiry = (d: number) => (d < 0 ? `expired ${days(-d)} ago` : d === 0 ? "expires today" : `expires in ${days(d)}`);
+/** Whole days since expiry for a negative daysLeft; daysLeft is floored, so -1 is under 24 h ago (0). */
+export const daysSinceExpiry = (daysLeft: number) => -daysLeft - 1;
+const expiry = (d: number) => {
+  if (d >= 0) return d === 0 ? "expires today" : `expires in ${days(d)}`;
+  const n = daysSinceExpiry(d);
+  return n === 0 ? "expired today" : `expired ${days(n)} ago`;
+};
 
 export function proxyModel(i: ModelInput): Model {
   const { data, now } = i;

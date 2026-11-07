@@ -531,6 +531,40 @@ try {
     await shoot(m, "17-more-sheet");
   });
 
+  // 15b H14U: one good poll, then the status GET fails (HTTP 500): old cards stay, marked stale, no connected dot
+  await setCfg(first, { orchestraToken: "mock-stuck", orchestraUrl: MOCK_URL });
+  await each(async (s) => {
+    const p = await s.context.newPage();
+    watch(p, `${s.name}-stale-error`);
+    const ref = { fail: false, snap: snap([lane("dev", "running", [["a", 2]]), lane("odip", "running", [["c", 1]])]) };
+    await p.route("**/api/orchestra/status", (route) => (ref.fail ? route.fulfill({ status: 500, json: { error: "boom" } }) : route.fulfill({ json: ref.snap })));
+    await p.clock.install();
+    await p.goto(`${BASE_URL}/orchestrators`, { waitUntil: "domcontentloaded" });
+    await strips(2)(p);
+    const connectedBefore = await p.locator("main").getByText("connected", { exact: true }).count();
+    ref.fail = true;
+    await tick(p);
+    await p.waitForTimeout(600);
+    record("orchStaleError", s.name, {
+      connectedBefore,
+      connectedAfter: await p.locator("main").getByText("connected", { exact: true }).count(),
+      badges: await texts(p, "[data-state-badge]"),
+      stripOpacity: await p.locator(".ol-strip").first().evaluate((e) => getComputedStyle(e).opacity),
+      // a fixed or sticky element must not cover the main crop (the 390 shot unpins header and nav, so only 1440 is checked)
+      chromeOverCrop: s.name === "390" ? false : await p.evaluate(() => {
+        const r = document.querySelector("main").getBoundingClientRect();
+        return [...document.querySelectorAll("body *")].some((e) => {
+          const pos = getComputedStyle(e).position;
+          if (pos !== "fixed" && pos !== "sticky") return false;
+          const b = e.getBoundingClientRect();
+          return b.width > 0 && b.height > 0 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top && !e.closest("main");
+        });
+      }),
+    });
+    await shoot({ ...s, page: p }, "15b-stale-error", "main");
+    await p.close();
+  });
+
   // 18 reduced motion (C15): no transform animation on a tick or a tap, the fill does not transition, the dot does not pulse
   await guarded("step 18", async () => {
     await setCfg(first, { orchestraUrl: MOCK_URL, orchestraToken: "mock-stuck" });
