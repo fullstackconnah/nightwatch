@@ -108,6 +108,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const startingRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -131,7 +132,14 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
     analyserRef.current = null;
   }, []);
 
-  useEffect(() => teardownStream, [teardownStream]);
+  useEffect(
+    () => () => {
+      // Leaving mid-recording must not upload the clip or start an ask.
+      if (recorderRef.current) recorderRef.current.onstop = null;
+      teardownStream();
+    },
+    [teardownStream],
+  );
 
   const sampleLevels = useCallback(() => {
     const analyser = analyserRef.current;
@@ -197,6 +205,8 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
   }, []);
 
   const start = useCallback(async () => {
+    if (startingRef.current) return; // a second tap while getUserMedia is pending
+    startingRef.current = true;
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -238,10 +248,13 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
       maxTimerRef.current = setTimeout(stop, MAX_RECORDING_MS);
       setState("recording");
     } catch {
+      teardownStream(); // a MediaRecorder constructor throw must not leave the mic on
       setError("Could not access the microphone — check the browser's site permission.");
       setState("idle");
+    } finally {
+      startingRef.current = false;
     }
-  }, [finish, sampleLevels, stop]);
+  }, [finish, sampleLevels, stop, teardownStream]);
 
   const reset = useCallback(() => {
     setError(null);
@@ -331,11 +344,15 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   }, []);
 
   const handleTranscript = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       activeExchangeId.current = id;
       setExchanges((prev) => [{ id, transcript: text, answer: null, error: null }, ...prev].slice(0, MAX_EXCHANGES));
-      void run.start("ask", text);
+      const failure = await run.start("ask", text);
+      if (failure) {
+        setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: failure } : ex)));
+        if (activeExchangeId.current === id) activeExchangeId.current = null;
+      }
     },
     [run],
   );

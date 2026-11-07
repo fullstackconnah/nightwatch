@@ -202,8 +202,13 @@ function KioskPageInner() {
 
   const lock = useCallback(async () => {
     lockingRef.current = true;
-    await lockKiosk();
-    setExpiresAt(null);
+    try {
+      // The person asked to lock, so the UI clears either way.
+      if (!(await lockKiosk())) console.warn("kiosk lock request was not accepted by the server");
+      setExpiresAt(null);
+    } finally {
+      lockingRef.current = false;
+    }
   }, []);
 
   return (
