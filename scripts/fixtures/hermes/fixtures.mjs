@@ -37,7 +37,7 @@ const job = (over) => ({ ok: true, job: { state: "running", kind: "digest", star
 export const JOBS = {
   running: job({}),
   done: job({ state: "done", finishedAt: at(-1000), result: { title: "Digest", body: "Everything is steady. No action needed." } }),
-  failed: job({ state: "error", finishedAt: at(-1000), error: "The model did not answer in time." }),
+  failed: job({ state: "error", finishedAt: at(-1000), error: "alert test failed: POST https://hooks.example/x?token=abc123secret\npassword=hunter2\nThe model did not answer in time." }),
 };
 
 // status/activity: the body, "hang" (never answers) or "fail" (HTTP 500). job: the GET /jobs/job-1 body (the run is

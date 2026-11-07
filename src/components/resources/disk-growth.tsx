@@ -7,6 +7,7 @@ import { SeriesSwatch } from "@/components/resources/resource-overview";
 import { SERIES_SLOTS } from "@/lib/chart-series";
 import { fetcher } from "@/lib/client";
 import { formatBytes, relativeTime } from "@/lib/format";
+import { cappedMounts, fastestGrowing, moreMountsNote } from "@/lib/resource-ui-view";
 
 /**
  * DISK-tab growth panel (G5): mount used-bytes over time, read from G1's
@@ -118,7 +119,7 @@ const THIN_HISTORY_MS = 24 * 60 * 60 * 1000;
 
 export function DiskGrowthPanel({ mountpoints }: { mountpoints: string[] }) {
   const [range, setRange] = useState<GrowthRange>("24h");
-  const capped = mountpoints.slice(0, 8);
+  const { shown: capped, dropped } = cappedMounts(mountpoints);
   const key =
     capped.length > 0 ? `/api/resources/growth?range=${range}&mounts=${encodeURIComponent(capped.join(","))}` : null;
   const { data, isLoading } = useSWR<MountGrowthResponse>(key, fetcher, {
@@ -132,19 +133,7 @@ export function DiskGrowthPanel({ mountpoints }: { mountpoints: string[] }) {
   // there's at least a day of real data (Threshold Rule — growth is a real
   // comparison against the mount's own earlier reading, not a vibe, and a
   // window shorter than a day is too noisy to call a trend honestly).
-  let fastest: { mount: string; deltaBytes: number; deltaPerDay: number } | null = null;
-  if (data && !isThin) {
-    for (const [mount, points] of Object.entries(data.mounts)) {
-      const real = points.filter((p): p is { t: number; usedBytes: number } => p.usedBytes != null);
-      if (real.length < 2) continue;
-      const first = real[0];
-      const last = real[real.length - 1];
-      const deltaBytes = last.usedBytes - first.usedBytes;
-      const deltaDays = Math.max(1 / 24, (last.t - first.t) / 86_400_000);
-      const deltaPerDay = deltaBytes / deltaDays;
-      if (!fastest || deltaPerDay > fastest.deltaPerDay) fastest = { mount, deltaBytes, deltaPerDay };
-    }
-  }
+  const fastest = data && !isThin ? fastestGrowing(data.mounts) : null;
 
   return (
     <div className="panel p-4 space-y-3">
@@ -174,6 +163,8 @@ export function DiskGrowthPanel({ mountpoints }: { mountpoints: string[] }) {
       ) : (
         <GrowthChart data={data!} mountpoints={capped} />
       )}
+
+      {dropped > 0 && <div className="microlabel">{moreMountsNote(dropped)}</div>}
 
       {/* Neutral styling deliberately — growth is information, not an alarm
           (Threshold Rule: warn/bad are earned by a real capacity threshold,

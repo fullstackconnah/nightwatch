@@ -4,6 +4,7 @@
  * shape brief is the spec; page-model.test.ts has a case per state. */
 import { connectionHead } from "../integration-head.ts";
 import { ageText } from "../home.ts";
+import { failedRunText } from "../resource-ui-view.ts";
 import type { HermesActivityResponse, HermesJob, HermesJobKind, HermesStatusOk, HermesStatusResponse } from "../types/hermes.ts";
 
 export type StripId = "loops" | "runs" | "ask" | "activity";
@@ -157,7 +158,7 @@ export function hermesModel(i: ModelInput): Model {
       id: "runs", title: TITLES.runs, tone: !runsRunning && runFailed ? "bad" : null,
       state: runsRunning
         ? runJob?.state === "running" ? `${runLabel} running${elapsed(runJob)}` : `${runLabel} starting`
-        : runFailed ? `Last run failed${firstLine(runJob?.error ?? null) ? `: ${firstLine(runJob?.error ?? null)}` : ""}` : next ? `Next digest ${next}` : "No digest scheduled",
+        : runFailed ? `Last run failed${runJob?.error && firstLine(failedRunText(runJob.error)) ? `: ${firstLine(failedRunText(runJob.error))}` : ""}` : next ? `Next digest ${next}` : "No digest scheduled",
     },
     { id: "ask", title: TITLES.ask, tone: null, state: askRunning ? `Answering${elapsed(askJob)}` : `${s.tier.tier} tier · ready` },
     {

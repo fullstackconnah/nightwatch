@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { HermesVoiceMic } from "@/components/integrations/hermes-voice-mic";
 import { jobFor } from "@/lib/hermes/page-model";
 import type { UseHermesRunResult } from "@/lib/use-hermes";
+import { failedRunText } from "@/lib/resource-ui-view";
 import { useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
@@ -90,7 +91,7 @@ export function HermesAsk({ tier, run, enabled, reason }: { tier: string | null;
         <div role="alert" className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
           <div className="microlabel !text-bad mb-1">ask failed</div>
           <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">
-            {job.error ?? "Hermes reported an error with no further detail."}
+            {failedRunText(job.error)}
           </p>
         </div>
       )}
