@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadConfig, saveConfig } from "@/lib/config";
+import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,12 @@ export async function POST(req: NextRequest) {
   const parsed = parseClimateAutoOffPatch(await req.json().catch(() => null));
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
-  const config = loadConfig();
+  let config: AppConfig;
+  try {
+    config = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const prev = config.climateAutoOff;
   const next = {
     enabled: parsed.enabled ?? prev?.enabled ?? false,

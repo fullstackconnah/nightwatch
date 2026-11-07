@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
-import { loadConfig, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +76,12 @@ export async function POST(req: NextRequest) {
   limiter.reset();
   const newHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
   const now = new Date().toISOString();
-  const current = loadConfig();
+  let current: AppConfig;
+  try {
+    current = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const next: AppConfig = {
     ...current,
     system: { ...current.system, adminPasswordHash: newHash, updatedAt: now },

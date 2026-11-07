@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadConfig, saveConfig, writeHermesModelFile, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, writeHermesModelFile, type AppConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "model is required" }, { status: 400 });
   }
 
-  const current = loadConfig();
+  let current: AppConfig;
+  try {
+    current = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const existing = current.hermes;
 
   const openrouterApiKey = body.clearOpenrouterKey

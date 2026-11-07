@@ -231,7 +231,7 @@ function configPath(): string {
 
 let cache: { mtimeMs: number; config: AppConfig } | null = null;
 
-export function loadConfig(): AppConfig {
+function readConfig(strict: boolean): AppConfig {
   try {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
@@ -239,9 +239,25 @@ export function loadConfig(): AppConfig {
     const config: AppConfig = { ...DEFAULT_CONFIG, ...parsed };
     cache = { mtimeMs: stat.mtimeMs, config };
     return config;
-  } catch {
+  } catch (e) {
+    // A save must never build on defaults it fell back to: only a missing file (first run) is safe.
+    if (strict && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.error("config read for save failed", e);
+      throw new Error(CONFIG_UNREADABLE);
+    }
     return DEFAULT_CONFIG;
   }
+}
+
+export const CONFIG_UNREADABLE = "Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
+
+export function loadConfig(): AppConfig {
+  return readConfig(false);
+}
+
+/** For read-modify-write saves: throws CONFIG_UNREADABLE instead of returning defaults when the file exists but cannot be read or parsed. */
+export function loadConfigForSave(): AppConfig {
+  return readConfig(true);
 }
 
 export function saveConfig(config: AppConfig): void {
@@ -259,7 +275,13 @@ function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
   const tmp = filePath + ".tmp";
   // writeFileSync's mode applies only when it creates the file; drop a leftover .tmp so secrets never land in a looser one
   if (mode !== undefined) fs.rmSync(tmp, { force: true });
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: "utf8", mode });
+  const fd = fs.openSync(tmp, "w", mode);
+  try {
+    fs.writeFileSync(fd, JSON.stringify(data, null, 2), "utf8");
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, filePath);
 }
 

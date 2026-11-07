@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   loadConfig,
+  loadConfigForSave,
   saveConfig,
   readHermesModelFile,
   readHermesSettingsFile,
@@ -138,11 +139,17 @@ export async function PUT(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   }
+  let current: AppConfig;
+  try {
+    current = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   try {
     // K12: read-modify-write. Each Dashboard save sends only its own fields ({ widgets } or { groups, urls, icons,
     // hidden }); mergeDashPut keeps everything else from the stored config (homeassistant/npm/forgejo/github/hermes/
     // jellyfin/...) and refuses an empty or wrongly shaped body with 400 before anything is written.
-    const merged = mergeDashPut(loadConfig(), body);
+    const merged = mergeDashPut(current, body);
     if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
     saveConfig(merged.next);
     return NextResponse.json({ ok: true, config: sanitizeConfig(merged.next) });
