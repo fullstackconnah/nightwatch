@@ -36,10 +36,8 @@ export async function GET() {
       },
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker containers failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }
 
@@ -57,13 +55,10 @@ export async function POST(req: NextRequest) {
     const id = await createAndStartContainer(spec);
     return NextResponse.json({ ok: true, id });
   } catch (e) {
+    console.error("docker create failed", e);
+    const bindMissing = e instanceof Error && /bind source path does not exist/i.test(e.message);
     return NextResponse.json(
-      {
-        error:
-          e instanceof Error
-            ? e.message + (/bind source path does not exist/i.test(e.message) ? " Bind sources must already exist on the host; they are not created." : "")
-            : "create failed",
-      },
+      { error: bindMissing ? "A bind source doesn't exist on the host. Bind sources must already exist; they are not created." : "Docker failed to create it." },
       { status: 500 },
     );
   }

@@ -11,9 +11,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   try {
     return NextResponse.json({ logs: await containerLogs(id, tail) });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "logs failed" },
-      { status: 502 },
-    );
+    console.error("docker logs failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }
