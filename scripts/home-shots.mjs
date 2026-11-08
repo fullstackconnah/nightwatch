@@ -395,11 +395,41 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- SL: a lane stalled with no agent rows raises an item that names the lane ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "stalledLane" });
+  const row = page.locator('.hm-att-row[data-subject="orchestra"]');
+  await row.waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await row.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth })).catch(() => ({ text: "", over: 0 }));
+  record("SL", /dev has gone quiet/.test(m.text) && /sent no agent details/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 120)}", page overflow ${m.over}px`);
+  // Crop the row padded; the viewport is tall enough that the fixed bottom nav sits below it.
+  const PAD = 12;
+  const h = await row.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 400 });
+  await row.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  const r = await row.boundingBox().catch(() => null);
+  if (r) {
+    const covered = await row.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return [...document.querySelectorAll("body *")].some((n) => {
+        if (n.contains(el) || el.contains(n)) return false;
+        const cs = getComputedStyle(n);
+        const nb = n.getBoundingClientRect();
+        return (cs.position === "fixed" || cs.position === "sticky") && nb.width > 0 && nb.height > 0 && nb.left < b.right && nb.right > b.left && nb.top < b.bottom && nb.bottom > b.top;
+      });
+    });
+    record("SL", !covered, `@${width.name}: fixed or sticky chrome over the crop: ${covered}`);
+    const cx = Math.max(0, r.x - PAD), cy = Math.max(0, r.y - PAD);
+    await page.screenshot({ path: join(OUT_DIR, `home-sl-stalled-lane-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(r.width + 2 * PAD, width.viewport.width - cx), height: r.height + 2 * PAD } });
+  }
+  await context.close();
+}
+
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

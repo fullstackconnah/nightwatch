@@ -393,7 +393,7 @@ const orchestraMemo = new Memo<{ hits: RawHit[] }>({
   load: async () => {
     const snap = await getOrchestraSnapshot();
     let status = snap.status;
-    const details: Pick<OrchestratorDetail, "name" | "title" | "inFlight">[] = [];
+    const details: Pick<OrchestratorDetail, "name" | "title" | "inFlight" | "state" | "stalledCount">[] = [];
     if (status === "ok") {
       details.push(...snap.orchestrators);
       const busy = snap.orchestrators.filter((o) => o.inFlightCount > 0 && o.inFlight.length === 0);

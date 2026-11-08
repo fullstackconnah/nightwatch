@@ -105,6 +105,27 @@ export function formatQuiet(quietMin: number | null): string {
   return quietMin === null ? "no transcript yet" : `quiet ${mins(quietMin)}`;
 }
 
+/** Lanes the lanes page counts as stuck (laneStuck) but that sent no agent rows, so no agent can be named. */
+function rowlessLanes(details: Pick<OrchestratorSummary, "name" | "title" | "inFlight" | "state" | "stalledCount">[]) {
+  const lanes = details.filter((o) => o.inFlight.length === 0 && laneStuck(o));
+  const [one] = lanes;
+  if (!one) return null;
+  if (lanes.length === 1) {
+    const n = one.stalledCount;
+    return {
+      headline: `${id(one.title ?? one.name)} has gone quiet`,
+      detail: `The service ${n > 0 ? `counts ${n} stalled ${n === 1 ? "agent" : "agents"} here` : "reports this lane as stalled"} but sent no agent details. It may be stuck.`,
+      action: "Check it on the AI lanes page.",
+    };
+  }
+  const names = lanes.map((o) => id(o.title ?? o.name));
+  return {
+    headline: `${lanes.length} lanes have gone quiet`,
+    detail: `${lanes.length === 2 ? `${names.join(" and ")} sent` : "They sent"} no agent details. They may be stuck.`,
+    action: "Check them on the AI lanes page.",
+  };
+}
+
 /**
  * The attention-strip item for orchestra, or null. Always a warning (attention.ts), never critical. No
  * number in the headline and no `since`: the kiosk keys an alert on headline + since, so a ticking value
@@ -114,7 +135,7 @@ export function formatQuiet(quietMin: number | null): string {
  */
 export function orchestraAttention(
   status: OrchestraState,
-  details: Pick<OrchestratorSummary, "name" | "title" | "inFlight">[],
+  details: Pick<OrchestratorSummary, "name" | "title" | "inFlight" | "state" | "stalledCount">[],
   lastInFlight = 0,
 ): { headline: string; detail: string; action: string } | null {
   if (status === "unreachable") {
@@ -149,7 +170,7 @@ export function orchestraAttention(
     .flatMap((o) => o.inFlight.filter((e) => isStalled(e.quietMin)).map((e) => ({ agent: e.name, orch: o.title ?? o.name, quietMin: e.quietMin })))
     .sort((a, b) => (b.quietMin ?? 0) - (a.quietMin ?? 0));
   const top = stalled[0];
-  if (!top) return null;
+  if (!top) return rowlessLanes(details);
   if (stalled.length === 1) {
     return {
       headline: `${id(top.agent)} has gone quiet`,
@@ -174,9 +195,10 @@ export const agentLook = (a: AgentLike): AgentLook => (a.waiting ? "waiting" : i
 /** How full the 2 px track is: it fills toward the 20-minute stall mark. */
 export const stallFill = (q: number | null): number => (q === null ? 0 : Math.min(q, STALL_MIN) / STALL_MIN);
 
-const needing = (l: OrchestratorSummary) => l.inFlight.filter((a) => agentLook(a) !== "quiet");
+type LaneLike = Pick<OrchestratorSummary, "state" | "stalledCount" | "inFlight">;
+const needing = (l: LaneLike) => l.inFlight.filter((a) => agentLook(a) !== "quiet");
 /** A live lane is stuck when the service counts a stalled agent or any agent is waiting or stalled. Stopped and unread lanes never are. */
-export const laneStuck = (l: OrchestratorSummary): boolean =>
+export const laneStuck = (l: LaneLike): boolean =>
   (l.state === "running" || l.state === "stalled") && (l.state === "stalled" || l.stalledCount > 0 || needing(l).length > 0);
 
 export interface LaneTally { stuck: number; running: number; stopped: number; unknown: number; agents: number }

@@ -268,7 +268,7 @@ describe("isLive", () => {
 
 describe("orchestraAttention", () => {
   const d = (name: string, quiet: (number | null)[], title: string | null = null) => ({
-    name, title, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q, waiting: null })),
+    name, title, state: "running" as const, stalledCount: 0, inFlight: quiet.map((q, i) => ({ name: `agent-${name}-${i}`, quietMin: q, waiting: null })),
   });
 
   it("says nothing when orchestra is not configured, even with stalled agents", () => {
@@ -331,11 +331,53 @@ describe("orchestraAttention", () => {
   });
 });
 
+describe("a stalled lane with no agent rows on Home", () => {
+  const lane = (name: string, state: OrchestratorSummary["state"], stalledCount = 0, inFlight: OrchestratorInFlight[] = [], title: string | null = null) => ({
+    name, title, state, stalledCount, inFlight,
+  });
+
+  it("raises an item for a lane the service reports stalled but sent no rows for", () => {
+    assert.deepEqual(orchestraAttention("ok", [lane("dev", "stalled")]), {
+      headline: "dev has gone quiet",
+      detail: "The service reports this lane as stalled but sent no agent details. It may be stuck.",
+      action: "Check it on the AI lanes page.",
+    });
+  });
+
+  it("says how many stalled agents the service counts when it knows", () => {
+    assert.equal(orchestraAttention("ok", [lane("dev", "running", 1, [], "Dev")])?.detail, "The service counts 1 stalled agent here but sent no agent details. It may be stuck.");
+    assert.equal(orchestraAttention("ok", [lane("dev", "running", 3)])?.detail, "The service counts 3 stalled agents here but sent no agent details. It may be stuck.");
+  });
+
+  it("names up to two lanes, then only the count", () => {
+    assert.deepEqual(orchestraAttention("ok", [lane("dev", "stalled"), lane("odip", "running", 2, [], "ODIP")]), {
+      headline: "2 lanes have gone quiet",
+      detail: "dev and ODIP sent no agent details. They may be stuck.",
+      action: "Check them on the AI lanes page.",
+    });
+    assert.equal(orchestraAttention("ok", [lane("a", "stalled"), lane("b", "stalled"), lane("c", "stalled")])?.detail, "They sent no agent details. They may be stuck.");
+  });
+
+  it("keeps the stalled-agent item when a lane has rows, with no double", () => {
+    const rows = [{ name: "agent-1", quietMin: 90, waiting: null }];
+    assert.equal(orchestraAttention("ok", [lane("dev", "stalled", 1, rows)])?.headline, "agent-1 has gone quiet");
+  });
+
+  it("lets a waiting agent outrank it", () => {
+    const rows = [{ name: "agent-w", quietMin: 1, waiting: { tool: "Bash", sinceMin: 4 } }];
+    assert.equal(orchestraAttention("ok", [lane("dev", "stalled"), lane("odip", "running", 0, rows)])?.headline, "odip is waiting for you");
+  });
+
+  it("never raises it for a stopped or unknown lane, or a healthy running one", () => {
+    assert.equal(orchestraAttention("ok", [lane("a", "stopped", 2), lane("b", "unknown", 2), lane("c", "running", 0)]), null);
+  });
+});
+
 describe("waiting agents on Home (O2)", () => {
   const w = (name: string, tool: string, sinceMin: number, title: string | null = null) => ({
-    name: `lane-${name}`, title, inFlight: [{ name: `agent-${name}`, quietMin: 1, waiting: { tool, sinceMin } }],
+    name: `lane-${name}`, title, state: "running" as const, stalledCount: 0, inFlight: [{ name: `agent-${name}`, quietMin: 1, waiting: { tool, sinceMin } }],
   });
-  const stalled = { name: "odip", title: null, inFlight: [{ name: "agent-odip", quietMin: 90, waiting: null }] };
+  const stalled = { name: "odip", title: null, state: "running" as const, stalledCount: 0, inFlight: [{ name: "agent-odip", quietMin: 90, waiting: null }] };
 
   it("raises an item for a waiting agent, with the lanes page's wording", () => {
     assert.deepEqual(orchestraAttention("ok", [w("dev", "Bash", 6, "Dev")]), {
