@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createStreamSlots } from "@/lib/stream-slots";
 import { isProxyableCamera, openCamera, type CameraMode } from "@/lib/ha-doorbell";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +23,9 @@ export const dynamic = "force-dynamic";
 
 const ENTITY_ID_RE = /^camera\.[a-zA-Z0-9_]+$/;
 
+// Open MJPEG streams across all callers; each holds an upstream HA connection.
+const slots = createStreamSlots(3);
+
 export async function GET(req: NextRequest) {
   const entityId = req.nextUrl.searchParams.get("entity") ?? "";
   const mode: CameraMode = req.nextUrl.searchParams.get("mode") === "snapshot" ? "snapshot" : "stream";
@@ -35,12 +39,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No such door camera." }, { status: 404 });
   }
 
-  const upstream = await openCamera(entityId, mode, req.signal);
+  const release = mode === "stream" ? slots.acquire() : undefined;
+  if (mode === "stream" && !release) {
+    return NextResponse.json({ error: "Too many open camera streams." }, { status: 429 });
+  }
+  // Release is idempotent; every exit below calls it, so the count returns once per stream.
+  req.signal.addEventListener("abort", release ?? (() => {}), { once: true });
+
+  const upstream = await openCamera(entityId, mode, req.signal).catch((e) => {
+    release?.();
+    throw e;
+  });
   if ("error" in upstream) {
+    release?.();
     return NextResponse.json({ error: upstream.error }, { status: upstream.status });
   }
 
-  return new Response(upstream.body, {
+  let body: BodyInit | null = upstream.body;
+  if (release && upstream.body) {
+    const reader = upstream.body.getReader();
+    body = new ReadableStream<Uint8Array>({
+      async pull(c) {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            release();
+            c.close();
+          } else c.enqueue(value);
+        } catch (e) {
+          release();
+          c.error(e);
+        }
+      },
+      cancel(reason) {
+        release();
+        return reader.cancel(reason);
+      },
+    });
+  } else release?.();
+
+  return new Response(body, {
     status: 200,
     headers: {
       // Copied from upstream rather than reconstructed: the multipart boundary
