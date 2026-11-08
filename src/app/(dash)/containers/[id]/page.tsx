@@ -21,6 +21,7 @@ import { WidgetActionRow } from "@/components/widget-actions";
 import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
 import { processesHref } from "@/lib/container-rank";
+import { STATS_STALE_AFTER, nextFailCount } from "@/lib/poll-fails";
 import { REMOVABLE_STATES } from "@/lib/container-remove";
 import { isProtectedContainer } from "@/lib/protected-containers";
 import { LOGS_FAILED, detailNotice, nearBottom, statsWhileRunning } from "@/lib/detail-states";
@@ -59,16 +60,21 @@ function useStatsHistory(id: string, running: boolean) {
     if (!running) return;
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
+    let fails = 0;
     async function tick() {
       try {
         const res = await fetch(`/api/docker/containers/${id}/stats`);
+        fails = nextFailCount(res.ok, fails);
         if (res.ok && alive) {
           const snap = (await res.json()) as ContainerStatsSnapshot;
           setHistory((h) => [...h, snap].slice(-MAX_POINTS));
         }
       } catch {
         // container may be mid-restart; keep polling
+        fails = nextFailCount(false, fails);
       }
+      // Frozen numbers look live; after repeated failures show "-" like a stopped container.
+      if (alive && fails >= STATS_STALE_AFTER) setHistory([]);
       if (alive) timer = setTimeout(tick, 3000);
     }
     tick();

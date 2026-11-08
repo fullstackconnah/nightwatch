@@ -122,7 +122,7 @@ export function DiskGrowthPanel({ mountpoints }: { mountpoints: string[] }) {
   const { shown: capped, dropped } = cappedMounts(mountpoints);
   const key =
     capped.length > 0 ? `/api/resources/growth?range=${range}&mounts=${encodeURIComponent(capped.join(","))}` : null;
-  const { data, isLoading } = useSWR<MountGrowthResponse>(key, fetcher, {
+  const { data, error, isLoading } = useSWR<MountGrowthResponse>(key, fetcher, {
     refreshInterval: 60000,
     keepPreviousData: true,
   });
@@ -153,7 +153,9 @@ export function DiskGrowthPanel({ mountpoints }: { mountpoints: string[] }) {
       ) : isThin ? (
         <div className="py-4 text-center">
           <p className="text-ink-dim text-xs">
-            {!data || data.recordingSince == null
+            {error && !data
+              ? "could not load growth history"
+              : !data || data.recordingSince == null
               ? "recording will start on the next telemetry tick — check back in about a minute"
               : `recording since ${relativeTime(data.recordingSince)} — growth needs at least a day of history to read honestly`}
           </p>

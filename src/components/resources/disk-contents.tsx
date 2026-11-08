@@ -80,7 +80,11 @@ export function DiskContentsPanel({ label }: { label: string }) {
   const atRoot = stack.length === 0;
   const currentPath = stack[stack.length - 1] ?? null;
 
-  const { data: rootScan, isLoading: rootLoading } = useDiskUsage(atRoot ? label : null);
+  const {
+    data: rootScan,
+    isLoading: rootLoading,
+    error: rootError,
+  } = useDiskUsage(atRoot ? label : null);
   const dirKey = !atRoot && currentPath ? pathKey(currentPath) : null;
   const {
     data: dirScan,
@@ -121,14 +125,17 @@ export function DiskContentsPanel({ label }: { label: string }) {
     );
   }
 
-  if (!atRoot && dirError && !scan) {
+  const loadError = atRoot ? rootError : dirError;
+  if (loadError && !scan) {
     return (
       <div className="py-2 space-y-1">
         <div className="microlabel !text-warn/80">could not scan this path</div>
-        <div className="text-ink-faint text-xs">{dirError instanceof Error ? dirError.message : "unknown error"}</div>
-        <button type="button" onClick={() => setStack([])} className="text-xs text-accent hover:underline cursor-pointer">
-          Back to root
-        </button>
+        <div className="text-ink-faint text-xs">{loadError instanceof Error ? loadError.message : "unknown error"}</div>
+        {!atRoot && (
+          <button type="button" onClick={() => setStack([])} className="text-xs text-accent hover:underline cursor-pointer">
+            Back to root
+          </button>
+        )}
       </div>
     );
   }

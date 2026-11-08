@@ -99,14 +99,17 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
   const [refreshing, setRefreshing] = useState(false);
   const [unpinning, setUnpinning] = useState(false);
   const [unpinError, setUnpinError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   async function handleRefresh() {
     setRefreshing(true);
+    setRefreshError(null);
     try {
       const fresh = await fetcher(`${key}&refresh=1`);
       await mutate(fresh, false);
-    } catch {
-      // surfaced via the row's own error state below on next read
+    } catch (err) {
+      // The size cell shows an error only when there is no scan, so a failed rescan of a row that has one needs its own message.
+      setRefreshError(serverMessage(err) ?? "Couldn’t rescan.");
     } finally {
       setRefreshing(false);
     }
@@ -144,6 +147,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
       >
         <RotateCw size={13} className={refreshing ? "animate-spin motion-reduce:animate-none" : ""} />
       </button>
+      {refreshError && <PinError>{refreshError}</PinError>}
       {unpinError && <PinError>{unpinError}</PinError>}
       <button
         type="button"
