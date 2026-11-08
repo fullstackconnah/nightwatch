@@ -359,7 +359,34 @@ for (const width of WIDTHS) {
   await cell.filter({ hasText: "root" }).waitFor({ timeout: 30_000 }).catch(() => {});
   const m = await cell.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth, right: el.getBoundingClientRect().right, vw: window.innerWidth }));
   record("PQ4", /root.41%/.test(m.text) && /media.68%/.test(m.text) && m.over <= 0 && m.right <= m.vw, `@${width.name}: "${m.text.replace(/ /g, " ")}", page overflow ${m.over}px, cell right ${Math.round(m.right)}/${m.vw}`);
-  await page.locator('[data-feature="box-digest"]').screenshot({ path: join(OUT_DIR, `home-pq4-disks-${width.name}.png`) });
+  // Crop the whole Box section, padded, with the viewport tall enough that the fixed bottom nav and dev badge sit below it.
+  const box = page.locator('[data-feature="box-digest"]');
+  const PAD = 12;
+  const h = await box.evaluate((el) => el.getBoundingClientRect().height);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 160 });
+  await box.evaluate((el) => el.scrollIntoView({ block: "start" }));
+  // Leave room above for a sticky top header (short fixed/sticky bars only; a full-height sidebar is not "top chrome").
+  await page.evaluate((pad) => {
+    const top = [...document.querySelectorAll("body *")].map((n) => [getComputedStyle(n), n.getBoundingClientRect()])
+      .filter(([cs, b]) => (cs.position === "fixed" || cs.position === "sticky") && b.top <= 1 && b.height > 0 && b.height < innerHeight / 2 && b.width > innerWidth / 2)
+      .reduce((m, [, b]) => Math.max(m, b.bottom), 0);
+    window.scrollBy(0, -(pad + top));
+  }, PAD);
+  const geo = await box.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const chrome = [...document.querySelectorAll("body *")].filter((n) => {
+      if (n.contains(el) || el.contains(n)) return false;
+      const cs = getComputedStyle(n);
+      if (cs.position !== "fixed" && cs.position !== "sticky") return false;
+      const b = n.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && cs.visibility !== "hidden" && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+    }).map((n) => n.tagName.toLowerCase() + (n.className && typeof n.className === "string" ? "." + n.className.split(" ")[0] : ""));
+    const nav = [...document.querySelectorAll("body *")].find((n) => getComputedStyle(n).position === "fixed" && n.getBoundingClientRect().bottom >= window.innerHeight - 1 && n.getBoundingClientRect().height > 30 && n.getBoundingClientRect().height < window.innerHeight / 2 && !n.contains(el));
+    return { x: r.left, y: r.top, w: r.width, h: r.height, bottom: r.bottom, navTop: nav ? nav.getBoundingClientRect().top : null, chrome, vh: window.innerHeight };
+  });
+  record("PQ4", geo.chrome.length === 0 && (geo.navTop === null || geo.bottom <= geo.navTop) && geo.y >= 0, `@${width.name}: crop covers Box section ${Math.round(geo.h)}px, bottom ${Math.round(geo.bottom)} vs nav top ${geo.navTop === null ? "none" : Math.round(geo.navTop)}, chrome over crop: ${geo.chrome.join(",") || "none"}`);
+  const cx = Math.max(0, geo.x - PAD), cy = Math.max(0, geo.y - PAD);
+  await page.screenshot({ path: join(OUT_DIR, `home-pq4-disks-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(geo.w + 2 * PAD, (await page.viewportSize()).width - cx), height: Math.min(geo.h + 2 * PAD, geo.vh - cy) } });
   await context.close();
 }
 
