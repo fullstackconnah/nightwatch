@@ -341,11 +341,33 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- PQ4: Home's Disks value is labelled and fits (host mocked with three disks, one long name) ----
+const HOST = {
+  hostname: "h", os: "linux", uptimeSeconds: 90_000, cpu: { percent: 12.3, cores: 4, model: "x", loadAvg: [0, 0, 0] },
+  memory: { total: 16e9, used: 8e9, available: 8e9, percent: 50 }, network: { rxPerSec: 1000, txPerSec: 1000 }, tempC: 40, ts: NOW,
+  disk: [
+    { mount: "/", total: 1e11, used: 4.1e10, percent: 41 },
+    { mount: "/mnt/media", total: 8e12, used: 5.4e12, percent: 68 },
+    { mount: "/mnt/a-very-long-disk-name", total: 1e12, used: 1e11, percent: 10 },
+  ],
+};
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "quiet" });
+  await page.route("**/api/host", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(HOST) }));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const cell = page.locator('[data-feature="box-digest"] .hm-dg-cell', { hasText: "Disks" });
+  await cell.filter({ hasText: "root" }).waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await cell.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth, right: el.getBoundingClientRect().right, vw: window.innerWidth }));
+  record("PQ4", /root.41%/.test(m.text) && /media.68%/.test(m.text) && m.over <= 0 && m.right <= m.vw, `@${width.name}: "${m.text.replace(/ /g, " ")}", page overflow ${m.over}px, cell right ${Math.round(m.right)}/${m.vw}`);
+  await page.locator('[data-feature="box-digest"]').screenshot({ path: join(OUT_DIR, `home-pq4-disks-${width.name}.png`) });
+  await context.close();
+}
+
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = Array.from({ length: 14 }, (_, i) => `C${i + 1}`);
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

@@ -259,3 +259,12 @@ test("nightlyAt: a stale check gives no backup clause", () => {
   assert.equal(nightlyAt({ status: "missing" }, 0), null);
   assert.equal(answerFor({ ...base, backupAgo: null, report: report() }).text, "All clear. 48 apps running");
 });
+
+test("diskLine labels each percent with the mount's short name", async () => {
+  const { diskLine } = await import("./home.ts");
+  const d = (mount: string, percent: number) => ({ mount, percent });
+  assert.equal(diskLine([d("/", 40.6), d("/mnt/media", 68)]), "root\u00a041% · media\u00a068%");
+  assert.equal(diskLine([d("/mnt/a-very-long-disk-name", 5)]), "a-very-long-…\u00a05%");
+  assert.equal(diskLine([d("", 7)]), "7%");
+  assert.equal(diskLine([d("/", 41)]), "root\u00a041%");
+});

@@ -98,6 +98,9 @@ export function inFlightRows(list: OrchestratorInFlight[]): (OrchestratorInFligh
 /** 24 -> "24m", 125 -> "2h 5m". */
 export const mins = (q: number): string => (q < 60 ? `${q}m` : `${Math.floor(q / 60)}h ${q % 60}m`);
 
+/** "a Bash", "an Edit": tool names are single words. */
+const aTool = (t: string): string => `${/^[aeiou]/i.test(t) ? "an" : "a"} ${t}`;
+
 export function formatQuiet(quietMin: number | null): string {
   return quietMin === null ? "no transcript yet" : `quiet ${mins(quietMin)}`;
 }
@@ -137,7 +140,7 @@ export function orchestraAttention(
     .sort((a, b) => b.since - a.since);
   const wTop = waiting[0];
   if (wTop) {
-    const call = `${id(wTop.agent)} has a ${wTop.tool} call waiting ${wTop.since}m, usually a permission prompt.`;
+    const call = `${id(wTop.agent)} has ${aTool(wTop.tool)} call waiting ${wTop.since}m, usually a permission prompt.`;
     return waiting.length === 1
       ? { headline: `${id(wTop.orch)} is waiting for you`, detail: call, action: "Answer it on the PC." }
       : { headline: `${waiting.length} agents are waiting for you`, detail: `Longest: ${call}`, action: "Answer them on the PC." };
@@ -224,7 +227,7 @@ export function laneSentence(list: OrchestratorSummary[], { stale }: { stale: bo
   if (need.length > 1) return `${l.name} needs you: ${need.length} agents need a look.`;
   const [a] = need;
   return a.waiting
-    ? `${l.name} needs you: ${a.name} has a ${a.waiting.tool} call waiting ${a.waiting.sinceMin}m, usually a permission prompt.`
+    ? `${l.name} needs you: ${a.name} has ${aTool(a.waiting.tool)} call waiting ${a.waiting.sinceMin}m, usually a permission prompt.`
     : `${l.name} needs you: ${a.name} has been quiet ${mins(a.quietMin ?? 0)}.`;
 }
 

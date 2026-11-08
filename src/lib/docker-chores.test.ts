@@ -198,3 +198,8 @@ test("A2: the image prune says 'up to' (shared layers are counted per image); vo
   assert.equal(reclaimPrefix("images"), "up to ");
   assert.equal(reclaimPrefix("volumes"), "");
 });
+
+test("C4b: an id the owner just removed cannot re-enter the snapshot from a stale refresh", () => {
+  const held = snapAfterWrite({ stopped: ["a", "b"] }, "stopped", ["a", "b", "c"], "a");
+  assert.deepEqual(held.stopped, ["b", "c"]);
+});

@@ -142,6 +142,11 @@ try {
       });
       check(`${tag} rest: Stop has no danger colour`, [colours.color, colours.background, colours.border].every((c) => c !== colours.bad), JSON.stringify(colours));
       await shot("rest");
+      if (caller.id === "detail") {
+        // PQ5: the back link is 44 px tall at 390 and keeps its small desktop height at 1440.
+        const h = await page.locator('a[href="/docker?find=containers"]').first().evaluate((el) => el.getBoundingClientRect().height);
+        check(`${tag}: back link height ${Math.round(h)} px`, vp === "390" ? h >= 44 : h < 30, String(h));
+      }
 
       const rowTop = () => rowBtn.evaluate((el) => el.getBoundingClientRect().top);
       const topBefore = rowBtn ? await rowTop() : null;
