@@ -16,12 +16,9 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, RotateCw } from "lucide-react";
 
-const RESET_DELAY_MS = 10_000;
-const MAX_AUTO_ATTEMPTS = 3;
-const WINDOW_MS = 5 * 60 * 1000;
-const STORAGE_KEY = "kiosk-error-recovery";
+import { planRecovery, RESET_DELAY_MS, type Phase, type RecoveryState } from "@/lib/kiosk-recovery";
 
-type RecoveryState = { attempts: number[]; escalatedAt: number | null };
+const STORAGE_KEY = "kiosk-error-recovery";
 
 // sessionStorage throws in private/locked-down browsing modes — same
 // failure mode the layout override handles for localStorage in
@@ -49,8 +46,6 @@ function writeRecoveryState(state: RecoveryState) {
   }
 }
 
-type Phase = "retrying" | "escalating" | "stuck";
-
 export default function KioskError({
   error,
   reset,
@@ -62,33 +57,30 @@ export default function KioskError({
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(RESET_DELAY_MS / 1000));
 
   useEffect(() => {
-    const now = Date.now();
     const state = readRecoveryState();
-    // Sliding window: an attempt only counts against the escalation budget
-    // if it happened in the last 5 minutes, so a kiosk that crashed once
-    // last week and once just now doesn't inherit a stale strike count.
-    const recentAttempts = state.attempts.filter((t) => now - t < WINDOW_MS);
-    const recentlyEscalated = state.escalatedAt !== null && now - state.escalatedAt < WINDOW_MS;
+    // Attempts only count inside a sliding window (see planRecovery), so a
+    // kiosk that crashed once last week doesn't inherit a stale strike count.
+    const plan = planRecovery(state, Date.now());
+    const { recentAttempts } = plan;
+    setPhase(plan.phase);
 
     let action: () => void;
-    if (recentAttempts.length < MAX_AUTO_ATTEMPTS) {
-      setPhase("retrying");
+    if (plan.phase === "retrying") {
       action = () => {
         writeRecoveryState({ attempts: [...recentAttempts, Date.now()], escalatedAt: state.escalatedAt });
         reset();
       };
-    } else if (!recentlyEscalated) {
-      setPhase("escalating");
+    } else if (plan.phase === "escalating") {
       action = () => {
         writeRecoveryState({ attempts: recentAttempts, escalatedAt: Date.now() });
         window.location.reload();
       };
     } else {
-      // 3 resets and a full reload already failed inside this window —
-      // whatever is broken won't be fixed by trying the same things again.
-      // Leave the manual button as the only way forward.
-      setPhase("stuck");
-      return;
+      // 3 resets and a full reload failed inside this window. Wait it out,
+      // then reload once: the next mount starts a fresh ladder, so a wall
+      // display recovers on its own after the cause has gone.
+      const stuckTimer = setTimeout(() => window.location.reload(), plan.delayMs);
+      return () => clearTimeout(stuckTimer);
     }
 
     setSecondsLeft(Math.ceil(RESET_DELAY_MS / 1000));
@@ -116,7 +108,7 @@ export default function KioskError({
           <div className="text-sm font-semibold text-ink">Something went wrong</div>
           <div className="text-xs text-ink-dim">
             {phase === "stuck"
-              ? "It couldn't fix itself. Tap Reload below."
+              ? "It couldn't fix itself yet. It will try again in a few minutes, or tap Reload."
               : "This screen is fixing itself — no need to touch anything."}
           </div>
         </div>
