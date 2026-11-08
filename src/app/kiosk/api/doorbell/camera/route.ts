@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createStreamSlots } from "@/lib/stream-slots";
+import { createStreamSlots, releaseOnEnd } from "@/lib/stream-slots";
 import { isProxyableCamera, openCamera, type CameraMode } from "@/lib/ha-doorbell";
 
 export const dynamic = "force-dynamic";
@@ -57,25 +57,7 @@ export async function GET(req: NextRequest) {
 
   let body: BodyInit | null = upstream.body;
   if (release && upstream.body) {
-    const reader = upstream.body.getReader();
-    body = new ReadableStream<Uint8Array>({
-      async pull(c) {
-        try {
-          const { done, value } = await reader.read();
-          if (done) {
-            release();
-            c.close();
-          } else c.enqueue(value);
-        } catch (e) {
-          release();
-          c.error(e);
-        }
-      },
-      cancel(reason) {
-        release();
-        return reader.cancel(reason);
-      },
-    });
+    body = releaseOnEnd(upstream.body, release);
   } else release?.();
 
   return new Response(body, {

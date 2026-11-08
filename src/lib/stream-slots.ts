@@ -15,3 +15,26 @@ export function createStreamSlots(max: number) {
     },
   };
 }
+
+/** Wraps an upstream body so `release` runs when it ends, errors or the consumer cancels. */
+export function releaseOnEnd(body: ReadableStream<Uint8Array>, release: () => void): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          release();
+          c.close();
+        } else c.enqueue(value);
+      } catch (e) {
+        release();
+        c.error(e);
+      }
+    },
+    cancel(reason) {
+      release();
+      return reader.cancel(reason);
+    },
+  });
+}
