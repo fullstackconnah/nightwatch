@@ -54,7 +54,8 @@ export async function GET(req: NextRequest) {
   const layer = searchParams.get("layer");
   const t = searchParams.get("t");
 
-  if (!PRODUCT_RE.test(product) || !isKioskRadarProduct(product, buildRadarLoop())) {
+  const loop = buildRadarLoop();
+  if (!PRODUCT_RE.test(product) || !isKioskRadarProduct(product, loop) || !loop) {
     return NextResponse.json({ error: "invalid product" }, { status: 400 });
   }
 
@@ -78,6 +79,10 @@ export async function GET(req: NextRequest) {
     if (!Number.isFinite(ms) || ms < now - MAX_AGE_MS || ms > now + MAX_FUTURE_MS) {
       return NextResponse.json({ error: "timestamp out of range" }, { status: 400 });
     }
+    // Only the stamps the loop itself publishes; anything else is a probe of BOM's archive.
+    if (!loop.frames.includes(t)) {
+      return NextResponse.json({ error: "timestamp out of range" }, { status: 400 });
+    }
     upstreamPath = `/radar/${product}.T.${t}.png`;
     // Once BOM publishes a frame for a given timestamp its pixels never
     // change again — cache hard, same reasoning as the static layers above.
@@ -89,6 +94,8 @@ export async function GET(req: NextRequest) {
   const cached = frameCache.get(upstreamPath);
   if (cached) return new NextResponse(cached, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
 
+  if (frameCache.missed(upstreamPath)) return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
+
   try {
     const res = await fetch(`https://www.bom.gov.au${upstreamPath}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -98,14 +105,19 @@ export async function GET(req: NextRequest) {
     if (!res.ok) {
       // Never forward BOM's own response body/status text — just the fact
       // that upstream failed.
+      frameCache.markMiss(upstreamPath);
       return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
     }
     const body = await res.arrayBuffer();
     // A 200 that isn't a PNG (an HTML block page) must not get the immutable image cache header.
-    if (!isPngBytes(body)) return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
+    if (!isPngBytes(body)) {
+      frameCache.markMiss(upstreamPath);
+      return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
+    }
     frameCache.set(upstreamPath, body);
     return new NextResponse(body, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
   } catch {
+    frameCache.markMiss(upstreamPath);
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
   }
 }

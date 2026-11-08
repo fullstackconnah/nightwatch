@@ -15,6 +15,17 @@ export interface ClimateAutoOffConfig {
   lastRunDate?: string;
 }
 
+/** True when saving `next` would store the same four values already stored. */
+export function autoOffUnchanged(prev: Partial<ClimateAutoOffConfig> | undefined, next: Partial<ClimateAutoOffConfig>): boolean {
+  return (
+    !!prev &&
+    prev.enabled === next.enabled &&
+    prev.time === next.time &&
+    prev.skipDate === next.skipDate &&
+    prev.lastRunDate === next.lastRunDate
+  );
+}
+
 export interface SweepWindow {
   /** Local date the window STARTS on — the sweep's identity, so a
    *  near-midnight schedule spilling past 00:00 still counts as one night. */

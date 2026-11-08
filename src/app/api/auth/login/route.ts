@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   const candidates = candidatePasswordHashes();
 
   let ok = false;
-  if (candidates.length && password) {
+  if (candidates.length && typeof password === "string" && password) {
     for (const candidate of candidates) {
       if (await bcrypt.compare(password, candidate.hash)) {
         ok = true;

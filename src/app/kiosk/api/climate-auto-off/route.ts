@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
-import { DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
+import { autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +42,6 @@ export async function POST(req: NextRequest) {
     lastRunDate: parsed.lastRunDate ?? prev?.lastRunDate,
     updatedAt: new Date().toISOString(),
   };
-  saveConfig({ ...config, climateAutoOff: next });
+  if (!autoOffUnchanged(prev, next)) saveConfig({ ...config, climateAutoOff: next });
   return NextResponse.json(responseShape(next));
 }
