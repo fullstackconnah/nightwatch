@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildRadarLoop } from "@/lib/kiosk-radar";
-import { isKioskRadarProduct, isPngBytes } from "@/lib/radar-frame";
+import { isKioskRadarProduct, isListedFrame, isPngBytes } from "@/lib/radar-frame";
 import { createRadarFrameCache } from "@/lib/radar-frame-cache";
 
 const frameCache = createRadarFrameCache();
@@ -79,8 +79,8 @@ export async function GET(req: NextRequest) {
     if (!Number.isFinite(ms) || ms < now - MAX_AGE_MS || ms > now + MAX_FUTURE_MS) {
       return NextResponse.json({ error: "timestamp out of range" }, { status: 400 });
     }
-    // Only the stamps the loop itself publishes; anything else is a probe of BOM's archive.
-    if (!loop.frames.includes(t)) {
+    // Only the stamps the loop publishes, plus one older step: the list route's cache can cross a step boundary.
+    if (!isListedFrame(t, loop.frames)) {
       return NextResponse.json({ error: "timestamp out of range" }, { status: 400 });
     }
     upstreamPath = `/radar/${product}.T.${t}.png`;
@@ -105,19 +105,19 @@ export async function GET(req: NextRequest) {
     if (!res.ok) {
       // Never forward BOM's own response body/status text — just the fact
       // that upstream failed.
-      frameCache.markMiss(upstreamPath);
+      if (layer === null) frameCache.markMiss(upstreamPath);
       return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
     }
     const body = await res.arrayBuffer();
     // A 200 that isn't a PNG (an HTML block page) must not get the immutable image cache header.
     if (!isPngBytes(body)) {
-      frameCache.markMiss(upstreamPath);
+      if (layer === null) frameCache.markMiss(upstreamPath);
       return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
     }
     frameCache.set(upstreamPath, body);
     return new NextResponse(body, { headers: { "Content-Type": "image/png", "Cache-Control": cacheControl } });
   } catch {
-    frameCache.markMiss(upstreamPath);
+    if (layer === null) frameCache.markMiss(upstreamPath);
     return NextResponse.json({ error: "upstream unavailable" }, { status: 502 });
   }
 }
