@@ -2,6 +2,8 @@
  * hh:mm is the same whatever day the run happens. `satisfies AttentionReport` makes tsc check each one
  * against the real type; the shots script imports this file under node --experimental-strip-types.
  * Names are placeholders: no real host, address or token appears here. */
+import type { BackupStatus } from "../../../src/lib/backup-status.ts";
+import type { TiledContainer } from "../../../src/lib/tiles.ts";
 import type {
   AttentionHit,
   AttentionReport,
@@ -152,3 +154,57 @@ export function build(now: number) {
 }
 
 export type FixtureName = keyof ReturnType<typeof build>;
+
+/* The launcher's apps, so the quiet state does not depend on what the test stack happens to run (an unhealthy or
+ * paused container there paints warn). Three running apps in two groups, one with a widget and its actions, one
+ * stopped cleanly (so C12 still sees a stopped row). Placeholder names and addresses. */
+const app = (
+  name: string,
+  group: string,
+  over: Partial<TiledContainer> = {},
+): TiledContainer => ({
+  id: `${name}0000000000000000`,
+  name,
+  image: `example/${name}`,
+  state: "running",
+  status: "Up 2 days",
+  health: null,
+  composeProject: group.toLowerCase(),
+  composeService: name,
+  ports: [],
+  labels: {},
+  created: 0,
+  startedAt: Date.now() - 2 * 24 * 3_600_000,
+  finishedAt: null,
+  exitCode: null,
+  restartCount: 0,
+  tile: { url: "http://app.invalid:8080", icon: null, group, hidden: false, hasWidget: false },
+  ...over,
+});
+
+export const CONTAINERS = {
+  containers: [
+    app("sonarr", "Media", { tile: { url: "http://app.invalid:8989", icon: null, group: "Media", hidden: false, hasWidget: true } }),
+    app("jellyfin", "Media"),
+    app("proxy", "Infra"),
+    app("scratch", "Infra", { state: "exited", status: "Exited (0) 3 hours ago", startedAt: null, finishedAt: Date.now() - 3 * 3_600_000, exitCode: 0 }),
+  ],
+  groups: ["Media", "Infra"],
+  counts: { total: 4, running: 3, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
+};
+
+export const WIDGETS = {
+  widgets: {
+    sonarr: { type: "sonarr", configured: true, fetchedAt: Date.now(), fields: [{ label: "Queue", value: "2" }, { label: "Wanted", value: "14" }] },
+  },
+};
+
+/** /api/backup with both checks fresh, so the quiet Home has no stale or unreadable backup dot. */
+export const backupOk = (now: number): BackupStatus => ({
+  status: "ok",
+  checkedAt: new Date(now - 60 * MIN).toISOString(),
+  items: [
+    { kind: "backup", state: "OK", at: new Date(now - 6 * 60 * MIN).toISOString() },
+    { kind: "restore-test", state: "OK", at: new Date(now - 18 * 60 * MIN).toISOString() },
+  ],
+});

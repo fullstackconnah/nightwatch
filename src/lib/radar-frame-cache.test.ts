@@ -35,3 +35,25 @@ describe("radar frame cache", () => {
     assert.equal(src.split("frameCache.set(").length, 2);
   });
 });
+
+describe("radar frame misses", () => {
+  it("remembers a miss for 60 seconds, then forgets it", () => {
+    let t = 0;
+    const c = createRadarFrameCache(() => t);
+    assert.equal(c.missed("/m.png"), false);
+    c.markMiss("/m.png");
+    assert.equal(c.missed("/m.png"), true);
+    t = 59_999;
+    assert.equal(c.missed("/m.png"), true);
+    t = 60_000;
+    assert.equal(c.missed("/m.png"), false);
+  });
+  it("caps the miss list", () => {
+    const c = createRadarFrameCache(() => 0, 2);
+    c.markMiss("/1");
+    c.markMiss("/2");
+    c.markMiss("/3");
+    assert.equal(c.missed("/1"), false);
+    assert.equal(c.missed("/3"), true);
+  });
+});

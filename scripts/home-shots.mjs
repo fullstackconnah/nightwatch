@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /* Home (/) acceptance run: captures and numeric checks C1 to C14 from the shape brief, on the test stack.
  * /api/attention is served from scripts/fixtures/home/fixtures.ts (built relative to now), so every age and
- * hh:mm is stable. Every other request goes to the real test stack. Run on the server, never on production:
+ * hh:mm is stable; the launcher's containers and widgets and the backup status come from the same file. Every other request goes to the
+ * real test stack. Run on the server, never on production:
  *
  *   BASE_URL=http://host:3006 OUT_DIR=shots node --experimental-strip-types scripts/home-shots.mjs
  *
  * Writes <OUT_DIR>/results.json and prints one `home-shots: pass/total` line plus each failing check.
  * Needs Playwright >= 1.45. Playwright is not a dependency of this repo; run it where one is installed.
- * The test stack is a dev build (any non-empty password logs in) and needs at least one container with a
- * URL, a widget with fields and a stopped container for C9 and C12 to see every feature.
+ * The test stack is a dev build (any non-empty password logs in).
  */
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { build } from "./fixtures/home/fixtures.ts";
+import { backupOk, build, CONTAINERS, WIDGETS } from "./fixtures/home/fixtures.ts";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -82,8 +82,12 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
     if (state.cur === "error") return route.fulfill({ status: 500, body: "{}" });
     return route.fulfill({ json: FIX[state.cur] });
   });
+  await page.route("**/api/docker/containers", (route) => route.fulfill({ json: CONTAINERS }));
+  await page.route("**/api/backup", (route) => route.fulfill({ json: backupOk(NOW) }));
+  await page.route("**/api/widgets",(route) => route.fulfill({ json: WIDGETS }));
   await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".hm-answer").waitFor({ timeout: 30_000 });
+  await page.locator(".hm-app").first().waitFor({ timeout: 30_000 }); // C9 reads the launcher, which loads after the answer
   if (fixture !== "loading") {
     await page.waitForFunction(() => !/^Checking the box/.test(document.querySelector(".hm-answer")?.textContent ?? ""), null, {
       timeout: 30_000,
@@ -336,8 +340,9 @@ for (const reduced of [false, true]) {
 for (const width of WIDTHS) {
   const before = pageErrors;
   const { context, page } = await open({ width, fixture: "quiet", throwStorage: true });
+  // innerText applies the label's text-transform: uppercase, so match case-insensitively.
   const text = await page.locator(".hm-chg").innerText();
-  record("C14", /last 24 h/.test(text) && pageErrors === before, `@${width.name}: feed label ${/last 24 h/.test(text) ? "last 24 h" : `"${text.split("\n")[0]}"`}, ${pageErrors - before} page errors`);
+  record("C14", /last 24 h/i.test(text) && pageErrors === before, `@${width.name}: feed label ${/last 24 h/i.test(text) ? "last 24 h" : `"${text.split("\n")[0]}"`}, ${pageErrors - before} page errors`);
   await context.close();
 }
 
