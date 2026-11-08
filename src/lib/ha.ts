@@ -134,6 +134,7 @@ interface HaRawEntity {
  *  contract as jellyfin.ts's numberOrNull, reused here for both numeric
  *  attributes and numeric-looking state strings (sensor states arrive as text). */
 function numberOrNull(value: unknown): number | null {
+  if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }

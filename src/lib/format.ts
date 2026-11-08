@@ -1,13 +1,14 @@
 export function formatBytes(n: number | undefined | null, digits = 1): string {
-  if (n == null || isNaN(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "—";
   // Rounded, not raw: every other branch is fixed to `digits`, and callers now
   // include derived per-second rates, which are floats. Without this a sub-KiB
   // rate renders as "937.9528663389771 B/s".
-  if (n < 1024) return `${Math.round(n)} B`;
+  if (Math.round(n) < 1024) return `${Math.round(n)} B`;
   const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
-  let v = n;
-  let i = -1;
-  while (v >= 1024 && i < units.length - 1) {
+  let v = n / 1024;
+  let i = 0;
+  // A value that prints as 1024.0 moves up a unit, so "1024.0 KiB" never shows.
+  while (Number(v.toFixed(digits)) >= 1024 && i < units.length - 1) {
     v /= 1024;
     i++;
   }
@@ -15,7 +16,7 @@ export function formatBytes(n: number | undefined | null, digits = 1): string {
 }
 
 export function formatRate(bytesPerSec: number | undefined | null): string {
-  if (bytesPerSec == null || isNaN(bytesPerSec)) return "—";
+  if (bytesPerSec == null || !Number.isFinite(bytesPerSec)) return "—";
   return `${formatBytes(bytesPerSec)}/s`;
 }
 
@@ -25,7 +26,7 @@ export function formatRate(bytesPerSec: number | undefined | null): string {
  * which is a correct number in the wrong idiom for a stream's bitrate.
  */
 export function formatBitrate(bitsPerSec: number | undefined | null): string {
-  if (bitsPerSec == null || isNaN(bitsPerSec)) return "—";
+  if (bitsPerSec == null || !Number.isFinite(bitsPerSec)) return "—";
   if (bitsPerSec >= 1_000_000) return `${(bitsPerSec / 1_000_000).toFixed(1)} Mbps`;
   if (bitsPerSec >= 1000) return `${Math.round(bitsPerSec / 1000)} kbps`;
   return `${Math.round(bitsPerSec)} bps`;
@@ -38,7 +39,7 @@ export function formatBitrate(bitsPerSec: number | undefined | null): string {
  * watching the counter.
  */
 export function formatUptime(seconds: number | undefined | null): string {
-  if (seconds == null || isNaN(seconds)) return "—";
+  if (seconds == null || !Number.isFinite(seconds)) return "—";
   const total = Math.max(0, Math.floor(seconds));
   const d = Math.floor(total / 86400);
   const h = Math.floor((total % 86400) / 3600);
@@ -50,13 +51,13 @@ export function formatUptime(seconds: number | undefined | null): string {
 }
 
 export function formatPercent(v: number | undefined | null, digits = 0): string {
-  if (v == null || isNaN(v)) return "—";
+  if (v == null || !Number.isFinite(v)) return "—";
   return `${v.toFixed(digits)}%`;
 }
 
 export function formatNumber(v: number | undefined | null): string {
-  if (v == null || isNaN(v)) return "—";
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v == null || !Number.isFinite(v)) return "—";
+  if (v >= 999_950) return `${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 10_000) return `${(v / 1000).toFixed(1)}k`;
   return v.toLocaleString("en-AU");
 }

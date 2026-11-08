@@ -66,7 +66,7 @@ export function Meter({
   badAt?: number;
   label?: string;
 }) {
-  const p = Math.max(0, Math.min(100, percent));
+  const p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   const color =
     p >= badAt ? "var(--color-bad)" : p >= warnAt ? "var(--color-warn)" : "var(--color-accent)";
   return (
@@ -110,7 +110,7 @@ export function Gauge({
   size?: number;
   label: string;
 }) {
-  const p = Math.max(0, Math.min(100, percent));
+  const p = Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : 0;
   const r = size / 2 - 5;
   const c = 2 * Math.PI * r;
   const color =

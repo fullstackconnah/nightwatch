@@ -41,6 +41,15 @@ describe("checkReady (S5, O5)", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it("not ready, never throws, when movies/ and tv/ are missing (hunt 16 B5)", () => {
+    const root = tempDir("mw-ready-nomedia-");
+    mkdirSync(join(root, ".nightwatch"));
+    const r = checkReady(root);
+    assert.equal(r.ready, false);
+    assert.equal(r.reason, "Media folders missing");
+    rmSync(root, { recursive: true, force: true });
+  });
+
   it("ready when .nightwatch is writable on the same disk; makes hold, work and calibration", () => {
     const root = media();
     mkdirSync(join(root, ".nightwatch"));
