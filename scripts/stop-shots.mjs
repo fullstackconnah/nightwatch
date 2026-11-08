@@ -158,7 +158,9 @@ try {
         check(`${tag} confirm: C2 row does not move`, moved < 0.5, `moved=${moved}px`);
       }
       check(`${tag} confirm: Yes named "Yes, stop ${NAME}"`, (await yes.count()) === 1);
-      check(`${tag} confirm: frame text names the container`, await page.getByText(`Stop ${NAME}?`).isVisible().catch(() => false));
+      // /minecraft passes its own line (status-card.tsx `say`, Strips PR 1 #45) in place of "Stop {name}?".
+      const frameText = caller.id === "minecraft" ? /^Stops the server\./ : `Stop ${NAME}?`;
+      check(`${tag} confirm: frame text names the container`, await page.locator(".nw-confirm").getByText(frameText).isVisible().catch(() => false));
       check(`${tag} confirm: 0 stop POSTs before Yes`, posts === 0, `posts=${posts}`);
       await shot("confirm");
 
