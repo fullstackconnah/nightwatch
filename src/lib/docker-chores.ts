@@ -144,9 +144,10 @@ export const STALE_AFTER_MS = 60_000;
 export function slotItem(s: Sources): { kind: SlotKind; text: string } {
   const down = [s.containers, s.images, s.volumes].every((x) => x.error);
   if (down) {
+    const err = (s.containers.error ?? "").replace(/\.$/, "");
     return {
       kind: "error",
-      text: `${/not reachable|unreachable/i.test(s.containers.error ?? "") ? s.containers.error : `Docker unreachable: ${s.containers.error}`}. ${s.containers.loaded ? `Showing the last list from ${s.agoText}; nothing` : "Nothing"} here can change until it is back.`,
+      text: `${/not reachable|unreachable/i.test(err) ? err : `Docker unreachable: ${err}`}. ${s.containers.loaded ? `Showing the last list from ${s.agoText}; nothing` : "Nothing"} here can change until it is back.`,
     };
   }
   if (s.disk.error) return { kind: "error", text: `Couldn't size the clean-up: ${s.disk.error}` };

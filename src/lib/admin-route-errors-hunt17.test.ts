@@ -44,3 +44,11 @@ test("B2: minecraft delete and activate refuse a slug that sanitizeSlug would ch
     assert.match(src, /^\s+return NextResponse\.json\(\{ error: "invalid instance slug" \}, \{ status: 400 \}\);$/m, r);
   }
 });
+
+test("H17BF F2: logs and stats map a Docker 404 like the inspect route", () => {
+  for (const r of ["docker/containers/[id]/logs/route.ts", "docker/containers/[id]/stats/route.ts"]) {
+    const src = read(r);
+    assert.match(src, /^\s+const status = \(e as \{ statusCode\?: number \}\)\.statusCode === 404 \? 404 : 502;$/m, r);
+    assert.match(src, /"That container no longer exists\."/, r);
+  }
+});

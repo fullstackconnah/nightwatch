@@ -6,6 +6,7 @@ import {
   type CreateContainerSpec,
 } from "@/lib/docker";
 import { validateSpecShape } from "@/lib/create-spec";
+import { createErrorCopy } from "@/lib/docker-create-error";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 
@@ -56,9 +57,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     console.error("docker create failed", e);
-    const bindMissing = e instanceof Error && /bind source path does not exist/i.test(e.message);
     return NextResponse.json(
-      { error: bindMissing ? "A bind source doesn't exist on the host. Bind sources must already exist; they are not created." : "Docker failed to create it." },
+      { error: createErrorCopy(String(Reflect.get(Object(e), "message") ?? "")) },
       { status: 500 },
     );
   }

@@ -11,6 +11,10 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     return NextResponse.json(await containerStats(id));
   } catch (e) {
     console.error("docker stats failed", e);
-    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
+    const status = (e as { statusCode?: number }).statusCode === 404 ? 404 : 502;
+    return NextResponse.json(
+      { error: status === 404 ? "That container no longer exists." : "Docker unreachable." },
+      { status },
+    );
   }
 }
