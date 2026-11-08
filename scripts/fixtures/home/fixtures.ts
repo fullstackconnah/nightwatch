@@ -110,6 +110,14 @@ const lane = (now: number, minAgo: number) =>
     owner: { href: "/orchestrators", label: "Open AI lanes" },
   });
 
+// SL: a lane Orchestra reports stalled but sent no agent rows for (copy from orchestraAttention in src/lib/orchestra-view.ts).
+const stalledLane = (now: number, minAgo: number) =>
+  hit(now, "orchestra", "orchestra", "warn", "dev has gone quiet", minAgo, {
+    detail: "The service reports this lane as stalled but sent no agent details. It may be stuck.",
+    action: "Check it on the AI lanes page.",
+    owner: { href: "/orchestrators", label: "Open AI lanes" },
+  });
+
 export function build(now: number) {
   const e = baseEvents(now);
   return {
@@ -117,6 +125,7 @@ export function build(now: number) {
     one: report(now, [disk(now, 90)], e),
     // radarr is crashed and dev is stuck: neither may appear in the feed (R3).
     several: report(now, [crash(now, "radarr", 130), lane(now, 40), disk(now, 300)], e),
+    stalledLane: report(now, [stalledLane(now, 25)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(
       now,
