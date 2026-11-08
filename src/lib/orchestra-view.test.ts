@@ -350,12 +350,25 @@ describe("waiting agents on Home (O2)", () => {
   it("counts several waiting agents and names the longest", () => {
     const r = orchestraAttention("ok", [w("a", "Bash", 2), w("b", "Edit", 9)]);
     assert.equal(r?.headline, "2 agents are waiting for you");
-    assert.equal(r?.detail, "Longest: agent-b has a Edit call waiting 9m, usually a permission prompt.");
+    assert.equal(r?.detail, "Longest: agent-b has an Edit call waiting 9m, usually a permission prompt.");
   });
   it("Home's lane text counts a lane with a waiting agent as stuck, and leaves out the agent count", () => {
     const list = [o("running", 0, [ag("a", 1, wait("Bash", 3))], "one"), o("running", 0, [ag("b", 1)], "two"), o("stopped", 0, [], "three")];
     assert.equal(homeLanesText(list), "1 stuck, 1 running, 1 stopped");
     assert.equal(homeLanesText([o("running", 0, [ag("a", 1, wait("Bash", 3))])]), "1 stuck");
     assert.equal(homeLanesText([]), "no lanes");
+  });
+});
+
+describe("an/a before a tool name", () => {
+  const d = (tool: string) => ({ name: "dev", title: null, inFlight: [{ name: "agent-1", quietMin: 1, waiting: { tool, sinceMin: 3 } }] });
+  it("Home's attention detail says an Edit call and a Bash call", () => {
+    assert.match(orchestraAttention("ok", [d("Edit") as never])!.detail, /has an Edit call waiting/);
+    assert.match(orchestraAttention("ok", [d("Bash") as never])!.detail, /has a Bash call waiting/);
+  });
+  it("the lane sentence says an Edit call and a Bash call", () => {
+    const lane = (tool: string) => [{ name: "dev", state: "running", stalledCount: 0, inFlightCount: 1, inFlight: [{ name: "agent-1", quietMin: 1, waiting: { tool, sinceMin: 3 } }] }] as never;
+    assert.match(laneSentence(lane("Edit"), { stale: false })!, /has an Edit call waiting/);
+    assert.match(laneSentence(lane("Bash"), { stale: false })!, /has a Bash call waiting/);
   });
 });

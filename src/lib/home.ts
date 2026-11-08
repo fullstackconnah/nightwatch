@@ -200,3 +200,15 @@ export function parseLastLooked(raw: string | null | undefined, now: number): { 
   if (Number.isFinite(n) && n > 0 && n <= now && now - n <= 30 * DAY) return { since: n, label: null };
   return { since: now - DAY, label: "last 24 h" };
 }
+
+const DISK_NAME_MAX = 13;
+/** Home's Disks value: "root 41% · media 68%". The name is the Resources HOST DISK mount, "/" shown as root, else its last segment. */
+export function diskLine(disks: readonly { mount: string; percent: number }[]): string {
+  return disks
+    .map((d) => {
+      const name = d.mount === "/" ? "root" : (d.mount.split("/").filter(Boolean).pop() ?? "");
+      const short = name.length > DISK_NAME_MAX ? `${name.slice(0, DISK_NAME_MAX - 1)}…` : name;
+      return `${short ? `${short}\u00a0` : ""}${Math.round(d.percent)}%`;
+    })
+    .join(" · ");
+}

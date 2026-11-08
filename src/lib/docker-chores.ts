@@ -177,8 +177,8 @@ export function heldMembers(
 }
 
 /** R4: the owner's own write takes a fresh snapshot of the chore's members (never null, which would release the hold). */
-export function snapAfterWrite<S extends Partial<Record<string, string[] | null>>>(snaps: S, chore: string, latest: readonly string[] | undefined): S {
-  return { ...snaps, [chore]: [...(latest ?? [])] };
+export function snapAfterWrite<S extends Partial<Record<string, string[] | null>>>(snaps: S, chore: string, latest: readonly string[] | undefined, removedId?: string): S {
+  return { ...snaps, [chore]: (latest ?? []).filter((x) => x !== removedId) };
 }
 
 export function pillText(newCount: number, goneCount: number): string {

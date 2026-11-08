@@ -341,11 +341,60 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- PQ4: Home's Disks value is labelled and fits (host mocked with three disks, one long name) ----
+const HOST = {
+  hostname: "h", os: "linux", uptimeSeconds: 90_000, cpu: { percent: 12.3, cores: 4, model: "x", loadAvg: [0, 0, 0] },
+  memory: { total: 16e9, used: 8e9, available: 8e9, percent: 50 }, network: { rxPerSec: 1000, txPerSec: 1000 }, tempC: 40, ts: NOW,
+  disk: [
+    { mount: "/", total: 1e11, used: 4.1e10, percent: 41 },
+    { mount: "/mnt/media", total: 8e12, used: 5.4e12, percent: 68 },
+    { mount: "/mnt/a-very-long-disk-name", total: 1e12, used: 1e11, percent: 10 },
+  ],
+};
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "quiet" });
+  await page.route("**/api/host", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(HOST) }));
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const cell = page.locator('[data-feature="box-digest"] .hm-dg-cell', { hasText: "Disks" });
+  await cell.filter({ hasText: "root" }).waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await cell.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth, right: el.getBoundingClientRect().right, vw: window.innerWidth }));
+  record("PQ4", /root.41%/.test(m.text) && /media.68%/.test(m.text) && m.over <= 0 && m.right <= m.vw, `@${width.name}: "${m.text.replace(/ /g, " ")}", page overflow ${m.over}px, cell right ${Math.round(m.right)}/${m.vw}`);
+  // Crop the whole Box section, padded, with the viewport tall enough that the fixed bottom nav and dev badge sit below it.
+  const box = page.locator('[data-feature="box-digest"]');
+  const PAD = 12;
+  const h = await box.evaluate((el) => el.getBoundingClientRect().height);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 160 });
+  await box.evaluate((el) => el.scrollIntoView({ block: "start" }));
+  // Leave room above for a sticky top header (short fixed/sticky bars only; a full-height sidebar is not "top chrome").
+  await page.evaluate((pad) => {
+    const top = [...document.querySelectorAll("body *")].map((n) => [getComputedStyle(n), n.getBoundingClientRect()])
+      .filter(([cs, b]) => (cs.position === "fixed" || cs.position === "sticky") && b.top <= 1 && b.height > 0 && b.height < innerHeight / 2 && b.width > innerWidth / 2)
+      .reduce((m, [, b]) => Math.max(m, b.bottom), 0);
+    window.scrollBy(0, -(pad + top));
+  }, PAD);
+  const geo = await box.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const chrome = [...document.querySelectorAll("body *")].filter((n) => {
+      if (n.contains(el) || el.contains(n)) return false;
+      const cs = getComputedStyle(n);
+      if (cs.position !== "fixed" && cs.position !== "sticky") return false;
+      const b = n.getBoundingClientRect();
+      return b.width > 0 && b.height > 0 && cs.visibility !== "hidden" && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top;
+    }).map((n) => n.tagName.toLowerCase() + (n.className && typeof n.className === "string" ? "." + n.className.split(" ")[0] : ""));
+    const nav = [...document.querySelectorAll("body *")].find((n) => getComputedStyle(n).position === "fixed" && n.getBoundingClientRect().bottom >= window.innerHeight - 1 && n.getBoundingClientRect().height > 30 && n.getBoundingClientRect().height < window.innerHeight / 2 && !n.contains(el));
+    return { x: r.left, y: r.top, w: r.width, h: r.height, bottom: r.bottom, navTop: nav ? nav.getBoundingClientRect().top : null, chrome, vh: window.innerHeight };
+  });
+  record("PQ4", geo.chrome.length === 0 && (geo.navTop === null || geo.bottom <= geo.navTop) && geo.y >= 0, `@${width.name}: crop covers Box section ${Math.round(geo.h)}px, bottom ${Math.round(geo.bottom)} vs nav top ${geo.navTop === null ? "none" : Math.round(geo.navTop)}, chrome over crop: ${geo.chrome.join(",") || "none"}`);
+  const cx = Math.max(0, geo.x - PAD), cy = Math.max(0, geo.y - PAD);
+  await page.screenshot({ path: join(OUT_DIR, `home-pq4-disks-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(geo.w + 2 * PAD, (await page.viewportSize()).width - cx), height: Math.min(geo.h + 2 * PAD, geo.vh - cy) } });
+  await context.close();
+}
+
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = Array.from({ length: 14 }, (_, i) => `C${i + 1}`);
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { BackupTile } from "@/components/resources/backup-tile";
 import { useHost } from "@/lib/client";
 import { formatRate } from "@/lib/format";
+import { diskLine } from "@/lib/home";
 import { homeLanesText } from "@/lib/orchestra-view";
 import { useOrchestraStatus } from "@/lib/use-orchestra";
 import { cn } from "@/lib/utils";
@@ -42,7 +43,7 @@ function Digest() {
         <Cell label="CPU" width="5.5ch">{x ? `${x.cpu.percent.toFixed(1)}%` : "—"}</Cell>
         <Cell label="Memory" width="3.5ch">{x ? `${Math.round(x.memory.percent)}%` : "—"}</Cell>
         <Cell label="Disks" width="11ch" tone={x?.disk.some((d) => d.percent >= DISK_WARN_PCT) ? "warn" : undefined}>
-          {x ? `${x.disk.map((d) => Math.round(d.percent)).join(" · ")}%` : "—"}
+          {x ? diskLine(x.disk) : "—"}
         </Cell>
         <Cell label="Temp" width="4.5ch">{x?.tempC == null ? "—" : `${x.tempC.toFixed(0)}°C`}</Cell>
         <Cell label="Network" width="20ch">{x ? `↓ ${formatRate(x.network.rxPerSec)} ↑ ${formatRate(x.network.txPerSec)}` : "—"}</Cell>

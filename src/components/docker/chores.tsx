@@ -127,7 +127,7 @@ export function Chores(p: ChoresProps) {
           return n;
         });
         void p.refresh().finally(() => {
-          setSnaps((s) => snapAfterWrite(s, chore, latest.current[chore]));
+          setSnaps((s) => snapAfterWrite(s, chore, latest.current[chore], id));
           setOwnerGone((s) => {
             const n = new Set(s);
             n.delete(rowId);
