@@ -114,7 +114,7 @@ function rowlessLanes(details: Pick<OrchestratorSummary, "name" | "title" | "inF
     const n = one.stalledCount;
     return {
       headline: `${id(one.title ?? one.name)} has gone quiet`,
-      detail: `The service ${n > 0 ? `counts ${n} stalled ${n === 1 ? "agent" : "agents"} here` : "reports this lane as stalled"} but sent no agent details. It may be stuck.`,
+      detail: `The PC's agent service ${n > 0 ? `counts ${n} stalled ${n === 1 ? "agent" : "agents"} here` : "reports this lane as stalled"} but sent no agent details. It may be stuck.`,
       action: "Check it on the AI lanes page.",
     };
   }

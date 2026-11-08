@@ -32,6 +32,7 @@ test("camera route caps open streams and releases on abort, end and error", () =
   assert.match(route, /^\s+if \(mode === "stream" && !release\)/m);
   assert.match(route, /status: 429/);
   assert.match(route, /^\s+req\.signal\.addEventListener\("abort", release/m);
+  assert.match(route, /^\s+body = releaseOnEnd\(upstream\.body, release\);$/m);
 });
 
 test("auto-off skips a save that changes nothing", () => {

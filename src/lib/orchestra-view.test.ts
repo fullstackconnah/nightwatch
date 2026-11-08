@@ -339,14 +339,14 @@ describe("a stalled lane with no agent rows on Home", () => {
   it("raises an item for a lane the service reports stalled but sent no rows for", () => {
     assert.deepEqual(orchestraAttention("ok", [lane("dev", "stalled")]), {
       headline: "dev has gone quiet",
-      detail: "The service reports this lane as stalled but sent no agent details. It may be stuck.",
+      detail: "The PC's agent service reports this lane as stalled but sent no agent details. It may be stuck.",
       action: "Check it on the AI lanes page.",
     });
   });
 
   it("says how many stalled agents the service counts when it knows", () => {
-    assert.equal(orchestraAttention("ok", [lane("dev", "running", 1, [], "Dev")])?.detail, "The service counts 1 stalled agent here but sent no agent details. It may be stuck.");
-    assert.equal(orchestraAttention("ok", [lane("dev", "running", 3)])?.detail, "The service counts 3 stalled agents here but sent no agent details. It may be stuck.");
+    assert.equal(orchestraAttention("ok", [lane("dev", "running", 1, [], "Dev")])?.detail, "The PC's agent service counts 1 stalled agent here but sent no agent details. It may be stuck.");
+    assert.equal(orchestraAttention("ok", [lane("dev", "running", 3)])?.detail, "The PC's agent service counts 3 stalled agents here but sent no agent details. It may be stuck.");
   });
 
   it("names up to two lanes, then only the count", () => {
