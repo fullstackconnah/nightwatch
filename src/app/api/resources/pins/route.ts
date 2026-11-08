@@ -51,7 +51,8 @@ export async function POST(req: NextRequest) {
   try {
     config = loadConfigForSave();
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    console.error("pins config load failed", e);
+    return NextResponse.json({ error: "Couldn't read the saved settings." }, { status: 500 });
   }
   const result = applyPin(config.pinnedFolders ?? [], action, normalized, norm);
   if ("error" in result) return NextResponse.json({ error: result.error }, { status: 400 });
@@ -60,10 +61,8 @@ export async function POST(req: NextRequest) {
   try {
     saveConfig({ ...config, pinnedFolders: next });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "failed to save pin" },
-      { status: 500 },
-    );
+    console.error("pin save failed", e);
+    return NextResponse.json({ error: "Couldn't save the pin." }, { status: 500 });
   }
 
   return NextResponse.json({ pinnedFolders: next });

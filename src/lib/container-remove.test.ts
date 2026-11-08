@@ -80,7 +80,7 @@ test("error copy per failure, the two 403s differ", () => {
   assert.notEqual(removeErrorCopy(403, "web"), PROTECTED_REMOVE_MESSAGE);
   assert.equal(removeErrorCopy(404, "web"), "That container no longer exists.");
   assert.equal(removeErrorCopy(409, "web"), "web is running again, so it wasn't removed. Stop it in Resources first.");
-  assert.equal(removeErrorCopy("ECONN", "web", "boom"), "Docker unreachable: boom");
+  assert.match(removeErrorCopy("ECONN", "web"), /Can't reach the Docker socket proxy/);
 });
 
 test("an id prefix shared by two containers is a 404, not the first match", () => {

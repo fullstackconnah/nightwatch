@@ -21,7 +21,7 @@ function isAction(value: unknown): value is ContainerAction {
  * read: "getaddrinfo ENOTFOUND socket-proxy" is a correct description of a DNS
  * lookup and tells the person looking at the dashboard nothing about what to do.
  * Each branch here names the thing that is actually wrong; anything unrecognised
- * still passes the original message through rather than swallowing it.
+ * gets a fixed line (the detail is logged by the caller, never returned).
  */
 function explain(e: unknown, action: ContainerAction): string {
   const message = e instanceof Error ? e.message : String(e);
@@ -35,7 +35,7 @@ function explain(e: unknown, action: ContainerAction): string {
   }
   if (status === 404) return "That container no longer exists.";
   if (status === 409) return `Docker won't ${action} this container in its current state.`;
-  if (status === 500) return `Docker failed to ${action} it: ${message}`;
+  if (status === 500) return `Docker failed to ${action} it.`;
   return "Docker action failed.";
 }
 

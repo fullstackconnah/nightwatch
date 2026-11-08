@@ -27,9 +27,7 @@ export async function GET(request: Request) {
     const result = await queryMountHistory(range, mounts);
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "mount growth query failed" },
-      { status: 502 },
-    );
+    console.error("mount growth query failed", e);
+    return NextResponse.json({ error: "Mount growth query failed." }, { status: 502 });
   }
 }

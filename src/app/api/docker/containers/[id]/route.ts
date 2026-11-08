@@ -46,8 +46,9 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     });
   } catch (e) {
     const status = (e as { statusCode?: number }).statusCode === 404 ? 404 : 502;
+    console.error("docker inspect failed", e);
     return NextResponse.json(
-      { error: e instanceof Error ? e.message : "inspect failed" },
+      { error: status === 404 ? "That container no longer exists." : "Docker unreachable." },
       { status },
     );
   }
@@ -72,8 +73,9 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
       return NextResponse.json({ error: removeErrorCopy(status, target.name) }, { status });
     }
     if (/ENOTFOUND|ECONNREFUSED|EHOSTUNREACH|ETIMEDOUT|ECONNRESET/.test(message)) {
-      return NextResponse.json({ error: removeErrorCopy("ECONN", target.name, message) }, { status: 502 });
+      return NextResponse.json({ error: removeErrorCopy("ECONN", target.name) }, { status: 502 });
     }
-    return NextResponse.json({ error: removeErrorCopy(500, target.name, message) }, { status: 500 });
+    console.error("docker remove failed", e);
+    return NextResponse.json({ error: removeErrorCopy(500, target.name) }, { status: 500 });
   }
 }

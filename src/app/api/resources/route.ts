@@ -7,9 +7,7 @@ export async function GET() {
   try {
     return NextResponse.json(await getResourceSnapshot());
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "resources failed" },
-      { status: 502 },
-    );
+    console.error("resources failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }

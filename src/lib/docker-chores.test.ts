@@ -203,3 +203,10 @@ test("C4b: an id the owner just removed cannot re-enter the snapshot from a stal
   const held = snapAfterWrite({ stopped: ["a", "b"] }, "stopped", ["a", "b", "c"], "a");
   assert.deepEqual(held.stopped, ["b", "c"]);
 });
+
+test("H17BF S1: a Docker-down error that ends in a full stop gets no doubled full stop", () => {
+  const e = { error: "Docker unreachable.", loaded: false };
+  const t = slotItem(sources({ containers: e, images: e, volumes: e })).text;
+  assert.ok(t.startsWith("Docker unreachable. "), t);
+  assert.ok(!t.includes(".."), t);
+});

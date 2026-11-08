@@ -28,9 +28,7 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(result.scan);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "contents scan failed" },
-      { status: 502 },
-    );
+    console.error("contents scan failed", e);
+    return NextResponse.json({ error: "Folder scan failed." }, { status: 502 });
   }
 }

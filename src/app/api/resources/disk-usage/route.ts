@@ -20,9 +20,7 @@ export async function GET(request: Request) {
     // 502 is reserved for an unexpected throw (scanDiskUsage wraps its own failures).
     return NextResponse.json(scan);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "disk usage scan failed" },
-      { status: 502 },
-    );
+    console.error("disk usage scan failed", e);
+    return NextResponse.json({ error: "Disk usage scan failed." }, { status: 502 });
   }
 }

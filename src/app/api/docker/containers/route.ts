@@ -6,6 +6,7 @@ import {
   type CreateContainerSpec,
 } from "@/lib/docker";
 import { validateSpecShape } from "@/lib/create-spec";
+import { createErrorCopy } from "@/lib/docker-create-error";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 
@@ -36,10 +37,8 @@ export async function GET() {
       },
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "docker unreachable" },
-      { status: 502 },
-    );
+    console.error("docker containers failed", e);
+    return NextResponse.json({ error: "Docker unreachable." }, { status: 502 });
   }
 }
 
@@ -57,13 +56,9 @@ export async function POST(req: NextRequest) {
     const id = await createAndStartContainer(spec);
     return NextResponse.json({ ok: true, id });
   } catch (e) {
+    console.error("docker create failed", e);
     return NextResponse.json(
-      {
-        error:
-          e instanceof Error
-            ? e.message + (/bind source path does not exist/i.test(e.message) ? " Bind sources must already exist on the host; they are not created." : "")
-            : "create failed",
-      },
+      { error: createErrorCopy(String(Reflect.get(Object(e), "message") ?? "")) },
       { status: 500 },
     );
   }
