@@ -222,8 +222,8 @@ export function useKioskWeather() {
 /** "Now playing" pill data — hits the public /kiosk/api/nowplaying route.
  *  15s, not vitals' 5s: media state (what's playing, play/pause) doesn't
  *  drift fast enough to need a faster poll, and this is one more request a
- *  wall tablet makes for the rest of its uptime. keepPreviousData so a
- *  single missed poll doesn't flash the pill to hidden and back. */
+ *  wall tablet makes for the rest of its uptime. keepPreviousData only
+ *  covers a key change; a poll error hides the pill until a poll succeeds. */
 export function useKioskNowPlaying(refreshMs = 15000) {
   return useSWR<NowPlayingSnapshot>("/kiosk/api/nowplaying", fetcher, {
     refreshInterval: refreshMs,

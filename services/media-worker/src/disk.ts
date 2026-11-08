@@ -48,9 +48,13 @@ export function checkReady(mediaRoot: string): { ready: boolean; reason?: string
   } catch {
     return { ready: false, reason: "Hold folder missing or not writable", dirs };
   }
-  const dev = statSync(dirs.root).dev;
-  if (statSync(join(mediaRoot, "movies")).dev !== dev || statSync(join(mediaRoot, "tv")).dev !== dev) {
-    return { ready: false, reason: "Hold folder is on a different disk", dirs };
+  try {
+    const dev = statSync(dirs.root).dev;
+    if (statSync(join(mediaRoot, "movies")).dev !== dev || statSync(join(mediaRoot, "tv")).dev !== dev) {
+      return { ready: false, reason: "Hold folder is on a different disk", dirs };
+    }
+  } catch {
+    return { ready: false, reason: "Media folders missing", dirs };
   }
   return { ready: true, dirs };
 }

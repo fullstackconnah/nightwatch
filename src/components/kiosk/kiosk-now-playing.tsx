@@ -26,8 +26,9 @@ export function KioskNowPlaying() {
   // waiting on. Backed off while idle and overnight — see
   // useKioskPollInterval's note on which polls should NOT do this.
   const pollMs = useKioskPollInterval({ active: 15_000, idle: 60_000, night: 300_000 });
-  const { data } = useKioskNowPlaying(pollMs);
-  const active: NowPlayingActive | null = data?.status === "ok" ? data : null;
+  const { data, error } = useKioskNowPlaying(pollMs);
+  // An error hides the pill (keepPreviousData would otherwise show stale playback) until a poll succeeds.
+  const active: NowPlayingActive | null = !error && data?.status === "ok" ? data : null;
 
   // Same mounted/entered exit-fade idiom as kiosk-alerts.tsx's alert button:
   // `active` can flip back to null the instant playback stops, but the pill
@@ -55,11 +56,11 @@ export function KioskNowPlaying() {
   // fade-in has a real "before" to transition from instead of sometimes
   // skipping straight to the resting state.
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || !active) return;
     const node = nodeRef.current;
     if (node) void node.getBoundingClientRect();
     setEntered(true);
-  }, [mounted]);
+  }, [mounted, active]);
 
   if (!mounted || !active) return null;
 
