@@ -12,3 +12,15 @@ export function isPngBytes(body: ArrayBuffer): boolean {
 export function isKioskRadarProduct(product: string, loop: { product: string } | null): boolean {
   return loop !== null && product === loop.product;
 }
+
+function stampMs(t: string): number {
+  return Date.UTC(+t.slice(0, 4), +t.slice(4, 6) - 1, +t.slice(6, 8), +t.slice(8, 10), +t.slice(10, 12));
+}
+
+/** A listed stamp, or the one grid step before the oldest: the list route's 2-min cache can hand out a list one step older than this route's fresh one. */
+export function isListedFrame(t: string, frames: string[]): boolean {
+  if (frames.includes(t)) return true;
+  if (frames.length < 2) return false;
+  const step = stampMs(frames[1]) - stampMs(frames[0]);
+  return stampMs(t) === stampMs(frames[0]) - step;
+}
