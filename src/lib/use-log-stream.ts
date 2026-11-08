@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { LogLine, LogSeedEvent, LogTrackState } from "@/lib/types/log";
 import { LOG_BUFFER_CAP, LOG_TAIL_DEFAULT } from "@/lib/types/log";
-import { attemptsSoFar, reconnectDelay, shouldRetry } from "@/lib/log-reconnect";
+import { afterClosedProbe, attemptsSoFar, reconnectDelay, shouldRetry } from "@/lib/log-reconnect";
 
 export type LogConnection = "idle" | "connecting" | "live" | "lost" | "unauthorized";
 
@@ -178,6 +178,8 @@ export function useLogStream(selection: string[]): LogStreamResult {
   const [retryTick, bumpRetry] = useReducer((v: number) => v + 1, 0);
   const attemptsRef = useRef<Record<string, number>>({});
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reopen attempts after the browser closed the stream; survives the effect re-run, reset on open.
+  const closedAttemptRef = useRef(0);
   // When each track first went live, kept across stream re-opens (absent = not live).
   const liveAtRef = useRef<Record<string, number>>({});
   // When each container's seed arrived: the resume point for an empty buffer.
@@ -286,36 +288,53 @@ export function useLogStream(selection: string[]): LogStreamResult {
 
     const es = new EventSource(`/api/logs/stream?${params.toString()}`);
 
-    // `EventSource` cannot see HTTP status codes — a 401 from an expired
-    // session and a transient network blip both surface only as `onerror`,
-    // and the browser retries either one forever. Left alone, an expired
-    // session shows "reconnecting" indefinitely while the truth is the
-    // reader is logged out. `errorStreak` counts consecutive failures (reset
-    // on a successful `open`); past the threshold, `probeSession` makes one
-    // authenticated request to tell the two cases apart. Once that probe
-    // confirms a 401, `probeConfirmedUnauthorized` latches so the state
-    // doesn't flicker back to "lost" on every subsequent retry.
+    // `EventSource` cannot see HTTP status codes. The browser retries a dropped
+    // connection by itself, but a non-200 reply (a 401 from an expired session,
+    // a proxy 502 during a deploy) CLOSES the stream for good. Two cases:
+    // - closed stream: `onerror` probes at once; a 401 latches "unauthorized",
+    //   anything else re-runs the effect after a backoff (`closedAttemptRef`).
+    // - open-but-failing stream: `errorStreak` counts consecutive failures
+    //   (reset on `open`); past the threshold one probe tells a 401 from a blip.
+    // Once a probe confirms a 401, `probeConfirmedUnauthorized` latches so the
+    // state doesn't flicker back to "lost" on every subsequent error.
     let cancelled = false;
     let errorStreak = 0;
     let probeConfirmedUnauthorized = false;
 
-    async function probeSession() {
+    // The probe's HTTP status, or null when the probe itself failed (offline).
+    async function probeSession(): Promise<number | null> {
       try {
         const res = await fetch("/api/host", { credentials: "same-origin" });
-        if (cancelled) return;
+        if (cancelled) return null;
         if (res.status === 401) {
           probeConfirmedUnauthorized = true;
           connectionRef.current = "unauthorized";
           scheduleRender();
         }
+        return res.status;
       } catch {
-        // The probe itself failed (offline, etc.) — inconclusive. The next
-        // error streak will try again.
+        // Inconclusive. The next error streak will try again.
+        return null;
+      }
+    }
+
+    async function reopenAfterClose() {
+      const status = await probeSession();
+      if (cancelled) return;
+      const action = afterClosedProbe(status, closedAttemptRef.current);
+      if (action.kind === "signed-out") return;
+      closedAttemptRef.current += 1;
+      if (retryTimerRef.current === null) {
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          bumpRetry();
+        }, action.delayMs);
       }
     }
 
     es.addEventListener("open", () => {
       errorStreak = 0;
+      closedAttemptRef.current = 0;
       for (const c of containers) replayFloorRef.current[c] = storeRef.current.lines[c]?.at(-1)?.ts;
       connectionRef.current = "live";
       scheduleRender();
@@ -384,15 +403,19 @@ export function useLogStream(selection: string[]): LogStreamResult {
       }
     });
 
-    // Transient network errors: EventSource auto-reconnects on its own and will
-    // fire "open" again, so just surface "lost" via status — don't close the
-    // connection or reject via next(), and keep existing samples so the UI can
-    // dim stale data instead of blanking. (Mirrors useTelemetryStream's onerror.)
+    // A dropped connection: EventSource reconnects on its own and fires "open"
+    // again, so just surface "lost". A CLOSED stream never retries, so reopen it.
+    // (Mirrors useTelemetryStream's onerror.)
     es.onerror = () => {
       if (cancelled) return;
       if (!probeConfirmedUnauthorized) {
         connectionRef.current = "lost";
         scheduleRender();
+        if (es.readyState === EventSource.CLOSED) {
+          errorStreak = 0;
+          void reopenAfterClose();
+          return;
+        }
         errorStreak += 1;
         if (errorStreak >= UNAUTHORIZED_PROBE_THRESHOLD) {
           errorStreak = 0;

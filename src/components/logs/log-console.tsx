@@ -546,8 +546,8 @@ function ConnectionPill({ connection }: { connection: LogConnection }) {
     connecting: { text: "connecting", cls: "text-ink-dim", dot: "dot-restarting" },
     live: { text: "streaming", cls: "text-ink-dim", dot: "dot-running" },
     lost: { text: "reconnecting", cls: "text-warn", dot: "dot-unhealthy" },
-    // EventSource cannot see a 401 and retries forever, so without this the pill
-    // would sit on "reconnecting" while the truth is that the reader is signed out.
+    // The browser retries a dropped connection but closes on a non-200 reply, and EventSource
+    // cannot see which, so without this the pill would sit on "reconnecting" while the reader is signed out.
     unauthorized: { text: "signed out", cls: "text-bad", dot: "dot-dead" },
   } as const;
   const s = map[connection];

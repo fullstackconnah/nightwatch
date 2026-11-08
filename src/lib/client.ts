@@ -19,6 +19,7 @@ import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
 
 import { ApiError } from "@/lib/api-error";
+import { afterClosedProbe } from "@/lib/log-reconnect";
 export { ApiError, serverMessage } from "@/lib/api-error";
 
 export const fetcher = async (url: string) => {
@@ -229,43 +230,73 @@ export function useTelemetryStream(enabled = true): TelemetryState {
         next(null, { samples, status });
       };
 
-      const es = new EventSource(key);
+      let es: EventSource;
+      let attempt = 0;
+      let cancelled = false;
+      let reopenTimer: ReturnType<typeof setTimeout> | null = null;
 
-      es.addEventListener("open", () => {
-        status = "live";
-        emit();
-      });
+      const connect = () => {
+        es = new EventSource(key);
+        const current = es;
 
-      es.addEventListener("history", (event: MessageEvent<string>) => {
-        try {
-          const parsed = JSON.parse(event.data) as TelemetrySample[];
-          samples = parsed.slice(-RING_CAPACITY);
+        current.addEventListener("open", () => {
+          attempt = 0;
           status = "live";
           emit();
-        } catch (err) {
-          next(err instanceof Error ? err : new Error("failed to parse telemetry history"));
-        }
-      });
+        });
 
-      es.addEventListener("sample", (event: MessageEvent<string>) => {
-        try {
-          const parsed = JSON.parse(event.data) as TelemetrySample;
-          samples = [...samples, parsed].slice(-RING_CAPACITY);
-          status = "live";
+        current.addEventListener("history", (event: MessageEvent<string>) => {
+          try {
+            const parsed = JSON.parse(event.data) as TelemetrySample[];
+            samples = parsed.slice(-RING_CAPACITY);
+            status = "live";
+            emit();
+          } catch (err) {
+            next(err instanceof Error ? err : new Error("failed to parse telemetry history"));
+          }
+        });
+
+        current.addEventListener("sample", (event: MessageEvent<string>) => {
+          try {
+            const parsed = JSON.parse(event.data) as TelemetrySample;
+            samples = [...samples, parsed].slice(-RING_CAPACITY);
+            status = "live";
+            emit();
+          } catch (err) {
+            next(err instanceof Error ? err : new Error("failed to parse telemetry sample"));
+          }
+        });
+
+        // A dropped connection: EventSource retries by itself and fires "open" again, so just
+        // surface "lost" and keep the samples so the UI dims stale data. A non-200 reply (401 after
+        // the session expires, a proxy 502 during a deploy) CLOSES the stream for good: the
+        // browser never retries, so probe the session and either sign out or reopen with backoff.
+        current.onerror = () => {
+          status = "lost";
           emit();
-        } catch (err) {
-          next(err instanceof Error ? err : new Error("failed to parse telemetry sample"));
-        }
-      });
-
-      // Transient network errors: EventSource auto-reconnects on its own and will
-      // fire "open" again, so just surface "lost" via status — don't close the
-      // connection or reject via next(), and keep existing samples so the UI can
-      // dim stale data instead of blanking.
-      es.onerror = () => {
-        status = "lost";
-        emit();
+          if (current.readyState !== EventSource.CLOSED) return;
+          void (async () => {
+            let probeStatus: number | null = null;
+            try {
+              probeStatus = (await fetch("/api/host", { credentials: "same-origin" })).status;
+            } catch {
+              // Probe failed (offline): reopen and let the next error probe again.
+            }
+            if (cancelled) return;
+            const action = afterClosedProbe(probeStatus, attempt);
+            if (action.kind === "signed-out") {
+              window.location.href = "/login";
+              return;
+            }
+            attempt += 1;
+            reopenTimer = setTimeout(() => {
+              reopenTimer = null;
+              if (!cancelled) connect();
+            }, action.delayMs);
+          })();
+        };
       };
+      connect();
 
       // The one moment a hidden tab is allowed to render: coming back into view.
       // Flushes whatever accumulated while backgrounded in a single next() call.
@@ -278,6 +309,8 @@ export function useTelemetryStream(enabled = true): TelemetryState {
       document.addEventListener("visibilitychange", onVisibilityChange);
 
       return () => {
+        cancelled = true;
+        if (reopenTimer !== null) clearTimeout(reopenTimer);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         es.close();
       };
