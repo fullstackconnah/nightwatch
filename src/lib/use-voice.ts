@@ -24,7 +24,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
-import { fetcher } from "@/lib/client";
 import { useHermesRun } from "@/lib/use-hermes";
 
 const LEVEL_BAR_COUNT = 5;
@@ -67,7 +66,10 @@ export function useVoiceSupport(): VoiceSupport {
  * secure-context gate is.
  */
 export function useVoiceConfigured(): boolean | undefined {
-  const { data } = useSWR<{ configured: boolean }>("/api/voice/status", fetcher, {
+  // Local fetcher: the shared one navigates to /login on a 401, which must
+  // never happen to a kiosk just because the status probe was refused.
+  const probe = (u: string) => fetch(u).then((r) => (r.ok ? r.json() : { configured: false }));
+  const { data } = useSWR<{ configured: boolean }>("/api/voice/status", probe, {
     revalidateOnFocus: false,
     refreshInterval: 0,
   });
@@ -115,6 +117,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onTranscriptRef = useRef(onTranscript);
   onTranscriptRef.current = onTranscript;
+  const mountedRef = useRef(true);
 
   const teardownStream = useCallback(() => {
     if (rafRef.current !== null) {
@@ -132,14 +135,15 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
     analyserRef.current = null;
   }, []);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true; // strict-mode remount re-arms it
+    return () => {
+      mountedRef.current = false;
       // Leaving mid-recording must not upload the clip or start an ask.
       if (recorderRef.current) recorderRef.current.onstop = null;
       teardownStream();
-    },
-    [teardownStream],
-  );
+    };
+  }, [teardownStream]);
 
   const sampleLevels = useCallback(() => {
     const analyser = analyserRef.current;
@@ -191,6 +195,7 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
         return;
       }
       setState("idle");
+      if (!mountedRef.current) return; // the panel closed mid-transcribe: no ask
       onTranscriptRef.current(text);
     } catch {
       setError("Could not reach the transcription service.");
@@ -210,6 +215,10 @@ export function useVoiceRecorder(onTranscript: (text: string) => void): UseVoice
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       chunksRef.current = [];
 
@@ -310,6 +319,19 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeExchangeId = useRef<string | null>(null);
   const run = useHermesRun();
+  const mountedRef = useRef(true);
+  const audioUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true; // strict-mode remount re-arms it
+    return () => {
+      mountedRef.current = false;
+      audioRef.current?.pause();
+      audioRef.current = null;
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    };
+  }, []);
 
   const speak = useCallback(async (text: string) => {
     const trimmed = text.trim();
@@ -326,13 +348,18 @@ export function useVoicePipeline(): UseVoicePipelineResult {
         return;
       }
       const blob = await res.blob();
+      if (!mountedRef.current) return;
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
+      audioUrlRef.current = url;
       const cleanup = () => {
         setSpeaking(false);
         URL.revokeObjectURL(url);
-        if (audioRef.current === audio) audioRef.current = null;
+        if (audioRef.current === audio) {
+          audioRef.current = null;
+          audioUrlRef.current = null;
+        }
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
