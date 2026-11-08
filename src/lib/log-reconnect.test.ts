@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   reconnectDelay,
+  afterClosedProbe,
   shouldRetry,
   attemptsSoFar,
   parseResume,
@@ -86,4 +87,13 @@ test("staleResumeNames lists resume names parseResume rejected (hunt 8 review)",
   const raw = `c:${now - 7_200_000},d:${now - 600_000}`;
   assert.deepEqual(staleResumeNames(raw, parseResume(raw, now)), ["c"]);
   assert.deepEqual(staleResumeNames(null, new Map()), []);
+});
+
+test("afterClosedProbe signs out on 401 and otherwise reopens with the backoff", () => {
+  assert.deepEqual(afterClosedProbe(401, 2), { kind: "signed-out" });
+  for (const status of [null, 200, 502]) {
+    for (const attempt of [0, 3, 10]) {
+      assert.deepEqual(afterClosedProbe(status, attempt), { kind: "reopen", delayMs: reconnectDelay(attempt) });
+    }
+  }
 });

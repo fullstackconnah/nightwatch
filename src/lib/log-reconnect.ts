@@ -22,6 +22,17 @@ export function reconnectDelay(attempt: number): number {
 }
 
 /**
+ * What to do once a stream the browser closed (non-200 reply) has been probed with an
+ * authenticated request: a 401 means signed out, anything else (incl. a failed probe) reopens.
+ */
+export function afterClosedProbe(
+  probeStatus: number | null,
+  attempt: number,
+): { kind: "signed-out" } | { kind: "reopen"; delayMs: number } {
+  return probeStatus === 401 ? { kind: "signed-out" } : { kind: "reopen", delayMs: reconnectDelay(attempt) };
+}
+
+/**
  * Whether a track state means "the container restarted, try again": the follow
  * stream ended, or the name was briefly unknown during a recreate. Only a track
  * that ran (live for at least MIN_LIVE_MS) or one already being retried counts,
