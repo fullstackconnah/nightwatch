@@ -36,6 +36,8 @@ export default function SettingsPage() {
   const now = useNow(true);
   const [tileDraft, setTileDraft] = useState<AppConfig | null>(null);
   const [savingTiles, setSavingTiles] = useState(false);
+  // Version of the tiles the draft was seeded from (or last saved); the server answers 409 if they changed since.
+  const [tilesVersion, setTilesVersion] = useState<string | undefined>();
   const [forms, setForms] = useState<Partial<Record<FormId, FormState>>>({});
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [saved, setSaved] = useState(false);
@@ -47,7 +49,10 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (data && !tileDraft) setTileDraft(data.config);
+    if (data && !tileDraft) {
+      setTileDraft(data.config);
+      setTilesVersion(data.versions?.tiles);
+    }
   }, [data, tileDraft]);
   useEffect(() => {
     const h = legacyStripHash(window.location.hash);
@@ -57,11 +62,12 @@ export default function SettingsPage() {
   const containerNames = (containersData?.containers ?? []).map((c) => c.name).sort();
 
   // K12: each save PUTs only its own fields; the route keeps the rest. A widget save never touches the tile draft.
-  async function persist(body: Pick<AppConfig, "widgets"> | Pick<AppConfig, "groups" | "urls" | "icons" | "hidden">) {
-    await putJson("/api/settings", body);
+  async function persist(body: Pick<AppConfig, "widgets"> | Pick<AppConfig, "groups" | "urls" | "icons" | "hidden">, baseVersion?: string) {
+    const res = await putJson("/api/settings", { ...body, baseVersion });
     await mutate();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+    return res as { versions?: { tiles: string; widgets: string } };
   }
   const why = (e: unknown) => (e instanceof Error && e.message ? e.message.replace(/\.$/, "") : "no reason given");
 
@@ -72,7 +78,7 @@ export default function SettingsPage() {
       : [...data.config.widgets, w];
     setDashError((d) => ({ ...d, widgets: null }));
     try {
-      await persist({ widgets });
+      await persist({ widgets }, data.versions?.widgets);
       return true;
     } catch (e) {
       setDashError((d) => ({ ...d, widgets: `Couldn’t save the widget: ${why(e)}.` }));
@@ -84,7 +90,7 @@ export default function SettingsPage() {
     if (!data) throw new Error("settings not loaded");
     setDashError((d) => ({ ...d, widgets: null }));
     try {
-      await persist({ widgets: data.config.widgets.filter((w) => w.id !== id) });
+      await persist({ widgets: data.config.widgets.filter((w) => w.id !== id) }, data.versions?.widgets);
     } catch (e) {
       throw e; // the WriteAction frame shows the reason
     }
@@ -95,7 +101,8 @@ export default function SettingsPage() {
     setSavingTiles(true);
     setDashError((d) => ({ ...d, tiles: null }));
     try {
-      await persist({ groups: tileDraft.groups, urls: tileDraft.urls, icons: tileDraft.icons, hidden: tileDraft.hidden });
+      const res = await persist({ groups: tileDraft.groups, urls: tileDraft.urls, icons: tileDraft.icons, hidden: tileDraft.hidden }, tilesVersion);
+      setTilesVersion(res.versions?.tiles);
     } catch (e) {
       setDashError((d) => ({ ...d, tiles: `Couldn’t save tiles: ${why(e)}.` }));
     } finally {

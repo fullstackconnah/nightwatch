@@ -798,6 +798,7 @@ export async function performContainerAction(id: string, action: ContainerAction
     await containerAction(id, action);
   } finally {
     runtimesMemo.invalidate();
+    containersMemo.invalidate();
   }
 }
 
