@@ -25,7 +25,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import { Pause, Play, Timer as TimerIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
-import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
+import { validTimers } from "@/lib/kiosk-timers-restore";
+import { KIOSK_POP_MS,containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 
 /* ── shared store ────────────────────────────────────────────────────────── */
 
@@ -70,7 +71,7 @@ function restoreOnce() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed: unknown = JSON.parse(raw);
-    if (Array.isArray(parsed)) timers = parsed as KioskTimer[];
+    if (Array.isArray(parsed)) timers = validTimers<KioskTimer>(parsed);
   } catch {
     // Corrupt payload — start empty rather than throw on a kitchen kiosk.
   }

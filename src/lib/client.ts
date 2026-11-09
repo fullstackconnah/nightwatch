@@ -19,13 +19,14 @@ import type { McInstance, McBackup } from "@/lib/minecraft/manager";
 import type { PackResult } from "@/lib/minecraft/packs";
 
 import { ApiError } from "@/lib/api-error";
+import { shouldRedirectToLogin } from "@/lib/login-redirect";
 import { afterClosedProbe } from "@/lib/log-reconnect";
 export { ApiError, serverMessage } from "@/lib/api-error";
 
 export const fetcher = async (url: string) => {
   const res = await fetch(url);
   if (res.status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
+    if (shouldRedirectToLogin(window.location.pathname)) window.location.href = "/login";
     throw new ApiError("unauthorized", 401);
   }
   const body = await res.json().catch(() => ({}));

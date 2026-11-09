@@ -391,10 +391,16 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   // render with the same settled job object (SWR stops polling once
   // settled) can't re-trigger it.
   useEffect(() => {
-    if (!run.job?.ok) return;
-    const job = run.job.job;
     const id = activeExchangeId.current;
-    if (!id) return;
+    if (!id || !run.job) return;
+    if (!run.job.ok) {
+      // The poll could not read the job: show it on the exchange, as a failed start does.
+      const detail = run.job.detail;
+      setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: detail } : ex)));
+      activeExchangeId.current = null;
+      return;
+    }
+    const job = run.job.job;
     if (job.state === "done") {
       const answer = job.result?.body ?? "";
       setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, answer } : ex)));
