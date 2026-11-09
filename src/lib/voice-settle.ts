@@ -15,3 +15,8 @@ export function settleExchange(read: JobRead): Settle {
   if (job.state === "error") return { kind: "error", error: job.error ?? "Hermes reported an error.", keepActive: false };
   return { kind: "wait" };
 }
+
+/** True from the start POST until the job settles, so a second question cannot slip into the gaps before the first poll. */
+export function isAsking(run: { starting: boolean; jobId: string | null; job: { ok: boolean; job?: { state: string } } | undefined }): boolean {
+  return run.starting || (run.jobId !== null && !run.job) || (!!run.job?.ok && run.job.job?.state === "running");
+}

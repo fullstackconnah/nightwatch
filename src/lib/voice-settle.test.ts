@@ -32,3 +32,20 @@ test("useHermesRun memoises jobView and handleTranscript resets the run", () => 
   assert.match(read("./use-hermes.ts"), /const job = useMemo\(\(\) => jobView\(data, error\), \[data, error\]\);/);
   assert.match(read("./use-voice.ts"), /activeExchangeId\.current = id;[\s\S]{0,200}run\.reset\(\);/);
 });
+
+import { isAsking } from "./voice-settle.ts";
+
+test("isAsking covers the start POST, the gap before the first poll, and a running job", () => {
+  assert.equal(isAsking({ starting: true, jobId: null, job: undefined }), true);
+  assert.equal(isAsking({ starting: false, jobId: "j1", job: undefined }), true);
+  assert.equal(isAsking({ starting: false, jobId: "j1", job: { ok: true, job: { state: "running" } } }), true);
+  assert.equal(isAsking({ starting: false, jobId: "j1", job: { ok: true, job: { state: "done" } } }), false);
+  assert.equal(isAsking({ starting: false, jobId: null, job: undefined }), false);
+});
+
+test("use-voice derives state from isAsking and guards handleTranscript while a start is in flight", () => {
+  const src = read("./use-voice.ts");
+  assert.match(src, /^\s*\? "asking"/m);
+  assert.match(src, /isAsking\(run\)/);
+  assert.match(src, /^\s*if \(startingRef\.current \|\| isAsking\(runRef\.current\)\) return;/m);
+});
