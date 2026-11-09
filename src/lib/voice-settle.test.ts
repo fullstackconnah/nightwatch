@@ -41,6 +41,7 @@ test("isAsking covers the start POST, the gap before the first poll, and a runni
   assert.equal(isAsking({ starting: false, jobId: "j1", job: { ok: true, job: { state: "running" } } }), true);
   assert.equal(isAsking({ starting: false, jobId: "j1", job: { ok: true, job: { state: "done" } } }), false);
   assert.equal(isAsking({ starting: false, jobId: null, job: undefined }), false);
+  assert.equal(isAsking({ starting: false, jobId: undefined, job: undefined }), false);
 });
 
 test("use-voice derives state from isAsking and guards handleTranscript while a start is in flight", () => {

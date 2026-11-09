@@ -17,6 +17,6 @@ export function settleExchange(read: JobRead): Settle {
 }
 
 /** True from the start POST until the job settles, so a second question cannot slip into the gaps before the first poll. */
-export function isAsking(run: { starting: boolean; jobId: string | null; job: { ok: boolean; job?: { state: string } } | undefined }): boolean {
-  return run.starting || (run.jobId !== null && !run.job) || (!!run.job?.ok && run.job.job?.state === "running");
+export function isAsking(run: { starting: boolean; jobId: string | null | undefined; job: { ok: boolean; job?: { state: string } } | undefined }): boolean {
+  return run.starting || (Boolean(run.jobId) && !run.job) || (!!run.job?.ok && run.job.job?.state === "running");
 }

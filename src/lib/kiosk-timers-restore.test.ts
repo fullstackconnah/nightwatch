@@ -9,5 +9,10 @@ test("bad stored entries are dropped, good ones kept", () => {
   assert.deepEqual(validTimers([{ ...ok, endsAt: undefined }]), []);
   assert.deepEqual(validTimers([{ ...ok, durationMs: "1000" }]), []);
   assert.deepEqual(validTimers([{ ...ok, pausedRemainingMs: "x" }]), []);
+  assert.deepEqual(validTimers([{ ...ok, id: undefined }]), []);
+  assert.deepEqual(validTimers([{ ...ok, id: "" }]), []);
+  assert.deepEqual(validTimers([{ ...ok, id: 7 }]), []);
+  assert.deepEqual(validTimers([{ ...ok, name: undefined }]), []);
+  assert.deepEqual(validTimers([{ ...ok, pausedRemainingMs: null }]), [ok]);
   assert.deepEqual(validTimers([null, 3, ok, { ...ok, pausedRemainingMs: 400 }]), [ok, { ...ok, pausedRemainingMs: 400 }]);
 });
