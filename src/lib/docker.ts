@@ -829,7 +829,12 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
 
   // Pull the image first (no-op if present). Requires IMAGES=1 + POST=1 on the proxy.
   await new Promise<void>((resolve, reject) => {
-    docker.pull(spec.image, (err: Error | null, stream: NodeJS.ReadableStream & { destroy(): void }) => {
+    // Deadline for the request headers only: cleared when the stream arrives, so a long healthy pull is never aborted
+    // (docker-modem also ties the signal to the response stream, hence not AbortSignal.timeout).
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), DOCKER_CALL_MS);
+    docker.pull(spec.image, { abortSignal: ac.signal }, ((err: Error | null, stream: NodeJS.ReadableStream & { destroy(): void }) => {
+      clearTimeout(t);
       if (err) return reject(err);
       // A stalled registry sends no events; destroy the stream and reject rather than hang the request.
       const stop = guardPullIdle(stream, PULL_IDLE_MS, reject);
@@ -837,7 +842,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
         stop();
         doneErr ? reject(doneErr) : resolve();
       });
-    });
+    }) as never);
   });
 
   const exposedPorts: Record<string, object> = {};
