@@ -77,7 +77,7 @@ async function tick(): Promise<void> {
       console.error("[telemetry] getHostNetCounters failed:", err);
       return null;
     }),
-    getGpuSnapshot().catch((err: unknown) => {
+    withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
       console.error("[telemetry] getGpuSnapshot failed:", err);
       return null;
     }),

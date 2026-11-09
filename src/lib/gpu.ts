@@ -83,6 +83,8 @@ const globalForGpu = globalThis as unknown as {
 // for a minute instead. A SUCCESSFUL snapshot is deliberately never cached here;
 // it must be fresh every tick.
 const UNAVAILABLE_BACKOFF_MS = 60_000;
+// "error" covers a wedged nvidia-smi too, so it backs off briefly instead of costing a full timeout every tick.
+const UNAVAILABLE_ERROR_BACKOFF_MS = 10_000;
 
 function cacheUnavailable(result: { reason: GpuUnavailableReason; detail: string }): GpuUnavailable {
   globalForGpu.__gpuUnavailableCache = { ...result, ts: Date.now() };
@@ -387,7 +389,7 @@ async function getTempMaxC(): Promise<number | null> {
 
 export async function getGpuSnapshot(): Promise<GpuSnapshot> {
   const cached = globalForGpu.__gpuUnavailableCache;
-  if (cached && Date.now() - cached.ts < UNAVAILABLE_BACKOFF_MS) {
+  if (cached && Date.now() - cached.ts < (cached.reason === "error" ? UNAVAILABLE_ERROR_BACKOFF_MS : UNAVAILABLE_BACKOFF_MS)) {
     return { ok: false, reason: cached.reason, detail: cached.detail };
   }
 

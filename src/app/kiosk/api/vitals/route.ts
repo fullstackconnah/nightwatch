@@ -1,4 +1,5 @@
 import { getHostVitals } from "@/lib/host-metrics";
+import { kioskVitals } from "@/lib/kiosk-vitals-view";
 import { throwingSnapshotRoute } from "@/lib/snapshot-route";
 
 export const dynamic = "force-dynamic";
@@ -16,4 +17,9 @@ export const dynamic = "force-dynamic";
  *
  * Off the always-200 contract for the same reason /api/host is — see there.
  */
-export const GET = throwingSnapshotRoute({ collect: getHostVitals }, 502, "host metrics unavailable");
+export const GET = throwingSnapshotRoute(
+  // Public route: project only what the kiosk UI reads, so no host mount path, hostname, OS or CPU model leaves the box.
+  { collect: async () => kioskVitals(await getHostVitals()) },
+  502,
+  "host metrics unavailable",
+);

@@ -547,7 +547,7 @@ export default function NetworkPage() {
           <h1 className="text-lg font-semibold tracking-tight">Network</h1>
           <p className="text-xs text-ink-dim mt-0.5">
             {snapshot
-              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length} remote peers`
+              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length + snapshot.truncated} remote peers`
               : "…"}
           </p>
         </div>
@@ -646,7 +646,7 @@ export default function NetworkPage() {
       <ContainerFootprint samples={samples} />
 
       {snapshot ? (
-        <NetConnections connections={snapshot.connections} available={snapshot.connectionsAvailable} />
+        <NetConnections connections={snapshot.connections} truncated={snapshot.truncated} truncatedConnections={snapshot.truncatedConnections} available={snapshot.connectionsAvailable} />
       ) : (
         !error && <div className="panel p-4 text-sm text-ink-dim">Reading connections…</div>
       )}
