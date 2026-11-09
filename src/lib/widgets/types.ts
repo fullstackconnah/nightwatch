@@ -1,5 +1,6 @@
 import type { WidgetInstance } from "@/lib/config";
 import { fetchNoCrossOriginRedirect } from "../safe-fetch.ts";
+import { readCapped, readJsonCapped, UPSTREAM_JSON_MAX } from "../read-capped.ts";
 
 export interface WidgetField {
   label: string;
@@ -44,7 +45,7 @@ export async function fetchJson<T = unknown>(
   }
   if (!res.ok) throw new WidgetError(`HTTP ${res.status}`);
   try {
-    return (await res.json()) as T;
+    return await readJsonCapped<T>(res, UPSTREAM_JSON_MAX);
   } catch {
     throw new WidgetError("invalid JSON");
   }
@@ -72,7 +73,7 @@ export async function postAction(url: string, init?: RequestInit & { timeoutMs?:
     );
   }
   if (!res.ok) {
-    const body = (await res.text().catch(() => "")).trim();
+    const body = ((await readCapped(res, 4096).catch(() => "")) ?? "").trim();
     throw new WidgetError(body ? `HTTP ${res.status}: ${body.slice(0, 200)}` : `HTTP ${res.status}`);
   }
 }

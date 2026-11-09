@@ -3,6 +3,7 @@ import { goLive } from "@/lib/sse-live";
 import { parseResume, staleResumeNames } from "@/lib/log-reconnect";
 import {
   LOG_TAIL_DEFAULT,
+  LOG_TAIL_MAX,
   MAX_TRACKS,
   type LogLine,
   type LogSeedEvent,
@@ -12,13 +13,12 @@ import {
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 15_000;
-const MAX_TAIL = 2000;
 
 function clampTail(raw: string | null): number {
   if (raw === null) return LOG_TAIL_DEFAULT;
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n)) return LOG_TAIL_DEFAULT;
-  return Math.min(MAX_TAIL, Math.max(0, n));
+  return Math.min(LOG_TAIL_MAX, Math.max(0, n));
 }
 
 function splitNames(raw: string | null): string[] {

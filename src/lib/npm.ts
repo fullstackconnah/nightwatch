@@ -150,7 +150,7 @@ async function npmGet<T>(url: string, token: string): Promise<ApiResult<T>> {
     return { kind: "error", detail: `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` };
   }
   if (res.status === 401 || res.status === 403) return { kind: "unauthorized" };
-  if (!res.ok) return { kind: "error", detail: `NPM returned HTTP ${res.status} for ${url}.` };
+  if (!res.ok) return { kind: "error", detail: `NPM returned HTTP ${res.status}.` };
   try {
     return { kind: "ok", data: (await res.json()) as T };
   } catch {
@@ -264,7 +264,8 @@ async function probeTargetUncached(target: string): Promise<RouteHealth> {
     // A timed-out HEAD means the upstream is dead; a GET would only burn another timeout.
     if (e instanceof Error && e.name === "TimeoutError") return "down";
     try {
-      await attempt("GET");
+      const r = await attempt("GET");
+      r.body?.cancel().catch(() => {});
       return "up";
     } catch {
       return "down";

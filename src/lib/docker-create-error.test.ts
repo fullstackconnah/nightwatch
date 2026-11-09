@@ -9,6 +9,8 @@ test("H17BF F3: create errors are fixed copy chosen by pattern", () => {
     ['Conflict. The container name "/web" is already in use by container "abc"', /^A container with that name already exists\./],
     ["invalid mount config: bind source path does not exist: /srv/x", /^A bind source doesn't exist/],
     ["boom /srv/secret 10.0.0.1", /^Docker failed to create it\.$/],
+    ["Image pull stalled: no progress for 60s", /^The image pull stalled with no progress/],
+    ["This operation was aborted", /^Docker did not answer the image pull within 10 seconds. Check that Docker is running, then try again.$/],
   ];
   for (const [msg, want] of cases) {
     const out = createErrorCopy(msg);

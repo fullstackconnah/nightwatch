@@ -1,3 +1,6 @@
+/** Cap for widget and integration JSON: unpaged sonarr/radarr lists run about 3-8 KB per title, so 1500+ titles pass 8 MB. */
+export const UPSTREAM_JSON_MAX = 32 * 1024 * 1024;
+
 /** Reads a response body as text, at most `max` bytes (the reader is cancelled there). A content-length over `max` returns null without reading. */
 export async function readCapped(res: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number): Promise<string | null> {
   const len = Number(res.headers.get("content-length"));

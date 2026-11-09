@@ -2,7 +2,7 @@ import { docker, listContainers } from "@/lib/docker";
 import { classifyLevel } from "@/lib/log-levels";
 import { splitLines } from "@/lib/log-split";
 import { readIdPrefix, UNKNOWN_CONTAINER } from "@/lib/log-reconnect";
-import type { LogLine, LogStream, LogTrackState } from "@/lib/types/log";
+import { LOG_TAIL_MAX, type LogLine, type LogStream, type LogTrackState } from "@/lib/types/log";
 
 /**
  * Server-only streaming log pipeline: frame demuxing, one-shot scrollback reads,
@@ -177,7 +177,7 @@ export async function readContainerLogTail(
     stderr: true,
     timestamps: true,
     follow: false,
-    ...(sinceMs === undefined ? { tail } : { since: Math.floor(sinceMs / 1000) }),
+    ...(sinceMs === undefined ? { tail } : { since: Math.floor(sinceMs / 1000), tail: LOG_TAIL_MAX }),
   })) as unknown as Buffer;
 
   const lines: LogLine[] = [];

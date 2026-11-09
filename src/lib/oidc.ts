@@ -3,6 +3,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } 
 import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims } from "@/lib/auth";
 import { systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
+import { readJsonCapped } from "@/lib/read-capped";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -21,6 +22,8 @@ import { KeyedMemo } from "@/lib/cache";
 // incl. nonce), then mints the same session cookie password login uses.
 
 const HTTP_TIMEOUT_MS = 5_000;
+/** Discovery and token JSON are a few KB; 64 KB is generous. */
+const OIDC_BODY_MAX = 64 * 1024;
 const DISCOVERY_CACHE_TTL_MS = 60 * 60 * 1000; // ~1h
 
 export class OidcError extends Error {
@@ -80,16 +83,6 @@ const discoveryMemo = new KeyedMemo<DiscoveryDocument>({
   load: (issuer) => fetchDiscovery(issuer),
 });
 
-async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function discover(issuer: string): Promise<DiscoveryDocument> {
   return discoveryMemo.get(issuer);
 }
@@ -97,7 +90,9 @@ function discover(issuer: string): Promise<DiscoveryDocument> {
 async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${issuer}/.well-known/openid-configuration`);
+    res = await fetch(`${issuer}/.well-known/openid-configuration`, {
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS), // covers the body read too
+    });
   } catch (err) {
     throw new OidcError("discovery_failed", err instanceof Error ? err.message : "discovery request failed");
   }
@@ -107,7 +102,7 @@ async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
 
   let doc: DiscoveryDocument;
   try {
-    doc = (await res.json()) as DiscoveryDocument;
+    doc = await readJsonCapped<DiscoveryDocument>(res, OIDC_BODY_MAX);
   } catch {
     throw new OidcError("discovery_failed", "discovery response was not valid JSON");
   }
@@ -205,7 +200,8 @@ export async function exchangeCode(code: string, redirectUri: string, codeVerifi
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(doc.token_endpoint, {
+    res = await fetch(doc.token_endpoint, {
+      signal: AbortSignal.timeout(HTTP_TIMEOUT_MS), // covers the body read too
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -223,7 +219,7 @@ export async function exchangeCode(code: string, redirectUri: string, codeVerifi
 
   let json: TokenResponse | null;
   try {
-    json = (await res.json()) as TokenResponse;
+    json = await readJsonCapped<TokenResponse | null>(res, OIDC_BODY_MAX);
   } catch {
     throw new OidcError("exchange_failed", "token response was not valid JSON");
   }
