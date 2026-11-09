@@ -12,3 +12,9 @@ test("null-dated commits sort last", () => {
   const rows = [{ date: null }, { date: "2026-11-01T00:00:00Z" }, { date: "2026-11-05T00:00:00Z" }, { date: null }];
   assert.deepEqual(rows.sort(newestFirst).map((r) => r.date), ["2026-11-05T00:00:00Z", "2026-11-01T00:00:00Z", null, null]);
 });
+
+test("an unparseable date sorts last, like null, among good dates", () => {
+  const rows = [{ date: "2026-11-01T00:00:00Z" }, { date: "not a date" }, { date: "2026-11-05T00:00:00Z" }, { date: null }];
+  assert.deepEqual(rows.sort(newestFirst).map((r) => r.date).slice(0, 2), ["2026-11-05T00:00:00Z", "2026-11-01T00:00:00Z"]);
+  assert.equal(newestFirst({ date: "not a date" }, { date: null }), 0);
+});

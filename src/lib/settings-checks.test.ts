@@ -18,7 +18,10 @@ describe("settings checks", () => {
     assert.equal(httpUrlError("hermesApiUrl", undefined), null);
     assert.equal(httpUrlError("hermesApiUrl", "http://example.test:1"), null);
     assert.equal(httpUrlError("oidcIssuer", "https://example.test"), null);
-    assert.equal(httpUrlError("oidcIssuer", "ftp://example.test"), "oidcIssuer must be an http(s) URL");
+    assert.equal(httpUrlError("oidcIssuer", "ftp://example.test"), "SSO issuer must be an http(s) URL");
+    for (const f of ["managerUrl", "hermesApiUrl", "voiceServerUrl", "voiceTtsUrl", "oidcIssuer", "orchestraUrl"]) {
+      assert.doesNotMatch(httpUrlError(f, "nope") ?? "", /[a-z][A-Z]/, f);
+    }
     assert.equal(httpUrlError("voiceTtsUrl", "javascript:alert(1)") !== null, true);
     assert.equal(httpUrlError("voiceServerUrl", "abc") !== null, true);
   });
