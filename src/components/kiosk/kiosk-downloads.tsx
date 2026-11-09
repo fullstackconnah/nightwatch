@@ -1,6 +1,7 @@
 "use client";
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 
 /* THESIS: qBittorrent downloads get the same button+tray shape as
    kiosk-alerts.tsx (fixed corner icon, badge, anchored non-modal popover) —
@@ -256,6 +257,8 @@ interface KioskDownloadsTrayProps {
   open: boolean;
   onClose: () => void;
   anchorRef: RefObject<HTMLButtonElement | null>;
+  /** The last poll failed: `items` are the last known reading. */
+  stale?: boolean;
 }
 
 function DownloadRow({ item }: { item: KioskDownloadItem }) {
@@ -274,7 +277,7 @@ function DownloadRow({ item }: { item: KioskDownloadItem }) {
   );
 }
 
-export function KioskDownloadsTray({ items, open, onClose, anchorRef }: KioskDownloadsTrayProps) {
+export function KioskDownloadsTray({ items, stale = false, open, onClose, anchorRef }: KioskDownloadsTrayProps) {
   const nodeRef = useRef<HTMLDivElement>(null);
   const firstRowRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -370,6 +373,7 @@ export function KioskDownloadsTray({ items, open, onClose, anchorRef }: KioskDow
       data-sr-face="float"
       className="fixed z-(--z-toast) panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
+      {stale && <div className="flex justify-end px-2 pb-1"><StaleTag /></div>}
       {items.map((item, i) => (
         <div
           key={item.hash}
@@ -490,7 +494,7 @@ export function KioskDownloadsToast({ toast, onDismiss }: KioskDownloadsToastPro
  *  a live reference, so a torrent finishing (and dropping out of `items`)
  *  mid-toast doesn't cut the announcement short. */
 export function KioskDownloads() {
-  const { data } = useKioskDownloads();
+  const { data, error } = useKioskDownloads();
   const items = data?.status === "ok" ? data.items : [];
   const { toast, dismiss: dismissToast } = useNewDownloadToast(data);
   const [trayOpen, setTrayOpen] = useState(false);
@@ -511,7 +515,7 @@ export function KioskDownloads() {
   return (
     <>
       <KioskDownloadsButton ref={buttonRef} items={items} trayOpen={trayOpen} onPress={() => setTrayOpen((o) => !o)} />
-      <KioskDownloadsTray items={items} open={trayOpen} onClose={() => setTrayOpen(false)} anchorRef={buttonRef} />
+      <KioskDownloadsTray items={items} stale={!!error} open={trayOpen} onClose={() => setTrayOpen(false)} anchorRef={buttonRef} />
       {toast && <KioskDownloadsToast key={toast.key} toast={toast} onDismiss={dismissToast} />}
     </>
   );

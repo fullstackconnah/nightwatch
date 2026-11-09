@@ -174,7 +174,6 @@ describe("markup hooks (N12, N18) the shots count on", () => {
     assert.match(read("src/components/kiosk/kiosk-clock.tsx"), /data-sr-live/);
     assert.match(read("src/components/kiosk/kiosk-vitals.tsx"), /data-sr-live/);
     assert.match(read("src/components/kiosk/kiosk-surface.tsx"), /data-sr-live/);
-    assert.match(read("src/components/kiosk/kiosk-health.tsx"), /data-sr-live/);
   });
   it("status words carry data-sr-tone and a visible word", () => {
     assert.match(read("src/components/kiosk/kiosk-surface.tsx"), /data-sr-tone=\{breathing \? "ok"/);

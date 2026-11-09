@@ -3,7 +3,8 @@
 import { ArrowDown, ArrowUp, HardDrive, MemoryStick } from "lucide-react";
 import { Gauge, Meter } from "@/components/charts";
 import { KioskSpark, KioskSparkPair } from "@/components/kiosk/kiosk-spark";
-import { useKioskVitalsHistory } from "@/lib/kiosk-client";
+import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { useFreshness, useKioskVitalsHistory } from "@/lib/kiosk-client";
 import { formatBytes, formatRate } from "@/lib/format";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { meterTone, meterWord } from "@/lib/sunroom-ambient";
@@ -35,8 +36,12 @@ function VitalWord({ percent, warnAt = 80, badAt = 92 }: { percent: number; warn
  *  everything loses its padding. */
 export function KioskVitals({ compact = false }: { compact?: boolean }) {
   const { data: host, error, isLoading, history } = useKioskVitalsHistory(5000);
+  const freshness = useFreshness({ data: host, error, isLoading });
+  const stale = freshness.status === "ready-stale";
 
-  if (error) {
+  // The red panel is for an error before any reading has arrived; one dropped
+  // poll after that keeps the last numbers and marks them stale instead.
+  if (freshness.status === "unreachable-empty") {
     // useKioskVitalsHistory types `error` as `unknown` (it just forwards
     // whatever useKioskVitals/SWR produced) — narrow it the same way
     // drive-health.tsx/kiosk-hub.tsx already do elsewhere in this app.
@@ -119,7 +124,7 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
         </div>
 
         <div className="flex flex-none flex-col gap-1">
-          <div className="microlabel">network</div>
+          <div className="microlabel flex items-center gap-1.5">network {stale && <StaleTag />}</div>
           <div className="flex items-center gap-2 font-mono text-[11px]">
             <span className="flex items-center gap-1 text-accent" data-sr-live>
               <ArrowDown size={11} className="shrink-0" /> {host ? `${formatBytes(host.network.rxPerSec, 0)}/s` : "…"}
@@ -184,7 +189,7 @@ export function KioskVitals({ compact = false }: { compact?: boolean }) {
       </div>
 
       <div className="panel px-4 py-4 flex flex-col justify-center gap-1.5">
-        <div className="microlabel">network</div>
+        <div className="microlabel flex items-center gap-1.5">network {stale && <StaleTag />}</div>
         <div className="flex items-center gap-2 font-mono text-sm text-accent" data-sr-live>
           <ArrowDown size={13} /> {host ? formatRate(host.network.rxPerSec) : "…"}
         </div>
