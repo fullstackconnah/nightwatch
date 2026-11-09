@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import si from "systeminformation";
 import { Memo } from "@/lib/cache";
+import { sumHostNetCounters, statfsUsage, groupPercent, maxThermalC, isPartitionName } from "./host-metrics-pure.ts";
 
 /**
  * Host vitals. Inside the container /proc/stat, /proc/meminfo and /proc/uptime
@@ -33,7 +34,7 @@ export interface HostVitals {
 
 function hostProcAvailable(): boolean {
   try {
-    return fs.existsSync(`${HOST_PROC}/net/dev`);
+    return fs.existsSync(`${HOST_PROC}/1/net/dev`);
   } catch {
     return false;
   }
@@ -41,43 +42,14 @@ function hostProcAvailable(): boolean {
 
 let lastNet: { rx: number; tx: number; ts: number } | null = null;
 
-interface NetDevCounters {
-  rxBytes: number;
-  txBytes: number;
-  interfaceCount: number;
-}
-
-/**
- * Pure parser: sums rx/tx byte counters from a /proc/net/dev-style table,
- * applying the same "host network" interface filter readHostNetDev has always
- * used (skip loopback, veth, bridge, and the docker0 bridge) — shared here so
- * readHostNetDev and getHostNetCounters can never disagree about what counts
- * as host traffic. `interfaceCount` lets a caller distinguish "zero interfaces
- * matched" from "matched interfaces reported zero bytes".
- */
-function parseNetDevCounters(content: string): NetDevCounters {
-  const lines = content.split("\n").slice(2);
-  let rx = 0;
-  let tx = 0;
-  let interfaceCount = 0;
-  for (const line of lines) {
-    const [ifacePart, rest] = line.split(":");
-    if (!rest) continue;
-    const iface = ifacePart.trim();
-    if (iface === "lo" || iface.startsWith("veth") || iface.startsWith("br-") || iface === "docker0")
-      continue;
-    const cols = rest.trim().split(/\s+/);
-    rx += Number(cols[0]) || 0;
-    tx += Number(cols[8]) || 0;
-    interfaceCount++;
-  }
-  return { rxBytes: rx, txBytes: tx, interfaceCount };
-}
-
+// Reads PID 1's net/dev: the top-level path resolves to the READER's (container's)
+// network namespace, PID 1's to the host's (see getHostNetCounters).
 function readHostNetDev(): { rxPerSec: number; txPerSec: number } | null {
   try {
-    const content = fs.readFileSync(`${HOST_PROC}/net/dev`, "utf8");
-    const { rxBytes: rx, txBytes: tx } = parseNetDevCounters(content);
+    const content = fs.readFileSync(`${HOST_PROC}/1/net/dev`, "utf8");
+    const counters = sumHostNetCounters(content);
+    if (!counters) return null;
+    const { rxBytes: rx, txBytes: tx } = counters;
     const now = Date.now();
     const prev = lastNet;
     lastNet = { rx, tx, ts: now };
@@ -98,51 +70,6 @@ export interface HostNetCounters {
 }
 
 /**
- * Picks the interfaces that represent real host throughput. Bridges, veth pairs and
- * loopback carry bytes that are already counted on the uplink, and a bond aggregates
- * its slaves — summing everything would multiply the same packets several times.
- */
-export function selectHostNetInterfaces(names: string[]): string[] {
-  const virtualPrefixes = ["docker", "br-", "veth", "virbr", "tap", "tun", "dummy", "wg"];
-  const physical = names.filter(
-    (name) => name !== "lo" && !virtualPrefixes.some((p) => name.startsWith(p)),
-  );
-  // A bond aggregates its slave NICs (e.g. enp4s0) — if present, only the
-  // bond itself should be summed, or the slave's bytes would be counted twice.
-  const bonds = physical.filter((name) => name.startsWith("bond"));
-  return bonds.length > 0 ? bonds : physical;
-}
-
-interface NetDevSample {
-  iface: string;
-  rxBytes: number;
-  txBytes: number;
-}
-
-/**
- * Pure parser for a /proc/net/dev-style table — returns every interface's raw
- * rx/tx byte counters, unfiltered (filtering is selectHostNetInterfaces's job).
- * Deliberately separate from parseNetDevCounters, which readHostNetDev depends
- * on, so this can't change that function's behaviour.
- */
-function parseNetDevSamples(content: string): NetDevSample[] {
-  const lines = content.split("\n").slice(2); // first two lines are headers
-  const out: NetDevSample[] = [];
-  for (const line of lines) {
-    const [ifacePart, rest] = line.split(":");
-    if (!rest) continue;
-    const iface = ifacePart.trim();
-    const cols = rest.trim().split(/\s+/);
-    // Columns after "iface:" are: bytes packets errs drop fifo frame compressed
-    // multicast (receive, 8 cols) then bytes packets errs drop fifo colls carrier
-    // compressed (transmit, 8 cols). Receive bytes is col 0, transmit bytes is
-    // col 8 (the first transmit column, right after receive's 8).
-    out.push({ iface, rxBytes: Number(cols[0]), txBytes: Number(cols[8]) });
-  }
-  return out;
-}
-
-/**
  * Raw cumulative network counters. Unlike HostVitals.network.rxPerSec this
  * does NOT compute a rate and keeps no module state, so a caller polling at
  * its own cadence can derive delta/elapsed without fighting other callers
@@ -158,21 +85,7 @@ function parseNetDevSamples(content: string): NetDevSample[] {
 export async function getHostNetCounters(): Promise<HostNetCounters | null> {
   try {
     const content = fs.readFileSync(`${HOST_PROC}/1/net/dev`, "utf8");
-    const samples = parseNetDevSamples(content);
-    const selected = new Set(selectHostNetInterfaces(samples.map((s) => s.iface)));
-
-    let rxBytes = 0;
-    let txBytes = 0;
-    let interfaceCount = 0;
-    for (const s of samples) {
-      if (!selected.has(s.iface)) continue;
-      rxBytes += s.rxBytes;
-      txBytes += s.txBytes;
-      interfaceCount++;
-    }
-    if (interfaceCount === 0) return null;
-    if (!Number.isFinite(rxBytes) || !Number.isFinite(txBytes)) return null;
-    return { rxBytes, txBytes };
+    return sumHostNetCounters(content);
   } catch {
     return null;
   }
@@ -208,18 +121,10 @@ export function parseDiskStats(content: string): HostDiskIoCounters[] {
     });
   }
 
-  // Partition detection is two-pass: a name ending in digits is a partition
-  // only if some OTHER device in the file is a proper prefix of it. A bare
-  // /\d+$/ test would wrongly reject whole disks like "nvme0n1" (ends in a
-  // digit but "nvme0n" is not itself a device).
-  const allNames = raw.map((r) => r.name);
-  const isPartition = (name: string): boolean =>
-    /\d$/.test(name) && allNames.some((other) => other !== name && name.startsWith(other));
-
   const out: HostDiskIoCounters[] = [];
   for (const r of raw) {
     if (VIRTUAL_DEVICE_PREFIXES.some((p) => r.name.startsWith(p))) continue; // dm-*/md* are mapper/RAID layers over the same physical devices - counting them would double-count
-    if (isPartition(r.name)) continue; // partitions would double-count against their parent disk
+    if (isPartitionName(r.name)) continue; // partitions would double-count against their parent disk
     const readBytes = r.readSectors * DISKSTATS_SECTOR_BYTES;
     const writeBytes = r.writeSectors * DISKSTATS_SECTOR_BYTES;
     if (!Number.isFinite(readBytes) || !Number.isFinite(writeBytes)) continue;
@@ -257,12 +162,10 @@ function readTemp(): number | null {
   for (const root of roots) {
     try {
       const zones = fs.readdirSync(root).filter((z) => z.startsWith("thermal_zone"));
-      const temps: number[] = [];
-      for (const z of zones) {
-        const raw = Number(fs.readFileSync(`${root}/${z}/temp`, "utf8").trim());
-        if (raw > 1000) temps.push(raw / 1000);
-      }
-      if (temps.length) return Math.max(...temps);
+      const t = maxThermalC(
+        zones.map((z) => () => Number(fs.readFileSync(`${root}/${z}/temp`, "utf8").trim())),
+      );
+      if (t !== null) return t;
     } catch {
       // try next root
     }
@@ -273,10 +176,7 @@ function readTemp(): number | null {
 function statfsDisk(target: string, label: string) {
   try {
     const s = fs.statfsSync(target);
-    const total = s.blocks * s.bsize;
-    const free = s.bavail * s.bsize;
-    const used = total - free;
-    return { mount: label, total, used, percent: total > 0 ? (used / total) * 100 : 0 };
+    return { mount: label, ...statfsUsage(s) };
   } catch {
     return null;
   }
@@ -473,6 +373,7 @@ export interface PerMountDisk {
   mount: string;
   total: number;
   used: number;
+  avail: number;
 }
 
 /**
@@ -487,13 +388,14 @@ export function groupDisksByPhysicalDisk(
   perMount: PerMountDisk[],
   dmResolve: (mapperName: string) => string | null,
 ): HostVitals["disk"] {
-  const groups = new Map<string, { mounts: string[]; total: number; used: number }>();
+  const groups = new Map<string, { mounts: string[]; total: number; used: number; avail: number }>();
   for (const pd of perMount) {
     const label = parentDiskOf(pd.device, dmResolve);
-    const g = groups.get(label) ?? { mounts: [], total: 0, used: 0 };
+    const g = groups.get(label) ?? { mounts: [], total: 0, used: 0, avail: 0 };
     g.mounts.push(pd.mount);
     g.total += pd.total;
     g.used += pd.used;
+    g.avail += pd.avail;
     groups.set(label, g);
   }
   const grouped = Array.from(groups.entries()).map(([label, g]) => ({
@@ -501,7 +403,7 @@ export function groupDisksByPhysicalDisk(
     mounts: g.mounts,
     total: g.total,
     used: g.used,
-    percent: g.total > 0 ? (g.used / g.total) * 100 : 0,
+    percent: groupPercent(g.used, g.avail),
   }));
   grouped.sort((a, b) => {
     const aRoot = a.mounts.includes("/");
@@ -566,7 +468,7 @@ async function collectHostVitals(): Promise<HostVitals> {
         );
         if (isDuplicate) continue;
         seenFingerprints.push({ device: m.device, total: d.total, used: d.used });
-        perMountDisks.push({ device: m.device, mount: d.mount, total: d.total, used: d.used });
+        perMountDisks.push({ device: m.device, mount: d.mount, total: d.total, used: d.used, avail: d.avail });
       }
       disks = groupDisksByPhysicalDisk(perMountDisks, makeDmResolver(HOST_SYS));
     }
