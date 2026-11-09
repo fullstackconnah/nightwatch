@@ -25,6 +25,7 @@ const globalForTelemetry = globalThis as unknown as {
   __telemetrySubscribers?: Set<Subscriber>;
   __telemetryPrevious?: Record<string, ContainerStatsRow>;
   __telemetryPrevTs?: number; // performance.now() of the previous tick
+  __telemetryPrevReadAt?: number; // performance.now() when the previous tick started reading host counters
   __telemetryRunning?: boolean;
   __telemetryPrevDiskRead?: number; // cumulative bytes-read sum, previous tick
   __telemetryPrevDiskWrite?: number; // cumulative bytes-written sum, previous tick
@@ -63,6 +64,9 @@ async function tick(): Promise<void> {
   // sample ~4 ticks out of 5 and every rate would compute as 0.
   // Host vitals are fetched alongside, but non-fatally: a host-side failure (e.g. the
   // /host/proc bind mount hiccups) must never cost the tick its container data.
+  // Host counters are read as Promise.all starts; allContainerStats(true) samples later,
+  // so host rates use this read time and container rates keep the end-of-tick time.
+  const readAt = performance.now();
   const [raw, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
     allContainerStats(true),
     withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
@@ -86,6 +90,8 @@ async function tick(): Promise<void> {
   const prevTs = globalForTelemetry.__telemetryPrevTs;
   const now = performance.now();
   const elapsedSeconds = prevTs !== undefined ? (now - prevTs) / 1000 : 0;
+  const prevReadAt = globalForTelemetry.__telemetryPrevReadAt;
+  const hostElapsedSeconds = prevReadAt !== undefined ? (readAt - prevReadAt) / 1000 : 0;
 
   const containers: Record<string, TelemetryRow> = {};
   for (const [id, curr] of Object.entries(raw)) {
@@ -106,6 +112,7 @@ async function tick(): Promise<void> {
   // since the last tick, so the map can't grow unboundedly over a long-lived process.
   globalForTelemetry.__telemetryPrevious = raw;
   globalForTelemetry.__telemetryPrevTs = now;
+  globalForTelemetry.__telemetryPrevReadAt = readAt;
 
   let host: TelemetryHost | undefined;
   if (hostVitals) {
@@ -119,8 +126,8 @@ async function tick(): Promise<void> {
       const writeSum = diskCounters.reduce((a, d) => a + d.writeBytes, 0);
       // rate() returns 0 when there's no previous sum (first tick) or elapsedSeconds
       // <= 0 — exactly the "0, not null" behavior required for a fresh start.
-      diskReadRate = rate(readSum, globalForTelemetry.__telemetryPrevDiskRead, elapsedSeconds);
-      diskWriteRate = rate(writeSum, globalForTelemetry.__telemetryPrevDiskWrite, elapsedSeconds);
+      diskReadRate = rate(readSum, globalForTelemetry.__telemetryPrevDiskRead, hostElapsedSeconds);
+      diskWriteRate = rate(writeSum, globalForTelemetry.__telemetryPrevDiskWrite, hostElapsedSeconds);
       globalForTelemetry.__telemetryPrevDiskRead = readSum;
       globalForTelemetry.__telemetryPrevDiskWrite = writeSum;
     } else {
@@ -143,8 +150,8 @@ async function tick(): Promise<void> {
     let rxRate = 0;
     let txRate = 0;
     if (netCounters) {
-      rxRate = rate(netCounters.rxBytes, globalForTelemetry.__telemetryPrevNetRx, elapsedSeconds);
-      txRate = rate(netCounters.txBytes, globalForTelemetry.__telemetryPrevNetTx, elapsedSeconds);
+      rxRate = rate(netCounters.rxBytes, globalForTelemetry.__telemetryPrevNetRx, hostElapsedSeconds);
+      txRate = rate(netCounters.txBytes, globalForTelemetry.__telemetryPrevNetTx, hostElapsedSeconds);
       globalForTelemetry.__telemetryPrevNetRx = netCounters.rxBytes;
       globalForTelemetry.__telemetryPrevNetTx = netCounters.txBytes;
     } else {
@@ -267,6 +274,7 @@ async function loop(): Promise<void> {
     globalForTelemetry.__telemetryRunning = false;
     globalForTelemetry.__telemetryPrevious = undefined;
     globalForTelemetry.__telemetryPrevTs = undefined;
+    globalForTelemetry.__telemetryPrevReadAt = undefined;
     globalForTelemetry.__telemetryPrevDiskRead = undefined;
     globalForTelemetry.__telemetryPrevDiskWrite = undefined;
     globalForTelemetry.__telemetryPrevNetRx = undefined;

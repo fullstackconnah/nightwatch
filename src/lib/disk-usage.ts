@@ -145,7 +145,7 @@ function runDu(
       resolve({ sizes: new Map(), partial: false, error: errMsg(e), deniedCount: 0 });
       return;
     }
-    let stdout = "";
+    const chunks: Buffer[] = [];
     let stderr = "";
     let timedOut = false;
     let spawnError: string | null = null;
@@ -154,7 +154,7 @@ function runDu(
       child.kill("SIGKILL");
     }, timeoutMs);
     child.stdout.on("data", (d: Buffer) => {
-      stdout += d.toString("utf8");
+      chunks.push(d); // decode once on close: a multi-byte name can straddle a chunk boundary
     });
     // stderr is captured (not discarded) so permission-denied paths can be counted and
     // honestly labeled rather than silently folded into "unaccounted".
@@ -167,7 +167,7 @@ function runDu(
     child.on("close", () => {
       clearTimeout(timer);
       const sizes = new Map<string, number>();
-      for (const line of stdout.split("\n")) {
+      for (const line of Buffer.concat(chunks).toString("utf8").split("\n")) {
         const trimmed = line.trim();
         if (!trimmed) continue;
         const tabIdx = trimmed.indexOf("\t");
