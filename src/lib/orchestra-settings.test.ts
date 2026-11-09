@@ -44,12 +44,12 @@ describe("mergeOrchestraSettings", () => {
     assert.equal(tok({ orchestraUrl: "https://orchestra.example" }), undefined);
     assert.equal(tok({ orchestraUrl: "https://orchestra.example", orchestraToken: "fake-token" }), "fake-token");
     assert.equal(tok({ orchestraUrl: "" }), undefined);
-    assert.deepEqual(mergeOrchestraSettings({ orchestraUrl: "nope" }, existing), { error: "orchestraUrl must be an http(s) URL" });
+    assert.deepEqual(mergeOrchestraSettings({ orchestraUrl: "nope" }, existing), { error: "Orchestra service URL must be an http(s) URL" });
   });
 
   it("rejects a url that is not http(s)", () => {
     for (const bad of ["ftp://x:1", "192.0.2.10:7420", "not a url", "javascript:alert(1)"]) {
-      assert.deepEqual(mergeOrchestraSettings({ orchestraUrl: bad }, existing), { error: "orchestraUrl must be an http(s) URL" });
+      assert.deepEqual(mergeOrchestraSettings({ orchestraUrl: bad }, existing), { error: "Orchestra service URL must be an http(s) URL" });
     }
   });
 });

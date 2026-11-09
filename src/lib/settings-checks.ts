@@ -7,12 +7,23 @@ export const MAX_PIN_PATH = 4096;
 export const MAX_RCON_HOST = 253;
 export const MAX_BUDGET_USD = 1000;
 
+/** Settings fields named in errors by the label the form shows (section added where the bare label is ambiguous). */
+const URL_FIELD_LABELS: Record<string, string> = {
+  managerUrl: "Manager URL",
+  hermesApiUrl: "Hermes API URL",
+  voiceServerUrl: "Voice server URL",
+  voiceTtsUrl: "Voice TTS URL",
+  oidcIssuer: "SSO issuer",
+  orchestraUrl: "Orchestra service URL",
+};
+
 /**
  * Blank is allowed (it means "clear" or "keep"); anything else must be an http(s) URL.
  * Every caller joins a path onto the saved URL (or sends a secret to it), so a login, ?query or #fragment is refused too.
  */
-export function httpUrlError(field: string, value: string | undefined): string | null {
+export function httpUrlError(code: string, value: string | undefined): string | null {
   if (!value) return null;
+  const field = URL_FIELD_LABELS[code] ?? code;
   if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) return `${field} must be an http(s) URL`;
   const u = new URL(value);
   return u.username || u.password || u.search || u.hash

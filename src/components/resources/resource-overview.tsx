@@ -363,7 +363,6 @@ export interface MetricHistoryPanelProps {
  *  minutes of real samples is technically correct and practically misleading. */
 const THIN_HISTORY_MS = 60 * 60 * 1000;
 
-
 /** The band's lower half: compare picker, chart, legend and the one-line hint (reserved height, never shifts). */
 export function MetricHistoryPanel({
   range,
