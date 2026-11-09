@@ -232,6 +232,12 @@ function configPath(): string {
 let cache: { mtimeMs: number; config: AppConfig } | null = null;
 let loggedFallbackMtime: number | null = null;
 
+/** Log only an error's code or name: V8's JSON.parse message quotes the text around the bad token, which can be a secret. */
+function errCode(e: unknown): string {
+  const x = e as { code?: string; name?: string } | null;
+  return x?.code ?? x?.name ?? "unknown";
+}
+
 /** Non-strict fallback to defaults for an existing-but-bad file: say so once per file version. */
 function logFallback(cause: unknown): void {
   let mtime: number;
@@ -261,10 +267,10 @@ function readConfig(strict: boolean): AppConfig {
   } catch (e) {
     // A save must never build on defaults it fell back to: only a missing file (first run) is safe.
     if (strict && (e as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error("config read for save failed", e);
+      console.error("config read for save failed:", errCode(e));
       throw new Error(CONFIG_UNREADABLE);
     }
-    if ((e as NodeJS.ErrnoException).code !== "ENOENT") logFallback(e);
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") logFallback(errCode(e));
     return DEFAULT_CONFIG;
   }
 }
@@ -408,7 +414,7 @@ export function readHermesSettingsFileForSave(): HermesSettingsFile | null {
     return parsed as HermesSettingsFile;
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
-    console.error("hermes settings read for save failed", e);
+    console.error("hermes settings read for save failed:", errCode(e));
     throw new Error(HERMES_SETTINGS_UNREADABLE);
   }
 }

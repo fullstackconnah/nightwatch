@@ -91,7 +91,7 @@ describe("hunt 25 route scans", () => {
     assert.match(r, /hermesSyncFailed = true/);
     assert.match(r, /^\s+hermesSyncFailed: hermesSyncFailed \|\| undefined,/m);
     const ui = src("components/settings/settings-access.tsx");
-    assert.match(ui, /Hermes did not get the new token\. Generate it again, or copy it into Hermes by hand\./);
+    assert.match(ui, /Hermes did not get the new token\. Try again, or copy it into Hermes by hand./);
   });
   it("F3: next.system spreads existing first, and the clear flags are applied before the spread-override keys", () => {
     const r = src("app/api/settings/system/route.ts");
@@ -104,5 +104,49 @@ describe("hunt 25 route scans", () => {
     const next = { ...{ foo: 1, hermesApiToken: "old" }, hermesApiToken: undefined };
     assert.equal(next.foo, 1);
     assert.equal(JSON.parse(JSON.stringify(next)).hermesApiToken, undefined);
+  });
+});
+
+describe("hunt 25 H25D-1/2: read failures log a code, never the parse message", () => {
+  let dir: string;
+  let prev: string | undefined;
+  let logged: string[];
+  const realError = console.error;
+  beforeEach(() => {
+    prev = process.env.DATA_DIR;
+    dir = mkdtempSync(join(tmpdir(), "nw-h25-leak-"));
+    process.env.DATA_DIR = dir;
+    mkdirSync(join(dir, "hermes"));
+    logged = [];
+    console.error = (...a: unknown[]) => void logged.push(a.map(String).join(" "));
+  });
+  afterEach(() => {
+    console.error = realError;
+    if (prev === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = prev;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("H25D-1: strict Hermes read of an unquoted fake token does not log it", () => {
+    writeFileSync(join(dir, "hermes", "hermes-settings.json"), '{"nightwatchMcpToken": abcd1234secret}');
+    assert.throws(() => config.readHermesSettingsFileForSave());
+    assert.ok(logged.length > 0);
+    assert.ok(!logged.join("\n").includes("abcd1234"));
+  });
+  it("H25D-2: config.json with an unquoted fake key logs once and does not leak it", () => {
+    writeFileSync(join(dir, "config.json"), '{"apiKey": sk-fakesecret}');
+    config.loadConfig();
+    assert.equal(logged.length, 1);
+    assert.ok(!logged.join("\n").includes("sk-fake"));
+  });
+  it("H25D-2: strict config read does not leak either", () => {
+    writeFileSync(join(dir, "config.json"), '{"apiKey": sk-fakesecret2}');
+    assert.throws(() => config.loadConfigForSave());
+    assert.ok(!logged.join("\n").includes("sk-fake"));
+  });
+  it("H25D-3/4: access card clears the warning on each attempt and uses the new copy", () => {
+    const ui = src("components/settings/settings-access.tsx");
+    assert.equal((ui.match(/setError\(null\);\s*setSyncFailed\(false\);/g) ?? []).length, 2);
+    assert.match(ui, /Hermes did not get the new token\. Try again, or copy it into Hermes by hand\./);
   });
 });

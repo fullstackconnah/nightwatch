@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
   let existing: HermesSettingsFile;
   try {
     existing = readHermesSettingsFileForSave() ?? { updatedAt: new Date().toISOString() };
-  } catch (e) {
+  } catch {
     return NextResponse.json({ error: HERMES_SETTINGS_UNREADABLE }, { status: 500 });
   }
 
