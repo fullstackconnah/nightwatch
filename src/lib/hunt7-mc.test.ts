@@ -17,7 +17,7 @@ describe("hunt 7 minecraft and jellyfin", () => {
     assert.ok(s.includes('query.set("memoryGb"'));
     assert.ok(!s.includes("params.toString()"));
     assert.ok(s.includes("AbortSignal.timeout(10 * 60 * 1000)"));
-    assert.ok(s.includes("name.length > 100") && s.includes("mcVersion.length > 100"));
+    assert.ok(s.includes("name.length > 100") && s.includes("uploadFieldsError("));
   });
   it("A5: restore refuses path-like instance and file", () => {
     const s = read("../app/api/minecraft/backups/route.ts");
