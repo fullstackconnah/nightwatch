@@ -13,7 +13,7 @@ export function createErrorCopy(message: string): string {
     return "The image pull stalled with no progress for 60 seconds. Check the image name and the registry, then try again.";
   }
   if (/abort/i.test(message)) {
-    return "Docker did not answer the image pull within 10 seconds. Check that Docker is running, then try again.";
+    return "Docker did not answer within 10 seconds. Check that Docker is running, then try again.";
   }
   return "Docker failed to create it.";
 }
