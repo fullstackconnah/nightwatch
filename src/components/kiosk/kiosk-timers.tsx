@@ -26,7 +26,7 @@ import { Pause, Play, Timer as TimerIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNow } from "@/lib/use-now";
 import { validTimers } from "@/lib/kiosk-timers-restore";
-import { KIOSK_POP_MS,containerCollapse, containerExpand } from "@/lib/kiosk-motion";
+import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 
 /* ── shared store ────────────────────────────────────────────────────────── */
 

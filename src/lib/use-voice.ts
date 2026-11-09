@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { useHermesRun } from "@/lib/use-hermes";
+import { settleExchange } from "@/lib/voice-settle";
 
 const LEVEL_BAR_COUNT = 5;
 const STATIC_LEVEL = 0.4; // reduced-motion fallback: a flat, non-animated bar
@@ -374,6 +375,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
     async (text: string) => {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       activeExchangeId.current = id;
+      run.reset(); // drop the previous job so its error or answer cannot land on this question
       setExchanges((prev) => [{ id, transcript: text, answer: null, error: null }, ...prev].slice(0, MAX_EXCHANGES));
       const failure = await run.start("ask", text);
       if (failure) {
@@ -393,26 +395,19 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   useEffect(() => {
     const id = activeExchangeId.current;
     if (!id || !run.job) return;
-    if (!run.job.ok) {
-      // The poll could not read the job: show it on the exchange, as a failed start does.
-      const detail = run.job.detail;
-      setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: detail } : ex)));
-      activeExchangeId.current = null;
-      return;
-    }
-    const job = run.job.job;
-    if (job.state === "done") {
-      const answer = job.result?.body ?? "";
-      setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, answer } : ex)));
+    const s = settleExchange(run.job);
+    if (s.kind === "wait") return;
+    if (s.kind === "answer") {
+      const { answer } = s;
+      // error: null so an answer recovered after a failed read replaces the error
+      setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, answer, error: null } : ex)));
       activeExchangeId.current = null;
       setAwaitingSpeech(true);
       void speak(answer || "I didn't get an answer back.").finally(() => setAwaitingSpeech(false));
-    } else if (job.state === "error") {
-      setExchanges((prev) =>
-        prev.map((ex) => (ex.id === id ? { ...ex, error: job.error ?? "Hermes reported an error." } : ex)),
-      );
-      activeExchangeId.current = null;
+      return;
     }
+    setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: s.error } : ex)));
+    if (!s.keepActive) activeExchangeId.current = null;
   }, [run.job, speak]);
 
   const state: VoicePipelineState =

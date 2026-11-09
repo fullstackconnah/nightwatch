@@ -24,6 +24,6 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 test("useHermesRun maps the poll through jobView and a 401 stops the retries", () => {
   const src = readFileSync(fileURLToPath(new URL("../use-hermes.ts", import.meta.url)), "utf8");
-  assert.match(src, /^\s+const job = jobView\(data, error\);\s*$/m);
+  assert.match(src, /^\s+const job = useMemo\(\(\) => jobView\(data, error\), \[data, error\]\);\s*$/m);
   assert.match(src, /^\s+shouldRetryOnError: .*401/m);
 });

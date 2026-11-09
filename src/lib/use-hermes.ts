@@ -13,7 +13,7 @@
  * its own, and the daemon's 409 is surfaced honestly.
  */
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ApiError, fetcher, postJson } from "@/lib/client";
 import { jobView } from "@/lib/hermes/job-view";
@@ -81,7 +81,7 @@ export function useHermesRun(): UseHermesRunResult {
   const [startError, setStartError] = useState<string | null>(null);
   const [kind, setKind] = useState<HermesJobKind | null>(null);
   const { data, error } = useHermesJob(jobId);
-  const job = jobView(data, error);
+  const job = useMemo(() => jobView(data, error), [data, error]);
 
   const start = useCallback(async (kind: HermesJobKind, question?: string): Promise<string | null> => {
     setStarting(true);
