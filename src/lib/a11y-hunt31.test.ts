@@ -66,7 +66,12 @@ test("R1 every confirm focuses Cancel, and only Cancel", () => {
 
 test("R2 the dialog focus hook can skip the restore, and the More sheet skips it after navigation", () => {
   assert.match(src("components/use-dialog-focus.ts"), /skipRestore/);
-  assert.match(src("components/side-nav.tsx"), /useDialogFocus\(mounted, dialogRef, [^\n]*skipRestore|pathAtOpen/);
+  const nav = src("components/side-nav.tsx");
+  // The bug: resetting the path in the !mounted render ran before the cleanup, so paths always matched.
+  assert.doesNotMatch(nav, /if \(!mounted\)[^\n]*pathAtOpen\.current\s*=/);
+  assert.match(nav, /^\s*if \(open && pathAtOpen\.current === null\) pathAtOpen\.current = pathname;/m);
+  assert.match(nav, /pathAtOpen\.current = null;/);
+  assert.match(nav, /useDialogFocus\(\s*mounted,\s*dialogRef,[\s\S]*?\(\) => \{[^}]*pathAtOpen\.current = null;[^}]*\},\s*\);/);
 });
 
 test("R3 the widget popup group is labelled Actions", () => {
