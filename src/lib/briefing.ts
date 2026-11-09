@@ -1,6 +1,7 @@
 import { loadConfig } from "@/lib/config";
 import { Memo } from "@/lib/cache";
 import { readCapped } from "./read-capped";
+import { localDateString } from "./local-time";
 import { getHermesActivity, getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
 import type { HermesActivityItem } from "@/lib/types/hermes";
 
@@ -70,13 +71,6 @@ function briefingConfig(): BriefingConfig | null {
     timezone: d.timezone,
     newsFeeds: Array.isArray(d.newsFeeds) ? d.newsFeeds.filter((u): u is string => typeof u === "string" && !!u) : [],
   };
-}
-
-/** en-CA formats as YYYY-MM-DD directly — no manual zero-padding/reassembly. */
-function localDateString(timezone: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(
-    new Date(),
-  );
 }
 
 function sleep(ms: number): Promise<void> {
@@ -291,7 +285,7 @@ async function assembleBriefing(cfg: BriefingConfig, date: string): Promise<Brie
 export async function getBriefing(): Promise<BriefingResponse> {
   const cfg = briefingConfig();
   if (!cfg) {
-    return { status: "unconfigured", date: new Date().toISOString().slice(0, 10), detail: BRIEFING_UNCONFIGURED_DETAIL };
+    return { status: "unconfigured", date: localDateString(undefined), detail: BRIEFING_UNCONFIGURED_DETAIL };
   }
 
   pendingDate = localDateString(cfg.timezone);

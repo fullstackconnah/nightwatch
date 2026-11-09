@@ -19,6 +19,7 @@ import { CPU_STEPS, snapScale } from "@/lib/watchlist";
 import { SERIES_SLOTS, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
 import { RANGE_SHORT, RANGE_WORD, ringTail, stackLayers } from "@/lib/timeline";
 import { formatBytes, formatPercent } from "@/lib/format";
+import { localStamp } from "@/lib/local-time";
 import type { TelemetrySample } from "@/lib/client";
 
 export interface HistoryBucket {
@@ -45,7 +46,6 @@ const TICKS: Record<HistoryRangeOption, [string, string]> = {
 const END_GAP = 14;
 const TIP_W = 196;
 const KEY_SLOTS = 7; // box, host & other, rest, up to 4 picks: reserved at mount so the chart box never reflows
-const utc = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
 const compactBytes = (v: number) => (v === 0 ? "0" : formatBytes(v, 0).replace(/ (.)iB$/, "$1"));
 
 interface Model {
@@ -242,7 +242,7 @@ export function TimelineChart(p: TimelineChartProps) {
   else if (range === "live") hint = "The last 60 s, one reading per second.";
   else if (p.loading && !n) hint = "Loading history…";
   else if (nothing) hint = "Nothing recorded yet: history fills every 30 s. LIVE shows the last 60 s.";
-  else if (model.since != null && model.since > tStart) hint = `Recording since ${utc(model.since)} UTC: the hatched start of this window has no data yet (a gap, not zero).`;
+  else if (model.since != null && model.since > tStart) hint = `Recording since ${localStamp(model.since)}: the hatched start of this window has no data yet (a gap, not zero).`;
   else if (range === "1h") hint = "The right edge is live: it moves with every reading.";
   else hint = "The right edge updates every 30 s.";
 
@@ -256,7 +256,7 @@ export function TimelineChart(p: TimelineChartProps) {
     for (let j = 1; j < n; j++) if (Math.abs(model.times[j] - t) < Math.abs(model.times[i] - t)) i = j;
     crossX = W - ((tEnd - model.times[i]) / winMs) * W;
     const ago = tEnd - model.times[i];
-    const when = ago < 1000 ? "now" : ago < 120_000 ? `${Math.round(ago / 1000)} s ago` : ago < 7_200_000 ? `${Math.round(ago / 60_000)} min ago` : `${utc(model.times[i])} UTC`;
+    const when = ago < 1000 ? "now" : ago < 120_000 ? `${Math.round(ago / 1000)} s ago` : ago < 7_200_000 ? `${Math.round(ago / 60_000)} min ago` : localStamp(model.times[i]);
     const sz = (b: [number, number]) => fmt(b[1] - b[0]);
     const left = crossX + 12 + TIP_W > W ? crossX - 12 - TIP_W : crossX + 12;
     tip = (
@@ -283,7 +283,7 @@ export function TimelineChart(p: TimelineChartProps) {
   }
 
   const showPlot = n > 0 && !p.error;
-  const at = li >= 0 && range !== "live" ? utc(model.times[li]).slice(11) : null; // the end labels read this bucket, the band reads the live sample
+  const at = li >= 0 && range !== "live" ? localStamp(model.times[li]).slice(11) : null; // the end labels read this bucket, the band reads the live sample
   const aria = li >= 0 ? `box ${fmt(hostNow)} now, ${fmt(hostAvg)} on average over the ${RANGE_WORD[range]}` : "Box history, no readings yet";
   const sub = li >= 0 ? `containers ${fmt(size1(st.rest) + st.picks.reduce((a, b) => a + (b[li][1] - b[li][0]), 0))} of it · ${RANGE_SHORT[range]} avg ${fmt(hostAvg)}` : "reading host…";
   const mode = p.picked
@@ -294,7 +294,7 @@ export function TimelineChart(p: TimelineChartProps) {
     <div className="tl-hero space-y-3" data-stale={stale || undefined}>
       <p className="tl-sub font-mono text-2xs text-ink-dim m-0">
         {sub}
-        {at && <span className="md:hidden">{` · at ${at} UTC`}</span>}
+        {at && <span className="md:hidden">{` · at ${at}`}</span>}
       </p>
       <div className="tl-chart">
         <div aria-hidden className="tl-axis">
@@ -364,7 +364,7 @@ export function TimelineChart(p: TimelineChartProps) {
           </div>
         </div>
         <div aria-hidden className="tl-ends">
-          {at && <span className="tl-bucket">{`at ${at} UTC`}</span>}
+          {at && <span className="tl-bucket">{`at ${at}`}</span>}
           <svg className="tl-leaders" width={14} height={H} viewBox={`0 0 14 ${H}`}>
             {items.map((it, i) => (
               <path key={it.key} d={`M0 ${y0[i].toFixed(1)}L8 ${yL[i].toFixed(1)}L12 ${yL[i].toFixed(1)}`} className="tl-leader" />

@@ -1,6 +1,7 @@
 import { loadConfig } from "@/lib/config";
 import { Memo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
+import { commitDate, newestFirst } from "@/lib/git/commit-order";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -306,7 +307,7 @@ async function fetchRepoBundle(
         shortSha: c.sha.slice(0, 7),
         message: firstLine(c.commit?.message ?? "(no message)"),
         authorName: c.commit?.author?.name ?? "unknown",
-        date: c.commit?.author?.date ?? new Date(0).toISOString(),
+        date: commitDate(c.commit?.author?.date),
         htmlUrl: c.html_url,
       }))
     : [];
@@ -432,7 +433,7 @@ async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSnapshot>
 
   const stream = bundles
     .flatMap((b) => b.commits)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .sort(newestFirst)
     .slice(0, STREAM_CAP);
 
   const branches = bundles

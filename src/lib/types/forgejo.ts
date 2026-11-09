@@ -35,7 +35,8 @@ export interface GitCommitEntry {
    *  not a diff view, so a multi-line commit body would just wrap ugly. */
   message: string;
   authorName: string;
-  date: string;
+  /** Null when Forgejo reports no author date; the UI shows a dash. */
+  date: string | null;
   /** Links straight to Forgejo's commit diff, e.g. .../commit/<sha>. */
   htmlUrl: string;
 }
