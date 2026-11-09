@@ -46,6 +46,7 @@ import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kios
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
+import { briefingRefreshMs } from "@/lib/briefing-poll";
 import { type WeatherViewStatus, weatherViewStatus } from "@/lib/kiosk/view-status";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 
@@ -267,18 +268,13 @@ type BriefingResponse =
   // ok-render with empty fields.
   | { status: "unavailable" | "unconfigured"; detail?: string };
 
-const BRIEFING_POLL_MS = 10_000;
-
 /** The endpoint is expensive on the first call of the day (~45s) — poll every
- *  10s until content actually lands, then stop; `unavailable` also stops,
- *  there is nothing to wait for. */
+ *  10s until content actually lands, then every 30 min (also after
+ *  `unavailable`): the server's per-day cache is cheap to poll and rolls the
+ *  day itself, so a wall display picks up tomorrow's digest. */
 export function useKioskBriefing(active: boolean) {
   return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, fetcher, {
-    refreshInterval: (latest?: BriefingResponse) => {
-      if (!latest) return BRIEFING_POLL_MS;
-      if (latest.status === "ok" && !latest.digest && !latest.news) return BRIEFING_POLL_MS;
-      return 0;
-    },
+    refreshInterval: briefingRefreshMs,
     keepPreviousData: true,
   });
 }
