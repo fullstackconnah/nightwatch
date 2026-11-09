@@ -4,6 +4,7 @@ import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type O
 import { systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
+import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -90,7 +91,7 @@ function discover(issuer: string): Promise<DiscoveryDocument> {
 async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   let res: Response;
   try {
-    res = await fetch(`${issuer}/.well-known/openid-configuration`, {
+    res = await fetchNoCrossOriginRedirect(`${issuer}/.well-known/openid-configuration`, {
       signal: AbortSignal.timeout(HTTP_TIMEOUT_MS), // covers the body read too
     });
   } catch (err) {
@@ -200,7 +201,7 @@ export async function exchangeCode(code: string, redirectUri: string, codeVerifi
 
   let res: Response;
   try {
-    res = await fetch(doc.token_endpoint, {
+    res = await fetchNoCrossOriginRedirect(doc.token_endpoint, {
       signal: AbortSignal.timeout(HTTP_TIMEOUT_MS), // covers the body read too
       method: "POST",
       headers: {

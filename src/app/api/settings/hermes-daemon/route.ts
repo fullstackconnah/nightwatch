@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { HERMES_SETTINGS_UNREADABLE, readHermesSettingsFileForSave, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
-import { budgetChangeError, webhookError } from "@/lib/settings-checks";
+import { budgetChangeError, discordChannelIdError, discordUserIdsError, modelNameError, webhookError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
 
@@ -72,6 +72,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
   }
 
+  // Free text the Hermes daemon reads from the file: check it at this boundary, before the read and any write.
+  let typedUserIds: string[] | undefined;
+  if ("discordAllowedUserIds" in body) {
+    if (!Array.isArray(body.discordAllowedUserIds) || !body.discordAllowedUserIds.every((x) => typeof x === "string")) {
+      return NextResponse.json({ error: "discordAllowedUserIds must be an array of strings" }, { status: 400 });
+    }
+    typedUserIds = body.discordAllowedUserIds.map((x) => x.trim()).filter(Boolean);
+  }
+  const badInput =
+    discordChannelIdError(str(body.discordChannelId)) ??
+    (typedUserIds && discordUserIdsError(typedUserIds)) ??
+    modelNameError("Model", str(body.pipelineModel)) ??
+    modelNameError("Hard-ticket model", str(body.pipelineModelHard));
+  if (badInput) return NextResponse.json({ error: badInput }, { status: 400 });
+
   let existing: HermesSettingsFile;
   try {
     existing = readHermesSettingsFileForSave() ?? { updatedAt: new Date().toISOString() };
@@ -89,13 +104,7 @@ export async function POST(req: NextRequest) {
     : mergedSecret(str(body.discordBotToken), existing.discordBotToken);
   const discordChannelId = "discordChannelId" in body ? (str(body.discordChannelId) ?? existing.discordChannelId) : existing.discordChannelId;
 
-  let discordAllowedUserIds = existing.discordAllowedUserIds;
-  if ("discordAllowedUserIds" in body) {
-    if (!Array.isArray(body.discordAllowedUserIds) || !body.discordAllowedUserIds.every((x) => typeof x === "string")) {
-      return NextResponse.json({ error: "discordAllowedUserIds must be an array of strings" }, { status: 400 });
-    }
-    discordAllowedUserIds = body.discordAllowedUserIds.map((x) => x.trim()).filter(Boolean);
-  }
+  const discordAllowedUserIds = typedUserIds ?? existing.discordAllowedUserIds;
 
   const dryRun = typeof body.dryRun === "boolean" ? body.dryRun : existing.dryRun;
   const pipelineEnabled = typeof body.pipelineEnabled === "boolean" ? body.pipelineEnabled : existing.pipelineEnabled;

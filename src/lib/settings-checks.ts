@@ -7,10 +7,33 @@ export const MAX_PIN_PATH = 4096;
 export const MAX_RCON_HOST = 253;
 export const MAX_BUDGET_USD = 1000;
 
-/** Blank is allowed (it means "clear" or "keep"); anything else must be an http(s) URL. */
+/**
+ * Blank is allowed (it means "clear" or "keep"); anything else must be an http(s) URL.
+ * Every caller joins a path onto the saved URL (or sends a secret to it), so a login, ?query or #fragment is refused too.
+ */
 export function httpUrlError(field: string, value: string | undefined): string | null {
   if (!value) return null;
-  return URL.canParse(value) && /^https?:$/.test(new URL(value).protocol) ? null : `${field} must be an http(s) URL`;
+  if (!URL.canParse(value) || !/^https?:$/.test(new URL(value).protocol)) return `${field} must be an http(s) URL`;
+  const u = new URL(value);
+  return u.username || u.password || u.search || u.hash
+    ? `${field} must be a plain http(s) address, with no login, ?query or #fragment.`
+    : null;
+}
+
+const DISCORD_ID = /^\d{17,20}$/;
+// No leading "-", space, "=" or newline: the Hermes daemon may pass this to a CLI argument or env file.
+const MODEL_NAME = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,99}$/;
+
+export function discordChannelIdError(v: string | undefined): string | null {
+  return !v || DISCORD_ID.test(v) ? null : "Channel ID must be a Discord ID: 17 to 20 digits.";
+}
+
+export function discordUserIdsError(ids: string[]): string | null {
+  return ids.every((x) => DISCORD_ID.test(x)) ? null : "Each allowed user ID must be a Discord ID: 17 to 20 digits.";
+}
+
+export function modelNameError(label: string, v: string | undefined): string | null {
+  return !v || MODEL_NAME.test(v) ? null : `${label} must be a model name, such as claude-sonnet-5-5.`;
 }
 
 /** Only a typed token is checked; blank, Generate and "unchanged" never reach this. */
