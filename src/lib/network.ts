@@ -4,6 +4,7 @@ import path from "node:path";
 import { Memo } from "@/lib/cache";
 import { docker, listContainers } from "@/lib/docker";
 import { capConnections } from "@/lib/server-cost";
+import { classifyScope, decodeSocketTableIPv4Hex, isLoopbackAddress, unmapSocketHex } from "@/lib/socket-addr";
 import { HOST_PROC, HOST_ROOTFS, HOST_SYS } from "@/lib/host-metrics";
 import type {
   EstablishedConnectionGroup,
@@ -591,18 +592,13 @@ function decodeSocketTableIPv6Hex(hex: string): string {
   return formatIPv6(networkOrder.toLowerCase());
 }
 
-/** "0100007F" (4 bytes, little-endian) -> "127.0.0.1". */
-function decodeSocketTableIPv4Hex(hex: string): string | null {
-  if (!/^[0-9a-fA-F]{8}$/.test(hex)) return null;
-  const bytes: number[] = [];
-  for (let i = 6; i >= 0; i -= 2) bytes.push(parseInt(hex.slice(i, i + 2), 16));
-  return bytes.join(".");
-}
-
-function classifyScope(address: string): SocketScope {
-  if (address === "0.0.0.0" || address === "::") return "all-interfaces";
-  if (address === "127.0.0.1" || address.startsWith("127.") || address === "::1") return "loopback";
-  return "specific";
+/** A tcp6/udp6 address column. An IPv4-mapped address (::ffff:a.b.c.d) is decoded to dotted
+ *  v4 with family "v4": it IS a v4 peer on a dual-stack socket, so loopback, scope, public
+ *  and the group key all see the same form as the tcp table. */
+function decodeSocketAddress(family: "v4" | "v6", hex: string): { family: "v4" | "v6"; address: string } {
+  if (family === "v4") return { family, address: decodeSocketTableIPv4Hex(hex) ?? hex };
+  const mapped = unmapSocketHex(hex);
+  return mapped ? { family: "v4", address: mapped } : { family, address: decodeSocketTableIPv6Hex(hex) };
 }
 
 interface RawSocketRow {
@@ -647,11 +643,10 @@ async function parseSocketTable(
     const port = parseInt(localPortHex, 16);
     if (!Number.isFinite(port)) continue;
 
-    const address =
-      family === "v4" ? (decodeSocketTableIPv4Hex(localHex) ?? localHex) : decodeSocketTableIPv6Hex(localHex);
+    const { family: rowFamily, address } = decodeSocketAddress(family, localHex);
     const uid = Number(uidStr);
 
-    out.push({ protocol, family, address, port, uid: Number.isFinite(uid) ? uid : -1 });
+    out.push({ protocol, family: rowFamily, address, port, uid: Number.isFinite(uid) ? uid : -1 });
   }
   return out;
 }
@@ -828,11 +823,10 @@ async function parseEstablishedTable(filePath: string, family: "v4" | "v6"): Pro
     const localPort = parseInt(localPortHex, 16);
     if (!Number.isFinite(localPort)) continue;
 
-    const remoteAddress =
-      family === "v4" ? (decodeSocketTableIPv4Hex(remoteHex) ?? remoteHex) : decodeSocketTableIPv6Hex(remoteHex);
+    const { family: rowFamily, address: remoteAddress } = decodeSocketAddress(family, remoteHex);
     const uid = Number(uidStr);
 
-    out.push({ family, localPort, remoteAddress, uid: Number.isFinite(uid) ? uid : -1 });
+    out.push({ family: rowFamily, localPort, remoteAddress, uid: Number.isFinite(uid) ? uid : -1 });
   }
   return out;
 }
@@ -857,21 +851,11 @@ function isPrivateOrLocalIPv4(address: string): boolean {
 /** "::1"/"::" (loopback/unspecified), "fc00::/7" (RFC4193 unique-local) and
  *  "fe80::/10" (link-local). formatIPv6 never strips a nonzero leading hex
  *  digit, so the first group's own first two characters are a reliable way
- *  to read these prefixes off the already-formatted address. An IPv4-mapped
- *  address ("::ffff:a.b.c.d", rendered here as "::ffff:HHHH:HHHH") is
- *  unwrapped and judged by the IPv4 rules instead — it IS an IPv4 address,
- *  wearing a v6 wrapper because it arrived on a dual-stack socket. */
+ *  to read these prefixes off the already-formatted address. IPv4-mapped
+ *  addresses never reach here: decodeSocketAddress turns them into v4 rows. */
 function isPrivateOrLocalIPv6(address: string): boolean {
   const lower = address.toLowerCase();
   if (lower === "::1" || lower === "::") return true;
-
-  const mapped = lower.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
-  if (mapped) {
-    const hi = parseInt(mapped[1], 16);
-    const lo = parseInt(mapped[2], 16);
-    const dotted = [(hi >> 8) & 0xff, hi & 0xff, (lo >> 8) & 0xff, lo & 0xff].join(".");
-    return isPrivateOrLocalIPv4(dotted);
-  }
 
   const firstGroup = lower.split(":")[0];
   if (firstGroup.startsWith("fc") || firstGroup.startsWith("fd")) return true; // fc00::/7
@@ -884,12 +868,6 @@ function isPrivateOrLocalIPv6(address: string): boolean {
  *  geolocation, never a reputation list. */
 function isPublicAddress(address: string, family: "v4" | "v6"): boolean {
   return family === "v4" ? !isPrivateOrLocalIPv4(address) : !isPrivateOrLocalIPv6(address);
-}
-
-function isLoopbackAddress(address: string, family: "v4" | "v6"): boolean {
-  if (family === "v4") return address.startsWith("127.");
-  const lower = address.toLowerCase();
-  return lower === "::1" || lower === "::ffff:127.0.0.1";
 }
 
 interface ConnectionGroupAccum {
