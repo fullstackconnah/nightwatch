@@ -154,13 +154,15 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [syncFailed, setSyncFailed] = useState(false);
   useFormReport("system", { dirty: Boolean(mcpDraft.trim() || pinDraft.trim()), error });
 
   /** Throws on failure so the WriteAction frame shows the reason (K10: nothing is sent before Yes). */
   async function generate() {
     setError(null);
     try {
-      const res = (await postJson("/api/settings/system", { generateMcpToken: true })) as { generatedMcpToken?: string };
+      const res = (await postJson("/api/settings/system", { generateMcpToken: true })) as { generatedMcpToken?: string; hermesSyncFailed?: boolean };
+      setSyncFailed(res.hermesSyncFailed === true);
       await mutate();
       setMcpDraft("");
       setSaveVersion((v) => v + 1);
@@ -177,7 +179,8 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       const body: Record<string, unknown> = {};
       if (mcpDraft.trim()) body.mcpToken = mcpDraft.trim();
       if (pinDraft.trim()) body.kioskPin = pinDraft.trim();
-      await postJson("/api/settings/system", body);
+      const res = (await postJson("/api/settings/system", body)) as { hermesSyncFailed?: boolean } | undefined;
+      setSyncFailed(res?.hermesSyncFailed === true);
       await mutate();
       setMcpDraft("");
       setPinDraft("");
@@ -232,6 +235,11 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
               <CopyButton value={revealedToken} label="MCP token" />
             </div>
           </div>
+        )}
+        {syncFailed && (
+          <p role="status" className="mt-2 text-[0.7rem] text-warn/80">
+            Hermes did not get the new token. Generate it again, or copy it into Hermes by hand.
+          </p>
         )}
         {mcpConfigured && mcpEndpoint && (
           <p className="mt-1.5 font-mono text-[0.65rem] text-ink-faint break-all">

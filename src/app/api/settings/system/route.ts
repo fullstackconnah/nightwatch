@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
   const next: AppConfig = {
     ...current,
     system: {
+      ...existing, // a field this build doesn't know survives; the keys below override it, so a cleared (undefined) secret stays cleared
       mcpToken,
       kioskPin,
       hermesApiUrl,
@@ -177,18 +178,28 @@ export async function POST(req: NextRequest) {
 
   try {
     saveConfig(next);
-    // CRITICAL SYNC RULE (GOAL B): a freshly set or regenerated MCP token
-    // must land in hermes-settings.json's nightwatchMcpToken in the SAME
-    // save, or hermes silently keeps calling back with a stale token.
-    // Deliberately NOT mirrored on clear/keep-unchanged — only an actual new
-    // value needs propagating.
-    if (mcpTokenJustSet && mcpToken) syncHermesMcpToken(mcpToken);
   } catch (e) {
     console.error("settings/system save", e);
     return NextResponse.json(
       { error: "save failed" },
       { status: 500 },
     );
+  }
+
+  // CRITICAL SYNC RULE (GOAL B): a freshly set or regenerated MCP token
+  // must land in hermes-settings.json's nightwatchMcpToken in the SAME
+  // save, or hermes silently keeps calling back with a stale token.
+  // Deliberately NOT mirrored on clear/keep-unchanged — only an actual new
+  // value needs propagating. The token is already live once saveConfig
+  // succeeded, so a sync failure is reported in the response, not as a 500.
+  let hermesSyncFailed = false;
+  if (mcpTokenJustSet && mcpToken) {
+    try {
+      syncHermesMcpToken(mcpToken);
+    } catch (e) {
+      console.error("settings/system hermes token sync", e);
+      hermesSyncFailed = true;
+    }
   }
 
   return NextResponse.json({
@@ -200,6 +211,7 @@ export async function POST(req: NextRequest) {
     // `claude mcp add` copy hint. A manually-typed token is never echoed —
     // the client already has it.
     generatedMcpToken: generated ? mcpToken : undefined,
+    hermesSyncFailed: hermesSyncFailed || undefined,
     system: {
       mcpTokenConfigured: Boolean(systemSetting("mcpToken", "MCP_TOKEN")),
       kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),

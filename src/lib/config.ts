@@ -230,6 +230,20 @@ function configPath(): string {
 }
 
 let cache: { mtimeMs: number; config: AppConfig } | null = null;
+let loggedFallbackMtime: number | null = null;
+
+/** Non-strict fallback to defaults for an existing-but-bad file: say so once per file version. */
+function logFallback(cause: unknown): void {
+  let mtime: number;
+  try {
+    mtime = fs.statSync(configPath()).mtimeMs;
+  } catch {
+    return;
+  }
+  if (loggedFallbackMtime === mtime) return;
+  loggedFallbackMtime = mtime;
+  console.error("[config] config.json could not be read; using defaults until it is fixed", cause);
+}
 
 function readConfig(strict: boolean): AppConfig {
   try {
@@ -238,6 +252,7 @@ function readConfig(strict: boolean): AppConfig {
     const parsed = JSON.parse(fs.readFileSync(configPath(), "utf8"));
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       if (strict) throw new Error("config.json is not an object");
+      logFallback("config.json is not an object");
       return DEFAULT_CONFIG; // never cached, so a later strict read re-reads the file and refuses
     }
     const config: AppConfig = { ...DEFAULT_CONFIG, ...parsed };
@@ -249,6 +264,7 @@ function readConfig(strict: boolean): AppConfig {
       console.error("config read for save failed", e);
       throw new Error(CONFIG_UNREADABLE);
     }
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") logFallback(e);
     return DEFAULT_CONFIG;
   }
 }
@@ -382,6 +398,21 @@ export function readHermesSettingsFile(): HermesSettingsFile | null {
   return readJsonBestEffort<HermesSettingsFile>(hermesSettingsPath());
 }
 
+export const HERMES_SETTINGS_UNREADABLE = "Could not read the saved Hermes settings, so nothing was saved.";
+
+/** For read-modify-write saves: only a missing file means "start fresh" (null); any other failure throws, so a bad file is never overwritten. */
+export function readHermesSettingsFileForSave(): HermesSettingsFile | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(hermesSettingsPath(), "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("hermes-settings.json is not an object");
+    return parsed as HermesSettingsFile;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    console.error("hermes settings read for save failed", e);
+    throw new Error(HERMES_SETTINGS_UNREADABLE);
+  }
+}
+
 /** Same atomic tmp+rename pattern as writeHermesModelFile. */
 export function writeHermesSettingsFile(data: HermesSettingsFile): void {
   writeJsonAtomic(hermesSettingsPath(), data);
@@ -392,10 +423,11 @@ export function writeHermesSettingsFile(data: HermesSettingsFile): void {
  * system.mcpToken, it must call this in the SAME request so hermes-settings.json's
  * nightwatchMcpToken never drifts from the token nightwatch's own MCP server
  * actually expects. Preserves every other key already in hermes-settings.json —
- * a best-effort read (missing/corrupt file just means "start fresh") so a
- * slip in that file can never block the mcpToken save that triggered this. */
+ * a strict read (only a missing file means "start fresh"; an unreadable one
+ * throws rather than being overwritten — the caller catches it, since the
+ * mcpToken itself is already saved by then). */
 export function syncHermesMcpToken(token: string): void {
-  const existing = readHermesSettingsFile() ?? { updatedAt: new Date().toISOString() };
+  const existing = readHermesSettingsFileForSave() ?? { updatedAt: new Date().toISOString() };
   writeHermesSettingsFile({ ...existing, nightwatchMcpToken: token, updatedAt: new Date().toISOString() });
 }
 
