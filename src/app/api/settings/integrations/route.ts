@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
-import { loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, saveErrorText, type AppConfig } from "@/lib/config";
 import { mergeMedia } from "@/lib/media/settings";
 import { rconPasswordForHost, secretForUrl } from "@/lib/settings/dash-put";
 import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("settings/integrations save", e);
     return NextResponse.json(
-      { error: "save failed" },
+      { error: saveErrorText(e) },
       { status: 500 },
     );
   }

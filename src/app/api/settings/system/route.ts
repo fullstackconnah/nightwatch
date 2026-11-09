@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
-import { loadConfigForSave, saveConfig, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, saveErrorText, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
 import { secretForUrl } from "@/lib/settings/dash-put";
 
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("settings/system save", e);
     return NextResponse.json(
-      { error: "save failed" },
+      { error: saveErrorText(e) },
       { status: 500 },
     );
   }

@@ -255,13 +255,16 @@ function readConfig(strict: boolean): AppConfig {
   try {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
-    const parsed = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    const text = fs.readFileSync(configPath(), "utf8");
+    if (!text.trim()) return DEFAULT_CONFIG; // a 0-byte file (touch data/config.json) is a fresh install, like a missing one
+    const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       if (strict) throw new Error("config.json is not an object");
       logFallback("config.json is not an object");
       return DEFAULT_CONFIG; // never cached, so a later strict read re-reads the file and refuses
     }
-    const config: AppConfig = { ...DEFAULT_CONFIG, ...parsed };
+    // An explicit null (hand edit) keeps the default instead of overriding it.
+    const config: AppConfig = { ...DEFAULT_CONFIG, ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v !== null)) };
     cache = { mtimeMs: stat.mtimeMs, config };
     return config;
   } catch (e) {
@@ -286,8 +289,25 @@ export function loadConfigForSave(): AppConfig {
   return readConfig(true);
 }
 
+export const DATA_DIR_UNWRITABLE = "The dashboard can't write its data folder. Give uid 1000 ownership of ./data on the server.";
+
+/** A root-owned ./data (Docker creates it that way) gives EACCES/EPERM: say what to fix, pass anything else through. */
+export function mapWriteError(e: unknown): unknown {
+  const code = (e as NodeJS.ErrnoException | null)?.code;
+  return code === "EACCES" || code === "EPERM" ? new Error(DATA_DIR_UNWRITABLE) : e;
+}
+
+/** The 500 body text for a failed save: the data-folder hint when that is the cause, else the generic one. */
+export function saveErrorText(e: unknown): string {
+  return e instanceof Error && e.message === DATA_DIR_UNWRITABLE ? e.message : "save failed";
+}
+
 export function saveConfig(config: AppConfig): void {
-  writeJsonAtomic(configPath(), config, 0o600);
+  try {
+    writeJsonAtomic(configPath(), config, 0o600);
+  } catch (e) {
+    throw mapWriteError(e);
+  }
   cache = null;
 }
 
@@ -409,7 +429,9 @@ export const HERMES_SETTINGS_UNREADABLE = "Could not read the saved Hermes setti
 /** For read-modify-write saves: only a missing file means "start fresh" (null); any other failure throws, so a bad file is never overwritten. */
 export function readHermesSettingsFileForSave(): HermesSettingsFile | null {
   try {
-    const parsed = JSON.parse(fs.readFileSync(hermesSettingsPath(), "utf8"));
+    const text = fs.readFileSync(hermesSettingsPath(), "utf8");
+    if (!text.trim()) return null; // empty file = start fresh, same as config.json
+    const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("hermes-settings.json is not an object");
     return parsed as HermesSettingsFile;
   } catch (e) {
