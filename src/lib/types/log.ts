@@ -83,6 +83,8 @@ export interface LogSeedEvent {
 }
 
 export const LOG_TAIL_DEFAULT = 200;
+/** Upper bound on any scrollback read (seed or resume). */
+export const LOG_TAIL_MAX = 2000;
 
 /**
  * The window every rate readout on this surface measures over — the page

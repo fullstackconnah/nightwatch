@@ -7,6 +7,12 @@ import { classifyImages } from "@/lib/image-reclaim";
 import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
+import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
+
+/** Deadline for a one-shot Docker call (list, inspect, create, start). Not a client-wide timeout: docker-modem would apply that to the quiet follow streams too. */
+const DOCKER_CALL_MS = 10_000;
+/** Log tail reads move up to ~2000 lines through the proxy, so they get a longer bound. */
+const DOCKER_LOGS_MS = 20_000;
 
 /**
  * Docker Engine access. In production this points at the tecnativa
@@ -55,7 +61,7 @@ export interface ContainerSummary {
 }
 
 async function collectContainers(): Promise<ContainerSummary[]> {
-  const raw = await docker.listContainers({ all: true });
+  const raw = await docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
   return raw.map((c) => {
     const status = c.Status || "";
     const health = status.includes("(healthy)")
@@ -175,7 +181,7 @@ function parseDockerTime(value: string | undefined): number | null {
 async function collectRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
   const settled = await Promise.allSettled(
     ids.map(async (id) => {
-      const info = await docker.getContainer(id).inspect();
+      const info = await docker.getContainer(id).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
       const runtime: ContainerRuntime = {
         startedAt: parseDockerTime(info.State?.StartedAt),
         finishedAt: info.State?.Running ? null : parseDockerTime(info.State?.FinishedAt),
@@ -748,6 +754,7 @@ export async function containerLogs(id: string, tail = 200): Promise<string> {
     tail,
     timestamps: true,
     follow: false,
+    abortSignal: AbortSignal.timeout(DOCKER_LOGS_MS),
   })) as unknown as Buffer;
   // Strip ANSI escape codes for clean display.
   // eslint-disable-next-line no-control-regex
@@ -822,11 +829,14 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
 
   // Pull the image first (no-op if present). Requires IMAGES=1 + POST=1 on the proxy.
   await new Promise<void>((resolve, reject) => {
-    docker.pull(spec.image, (err: Error | null, stream: NodeJS.ReadableStream) => {
+    docker.pull(spec.image, (err: Error | null, stream: NodeJS.ReadableStream & { destroy(): void }) => {
       if (err) return reject(err);
-      docker.modem.followProgress(stream, (doneErr: Error | null) =>
-        doneErr ? reject(doneErr) : resolve(),
-      );
+      // A stalled registry sends no events; destroy the stream and reject rather than hang the request.
+      const stop = guardPullIdle(stream, PULL_IDLE_MS, reject);
+      docker.modem.followProgress(stream, (doneErr: Error | null) => {
+        stop();
+        doneErr ? reject(doneErr) : resolve();
+      });
     });
   });
 
@@ -839,6 +849,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
   }
 
   const container = await docker.createContainer({
+    abortSignal: AbortSignal.timeout(DOCKER_CALL_MS),
     name: spec.name || undefined,
     Image: spec.image,
     Env: spec.env.filter((e) => e.key).map((e) => `${e.key}=${e.value}`),
@@ -850,7 +861,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
       NetworkMode: createNetwork(spec),
     },
   });
-  await container.start();
+  await container.start({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) } as never);
   return container.id;
 }
 

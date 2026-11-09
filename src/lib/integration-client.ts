@@ -30,6 +30,7 @@
  */
 
 import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
+import { readJsonCapped, UPSTREAM_JSON_MAX } from "./read-capped.ts";
 
 /** Every integration reports one of these. "ok" carries data; the rest carry prose. */
 export type ProbeStatus = "unconfigured" | "unreachable" | "unauthorized" | "ok";
@@ -155,7 +156,7 @@ export abstract class IntegrationClient<C> {
 
     let body: unknown;
     try {
-      body = await res.json();
+      body = await readJsonCapped(res, UPSTREAM_JSON_MAX);
     } catch {
       return {
         status: "unreachable",

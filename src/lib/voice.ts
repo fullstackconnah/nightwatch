@@ -1,4 +1,5 @@
 import { systemSetting } from "@/lib/config";
+import { readCapped } from "@/lib/read-capped";
 
 /**
  * Server-only client for the voice speech server (STT + TTS), same shape as
@@ -124,11 +125,8 @@ export async function transcribeAudio(audio: Buffer, contentType: string): Promi
   }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    return {
-      status: "error",
-      detail: `Voice server returned HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : "."}`,
-    };
+    console.error(`[voice] transcribe HTTP ${res.status}: ${(await readCapped(res, 500).catch(() => "")) ?? ""}`);
+    return { status: "error", detail: `Voice server returned HTTP ${res.status}.` };
   }
 
   let body: unknown;
@@ -171,11 +169,8 @@ export async function speakText(text: string): Promise<VoiceSpeakResult> {
   }
 
   if (!res.ok || !res.body) {
-    const text2 = await res.text().catch(() => "");
-    return {
-      status: "error",
-      detail: `Voice server returned HTTP ${res.status}${text2 ? `: ${text2.slice(0, 200)}` : "."}`,
-    };
+    console.error(`[voice] speak HTTP ${res.status}: ${(await readCapped(res, 500).catch(() => "")) ?? ""}`);
+    return { status: "error", detail: `Voice server returned HTTP ${res.status}.` };
   }
 
   return { status: "ok", body: res.body, contentType: res.headers.get("content-type") ?? "audio/mpeg" };
