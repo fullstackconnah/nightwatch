@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readHermesSettingsFile, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
+import { HERMES_SETTINGS_UNREADABLE, readHermesSettingsFileForSave, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
 import { budgetChangeError, webhookError } from "@/lib/settings-checks";
 
 export const dynamic = "force-dynamic";
@@ -72,7 +72,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
   }
 
-  const existing = readHermesSettingsFile() ?? { updatedAt: new Date().toISOString() };
+  let existing: HermesSettingsFile;
+  try {
+    existing = readHermesSettingsFileForSave() ?? { updatedAt: new Date().toISOString() };
+  } catch {
+    return NextResponse.json({ error: HERMES_SETTINGS_UNREADABLE }, { status: 500 });
+  }
 
   const badWebhook = body.clearDiscordWebhookUrl === true ? null : webhookError(str(body.discordWebhookUrl));
   if (badWebhook) return NextResponse.json({ error: badWebhook }, { status: 400 });
