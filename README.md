@@ -65,7 +65,8 @@ Two layers, both required for exposure beyond the LAN:
 
 1. NPM access list in front of the app.
 2. Built-in login: `npm run hash-password -- 'your-password'` → set
-   `ADMIN_PASSWORD_HASH` (+ a random `SESSION_SECRET`) in the `.env` next to
+   `ADMIN_PASSWORD_HASH` and a long random `SESSION_SECRET` (required: without
+   it production login answers 503) in the `.env` next to
    `docker-compose.yml`. Without a hash, production login is disabled
    (dev mode accepts anything).
 

@@ -167,10 +167,11 @@ describe("auth", () => {
       assert.equal(decode(), FAKE_SECRET);
     });
 
-    it("falls back to ADMIN_PASSWORD_HASH when SESSION_SECRET is empty", () => {
+    it("never falls back to ADMIN_PASSWORD_HASH when SESSION_SECRET is empty", () => {
       process.env.SESSION_SECRET = "";
       process.env.ADMIN_PASSWORD_HASH = "fake-hash-not-real";
-      assert.equal(decode(), "fake-hash-not-real");
+      env.NODE_ENV = "production";
+      assert.throws(() => secretKey(), /SESSION_SECRET/);
     });
 
     it("falls back to the built-in dev secret outside production when both env vars are missing", () => {

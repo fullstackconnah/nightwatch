@@ -17,7 +17,8 @@ describe("hunt 6 polish 2: fixed error text", () => {
     it(`settings/${dir}route save catch sends "save failed" only`, () => {
       const c = catchOf(read(`../app/api/settings/${dir}route.ts`));
       assert.ok(!c.includes("e.message"));
-      assert.ok(c.includes('{ error: "save failed" }'));
+      // hunt 32: saveErrorText(e) is "save failed" unless the data folder is unwritable
+      assert.ok(c.includes('{ error: "save failed" }') || c.includes("{ error: saveErrorText(e) }"));
       assert.ok(c.includes("console.error("));
     });
   }

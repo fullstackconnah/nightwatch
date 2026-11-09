@@ -3,6 +3,7 @@ import {
   loadConfig,
   loadConfigForSave,
   saveConfig,
+  saveErrorText,
   readHermesModelFile,
   readHermesSettingsFile,
   systemSetting,
@@ -164,7 +165,7 @@ export async function PUT(req: NextRequest) {
   } catch (e) {
     console.error("settings save", e);
     return NextResponse.json(
-      { error: "save failed" },
+      { error: saveErrorText(e) },
       { status: 500 },
     );
   }

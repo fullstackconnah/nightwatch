@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions());
   } catch (e) {
     if (!isMissingSecretError(e)) throw e;
-    return NextResponse.json({ error: "SESSION_SECRET is not set — login disabled" }, { status: 503 });
+    return NextResponse.json({ error: "SESSION_SECRET is not set. Set SESSION_SECRET in .env (a long random string), then restart." }, { status: 503 });
   }
   return res;
 }

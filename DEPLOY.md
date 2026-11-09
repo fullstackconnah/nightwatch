@@ -49,6 +49,13 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    A `.env` edit does NOT reach a running container — recreate it:
    `sudo docker compose up -d --force-recreate dashboard`
 
+   Create the data folder before the first `docker compose up`, or Docker
+   makes it root-owned and Settings saves fail:
+
+   ```sh
+   mkdir -p data && sudo chown 1000:1000 data
+   ```
+
 2. **Widget config** — `data/config.json` is gitignored (holds API keys).
    Ship it out-of-band:
 
