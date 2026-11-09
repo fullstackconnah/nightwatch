@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LayoutGrid, LockKeyhole, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useContainers } from "@/lib/client";
 import type { TiledContainer } from "@/lib/client";
 import {
@@ -29,6 +29,8 @@ type CheckState = { kind: "idle" } | { kind: "checking" } | { kind: "result"; la
  */
 function useUpdateCheck() {
   const [state, setState] = useState<CheckState>({ kind: "idle" });
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timerRef.current), []);
 
   const check = async () => {
     if (state.kind === "checking") return; // guard double-taps
@@ -46,10 +48,10 @@ function useUpdateCheck() {
       // only substitutes on a real `git archive`), so this always reports
       // up-to-date there — expected, not a bug.
       setState({ kind: "result", label: `Up to date · ${buildId}` });
-      setTimeout(() => setState({ kind: "idle" }), 4000);
+      timerRef.current = setTimeout(() => setState({ kind: "idle" }), 4000);
     } catch {
       setState({ kind: "result", label: "Check failed" });
-      setTimeout(() => setState({ kind: "idle" }), 4000);
+      timerRef.current = setTimeout(() => setState({ kind: "idle" }), 4000);
     }
   };
 
@@ -100,7 +102,7 @@ export function KioskAdminPanel({ expiresAt, onLock }: { expiresAt: number; onLo
           {/* Accent (teal), not `ok` green: this dot reports "elevation is
               live", not a container's running state, and teal is the token
               this system reserves for "the live signal" — ok green stays
-              scoped to real container health (see KioskHealth). */}
+              scoped to real container health (the status strip's server line). */}
           <span className="dot dot-live" />
           elevated · locks in {mm}:{ss.toString().padStart(2, "0")}
         </div>

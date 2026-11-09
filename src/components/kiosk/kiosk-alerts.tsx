@@ -1,6 +1,7 @@
 "use client";
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
+import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { playChime, unlockAudio } from "@/lib/sunroom-overlays";
 
@@ -100,6 +101,8 @@ export interface UseKioskAlertsResult {
   /** Remove one row from the cleared-history list. */
   dismissResolved: (id: string, clearedAt: number) => void;
   worstSeverity: AttentionSeverity | null;
+  /** The last attention poll failed: `entries` are the last known reading. */
+  stale: boolean;
 }
 
 /** Stable across polls as long as the condition hasn't changed — headline +
@@ -229,7 +232,7 @@ export function useKioskAlerts(): UseKioskAlertsResult {
     isIdle,
     isNight,
   });
-  const { data } = useSWR<AttentionResult>("/kiosk/api/attention", fetcher, {
+  const { data, error } = useSWR<AttentionResult>("/kiosk/api/attention", fetcher, {
     refreshInterval: pollMs,
     keepPreviousData: true,
   });
@@ -366,6 +369,7 @@ export function useKioskAlerts(): UseKioskAlertsResult {
     dismissAlert,
     dismissResolved,
     worstSeverity,
+    stale: !!error,
   };
 }
 
@@ -376,10 +380,11 @@ interface KioskAlertButtonProps {
   worstSeverity: AttentionSeverity | null;
   trayOpen: boolean;
   onPress: () => void;
+  stale?: boolean;
 }
 
 export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonProps>(function KioskAlertButton(
-  { entries, worstSeverity, trayOpen, onPress },
+  { entries, worstSeverity, trayOpen, onPress, stale = false },
   forwardedRef,
 ) {
   // The forwarded ref is what KioskAlerts uses as the FLIP target — this
@@ -541,6 +546,11 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
     >
       <AlertTriangle size={28} aria-hidden />
       {entries.length > 0 && <span className="font-mono text-lg font-bold tabular-nums">{entries.length}</span>}
+      {stale && (
+        <span className="absolute right-0 top-full mt-1">
+          <StaleTag />
+        </span>
+      )}
     </button>
   );
 });
@@ -869,7 +879,7 @@ function useChimeUnlock() {
 }
 
 export function KioskAlerts({ onOverlayStateChange }: { onOverlayStateChange?: (open: boolean) => void }) {
-  const { entries, resolved, activeTakeover, dismissTakeover, dismissAlert, dismissResolved, worstSeverity } =
+  const { entries, resolved, activeTakeover, dismissTakeover, dismissAlert, dismissResolved, worstSeverity, stale } =
     useKioskAlerts();
   useChimeUnlock();
   const [trayOpen, setTrayOpen] = useState(false);
@@ -898,6 +908,7 @@ export function KioskAlerts({ onOverlayStateChange }: { onOverlayStateChange?: (
         ref={buttonRef}
         entries={entries}
         worstSeverity={worstSeverity}
+        stale={stale}
         trayOpen={trayOpen}
         onPress={() => setTrayOpen((o) => !o)}
       />

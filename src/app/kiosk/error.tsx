@@ -4,9 +4,10 @@
    boundary has to do that for itself. The ladder: auto-reset() up to 3 times
    (10s apart, giving a transient render error room to clear on its own),
    then one full window.location.reload() (also picks up a newer JS bundle if
-   the crash was a stale chunk after a deploy), then stop and just show the
-   manual button — a tight retry loop against a deterministic crash would
-   just spin the tablet's CPU forever with nobody there to notice.
+   the crash was a stale chunk after a deploy), then show the manual
+   button and wait out the 5-minute window before one more reload — a tight
+   retry loop against a deterministic crash would spin the tablet's CPU with
+   nobody there to notice.
 
    Known gap: a route-segment error.tsx only catches errors from ITS OWN
    segment's rendering, not from src/app/kiosk/layout.tsx — a throw in the

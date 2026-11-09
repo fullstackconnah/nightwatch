@@ -495,6 +495,51 @@ await guarded("overlays extra alerts", async () => {
   Object.assign(tray, await page.evaluate(SCAN_AT, '[role=dialog][aria-label="Alerts"]'));
   await context.close();
 });
+// overlays.extra.stale.{alerts,downloads}: a failed re-poll after a good one keeps the data and adds ONE Stale tag (alerts: on the button; downloads: in the open tray).
+// Keys: staleTags (must be 1), buttonCount (alerts: the count still shown), rows (downloads: rows still shown).
+results.overlays.extra.stale = {};
+await guarded("overlays extra stale", async () => {
+  const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_WARN, "/kiosk/api/downloads": downloads(2) });
+  const out = results.overlays.extra.stale;
+  await page.waitForTimeout(5500); // past SWR's 5 s focus throttle, first polls landed
+  await page.route(/\/kiosk\/api\/(attention|downloads)$/, (route) => route.fulfill({ status: 500, json: { error: "down" } })); // registered last, so it wins
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await page.waitForTimeout(3000);
+  const takeover = page.getByRole("status").filter({ hasText: "A container stopped" }).first();
+  if (await takeover.count()) await takeover.click().catch(() => {}); // a tap dismisses it, so it cannot cover the buttons
+  const alerts = page.getByRole("button", { name: /^\d+ alerts?\b/ });
+  out.alerts = (await alerts.count()) ? { staleTags: await alerts.locator(".sr-stale").count(), buttonCount: (await alerts.first().innerText()).replace(/\D/g, "") } : { missing: "alerts button" };
+  const dl = page.getByRole("button", { name: /^\d+ downloads? in progress/ });
+  // Tray closed: the tag must not widen the alerts button or push it over the downloads button.
+  if ((await alerts.count()) && (await dl.count())) {
+    const m = await page.evaluate(() => {
+      const q = (re) => [...document.querySelectorAll("button")].find((b) => re.test(b.getAttribute("aria-label") ?? ""));
+      const a = q(/^\d+ alerts?\b/), d = q(/^\d+ downloads? in progress/), tag = a?.querySelector(".sr-stale");
+      const ar = a.getBoundingClientRect(), dr = d.getBoundingClientRect(), tr = tag?.getBoundingClientRect();
+      return {
+        alertsWidthPx: Math.round(ar.width),
+        overlapPx: Math.max(0, Math.round(Math.min(ar.right, dr.right) - Math.max(ar.left, dr.left))),
+        tagBelow: !!tr && tr.top >= ar.bottom - 0.5,
+        clip: { x: Math.max(0, Math.min(ar.left, dr.left) - 24), y: Math.max(0, Math.min(ar.top, dr.top) - 24), width: Math.max(ar.right, dr.right) - Math.min(ar.left, dr.left) + 48, height: Math.max(tr ? tr.bottom : 0, ar.bottom, dr.bottom) - Math.min(ar.top, dr.top) + 48 },
+      };
+    });
+    const { clip, ...nums } = m;
+    Object.assign(out.alerts, nums);
+    await page.screenshot({ path: join(OUT_DIR, "stale-alerts-button-1180x820.png"), clip });
+  }
+  if (!(await dl.count())) out.downloads = { missing: "downloads button" };
+  else {
+    await dl.click();
+    await seen(page, '[role=dialog][aria-label="Downloads"]', 5000);
+    await settle(page, '[role=dialog][aria-label="Downloads"]');
+    out.downloads = await page.evaluate(() => {
+      const tray = document.querySelector('[role=dialog][aria-label="Downloads"]');
+      return { staleTags: tray?.querySelectorAll(".sr-stale").length ?? 0, rows: tray?.querySelectorAll("[tabindex]").length ?? 0 };
+    });
+    await page.screenshot({ path: join(OUT_DIR, "stale-downloads-tray-1180x820.png") });
+  }
+  await context.close();
+});
 // overlays.extra.downloadsOverlap.<size>: px² where the downloads button meets any forecast cell; must be 0.
 results.overlays.extra.downloadsOverlap = {};
 for (const size of SIZES) {
