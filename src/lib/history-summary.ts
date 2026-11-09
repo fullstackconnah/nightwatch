@@ -3,7 +3,7 @@
 
 export interface SummarySample {
   t: number;
-  cpu: number;
+  cpu: number | null;
   memUsed: number;
   /** name -> [cpuPct, memBytes, ...] (positional tuple, see MetricsHistoryContainerTuple) */
   containers: Record<string, number[]>;

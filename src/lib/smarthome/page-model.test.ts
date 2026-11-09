@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { statusFor } from "../climate-auto-off.ts";
 import { nextOpen } from "../strips.ts";
 import type { HaClimate, HaEntities, HaLock, HaStatesResponse } from "../types/ha.ts";
-import { acWrites, CONFIRM_WINDOW_MS, lockWrites, smarthomeModel, type Model, type ModelInput, type WriteId } from "./page-model.ts";
+import { acWrites, anyLockBusy, CONFIRM_WINDOW_MS, LOCK_WORD, lockWrites, smarthomeModel, type Model, type ModelInput, type WriteId } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-04T10:00:00Z");
 const ac = (n: number, o: Partial<HaClimate> = {}): HaClimate => ({
@@ -200,12 +200,25 @@ test("lockWrites: Unlock is off when stale, unavailable, locking, unlocking or a
   assert.deepEqual(f("unknown"), { lock: true, unlock: true });
   assert.deepEqual(f("locking"), { lock: false, unlock: false });
   assert.deepEqual(f("unlocking"), { lock: false, unlock: false });
+  assert.deepEqual(f("open"), { lock: true, unlock: false });
+  assert.deepEqual(f("opening"), { lock: false, unlock: false });
   assert.deepEqual(f("unavailable"), { lock: false, unlock: false });
   assert.deepEqual(f("locked", { available: false }), { lock: false, unlock: false });
   assert.deepEqual(f("locked", { stale: true }), { lock: false, unlock: false });
   assert.deepEqual(f("unlocked", { stale: true }), { lock: false, unlock: false });
   assert.deepEqual(f("locked", { busy: true }), { lock: false, unlock: false });
   assert.deepEqual(f("unlocked", { busy: true }), { lock: false, unlock: false });
+});
+
+test("open reads as open, opening is busy and not secured", () => {
+  assert.equal(LOCK_WORD.open, "open");
+  assert.equal(LOCK_WORD.opening, "opening…");
+  assert.equal(anyLockBusy([lock("opening")], false), true);
+  assert.equal(anyLockBusy([lock("open")], false), false);
+  const m = smarthomeModel(input({ ha: ok(entities({ locks: [lock("open")] })) }));
+  assert.match(m.strips.find((s) => s.id === "lock")!.state, /open/);
+  assert.equal(w(m, "unlock").enabled, false);
+  assert.equal(w(m, "lock").enabled, true);
 });
 
 test("a lock write in flight (page-level busy, or another lock mid-move) turns Unlock off in the group too", () => {

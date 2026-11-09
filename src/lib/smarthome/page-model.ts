@@ -64,17 +64,17 @@ const ORDER = {
 } as const satisfies Record<string, readonly StripId[]>;
 const ALL_WRITES: WriteId[] = ["ac-mode", "ac-nudge", "light-toggle", "switch-toggle", "lock", "unlock"];
 export const LOCK_WORD: Record<HaLock["state"], string> = {
-  locked: "locked", unlocked: "unlocked", locking: "locking…", unlocking: "unlocking…", jammed: "jammed", unavailable: "isn’t answering", unknown: "state unknown",
+  locked: "locked", unlocked: "unlocked", locking: "locking…", unlocking: "unlocking…", open: "open", opening: "opening…", jammed: "jammed", unavailable: "isn’t answering", unknown: "state unknown",
 };
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-const moving = (l: HaLock) => l.state === "locking" || l.state === "unlocking";
+const moving = (l: HaLock) => l.state === "locking" || l.state === "unlocking" || l.state === "opening";
 const lockUp = (l: HaLock) => l.available && l.state !== "unavailable";
 
 /** One lock's writes. Unlock is off while the data is old, the lock is not answering, or any lock is moving or has a write in flight. */
 export function lockWrites(l: HaLock, o: { stale: boolean; busy: boolean }): { lock: boolean; unlock: boolean } {
   if (o.stale || o.busy || !lockUp(l) || moving(l)) return { lock: false, unlock: false };
-  return { lock: l.state !== "locked", unlock: l.state !== "unlocked" };
+  return { lock: l.state !== "locked", unlock: l.state !== "unlocked" && l.state !== "open" };
 }
 /** True while any lock is mid-move or this page has a lock write in flight. */
 export const anyLockBusy = (locks: readonly HaLock[], lockBusy: boolean) => lockBusy || locks.some(moving);
@@ -109,6 +109,7 @@ function lockSentence(locks: HaLock[]): string {
   const one = (l: HaLock) =>
     ({
       locked: `${l.name} locked.`, unlocked: `${l.name} unlocked.`, locking: `${l.name} is locking.`, unlocking: `${l.name} is unlocking.`,
+      open: `${l.name} is open.`, opening: `${l.name} is opening.`,
       jammed: `The ${l.name.toLowerCase()} lock is jammed.`, unavailable: `${l.name} isn’t answering.`, unknown: `${l.name}’s state is unknown.`,
     })[l.state];
   const jammed = locks.filter((l) => l.state === "jammed");

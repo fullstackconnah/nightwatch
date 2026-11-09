@@ -55,7 +55,7 @@ test("adoptPick: never more than 4; toggles off; empties back to auto", () => {
   assert.deepEqual(adoptPick([], ["a"], "a"), []);
 });
 
-// 1H: 30 s buckets, t = bucket START (metrics-history.ts emitBuckets)
+// 1H: 60 s buckets in prod (this fixture uses a 30 s width; ringTail takes it as a parameter), t = bucket START (metrics-history.ts emitBuckets)
 const W = 30_000;
 const ts = [0, 30_000, 60_000, 90_000, 120_000];
 const old = [1, 1, 1, 1, 1];

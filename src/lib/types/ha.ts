@@ -76,7 +76,7 @@ export interface HaClimate {
   targetTempStep?: number;
 }
 
-export type HaLockState = "locked" | "unlocked" | "locking" | "unlocking" | "jammed" | "unavailable" | "unknown";
+export type HaLockState = "locked" | "unlocked" | "locking" | "unlocking" | "open" | "opening" | "jammed" | "unavailable" | "unknown";
 
 export interface HaLock {
   entityId: string;
