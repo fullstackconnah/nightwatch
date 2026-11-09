@@ -3,11 +3,11 @@ import type {
   HermesActivityResponse,
   HermesJob,
   HermesJobKind,
-  HermesJobResult,
   HermesStatusOk,
   HermesStatusResponse,
 } from "@/lib/types/hermes";
 import { systemSetting } from "@/lib/config";
+import { mapJobBody } from "@/lib/hermes-job-map";
 
 /**
  * Server-only client for the Hermes ops daemon's HTTP control API.
@@ -146,32 +146,6 @@ function mapStatusBody(raw: unknown): HermesStatusOk {
       snapshots24h: numOrFallback(counts.snapshots24h, 0),
       alerts24h: numOrFallback(counts.alerts24h, 0),
     },
-  };
-}
-
-const JOB_STATES = new Set(["running", "done", "error"]);
-const JOB_KINDS = new Set(["digest", "alert-test", "ask"]);
-
-function mapJobResult(raw: unknown): HermesJobResult | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = obj(raw);
-  const title = str(r.title);
-  const body = str(r.body);
-  if (title === null && body === null) return null;
-  return { title: title ?? "", body: body ?? "" };
-}
-
-function mapJobBody(raw: unknown): HermesJob {
-  const r = obj(raw);
-  const state = typeof r.state === "string" && JOB_STATES.has(r.state) ? (r.state as HermesJob["state"]) : "error";
-  const kind = typeof r.kind === "string" && JOB_KINDS.has(r.kind) ? (r.kind as HermesJob["kind"]) : "digest";
-  return {
-    state,
-    kind,
-    startedAt: str(r.startedAt),
-    finishedAt: str(r.finishedAt),
-    result: mapJobResult(r.result),
-    error: str(r.error),
   };
 }
 

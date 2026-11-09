@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getHaStates, getHiddenSettingsIds, performHaAction } from "@/lib/ha";
 import { kioskVoiceEntities } from "@/lib/ha-settings-entities";
 import { getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
+import { shouldKeepPolling } from "@/lib/hermes-poll";
 import { allowAsk } from "@/lib/kiosk-ask-limit";
 import { matchIntent, type KioskIntent } from "@/lib/kiosk-intent";
 import type { HaActionRequest } from "@/lib/types/ha";
@@ -77,7 +78,11 @@ async function askHermes(question: string): Promise<string | null> {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, ASK_POLL_MS));
     const job = await getHermesJob(started.jobId);
-    if (!job.ok) return null;
+    if (!job.ok) {
+      // One transient unreachable no longer ends the ask; a 404 (job gone) still does.
+      if (shouldKeepPolling(job.status, Date.now(), deadline)) continue;
+      return null;
+    }
     if (job.job.state === "done") return job.job.result?.body ?? job.job.result?.title ?? null;
     if (job.job.state === "error") return null;
   }
