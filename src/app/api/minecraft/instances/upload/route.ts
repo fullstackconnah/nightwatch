@@ -4,8 +4,13 @@ import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
+import { uploadFieldsError } from "@/lib/minecraft/pack-check";
+import { contentLengthError } from "@/lib/upload-limit";
 
 export const dynamic = "force-dynamic";
+
+// The manager's own UPLOAD_MAX_BYTES.
+const PACK_MAX_BYTES = 2 * 1024 ** 3;
 
 const VALID_LOADERS = new Set(["forge", "neoforge", "fabric"]);
 
@@ -48,9 +53,12 @@ export async function POST(req: NextRequest) {
   if (!rawSlug || !name || !mcVersion || !loader) {
     return NextResponse.json({ error: "slug, name, mcVersion, and loader are required" }, { status: 400 });
   }
-  if (name.length > 100 || mcVersion.length > 100) {
-    return NextResponse.json({ error: "name and mcVersion must be at most 100 characters" }, { status: 400 });
+  if (name.length > 100) {
+    return NextResponse.json({ error: "name must be at most 100 characters" }, { status: 400 });
   }
+  const loaderVersion = params.get("loaderVersion")?.trim();
+  const fieldsError = uploadFieldsError(mcVersion, loaderVersion);
+  if (fieldsError) return NextResponse.json({ error: fieldsError }, { status: 400 });
   if (!VALID_LOADERS.has(loader)) {
     return NextResponse.json(
       { error: `loader must be one of ${[...VALID_LOADERS].join(", ")}` },
@@ -64,12 +72,15 @@ export async function POST(req: NextRequest) {
   }
 
   const contentType = req.headers.get("content-type");
-  if (!contentType) {
-    return NextResponse.json({ error: "content-type is required" }, { status: 400 });
+  if (!contentType?.toLowerCase().startsWith("multipart/form-data")) {
+    return NextResponse.json({ error: "Send the pack as a multipart form upload." }, { status: 400 });
   }
+  const tooBig = contentLengthError(req.headers.get("content-length"), PACK_MAX_BYTES, "The pack");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
 
-  // Only the five known fields go upstream, never the caller's whole query string.
+  // Only the six known fields go upstream, never the caller's whole query string.
   const query = new URLSearchParams({ slug: sanitizeSlug(rawSlug), name, mcVersion, loader });
+  if (loaderVersion) query.set("loaderVersion", loaderVersion);
   if (memoryGb !== null) query.set("memoryGb", String(Number(memoryGb)));
   const upstreamUrl = `${creds.url}/instances/upload?${query.toString()}`;
 
@@ -89,6 +100,12 @@ export async function POST(req: NextRequest) {
     } as RequestInit & { duplex: "half" });
   } catch (e) {
     console.error("minecraft upload proxy failed", e);
+    if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return NextResponse.json(
+        { error: "The upload took longer than 10 minutes. The pack may still be installing, so check the list before you try again." },
+        { status: 504 },
+      );
+    }
     return NextResponse.json({ error: "Could not reach the Minecraft manager." }, { status: 502 });
   }
 
