@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { isProtectedContainer, MCP_ALLOWED_ON_PROTECTED } from "@/lib/protected-containers";
+import { busyMessage, guardsMinecraftStart, tryBegin } from "@/lib/minecraft-busy";
 import { listContainers, performContainerAction, type ContainerAction } from "@/lib/docker";
 
 /**
@@ -98,7 +99,14 @@ export async function callTool(name: string, args: unknown): Promise<McpToolResu
     if (!MCP_ALLOWED_ON_PROTECTED.includes(action) && isProtectedContainer(container, hostname())) {
       return textResult(`Refused: "${containerName}" is part of nightwatch's own control plane (nightwatch, its socket proxy or Dockge), so only start is allowed on it.`, true);
     }
-    await performContainerAction(container.id, action);
+    // Same guard as the lifecycle route: no start or restart of minecraft mid-restore.
+    const release = guardsMinecraftStart(action, container.name) ? tryBegin("start") : () => {};
+    if (!release) return textResult(busyMessage(), true);
+    try {
+      await performContainerAction(container.id, action);
+    } finally {
+      release();
+    }
     return textResult(`${action} succeeded for "${containerName}" (was ${container.state}).`);
   } catch (e) {
     // 304 is Docker's "already in that state" — mirrors the lifecycle route's

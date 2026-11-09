@@ -2,7 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { busyMessage, tryBegin } from "./minecraft-busy.ts";
+import { busyMessage, guardsMinecraftStart, isBusy, tryBegin } from "./minecraft-busy.ts";
+
+test("only start and restart on the minecraft container are guarded", () => {
+  assert.equal(guardsMinecraftStart("start", "minecraft"), true);
+  assert.equal(guardsMinecraftStart("restart", "minecraft"), true);
+  assert.equal(guardsMinecraftStart("stop", "minecraft"), false);
+  assert.equal(guardsMinecraftStart("start", "jellyfin"), false);
+  assert.equal(guardsMinecraftStart("start", undefined), false);
+});
+
+test("isBusy reflects the held guard", () => {
+  assert.equal(isBusy(), false);
+  const release = tryBegin("install")!;
+  assert.equal(isBusy(), true);
+  release();
+  assert.equal(isBusy(), false);
+});
 
 test("a second job is refused while one runs, then allowed after release", () => {
   const release = tryBegin("restore");
@@ -49,12 +65,32 @@ for (const [name, path, kinds] of [
   ["backups", "../app/api/minecraft/backups/route.ts", ['"run"', '"restore"']],
   ["activate", "../app/api/minecraft/instances/[slug]/activate/route.ts", ['"activate"']],
   ["docker action", "../app/api/docker/containers/[id]/action/route.ts", ['"start"']],
+  ["install", "../app/api/minecraft/instances/route.ts", ['"install"']],
+  ["delete", "../app/api/minecraft/instances/[slug]/route.ts", ['"delete"']],
+  ["upload", "../app/api/minecraft/instances/upload/route.ts", ['"upload"']],
 ] as const) {
   test(`${name} route takes the guard and releases it in finally`, () => {
     const s = src(path);
     for (const k of kinds) assert.match(s, new RegExp(`^\\s+(?:const|let) release = .*tryBegin\\(${k}\\)`, "m"));
-    assert.match(s, /^\s+\} finally \{\s*\n\s+release\(\);/m);
-    assert.match(s, /status: 409/);
-    assert.match(s, /busyMessage\(\)/);
+    // One finally-release per guarded handler, so removing any one fails.
+    assert.equal(s.match(/^\s+\} finally \{\s*\n\s+release\(\);/gm)?.length, kinds.length);
+    assert.match(s, /busyMessage\(\) \}, \{ status: 409 \}/);
   });
 }
+
+test("docker route and MCP guard through the shared helper, start or restart on minecraft", () => {
+  const route = src("../app/api/docker/containers/[id]/action/route.ts");
+  assert.match(route, /guardsMinecraftStart\(action, /);
+  assert.match(route, /isBusy\(\)/);
+  const mcp = src("./mcp/tools.ts");
+  assert.match(mcp, /guardsMinecraftStart\(action, container\.name\)/);
+  assert.match(mcp, /tryBegin\("start"\)/);
+  assert.match(mcp, /busyMessage\(\), true\)/);
+  assert.equal(mcp.match(/^\s+\} finally \{\s*\n\s+release\(\);/gm)?.length, 1);
+});
+
+test("settings checks the base version before it saves; process names reload on a missing id", () => {
+  const s = src("../app/api/settings/route.ts");
+  assert.ok(s.indexOf("checkBaseVersion(") < s.indexOf("saveConfig(merged"));
+  assert.match(src("./processes.ts"), /isValid: \(cached\) => allResolve\(/);
+});

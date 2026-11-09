@@ -117,11 +117,8 @@ async function collectContainers(): Promise<ContainerSummary[]> {
  * dedup matters more than the TTL here — the point is that six collectors
  * mounting at once share one round-trip.
  *
- * NOT invalidated by performContainerAction(): a lifecycle verb changes a
- * container's `state`, and 2s of lag on that is already the shape of the
- * existing UI (the next poll picks it up). containerRuntimes IS invalidated
- * there, because uptime restarting from zero is the thing someone is watching
- * for in that exact moment.
+ * Invalidated by performContainerAction(), like containerRuntimes (uptime
+ * restarting from zero is the thing someone is watching for in that moment).
  */
 const LIST_TTL_MS = 2_000;
 

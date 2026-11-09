@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
+import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 import { isProbeOk } from "@/lib/integration-client";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 
@@ -10,10 +11,17 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ slug: s
   if (sanitizeSlug(slug) !== slug) {
     return NextResponse.json({ error: "invalid instance slug" }, { status: 400 });
   }
-  const probe = await mcManager.deleteInstance(slug);
-  if (!isProbeOk(probe)) {
-    const { status, error } = probeErrorResponse(probe);
-    return NextResponse.json({ error }, { status });
+  // Deleting the instance a restore or backup is working on would remove its files mid-job.
+  const release = tryBegin("delete");
+  if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+  try {
+    const probe = await mcManager.deleteInstance(slug);
+    if (!isProbeOk(probe)) {
+      const { status, error } = probeErrorResponse(probe);
+      return NextResponse.json({ error }, { status });
+    }
+    return NextResponse.json(probe.data);
+  } finally {
+    release();
   }
-  return NextResponse.json(probe.data);
 }

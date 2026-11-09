@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
+import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
@@ -84,12 +85,22 @@ export async function POST(req: NextRequest) {
   if (memoryGb !== null) query.set("memoryGb", String(Number(memoryGb)));
   const upstreamUrl = `${creds.url}/instances/upload?${query.toString()}`;
 
+  const release = tryBegin("upload");
+  if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+  try {
+    return await proxyUpload(req, upstreamUrl, creds.token, contentType);
+  } finally {
+    release();
+  }
+}
+
+async function proxyUpload(req: NextRequest, upstreamUrl: string, token: string, contentType: string) {
   let res: Response;
   try {
     res = await fetch(upstreamUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${creds.token}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": contentType,
       },
       body: req.body,

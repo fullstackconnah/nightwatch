@@ -3,7 +3,11 @@
  * lives outside this repo, so the dashboard refuses overlap itself. Stop and restart are
  * never guarded. State is on globalThis so every route bundle shares one flag.
  */
-export type McJob = "restore" | "run" | "activate" | "start";
+export type McJob = "restore" | "run" | "activate" | "start" | "install" | "upload" | "delete";
+
+/** Start or restart of the minecraft container: a restart of a stopped container starts it. Stop is never guarded. */
+export const guardsMinecraftStart = (action: string, name: string | undefined) =>
+  (action === "start" || action === "restart") && name === "minecraft";
 
 const g = globalThis as unknown as { __mcBusy?: { kind: McJob; token: object } | null };
 
@@ -16,6 +20,8 @@ export function tryBegin(kind: McJob): (() => void) | null {
     if (g.__mcBusy === mine) g.__mcBusy = null;
   };
 }
+
+export const isBusy = () => !!g.__mcBusy;
 
 export const busyMessage = () =>
   `Another Minecraft job is running (${g.__mcBusy?.kind ?? "unknown"}). Try again when it finishes.`;
