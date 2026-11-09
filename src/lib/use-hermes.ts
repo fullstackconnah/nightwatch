@@ -13,9 +13,10 @@
  * its own, and the daemon's 409 is surfaced honestly.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ApiError, fetcher, postJson } from "@/lib/client";
+import { jobView } from "@/lib/hermes/job-view";
 import type {
   HermesActivityResponse,
   HermesJob,
@@ -50,9 +51,15 @@ function jobKey(id: string): string {
 
 /** Polls a specific job at ~2s while it's running, stops once settled. */
 export function useHermesJob(jobId: string | null) {
+  const lapsedFor = useRef<string | null>(null);
   return useSWR<HermesJobFetch>(jobId ? jobKey(jobId) : null, fetcher, {
-    refreshInterval: (latest) => (latest?.ok && latest.job.state === "running" ? 2000 : 0),
+    refreshInterval: (latest) => (jobId !== lapsedFor.current && latest?.ok && latest.job.state === "running" ? 2000 : 0),
     revalidateOnFocus: false,
+    // A lapsed session won't recover by retrying or polling; other errors keep SWR's backoff.
+    shouldRetryOnError: (e) => !(e instanceof ApiError && e.status === 401),
+    onError: (e) => {
+      if (e instanceof ApiError && e.status === 401) lapsedFor.current = jobId;
+    },
   });
 }
 
@@ -73,7 +80,8 @@ export function useHermesRun(): UseHermesRunResult {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [kind, setKind] = useState<HermesJobKind | null>(null);
-  const { data: job } = useHermesJob(jobId);
+  const { data, error } = useHermesJob(jobId);
+  const job = useMemo(() => jobView(data, error), [data, error]);
 
   const start = useCallback(async (kind: HermesJobKind, question?: string): Promise<string | null> => {
     setStarting(true);
