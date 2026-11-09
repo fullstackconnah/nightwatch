@@ -10,7 +10,8 @@ test("alerts: the attention poll's error marks the button stale", () => {
   const alerts = src("../components/kiosk/kiosk-alerts.tsx");
   assert.match(alerts, /^\s+const \{ data, error \} = useSWR<AttentionResult>/m);
   assert.match(alerts, /^\s+stale: boolean;/m);
-  assert.match(alerts, /^\s+\{stale && <StaleTag \/>\}/m);
+  // absolute wrapper keeps the button width fixed (the downloads button offset assumes it)
+  assert.match(alerts, /\{stale && \(\s*<span className="absolute [^"]*">\s*<StaleTag \/>/);
 });
 
 test("vitals: old numbers stay on a failed poll, marked by useFreshness", () => {

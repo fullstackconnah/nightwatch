@@ -510,6 +510,23 @@ await guarded("overlays extra stale", async () => {
   const alerts = page.getByRole("button", { name: /^\d+ alerts?\b/ });
   out.alerts = (await alerts.count()) ? { staleTags: await alerts.locator(".sr-stale").count(), buttonCount: (await alerts.first().innerText()).replace(/\D/g, "") } : { missing: "alerts button" };
   const dl = page.getByRole("button", { name: /^\d+ downloads? in progress/ });
+  // Tray closed: the tag must not widen the alerts button or push it over the downloads button.
+  if ((await alerts.count()) && (await dl.count())) {
+    const m = await page.evaluate(() => {
+      const q = (re) => [...document.querySelectorAll("button")].find((b) => re.test(b.getAttribute("aria-label") ?? ""));
+      const a = q(/^\d+ alerts?\b/), d = q(/^\d+ downloads? in progress/), tag = a?.querySelector(".sr-stale");
+      const ar = a.getBoundingClientRect(), dr = d.getBoundingClientRect(), tr = tag?.getBoundingClientRect();
+      return {
+        alertsWidthPx: Math.round(ar.width),
+        overlapPx: Math.max(0, Math.round(Math.min(ar.right, dr.right) - Math.max(ar.left, dr.left))),
+        tagBelow: !!tr && tr.top >= ar.bottom - 0.5,
+        clip: { x: Math.max(0, Math.min(ar.left, dr.left) - 24), y: Math.max(0, Math.min(ar.top, dr.top) - 24), width: Math.max(ar.right, dr.right) - Math.min(ar.left, dr.left) + 48, height: Math.max(tr ? tr.bottom : 0, ar.bottom, dr.bottom) - Math.min(ar.top, dr.top) + 48 },
+      };
+    });
+    const { clip, ...nums } = m;
+    Object.assign(out.alerts, nums);
+    await page.screenshot({ path: join(OUT_DIR, "stale-alerts-button-1180x820.png"), clip });
+  }
   if (!(await dl.count())) out.downloads = { missing: "downloads button" };
   else {
     await dl.click();
@@ -521,7 +538,6 @@ await guarded("overlays extra stale", async () => {
     });
     await page.screenshot({ path: join(OUT_DIR, "stale-downloads-tray-1180x820.png") });
   }
-  await page.screenshot({ path: join(OUT_DIR, "stale-alerts-button-1180x820.png") });
   await context.close();
 });
 // overlays.extra.downloadsOverlap.<size>: px² where the downloads button meets any forecast cell; must be 0.

@@ -546,7 +546,11 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
     >
       <AlertTriangle size={28} aria-hidden />
       {entries.length > 0 && <span className="font-mono text-lg font-bold tabular-nums">{entries.length}</span>}
-      {stale && <StaleTag />}
+      {stale && (
+        <span className="absolute right-0 top-full mt-1">
+          <StaleTag />
+        </span>
+      )}
     </button>
   );
 });
