@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useDialogFocus } from "@/components/use-dialog-focus";
 import {
   LayoutGrid,
   Boxes,
@@ -368,10 +369,21 @@ function MoreSheet({
     return () => window.removeEventListener("keydown", onKey);
   }, [mounted, onClose]);
 
+  // Focus in on open (first link), Tab kept inside, focus back on the More button on close.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onKeyDown = useDialogFocus(mounted, dialogRef, () => dialogRef.current?.querySelector<HTMLElement>("a[href]"));
+
   if (!mounted) return null;
 
   return (
-    <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="More navigation">
+    <div
+      ref={dialogRef}
+      onKeyDown={onKeyDown}
+      className="md:hidden fixed inset-0 z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-label="More navigation"
+    >
       <button
         type="button"
         aria-label="Close"

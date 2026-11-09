@@ -688,7 +688,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                     <tr key={r.key} className="border-b border-line/40 last:border-0 hover:bg-panel-2/60 align-middle">
                       <td className="px-2 py-1.5 min-w-0">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={cn("dot", tone.className)} title={tone.title} />
+                          <span className={cn("dot", tone.className)} title={tone.title} aria-hidden />
+                          <span className="sr-only">{tone.title}</span>
                           <span className="font-mono text-[0.8rem] truncate text-ink" title={p.cmdline ?? r.label}>
                             {r.label}
                           </span>
@@ -764,7 +765,8 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
                 return (
                   <div key={r.key} className="px-3 py-2.5 min-h-11">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={cn("dot shrink-0", tone.className)} title={tone.title} />
+                      <span className={cn("dot shrink-0", tone.className)} title={tone.title} aria-hidden />
+                      <span className="sr-only">{tone.title}</span>
                       <span className="font-mono text-sm truncate text-ink" title={p.cmdline ?? r.label}>
                         {r.label}
                       </span>

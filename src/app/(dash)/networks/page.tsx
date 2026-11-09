@@ -94,7 +94,8 @@ function UplinkBand({
         <div className="min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <h2 className="font-mono text-base font-semibold tracking-tight">{iface.name}</h2>
-            <span className={cn("dot", iface.state === "up" ? "dot-running" : "dot-dead")} />
+            <span className={cn("dot", iface.state === "up" ? "dot-running" : "dot-dead")} aria-hidden />
+            <span className="sr-only">{iface.state}</span>
             <span className="text-xs text-ink-dim">
               {iface.speedMbps ? `${iface.speedMbps} Mb/s link` : "link rate unknown"}
             </span>

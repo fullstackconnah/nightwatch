@@ -371,7 +371,8 @@ const ContainerRow = memo(function ContainerRow({
         className="w-full flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2.5 min-h-11 md:min-h-8 px-3 py-1.5 text-left cursor-pointer hover:bg-panel-2/60"
       >
         <div className="flex items-center gap-2.5 w-full">
-          <span className={cn("dot", running ? "dot-running" : "dot-stopped")} />
+          <span className={cn("dot", running ? "dot-running" : "dot-stopped")} aria-hidden />
+          <span className="sr-only">{c.state}</span>
           <span className="font-mono text-[0.8rem] truncate flex-1 min-w-0">{c.name}</span>
           <div className="hidden sm:block w-32 md:w-40 h-1.5 rounded-full bg-panel-2 overflow-hidden">
             {hasValue && (

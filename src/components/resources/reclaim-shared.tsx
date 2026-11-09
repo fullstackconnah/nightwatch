@@ -9,6 +9,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/use-confirm-focus";
 import { fetcher, postJson } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import { reclaimPrefix } from "@/lib/docker-chores";
@@ -49,6 +50,7 @@ export function PruneAction({
 }) {
   const [step, setStep] = useState<PruneStep>("idle");
   const [error, setError] = useState<string | null>(null);
+  const { trigger, cancel, onKeyDown } = useConfirmFocus(step === "confirm", () => setStep("idle"));
 
   async function handleConfirm() {
     setStep("busy");
@@ -65,7 +67,7 @@ export function PruneAction({
 
   if (step === "confirm") {
     return (
-      <div key="confirm" className="nw-confirm flex items-center gap-2 flex-wrap justify-end">
+      <div key="confirm" onKeyDown={onKeyDown} className="nw-confirm flex items-center gap-2 flex-wrap justify-end">
         <span className="text-xs text-ink-dim">
           Prune {count} {itemLabel}
           {bytes == null ? (
@@ -76,10 +78,10 @@ export function PruneAction({
             </>
           )}
         </span>
-        <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
+        <Button size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
-        <Button size="sm" variant="danger" onClick={handleConfirm}>
+        <Button autoFocus size="sm" variant="danger" onClick={handleConfirm}>
           Yes, prune
         </Button>
       </div>
@@ -90,6 +92,7 @@ export function PruneAction({
   return (
     <div className="flex flex-col items-end gap-1 max-md:items-stretch">
       <Button
+        ref={trigger}
         size="sm"
         variant="outline"
         data-feature={`prune-${target}`}
