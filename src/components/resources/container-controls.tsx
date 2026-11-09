@@ -243,11 +243,10 @@ export function ConfirmStop({
       }}
     >
       <span className="text-xs text-ink-dim">{say ?? `Stop ${name}?`}</span>
-      <Button size="sm" variant="ghost" className={size} disabled={busy} onClick={onCancel}>
+      <Button autoFocus size="sm" variant="ghost" className={size} disabled={busy} onClick={onCancel}>
         Cancel
       </Button>
       <Button
-        autoFocus
         size="sm"
         variant="danger"
         className={size}

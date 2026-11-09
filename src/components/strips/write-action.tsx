@@ -8,7 +8,7 @@ type Phase = "idle" | "asking" | "flight" | "failed";
 /**
  * The strips pattern's one write idiom: an outlined trigger, an inline frame that asks once ("Yes, {verb}", Cancel),
  * the flight line, then done (the trigger returns) or failed (the reason, Try again, Dismiss). Danger tints only the
- * Yes. Escape cancels; Yes takes focus when the frame opens (Cancel when autoCancelMs is set). `confirm={false}` skips the question (Start, Back up).
+ * Yes. Escape cancels; Cancel takes focus when the frame opens. `confirm={false}` skips the question (Start, Back up).
  */
 export function WriteAction({
   label,
@@ -144,10 +144,10 @@ export function WriteAction({
           <>
             <p className="st-say" role="status">{say}</p>
             <div className="st-acts">
-              <Button autoFocus={!!autoCancelMs} size="sm" variant="ghost" onClick={cancel}>
+              <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
-              <Button autoFocus={!autoCancelMs} size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
+              <Button size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
                 {yes}
               </Button>
             </div>

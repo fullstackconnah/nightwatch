@@ -23,8 +23,8 @@ test("SH write-action: auto-cancel timer, retry goes back to asking, Cancel take
   assert.match(src, /frame\.current\?\.contains\(document\.activeElement\)/);
   assert.match(src, /autoCancelMs \? setPhase\("asking"\) : void go\(\)/);
   // Each autoFocus is tied to ITS button by label: swapping Cancel and Confirm must go red.
-  assert.match(src, /<Button autoFocus=\{!!autoCancelMs\}[^\n]*>\s*Cancel\s*<\/Button>/);
-  assert.match(src, /<Button autoFocus=\{!autoCancelMs\}[^\n]*>\s*\{yes\}\s*<\/Button>/);
+  assert.match(src, /<Button autoFocus [^\n]*>\s*Cancel\s*<\/Button>/);
+  assert.match(src, /<Button size="sm" variant=\{danger[^\n]*>\s*\{yes\}\s*<\/Button>/);
 });
 
 test("SH write-action: the question line is a live region so the unlock hint is announced", () => {

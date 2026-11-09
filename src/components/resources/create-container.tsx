@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useDialogFocus } from "@/components/use-dialog-focus";
 import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select } from "@/components/ui/input";
@@ -39,13 +40,7 @@ export function CreateContainerDialog({
   // opened the dialog on unmount (Cancel, a successful create, or Escape all
   // unmount this component the same way) keeps a keyboard user anchored
   // instead of dumped at document top.
-  useEffect(() => {
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    imageInputRef.current?.focus();
-    return () => {
-      previouslyFocused?.focus();
-    };
-  }, []);
+  const onTab = useDialogFocus(true, dialogRef, () => imageInputRef.current);
 
   // Escape closes the dialog; Tab/Shift+Tab cycle within its own focusable
   // elements — identical pattern to kiosk-pin-pad.tsx's onDialogKeyDown,
@@ -59,27 +54,7 @@ export function CreateContainerDialog({
       onClose();
       return;
     }
-    if (e.key !== "Tab") return;
-    const container = dialogRef.current;
-    if (!container) return;
-    const focusable = Array.from(
-      container.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ),
-    );
-    if (focusable.length === 0) return;
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey) {
-      if (active === first || !container.contains(active)) {
-        e.preventDefault();
-        last.focus();
-      }
-    } else if (active === last || !container.contains(active)) {
-      e.preventDefault();
-      first.focus();
-    }
+    onTab(e);
   }
 
   async function submit() {
@@ -171,13 +146,13 @@ export function CreateContainerDialog({
           </div>
           {ports.map((p, i) => (
             <div key={i} className="flex flex-wrap gap-2 mb-1.5">
-              <Input placeholder="8080" value={p.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
-              <Input placeholder="80" value={p.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
-              <Select className="w-20" value={p.protocol} onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, protocol: e.target.value as "tcp" | "udp" } : x)))}>
+              <Input aria-label={`Host port ${i + 1}`} placeholder="8080" value={p.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
+              <Input aria-label={`Container port ${i + 1}`} placeholder="80" value={p.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
+              <Select aria-label={`Protocol ${i + 1}`} className="w-20" value={p.protocol} onChange={(e) => setPorts(ports.map((x, j) => (j === i ? { ...x, protocol: e.target.value as "tcp" | "udp" } : x)))}>
                 <option>tcp</option>
                 <option>udp</option>
               </Select>
-              <Button size="icon" variant="ghost" onClick={() => setPorts(ports.filter((_, j) => j !== i))}>
+              <Button size="icon" variant="ghost" aria-label={`Remove port ${i + 1}`} onClick={() => setPorts(ports.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </Button>
             </div>
@@ -194,9 +169,9 @@ export function CreateContainerDialog({
           </div>
           {env.map((e2, i) => (
             <div key={i} className="flex flex-wrap gap-2 mb-1.5">
-              <Input placeholder="KEY" value={e2.key} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
-              <Input placeholder="value" value={e2.value} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
-              <Button size="icon" variant="ghost" onClick={() => setEnv(env.filter((_, j) => j !== i))}>
+              <Input aria-label={`Variable name ${i + 1}`} placeholder="KEY" value={e2.key} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, key: e.target.value } : x)))} />
+              <Input aria-label={`Variable value ${i + 1}`} placeholder="value" value={e2.value} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setEnv(env.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} />
+              <Button size="icon" variant="ghost" aria-label={`Remove variable ${i + 1}`} onClick={() => setEnv(env.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </Button>
             </div>
@@ -214,9 +189,9 @@ export function CreateContainerDialog({
           <p className="text-xs text-ink-dim mb-1.5">Host folders mount read-only and must already exist.</p>
           {vols.map((v, i) => (
             <div key={i} className="flex flex-wrap gap-2 mb-1.5 items-center">
-              <Input placeholder="/mnt/media/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
-              <Input placeholder="/data" value={v.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
-              <Button size="icon" variant="ghost" onClick={() => setVols(vols.filter((_, j) => j !== i))}>
+              <Input aria-label={`Host path ${i + 1}`} placeholder="/mnt/media/thing" value={v.host} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, host: e.target.value } : x)))} />
+              <Input aria-label={`Container path ${i + 1}`} placeholder="/data" value={v.container} className="min-w-0 flex-1 basis-[7rem]" onChange={(e) => setVols(vols.map((x, j) => (j === i ? { ...x, container: e.target.value } : x)))} />
+              <Button size="icon" variant="ghost" aria-label={`Remove volume ${i + 1}`} onClick={() => setVols(vols.filter((_, j) => j !== i))}>
                 <Trash2 size={13} />
               </Button>
             </div>

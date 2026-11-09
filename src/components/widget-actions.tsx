@@ -137,6 +137,22 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
   const { confirmId, setConfirmId, pendingId, result, run } = useWidgetActionRunner(container);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const cancelledId = useRef<string | null>(null);
+
+  // Plain buttons in a popup that Tab walks through (no arrow keys promised): focus the first on open.
+  useEffect(() => {
+    if (open) popRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus();
+  }, [open]);
+
+  // Cancel swaps the pair back for the item; hand focus back to that item.
+  useEffect(() => {
+    if (confirmId === null && cancelledId.current) {
+      popRef.current?.querySelector<HTMLElement>(`[data-action="${cancelledId.current}"]`)?.focus();
+      cancelledId.current = null;
+    }
+  }, [confirmId]);
 
   useEffect(() => {
     if (!open) return;
@@ -144,7 +160,9 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      setOpen(false);
+      triggerRef.current?.focus();
     }
     document.addEventListener("pointerdown", onPointerDown);
     document.addEventListener("keydown", onKey);
@@ -164,6 +182,7 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
   return (
     <div ref={rootRef} className="relative">
       <Button
+        ref={triggerRef}
         size="icon"
         variant="ghost"
         // No className size override any more — it used to restate a
@@ -172,7 +191,6 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
         // cause as container-controls.tsx's now-removed `dense` shrink).
         // The `icon` variant's own scale (h-11 md:h-8) is enough.
         aria-label={`${container} app actions`}
-        aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => {
           e.preventDefault();
@@ -183,8 +201,9 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
       </Button>
       {open && (
         <div
-          role="menu"
-          aria-label={`${container} app actions`}
+          ref={popRef}
+          role="group"
+          aria-label="Actions"
           className="nw-pop panel absolute right-0 top-full mt-1 w-60 !p-1.5 z-20 space-y-0.5"
         >
           {actions.map((action) => {
@@ -195,7 +214,15 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
                 <div key={`${action.id}-confirm`} className="nw-confirm space-y-1 px-1.5 py-1">
                   <p className="text-[0.7rem] text-ink-dim">{action.confirm}</p>
                   <div className="flex justify-end gap-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>
+                    <Button
+                      autoFocus
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        cancelledId.current = action.id;
+                        setConfirmId(null);
+                      }}
+                    >
                       Cancel
                     </Button>
                     <Button size="sm" variant="outline" onClick={() => void run(action)}>
@@ -209,7 +236,7 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
               <button
                 key={action.id}
                 type="button"
-                role="menuitem"
+                data-action={action.id}
                 disabled={pendingId !== null}
                 // DESIGN.md's 44px Rule — a raw <button>, so it restates the
                 // scale rather than inheriting it; used to restate h-10.
