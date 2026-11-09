@@ -37,6 +37,7 @@ export const dynamic = "force-dynamic";
  */
 
 const MAX_UTTERANCE = 500;
+const MAX_BODY_BYTES = 4096;
 
 /** Same absolute backstop the tap surface uses, restated rather than imported
  *  so a change there can never silently widen what speech can ask for. */
@@ -85,6 +86,11 @@ async function askHermes(question: string): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   try {
+    // Refuse a big body before Next buffers and parses it; a missing header falls through to the utterance check.
+    const declared = Number(req.headers.get("content-length"));
+    if (declared > MAX_BODY_BYTES) {
+      return reply({ ok: false, say: "That was a bit long for me.", kind: "unresolved" }, 400);
+    }
     const raw = await req.json().catch(() => null);
     const utterance = raw && typeof raw === "object" ? (raw as Record<string, unknown>).utterance : null;
     if (typeof utterance !== "string" || !utterance.trim()) {

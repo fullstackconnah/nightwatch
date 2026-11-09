@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import { Memo } from "@/lib/cache";
 import { docker, listContainers } from "@/lib/docker";
+import { capConnections } from "@/lib/server-cost";
 import { HOST_PROC, HOST_ROOTFS, HOST_SYS } from "@/lib/host-metrics";
 import type {
   EstablishedConnectionGroup,
@@ -62,8 +64,10 @@ async function readSymlinkBasename(linkPath: string): Promise<string | null> {
   }
 }
 
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+/** The response gets a fixed phrase (Node fs errors embed container paths); the detail goes to the log. */
+function warn(warnings: string[], phrase: string, err: unknown): void {
+  console.error(`[network] ${phrase}:`, err instanceof Error ? err.message : err);
+  warnings.push(phrase);
 }
 
 // --- /proc/net/dev (interface byte/packet/error counters) -------------------
@@ -417,7 +421,7 @@ async function readDockerNetInfo(warnings: string[]): Promise<DockerNetInfo> {
       bridgeAddress.set(ifname, `${cfg.Gateway}/${prefix}`);
     }
   } catch (err) {
-    warnings.push(`could not list docker networks: ${errMsg(err)}`);
+    warn(warnings, "could not list docker networks", err);
   }
   return { idToName, bridgeAddress };
 }
@@ -697,7 +701,7 @@ async function readOwnerMaps(warnings: string[]): Promise<{
       }
     }
   } catch (err) {
-    warnings.push(`could not list docker containers for port attribution: ${errMsg(err)}`);
+    warn(warnings, "could not list docker containers for port attribution", err);
   }
 
   const uidToUser = await readUidToUser();
@@ -961,7 +965,7 @@ async function buildEstablishedConnections(
 
 // --- main ---------------------------------------------------------------
 
-export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
+async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
   const ts = Date.now();
   const warnings: string[] = [];
 
@@ -985,8 +989,8 @@ export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
         }
       }
     } catch (err) {
-      warnings.push(`could not list network interfaces: ${errMsg(err)}`);
-      return { ts, interfaces: [], sockets: [], connections: [], connectionsAvailable: false, warnings };
+      warn(warnings, "could not list network interfaces", err);
+      return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, connectionsAvailable: false, warnings };
     }
 
     const devCounters = await readNetDevFull();
@@ -1008,23 +1012,29 @@ export async function getNetworkSnapshot(): Promise<NetworkSnapshot> {
     // who bound it".
     const { portOwner, uidToUser } = await readOwnerMaps(warnings);
     const sockets = await buildListeningSockets(warnings, portOwner, uidToUser);
-    const { connections, available: connectionsAvailable } = await buildEstablishedConnections(
+    const { connections: allConnections, available: connectionsAvailable } = await buildEstablishedConnections(
       warnings,
       portOwner,
       uidToUser,
     );
+    const { connections, truncated } = capConnections(allConnections);
 
-    return { ts, interfaces, sockets, connections, connectionsAvailable, warnings };
+    return { ts, interfaces, sockets, connections, truncated, connectionsAvailable, warnings };
   } catch (err) {
     // Belt-and-braces: getNetworkSnapshot must never throw. Anything that
     // reaches here is a bug in a source above, not an expected failure mode.
-    return {
-      ts,
-      interfaces: [],
-      sockets: [],
-      connections: [],
-      connectionsAvailable: false,
-      warnings: [...warnings, errMsg(err)],
-    };
+    warn(warnings, "could not read network state", err);
+    return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, connectionsAvailable: false, warnings };
   }
+}
+
+/** ~2s: collapses N open tabs (and the docker calls each makes) into one collection. */
+const networkSnapshotMemo = new Memo<NetworkSnapshot>({
+  key: "network.snapshot",
+  ttlMs: 2_000,
+  load: collectNetworkSnapshot,
+});
+
+export function getNetworkSnapshot(): Promise<NetworkSnapshot> {
+  return networkSnapshotMemo.get();
 }

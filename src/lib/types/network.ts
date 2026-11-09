@@ -189,6 +189,8 @@ export interface NetworkSnapshot {
   interfaces: NetInterface[];
   sockets: ListeningSocket[];
   connections: EstablishedConnectionGroup[];
+  /** Remote rows dropped past the 200-row cap (busiest kept); 0 when nothing was dropped. */
+  truncated: number;
   /**
    * False when neither the host's tcp nor tcp6 table could be read — distinct
    * from `connections` being empty, which is a real and common state ("nothing

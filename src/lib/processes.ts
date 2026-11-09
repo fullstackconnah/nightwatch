@@ -3,7 +3,7 @@ import { HOST_PROC, HOST_SYS } from "@/lib/host-metrics";
 import { listContainers } from "@/lib/docker";
 import { Memo } from "@/lib/cache";
 import { processCpuShare } from "@/lib/cpu-share";
-import { redactCmdline } from "@/lib/redact";
+import { capCmdline, redactCmdline } from "@/lib/redact";
 import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
 
 /**
@@ -233,7 +233,7 @@ async function readPidDetail(pid: number, ownContainerId: string | null): Promis
   try {
     const raw = await fsp.readFile(`${HOST_PROC}/${pid}/cmdline`, "utf8");
     const cleaned = raw.replace(/\0/g, " ").trim();
-    cmdline = cleaned.length > 0 ? redactCmdline(cleaned) : null;
+    cmdline = cleaned.length > 0 ? capCmdline(redactCmdline(cleaned)) : null;
   } catch {
     cmdline = null; // treat as kernel thread / unreadable, not a scan failure
   }
@@ -359,7 +359,18 @@ async function scanOnce(pids: number[]): Promise<{
   return { details, scanned: pids.length, skipped, ioTotals };
 }
 
-export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
+/** ~1s: below the 2s client poll, so each poll still gets a fresh scan, but N open tabs share one. */
+const processSnapshotMemo = new Memo<ProcessSnapshot>({
+  key: "processes.snapshot",
+  ttlMs: 1_000,
+  load: collectProcessSnapshot,
+});
+
+export function getProcessSnapshot(): Promise<ProcessSnapshot> {
+  return processSnapshotMemo.get();
+}
+
+async function collectProcessSnapshot(): Promise<ProcessSnapshot> {
   let cores = 0;
   let memTotal = 0;
   try {
@@ -374,6 +385,7 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
   try {
     pids = await readPidDirs();
   } catch (err) {
+    console.error("[processes] could not list pids:", err instanceof Error ? err.message : err);
     return {
       ts: Date.now(),
       cores,
@@ -381,7 +393,7 @@ export async function getProcessSnapshot(): Promise<ProcessSnapshot> {
       processes: [],
       scanned: 0,
       skipped: 0,
-      error: err instanceof Error ? err.message : "process scan failed",
+      error: "Could not read the process list.",
     };
   }
 

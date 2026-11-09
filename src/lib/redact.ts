@@ -38,3 +38,8 @@ export function redactCmdline(s: string): string {
     .replace(FLAG, (_m, name: string, sep: string) => `${name}${sep}***`)
     .replace(ENV, "$1***");
 }
+
+/** Cap AFTER redactCmdline so a cut can never split a secret before it is masked. */
+export function capCmdline(redacted: string): string {
+  return redacted.slice(0, 2048);
+}

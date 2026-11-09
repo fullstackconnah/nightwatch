@@ -547,7 +547,7 @@ export default function NetworkPage() {
           <h1 className="text-lg font-semibold tracking-tight">Network</h1>
           <p className="text-xs text-ink-dim mt-0.5">
             {snapshot
-              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length} remote peers`
+              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length + snapshot.truncated} remote peers`
               : "…"}
           </p>
         </div>

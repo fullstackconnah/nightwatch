@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import { promisify } from "node:util";
 import { listContainers, type ContainerSummary } from "@/lib/docker";
 import { HOST_PROC } from "@/lib/host-metrics";
+import { isCacheableGpuReason } from "@/lib/server-cost";
 import type { GpuDevice, GpuProcess, GpuSnapshot, GpuUnavailable, GpuUnavailableReason } from "@/lib/types/gpu";
 
 /**
@@ -85,7 +86,7 @@ const globalForGpu = globalThis as unknown as {
 const UNAVAILABLE_BACKOFF_MS = 60_000;
 
 function cacheUnavailable(result: { reason: GpuUnavailableReason; detail: string }): GpuUnavailable {
-  globalForGpu.__gpuUnavailableCache = { ...result, ts: Date.now() };
+  if (isCacheableGpuReason(result.reason)) globalForGpu.__gpuUnavailableCache = { ...result, ts: Date.now() };
   return { ok: false, ...result };
 }
 

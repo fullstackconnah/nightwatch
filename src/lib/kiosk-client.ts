@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
-import type { HostVitals } from "@/lib/client";
+import type { KioskVitalsData } from "@/lib/kiosk-vitals-view";
 import type { NowPlayingSnapshot } from "@/lib/types/nowplaying";
 import { applyWxPreview } from "@/lib/kiosk-weather-fx";
 
@@ -55,7 +55,7 @@ export interface KioskHealthCounts {
 /** Ambient host vitals — hits the public /kiosk/api/vitals route, not the
  *  authenticated /api/host one (see that route's own comment). */
 export function useKioskVitals(refreshMs = 5000) {
-  return useSWR<HostVitals>("/kiosk/api/vitals", fetcher, {
+  return useSWR<KioskVitalsData>("/kiosk/api/vitals", fetcher, {
     refreshInterval: refreshMs,
     keepPreviousData: true,
   });
@@ -91,7 +91,7 @@ const HISTORY_CAPACITY = 48;
  * metrics route.
  */
 export function useKioskVitalsHistory(refreshMs = 5000): {
-  data: HostVitals | undefined;
+  data: KioskVitalsData | undefined;
   error: unknown;
   isLoading: boolean;
   history: KioskVitalsSample[];
