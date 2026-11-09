@@ -24,7 +24,8 @@ name: homelab-dashboard-test
 
 services:
   socket-proxy:
-    image: tecnativa/docker-socket-proxy:latest
+    # Pinned by digest because this container holds the Docker socket; bump it on purpose.
+    image: tecnativa/docker-socket-proxy@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     container_name: homelab-dashboard-test-proxy
     restart: "no"
     environment:
@@ -70,6 +71,8 @@ services:
     build: ./services/media-worker
     container_name: homelab-dashboard-test-media-worker
     restart: "no"
+    # Same as production; defaults let the test stack come up without a .env.
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       - MEDIA_WORKER_TOKEN=test-media-worker-token-not-secret-000000
       - MEDIA_WORKER_TEST_THRESHOLDS=1
