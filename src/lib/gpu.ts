@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import { promisify } from "node:util";
 import { listContainers, type ContainerSummary } from "@/lib/docker";
 import { HOST_PROC } from "@/lib/host-metrics";
+import { parseTempMaxC, rejoinProcessRow, tempMaxRetryDue } from "@/lib/gpu-parse";
 import type { GpuDevice, GpuProcess, GpuSnapshot, GpuUnavailable, GpuUnavailableReason } from "@/lib/types/gpu";
 
 /**
@@ -75,6 +76,7 @@ interface UnavailableCacheEntry {
 const globalForGpu = globalThis as unknown as {
   __gpuUnavailableCache?: UnavailableCacheEntry;
   __gpuTempMaxC?: number | null;
+  __gpuTempMaxFailedAt?: number;
 };
 
 // The telemetry loop ticks every second. When the host is in a driver-mismatch
@@ -327,40 +329,10 @@ async function buildProcesses(rows: string[][]): Promise<GpuProcess[]> {
 
 // --- thermal threshold (tempMaxC) --------------------------------------------
 
-/**
- * Pulls "GPU Slowdown Temp" (or, failing that, "GPU Shutdown Temp") out of
- * `nvidia-smi -q -d TEMPERATURE` output. That's the only place this driver
- * exposes a usable thermal ceiling - see the DEVICE_FIELDS comment for why the
- * --query-gpu CSV route (temperature.gpu.tmax / .tlimit) doesn't work here.
- *
- * Falls back to Shutdown only when Slowdown itself is unsupported. GpuDevice
- * has just the one tempMaxC field (see its comment in types/gpu.ts), so
- * taking this fallback means the gauge's ceiling silently becomes the
- * shutdown point rather than the slowdown point for that card.
- */
-function parseTempMaxC(report: string): number | null {
-  return parseThresholdLine(report, "GPU Slowdown Temp") ?? parseThresholdLine(report, "GPU Shutdown Temp");
-}
+// parseTempMaxC lives in gpu-parse.ts (pure, so node:test can load it).
 
-/**
- * Finds the line whose label (everything before the LAST ":") trims to
- * exactly `label`, and parses the value after it. These report lines only
- * ever use ":" as the label/value separator, but splitting on the last one
- * rather than the first is cheap insurance if a label ever grows a colon.
- */
-function parseThresholdLine(report: string, label: string): number | null {
-  for (const line of report.split("\n")) {
-    const sep = line.lastIndexOf(":");
-    if (sep === -1 || line.slice(0, sep).trim() !== label) continue;
-    const value = line.slice(sep + 1).trim();
-    if (value === "N/A") return null;
-    const n = Number(value.replace(/\s*C$/i, ""));
-    return Number.isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-async function queryTempMaxC(): Promise<number | null> {
+/** undefined means the lookup itself failed (timeout or throw), so the caller must not cache it. */
+async function queryTempMaxC(): Promise<number | null | undefined> {
   try {
     const result = await execFile("nvidia-smi", ["-q", "-d", "TEMPERATURE"], {
       timeout: NVIDIA_SMI_TIMEOUT_MS,
@@ -370,17 +342,23 @@ async function queryTempMaxC(): Promise<number | null> {
   } catch {
     // Non-fatal by design: the device query in getGpuSnapshot has already
     // succeeded by the time this runs, so a failed/timed-out threshold lookup
-    // must not turn a working GPU into an unavailable one - tempMaxC just
-    // stays null for this process.
-    return null;
+    // must not turn a working GPU into an unavailable one.
+    return undefined;
   }
 }
 
-/** Runs queryTempMaxC() at most once per process - see the __gpuTempMaxC
- * comment on globalForGpu for why undefined vs null carries meaning here. */
+/** A parsed value (a number, or null for "no max") is cached for the process's life - see the
+ * __gpuTempMaxC comment on globalForGpu. A failed lookup is retried after TEMP_MAX_RETRY_MS. */
 async function getTempMaxC(): Promise<number | null> {
   if (globalForGpu.__gpuTempMaxC !== undefined) return globalForGpu.__gpuTempMaxC;
+  const failedAt = globalForGpu.__gpuTempMaxFailedAt;
+  if (failedAt !== undefined && !tempMaxRetryDue(failedAt, Date.now())) return null;
   const value = await queryTempMaxC();
+  if (value === undefined) {
+    globalForGpu.__gpuTempMaxFailedAt = Date.now();
+    return null;
+  }
+  globalForGpu.__gpuTempMaxFailedAt = undefined;
   globalForGpu.__gpuTempMaxC = value;
   return value;
 }
@@ -425,7 +403,7 @@ export async function getGpuSnapshot(): Promise<GpuSnapshot> {
       [`--query-compute-apps=${PROCESS_QUERY}`, "--format=csv,noheader,nounits"],
       { timeout: NVIDIA_SMI_TIMEOUT_MS, windowsHide: true },
     );
-    processRows = splitNonEmptyLines(result.stdout).map(parseCsvLine);
+    processRows = splitNonEmptyLines(result.stdout).map((l) => rejoinProcessRow(parseCsvLine(l)));
   } catch {
     processRows = [];
   }
