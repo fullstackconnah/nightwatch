@@ -18,6 +18,7 @@ import {
 } from "@/components/resources/net-throughput";
 import { fetcher, useContainers, useNetwork, useTelemetryStream } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
+import { networkSummary } from "@/lib/network-copy";
 import type { NetInterface } from "@/lib/types/network";
 import type { TelemetrySample } from "@/lib/types/telemetry";
 import { cn } from "@/lib/utils";
@@ -547,7 +548,7 @@ export default function NetworkPage() {
           <h1 className="text-lg font-semibold tracking-tight">Network</h1>
           <p className="text-xs text-ink-dim mt-0.5">
             {snapshot
-              ? `${interfaces.length} interfaces · ${snapshot.sockets.length} listening ports · ${snapshot.connections.length + snapshot.truncated} remote peers`
+              ? networkSummary(interfaces.length, snapshot.sockets.length, snapshot.connections.length + snapshot.truncated)
               : "…"}
           </p>
         </div>
