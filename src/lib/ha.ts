@@ -1,4 +1,5 @@
 import { loadConfig } from "@/lib/config";
+import { brightnessPercent } from "@/lib/ha-brightness";
 import { createHiddenIdsCache, fetchRegistryHiddenIds } from "@/lib/ha-settings-entities";
 import { IntegrationClient, type Probe } from "@/lib/integration-client";
 import type {
@@ -236,7 +237,7 @@ function mapLight(e: HaRawEntity): HaLight {
     on,
     // 0-255 -> 0-100. Only meaningful while on and dimmable; off or non-dimmable
     // fixtures render "—" rather than a fabricated 0%.
-    brightnessPct: on && brightnessRaw != null ? Math.round((brightnessRaw / 255) * 100) : null,
+    brightnessPct: brightnessPercent(on, brightnessRaw),
     available: !isUnavailable(e.state),
   };
 }
@@ -307,6 +308,8 @@ const KNOWN_LOCK_STATES: readonly HaLockState[] = [
   "unlocked",
   "locking",
   "unlocking",
+  "open",
+  "opening",
   "jammed",
   "unavailable",
   "unknown",

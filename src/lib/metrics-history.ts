@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { listContainers } from "@/lib/docker";
+import { accAdd, accMean, bucketWidthMs as bucketWidth, shouldSkipTick, type Acc } from "@/lib/metrics-history-math";
 import { attachSummary, type SummaryMetric, type SummaryResult } from "@/lib/history-summary";
 
 /**
@@ -27,7 +28,7 @@ export type MetricsHistoryContainerTuple = [cpuPct: number, memBytes: number, rx
 
 export interface MetricsHistorySample {
   t: number;
-  cpu: number;
+  cpu: number | null;
   memUsed: number;
   memTotal: number;
   mounts: Record<string, number>;
@@ -193,7 +194,7 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
 
   const sample: MetricsHistorySample = {
     t: input.ts,
-    cpu: Math.round(input.host.cpuPct * 10) / 10,
+    cpu: Number.isFinite(input.host.cpuPct) ? Math.round(input.host.cpuPct * 10) / 10 : null, // null = missing; readers skip it
     memUsed: Math.round(input.host.memUsed),
     memTotal: Math.round(input.host.memTotal),
     mounts,
@@ -220,7 +221,7 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
  */
 export function recordMetricsHistoryTick(input: MetricsHistoryTickInput): void {
   const last = globalForHistory.__metricsHistoryLastSampleTs ?? 0;
-  if (input.ts - last < SAMPLE_INTERVAL_MS) return;
+  if (shouldSkipTick(input.ts, last, SAMPLE_INTERVAL_MS)) return;
   // Set before the write resolves — a slow write must not cause a second tick to
   // pile on another write once the interval has merely nearly elapsed.
   globalForHistory.__metricsHistoryLastSampleTs = input.ts;
@@ -272,8 +273,10 @@ async function recordingSince(): Promise<number | null> {
   return samples.length > 0 ? samples[0].t : null;
 }
 
+type Bucket = { cpu: Acc; mem: Acc };
+
 function bucketWidthMs(rangeMs: number): number {
-  return Math.max(SAMPLE_INTERVAL_MS, Math.ceil(rangeMs / MAX_POINTS));
+  return bucketWidth(rangeMs, SAMPLE_INTERVAL_MS, MAX_POINTS);
 }
 
 /** Averages samples into fixed-width, epoch-aligned buckets across [startTs,
@@ -281,25 +284,23 @@ function bucketWidthMs(rangeMs: number): number {
  *  real gap, never interpolated across from its neighbours (Hatch-Not-Empty
  *  rule: an absent measurement must not be drawn as if it were measured). */
 function downsampleHost(samples: MetricsHistorySample[], startTs: number, endTs: number, widthMs: number): HistoryBucket[] {
-  const buckets = new Map<number, { cpuSum: number; cpuN: number; memSum: number; memN: number }>();
+  const buckets = new Map<number, Bucket>();
   for (const s of samples) {
     if (s.t < startTs || s.t > endTs) continue;
     const key = Math.floor(s.t / widthMs) * widthMs;
     let b = buckets.get(key);
     if (!b) {
-      b = { cpuSum: 0, cpuN: 0, memSum: 0, memN: 0 };
+      b = { cpu: { sum: 0, n: 0 }, mem: { sum: 0, n: 0 } };
       buckets.set(key, b);
     }
-    b.cpuSum += s.cpu;
-    b.cpuN++;
-    b.memSum += s.memUsed;
-    b.memN++;
+    accAdd(b.cpu, s.cpu);
+    accAdd(b.mem, s.memUsed);
   }
   return emitBuckets(buckets, startTs, endTs, widthMs);
 }
 
 function downsampleContainer(samples: MetricsHistorySample[], name: string, startTs: number, endTs: number, widthMs: number): HistoryBucket[] {
-  const buckets = new Map<number, { cpuSum: number; cpuN: number; memSum: number; memN: number }>();
+  const buckets = new Map<number, Bucket>();
   for (const s of samples) {
     if (s.t < startTs || s.t > endTs) continue;
     const row = s.containers[name];
@@ -307,19 +308,17 @@ function downsampleContainer(samples: MetricsHistorySample[], name: string, star
     const key = Math.floor(s.t / widthMs) * widthMs;
     let b = buckets.get(key);
     if (!b) {
-      b = { cpuSum: 0, cpuN: 0, memSum: 0, memN: 0 };
+      b = { cpu: { sum: 0, n: 0 }, mem: { sum: 0, n: 0 } };
       buckets.set(key, b);
     }
-    b.cpuSum += row[0];
-    b.cpuN++;
-    b.memSum += row[1];
-    b.memN++;
+    accAdd(b.cpu, row[0]);
+    accAdd(b.mem, row[1]);
   }
   return emitBuckets(buckets, startTs, endTs, widthMs);
 }
 
 function emitBuckets(
-  buckets: Map<number, { cpuSum: number; cpuN: number; memSum: number; memN: number }>,
+  buckets: Map<number, Bucket>,
   startTs: number,
   endTs: number,
   widthMs: number,
@@ -331,8 +330,8 @@ function emitBuckets(
     const b = buckets.get(t);
     out.push({
       t,
-      cpuPct: b ? Math.round((b.cpuSum / b.cpuN) * 100) / 100 : null,
-      memBytes: b ? Math.round(b.memSum / b.memN) : null,
+      cpuPct: b ? accMean(b.cpu, 100) : null,
+      memBytes: b ? accMean(b.mem, 1) : null,
     });
   }
   return out;
