@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
-  applyPin, budgetChangeError, budgetError, httpUrlError, mcpTokenError, rconHostError, rconPortError, webhookError,
+  applyPin, budgetChangeError, budgetError, discordChannelIdError, discordUserIdsError, httpUrlError, modelNameError, mcpTokenError, rconHostError, rconPortError, webhookError,
 } from "./settings-checks.ts";
 
 describe("settings checks", () => {
@@ -70,5 +71,49 @@ describe("settings checks", () => {
       assert.deepEqual(applyPin(fifty, "pin", "/new", norm), { error: "At most 50 pins" });
       assert.deepEqual(applyPin(fifty, "pin", "/p3", norm), { pins: fifty });
     });
+  });
+});
+
+describe("hunt 27 input checks", () => {
+  const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+  it("discord channel id: blank or 17-20 digits", () => {
+    for (const ok of ["", undefined, "123456789012345678", "1".repeat(20)]) assert.equal(discordChannelIdError(ok), null, String(ok));
+    for (const bad of ["12345", "1234567890123456789a", "1".repeat(21)]) {
+      assert.equal(discordChannelIdError(bad), "Channel ID must be a Discord ID: 17 to 20 digits.", bad);
+    }
+  });
+  it("allowed user ids: every entry 17-20 digits", () => {
+    assert.equal(discordUserIdsError(["123456789012345678", "1".repeat(20)]), null);
+    assert.equal(discordUserIdsError([]), null);
+    assert.equal(discordUserIdsError(["123456789012345678", "12345"]), "Each allowed user ID must be a Discord ID: 17 to 20 digits.");
+  });
+  it("model name: blank or a plain name, no flag, space, = or newline", () => {
+    for (const ok of ["", undefined, "claude-sonnet-5-5", "anthropic/claude-opus-5-5", "qwen3:8b"]) {
+      assert.equal(modelNameError("Model", ok), null, String(ok));
+    }
+    for (const bad of ["-oProxyCommand", "model\nX=1", "a b", "a=b", "a".repeat(101)]) {
+      assert.equal(modelNameError("Hard-ticket model", bad), "Hard-ticket model must be a model name, such as claude-sonnet-5-5.", JSON.stringify(bad));
+    }
+  });
+  it("base urls: no login, query or fragment; trailing slash and a path are fine", () => {
+    for (const bad of ["http://h:8080/?x=1", "http://h/#a", "http://u:p@h/"]) {
+      assert.equal(httpUrlError("Forgejo URL", bad), "Forgejo URL must be a plain http(s) address, with no login, ?query or #fragment.", bad);
+    }
+    assert.equal(httpUrlError("x", "http://h:8080/"), null);
+    assert.equal(httpUrlError("x", "https://h/sub"), null);
+  });
+  it("hermes-daemon route runs the checks before the strict read and the write", () => {
+    const src = read("../app/api/settings/hermes-daemon/route.ts");
+    const read1 = src.indexOf("readHermesSettingsFileForSave(");
+    const write = src.indexOf("writeHermesSettingsFile(next)");
+    for (const fn of ["discordChannelIdError(", "discordUserIdsError(", "modelNameError("]) {
+      const at = src.indexOf(fn);
+      assert.ok(at > 0 && at < read1 && read1 < write, fn);
+    }
+  });
+  it("oidc discovery and token POST use the no-cross-origin fetch", () => {
+    const src = read("./oidc.ts");
+    assert.doesNotMatch(src, /(?<![.\w])fetch\(/);
+    assert.equal((src.match(/fetchNoCrossOriginRedirect\(/g) ?? []).length, 2);
   });
 });
