@@ -421,7 +421,7 @@ async function readDockerNetInfo(warnings: string[]): Promise<DockerNetInfo> {
       bridgeAddress.set(ifname, `${cfg.Gateway}/${prefix}`);
     }
   } catch (err) {
-    warn(warnings, "could not list docker networks", err);
+    warn(warnings, "Could not list the Docker networks.", err);
   }
   return { idToName, bridgeAddress };
 }
@@ -701,7 +701,7 @@ async function readOwnerMaps(warnings: string[]): Promise<{
       }
     }
   } catch (err) {
-    warn(warnings, "could not list docker containers for port attribution", err);
+    warn(warnings, "Could not list the Docker containers for port attribution.", err);
   }
 
   const uidToUser = await readUidToUser();
@@ -741,7 +741,7 @@ async function buildListeningSockets(
   for (const f of files) {
     const rows = await parseSocketTable(f.path, f.protocol, f.family);
     if (rows === null) {
-      warnings.push(`could not read ${f.protocol}${f.family === "v6" ? "6" : ""} socket table`);
+      warnings.push(`Could not read the ${f.protocol}${f.family === "v6" ? "6" : ""} socket table.`);
       continue;
     }
     allRows.push(...rows);
@@ -916,7 +916,7 @@ async function buildEstablishedConnections(
   for (const f of files) {
     const rows = await parseEstablishedTable(f.path, f.family);
     if (rows === null) {
-      warnings.push(`could not read tcp${f.family === "v6" ? "6" : ""} connection table`);
+      warnings.push(`Could not read the tcp${f.family === "v6" ? "6" : ""} connection table.`);
       continue;
     }
     anyRead = true;
@@ -989,12 +989,12 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
         }
       }
     } catch (err) {
-      warn(warnings, "could not list network interfaces", err);
+      warn(warnings, "Could not list the network interfaces.", err);
       return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, truncatedConnections: 0, connectionsAvailable: false, warnings };
     }
 
     const devCounters = await readNetDevFull();
-    if (devCounters === null) warnings.push("could not read interface counters (/proc/1/net/dev)");
+    if (devCounters === null) warnings.push("Could not read the interface counters (/proc/1/net/dev).");
 
     const [ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface] = await Promise.all([
       readIfInet6GlobalAddresses(),
@@ -1023,7 +1023,7 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
   } catch (err) {
     // Belt-and-braces: getNetworkSnapshot must never throw. Anything that
     // reaches here is a bug in a source above, not an expected failure mode.
-    warn(warnings, "could not read network state", err);
+    warn(warnings, "Could not read the network state.", err);
     return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, truncatedConnections: 0, connectionsAvailable: false, warnings };
   }
 }
