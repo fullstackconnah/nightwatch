@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/use-confirm-focus";
 import { ApiError } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,7 @@ export function ImageDeleteAction({
 }) {
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState<string | null>(null);
+  const { trigger, cancel, onKeyDown } = useConfirmFocus(step === "confirm", () => setStep("idle"));
 
   if (inUse) return <ImageInUseButton label={label} usedBy={usedBy} text={text} />;
 
@@ -99,11 +101,11 @@ export function ImageDeleteAction({
 
   if (step === "confirm") {
     return (
-      <div key="confirm" className="nw-confirm flex items-center gap-2 justify-end flex-wrap">
+      <div key="confirm" onKeyDown={onKeyDown} className="nw-confirm flex items-center gap-2 justify-end flex-wrap">
         <span className="text-[0.7rem] text-ink-dim">
           Delete {label}, free ~<span className="font-mono">{formatBytes(size, 1)}</span>? Can&apos;t be undone.
         </span>
-        <Button size="sm" variant="ghost" className="h-11 md:h-7" onClick={() => setStep("idle")}>
+        <Button autoFocus size="sm" variant="ghost" className="h-11 md:h-7" onClick={cancel}>
           Cancel
         </Button>
         <Button size="sm" variant="danger" className="h-11 md:h-7" onClick={() => void handleConfirm()}>
@@ -116,6 +118,7 @@ export function ImageDeleteAction({
   return (
     <div className="flex flex-col items-end gap-1">
       <Button
+        ref={trigger}
         size={text ? "sm" : "icon"}
         variant={text ? "outline" : "ghost"}
         data-feature="delete-image"

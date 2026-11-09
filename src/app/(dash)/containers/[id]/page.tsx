@@ -121,6 +121,7 @@ function Logs({ id, name }: { id: string; name: string | null }) {
             </Link>
           )}
           <Select
+            aria-label="Lines to show"
             className="h-9 w-28 text-sm md:h-6 md:w-24 md:text-xs"
             value={tail}
             onChange={(e) => setTail(Number(e.target.value))}

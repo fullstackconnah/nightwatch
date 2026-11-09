@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useConfirmFocus } from "@/components/use-confirm-focus";
 import { removeConfirmText } from "@/lib/container-remove";
 
 type Step = "idle" | "confirm" | "busy" | "error";
@@ -21,6 +22,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
   const [gone, setGone] = useState(false);
+  const { trigger, cancel, onKeyDown } = useConfirmFocus(step !== "idle", () => setStep("idle"));
 
   async function remove() {
     setStep("busy");
@@ -40,9 +42,9 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
 
   if (step === "confirm") {
     return (
-      <div key="confirm" className="nw-confirm flex items-center gap-2 flex-wrap max-md:basis-full">
+      <div key="confirm" onKeyDown={onKeyDown} className="nw-confirm flex items-center gap-2 flex-wrap max-md:basis-full">
         <span className="text-xs text-ink-dim">{removeConfirmText(name)}</span>
-        <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
+        <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
         <Button size="sm" variant="danger" onClick={() => void remove()}>
@@ -65,7 +67,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
             Retry
           </Button>
         )}
-        <Button size="sm" variant="ghost" onClick={() => setStep("idle")}>
+        <Button size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
       </div>
@@ -74,7 +76,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
 
   const busy = step === "busy";
   return (
-    <Button variant="outline" data-feature="remove" disabled={busy} aria-busy={busy} onClick={() => setStep("confirm")}>
+    <Button ref={trigger} variant="outline" data-feature="remove" disabled={busy} aria-busy={busy} onClick={() => setStep("confirm")}>
       {busy ? <RotateCw size={13} className="animate-spin motion-reduce:animate-none" /> : <Trash2 size={13} />}{" "}
       {busy ? "Removing…" : "Remove"}
     </Button>

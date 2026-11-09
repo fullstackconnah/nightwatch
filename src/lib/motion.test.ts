@@ -75,7 +75,7 @@ test("#1 WriteAction wraps the default ask only when renderAsk is absent", () =>
 });
 
 test("#3 the widget menu panel is nw-pop", () => {
-  assert.match(read("components/widget-actions.tsx"), /role="menu"[\s\S]{0,120}nw-pop/);
+  assert.match(read("components/widget-actions.tsx"), /role="group"[\s\S]{0,120}nw-pop/);
 });
 
 test("#2 the pills fade through data-on, not inline visibility", () => {
