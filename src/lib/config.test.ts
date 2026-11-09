@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, it } from "node:test";
-import { saveConfig } from "./config.ts";
+import fs from "node:fs";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
+import { DATA_DIR_UNWRITABLE, saveConfig } from "./config.ts";
 import type { AppConfig } from "./config.ts";
 
 // Windows ignores POSIX mode bits, so the mode assertions only run on Linux (CI).
@@ -47,5 +48,17 @@ describe("saveConfig file mode", () => {
     chmodSync(file, 0o644);
     saveConfig(config);
     assert.equal(modeOf("config.json"), 0o600);
+  });
+
+  // Stubbing the fs call keeps this portable: a real root-owned dir can't be made on Windows or in CI.
+  it("saveConfig turns an EACCES write failure into the data-folder error", () => {
+    const stub = mock.method(fs, "mkdirSync", () => {
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    });
+    try {
+      assert.throws(() => saveConfig(config), { message: DATA_DIR_UNWRITABLE });
+    } finally {
+      stub.mock.restore();
+    }
   });
 });
