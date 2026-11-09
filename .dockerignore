@@ -1,9 +1,9 @@
 node_modules
 .next
 .git
+.claude
 data
-.env
-.env.local
+.env*
 *.md
 services/*
 !services/media-worker/src/types.ts
