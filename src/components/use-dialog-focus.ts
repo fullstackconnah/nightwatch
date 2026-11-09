@@ -13,12 +13,15 @@ export function useDialogFocus(
   active: boolean,
   ref: RefObject<HTMLElement | null>,
   initial?: () => HTMLElement | null | undefined,
+  skipRestore?: () => boolean,
 ) {
   useEffect(() => {
     if (!active) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     (initial?.() ?? ref.current?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
-    return () => previouslyFocused?.focus();
+    return () => {
+      if (!skipRestore?.()) previouslyFocused?.focus();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]);
 

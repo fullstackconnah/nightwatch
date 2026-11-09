@@ -45,3 +45,30 @@ test("F6 status dots are hidden from AT with the state in text", () => {
   const pt = src("components/resources/process-table.tsx");
   assert.equal((pt.match(/<span className="sr-only">\{tone\.title\}<\/span>/g) ?? []).length, 2);
 });
+
+// Fix round 1: the safe choice (Cancel) takes focus, never the destructive button.
+const cancelFocused = /<Button\s+autoFocus(?:=\{[^}]*\})?\s(?:(?!<Button)[\s\S])*?>\s*Cancel\s*<\/Button>/;
+test("R1 every confirm focuses Cancel, and only Cancel", () => {
+  for (const f of [
+    "resources/remove-container-action.tsx",
+    "resources/image-delete-action.tsx",
+    "resources/reclaim-shared.tsx",
+    "resources/container-controls.tsx",
+    "widget-actions.tsx",
+    "strips/write-action.tsx",
+  ]) {
+    const s = src(`components/${f}`);
+    assert.match(s, cancelFocused, f);
+    assert.equal((s.match(/autoFocus/g) ?? []).length, 1, f);
+  }
+  assert.doesNotMatch(src("components/strips/write-action.tsx"), /autoFocus=\{/);
+});
+
+test("R2 the dialog focus hook can skip the restore, and the More sheet skips it after navigation", () => {
+  assert.match(src("components/use-dialog-focus.ts"), /skipRestore/);
+  assert.match(src("components/side-nav.tsx"), /useDialogFocus\(mounted, dialogRef, [^\n]*skipRestore|pathAtOpen/);
+});
+
+test("R3 the widget popup group is labelled Actions", () => {
+  assert.match(src("components/widget-actions.tsx"), /role="group"\s+aria-label="Actions"/);
+});

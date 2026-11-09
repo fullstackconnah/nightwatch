@@ -78,10 +78,10 @@ export function PruneAction({
             </>
           )}
         </span>
-        <Button size="sm" variant="ghost" onClick={cancel}>
+        <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
-        <Button autoFocus size="sm" variant="danger" onClick={handleConfirm}>
+        <Button size="sm" variant="danger" onClick={handleConfirm}>
           Yes, prune
         </Button>
       </div>

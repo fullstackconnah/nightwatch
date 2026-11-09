@@ -203,7 +203,7 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
         <div
           ref={popRef}
           role="group"
-          aria-label={`${container} app actions`}
+          aria-label="Actions"
           className="nw-pop panel absolute right-0 top-full mt-1 w-60 !p-1.5 z-20 space-y-0.5"
         >
           {actions.map((action) => {
@@ -215,6 +215,7 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
                   <p className="text-[0.7rem] text-ink-dim">{action.confirm}</p>
                   <div className="flex justify-end gap-1.5">
                     <Button
+                      autoFocus
                       size="sm"
                       variant="ghost"
                       onClick={() => {
@@ -224,7 +225,7 @@ export function WidgetActionsMenu({ container, widgetType }: { container: string
                     >
                       Cancel
                     </Button>
-                    <Button autoFocus size="sm" variant="outline" onClick={() => void run(action)}>
+                    <Button size="sm" variant="outline" onClick={() => void run(action)}>
                       Confirm
                     </Button>
                   </div>

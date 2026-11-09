@@ -144,10 +144,10 @@ export function WriteAction({
           <>
             <p className="st-say" role="status">{say}</p>
             <div className="st-acts">
-              <Button autoFocus={!!autoCancelMs} size="sm" variant="ghost" onClick={cancel}>
+              <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
-              <Button autoFocus={!autoCancelMs} size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
+              <Button size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>
                 {yes}
               </Button>
             </div>

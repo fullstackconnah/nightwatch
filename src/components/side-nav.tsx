@@ -371,7 +371,17 @@ function MoreSheet({
 
   // Focus in on open (first link), Tab kept inside, focus back on the More button on close.
   const dialogRef = useRef<HTMLDivElement>(null);
-  const onKeyDown = useDialogFocus(mounted, dialogRef, () => dialogRef.current?.querySelector<HTMLElement>("a[href]"));
+  // After a link tap the route changed while the sheet was open: the new page keeps focus.
+  const pathAtOpen = useRef(pathname);
+  const pathNow = useRef(pathname);
+  pathNow.current = pathname;
+  if (!mounted) pathAtOpen.current = pathname;
+  const onKeyDown = useDialogFocus(
+    mounted,
+    dialogRef,
+    () => dialogRef.current?.querySelector<HTMLElement>("a[href]"),
+    () => pathNow.current !== pathAtOpen.current,
+  );
 
   if (!mounted) return null;
 

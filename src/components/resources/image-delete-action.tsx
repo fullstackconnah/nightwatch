@@ -105,10 +105,10 @@ export function ImageDeleteAction({
         <span className="text-[0.7rem] text-ink-dim">
           Delete {label}, free ~<span className="font-mono">{formatBytes(size, 1)}</span>? Can&apos;t be undone.
         </span>
-        <Button size="sm" variant="ghost" className="h-11 md:h-7" onClick={cancel}>
+        <Button autoFocus size="sm" variant="ghost" className="h-11 md:h-7" onClick={cancel}>
           Cancel
         </Button>
-        <Button autoFocus size="sm" variant="danger" className="h-11 md:h-7" onClick={() => void handleConfirm()}>
+        <Button size="sm" variant="danger" className="h-11 md:h-7" onClick={() => void handleConfirm()}>
           Yes, delete
         </Button>
       </div>

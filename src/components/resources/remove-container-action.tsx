@@ -44,10 +44,10 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
     return (
       <div key="confirm" onKeyDown={onKeyDown} className="nw-confirm flex items-center gap-2 flex-wrap max-md:basis-full">
         <span className="text-xs text-ink-dim">{removeConfirmText(name)}</span>
-        <Button size="sm" variant="ghost" onClick={cancel}>
+        <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
-        <Button autoFocus size="sm" variant="danger" onClick={() => void remove()}>
+        <Button size="sm" variant="danger" onClick={() => void remove()}>
           Yes, remove
         </Button>
       </div>
