@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { useHermesRun } from "@/lib/use-hermes";
-import { settleExchange } from "@/lib/voice-settle";
+import { isAsking, settleExchange } from "@/lib/voice-settle";
 
 const LEVEL_BAR_COUNT = 5;
 const STATIC_LEVEL = 0.4; // reduced-motion fallback: a flat, non-animated bar
@@ -320,6 +320,9 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeExchangeId = useRef<string | null>(null);
   const run = useHermesRun();
+  const runRef = useRef(run);
+  runRef.current = run;
+  const startingRef = useRef(false); // set synchronously, ahead of the render that flips run.starting
   const mountedRef = useRef(true);
   const audioUrlRef = useRef<string | null>(null);
 
@@ -373,11 +376,15 @@ export function useVoicePipeline(): UseVoicePipelineResult {
 
   const handleTranscript = useCallback(
     async (text: string) => {
+      if (startingRef.current || isAsking(runRef.current)) return; // one question at a time
       const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       activeExchangeId.current = id;
       run.reset(); // drop the previous job so its error or answer cannot land on this question
       setExchanges((prev) => [{ id, transcript: text, answer: null, error: null }, ...prev].slice(0, MAX_EXCHANGES));
-      const failure = await run.start("ask", text);
+      startingRef.current = true;
+      const failure = await run.start("ask", text).finally(() => {
+        startingRef.current = false;
+      });
       if (failure) {
         setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: failure } : ex)));
         if (activeExchangeId.current === id) activeExchangeId.current = null;
@@ -415,7 +422,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
       ? "recording"
       : recorder.state === "transcribing"
         ? "transcribing"
-        : run.job?.ok && run.job.job.state === "running"
+        : isAsking(run)
           ? "asking"
           : speaking
             ? "speaking"
