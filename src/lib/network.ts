@@ -990,7 +990,7 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
       }
     } catch (err) {
       warn(warnings, "could not list network interfaces", err);
-      return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, connectionsAvailable: false, warnings };
+      return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, truncatedConnections: 0, connectionsAvailable: false, warnings };
     }
 
     const devCounters = await readNetDevFull();
@@ -1017,14 +1017,14 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
       portOwner,
       uidToUser,
     );
-    const { connections, truncated } = capConnections(allConnections);
+    const { connections, truncated, truncatedConnections } = capConnections(allConnections);
 
-    return { ts, interfaces, sockets, connections, truncated, connectionsAvailable, warnings };
+    return { ts, interfaces, sockets, connections, truncated, truncatedConnections, connectionsAvailable, warnings };
   } catch (err) {
     // Belt-and-braces: getNetworkSnapshot must never throw. Anything that
     // reaches here is a bug in a source above, not an expected failure mode.
     warn(warnings, "could not read network state", err);
-    return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, connectionsAvailable: false, warnings };
+    return { ts, interfaces: [], sockets: [], connections: [], truncated: 0, truncatedConnections: 0, connectionsAvailable: false, warnings };
   }
 }
 

@@ -143,9 +143,14 @@ function HatchedUnavailable({ reason }: { reason: string }) {
 
 export function NetConnections({
   connections,
+  truncated,
+  truncatedConnections,
   available,
 }: {
   connections: EstablishedConnectionGroup[];
+  /** Remote rows dropped past the server cap, and their connection total. */
+  truncated: number;
+  truncatedConnections: number;
   /** False when neither host socket table could be read — must render as a
    *  named refusal, never as the (also legitimate) "nothing established"
    *  empty state. */
@@ -164,7 +169,8 @@ export function NetConnections({
 
   const remote = connections.filter((g) => !g.isLoopback);
   const loopback = connections.filter((g) => g.isLoopback);
-  const totalConns = connections.reduce((a, g) => a + g.count, 0);
+  const totalConns = connections.reduce((a, g) => a + g.count, 0) + truncatedConnections;
+  const totalRemotes = connections.length + truncated;
 
   return (
     <section className="space-y-2">
@@ -177,7 +183,7 @@ export function NetConnections({
         </div>
         {totalConns > 0 && (
           <span className="font-mono text-xs text-ink-dim tabular-nums">
-            {totalConns} across {connections.length} {connections.length === 1 ? "remote" : "remotes"}
+            {totalConns} across {totalRemotes} {totalRemotes === 1 ? "remote" : "remotes"}
           </span>
         )}
       </div>
@@ -194,6 +200,12 @@ export function NetConnections({
             <ConnectionRow key={`${g.family}-${g.remoteAddress}`} g={g} />
           ))}
         </div>
+      )}
+
+      {truncated > 0 && (
+        <p className="text-[0.7rem] text-ink-dim">
+          {truncated} quieter {truncated === 1 ? "remote" : "remotes"} not shown
+        </p>
       )}
 
       {loopback.length > 0 && !showLoopback && (

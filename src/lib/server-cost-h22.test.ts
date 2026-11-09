@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { capCmdline, redactCmdline } from "./redact.ts";
-import { capConnections, isCacheableGpuReason, CONNECTIONS_MAX } from "./server-cost.ts";
+import { capConnections, CONNECTIONS_MAX } from "./server-cost.ts";
 import { kioskVitals } from "./kiosk-vitals-view.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
@@ -25,11 +25,31 @@ describe("hunt 22 server cost", () => {
     const small = capConnections(rows.slice(0, 3));
     assert.equal(small.truncated, 0);
     assert.equal(small.connections.length, 3);
+    assert.equal(out.truncatedConnections, 800 + 799 + 798 + 797 + 796);
   });
 
-  it("only stable gpu reasons are cached as unavailable", () => {
-    for (const r of ["no-binary", "driver-mismatch", "no-device"] as const) assert.equal(isCacheableGpuReason(r), true);
-    assert.equal(isCacheableGpuReason("error"), false);
+  it("capConnections edges: empty, exactly the cap, one over", () => {
+    assert.deepEqual(capConnections([]), { connections: [], truncated: 0, truncatedConnections: 0 });
+    const at = capConnections(Array.from({ length: CONNECTIONS_MAX }, () => ({ count: 2 })));
+    assert.equal(at.truncated, 0);
+    assert.equal(at.truncatedConnections, 0);
+    const over = capConnections([...Array.from({ length: CONNECTIONS_MAX }, () => ({ count: 2 })), { count: 7 }]);
+    assert.equal(over.truncated, 1);
+    assert.equal(over.truncatedConnections, 7);
+  });
+
+  it("connections header uses the true totals and names the dropped remotes", () => {
+    const src = read("../components/resources/net-connections.tsx");
+    assert.ok(src.includes("const totalConns = connections.reduce((a, g) => a + g.count, 0) + truncatedConnections;"));
+    assert.ok(src.includes("const totalRemotes = connections.length + truncated;"));
+    assert.ok(src.includes('quieter {truncated === 1 ? "remote" : "remotes"} not shown'));
+    assert.ok(read("../app/(dash)/networks/page.tsx").includes("truncated={snapshot.truncated} truncatedConnections={snapshot.truncatedConnections}"));
+  });
+
+  it("order: cmdline is redacted before the 2048 cut", () => {
+    assert.ok(read("./processes.ts").includes("capCmdline(redactCmdline(cleaned))"));
+    const secretNearEnd = "curl -u bob:hunter2 http://h/" + "y".repeat(2040);
+    assert.ok(!capCmdline(redactCmdline("x".repeat(2000) + " " + secretNearEnd)).includes("hunter2"));
   });
 
   it("kioskVitals carries no mount path, hostname, os or cpu model", () => {
@@ -63,8 +83,11 @@ describe("hunt 22 server cost", () => {
     assert.match(read("./telemetry.ts"), /^\s+withTimeout\(getGpuSnapshot\(\), TELEMETRY_CALL_MS, \(\) => null\)/m);
   });
 
-  it("gpu caches only stable reasons", () => {
-    assert.match(read("./gpu.ts"), /^\s+if \(isCacheableGpuReason\(result\.reason\)\) globalForGpu\.__gpuUnavailableCache/m);
+  it("gpu caches the error reason with a short backoff", () => {
+    const src = read("./gpu.ts");
+    assert.match(src, /^const UNAVAILABLE_ERROR_BACKOFF_MS = 10_000;/m);
+    assert.ok(src.includes('cached.reason === "error" ? UNAVAILABLE_ERROR_BACKOFF_MS : UNAVAILABLE_BACKOFF_MS'));
+    assert.doesNotMatch(src, /isCacheableGpuReason/);
   });
 
   it("assistant route checks content-length before req.json", () => {
