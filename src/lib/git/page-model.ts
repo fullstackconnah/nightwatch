@@ -94,7 +94,7 @@ export function gitModel(i: ModelInput): Model {
   const diverged = g.mirrors.filter((m) => !m.lastError && m.defaultBranch.state === "diverged");
   const inSync = g.mirrors.length - failing.length - diverged.length;
   const newest = <T,>(xs: T[], at: (x: T) => string) => xs.reduce<T | null>((a, x) => (a === null || Date.parse(at(x)) > Date.parse(at(a)) ? x : a), null);
-  const lastCommit = newest(g.stream, (c) => c.date);
+  const lastCommit = newest(g.stream.filter((c): c is typeof c & { date: string } => c.date !== null), (c) => c.date);
   const newestPull = newest(g.pulls, (p) => p.createdAt);
   const offDefault = g.branches.filter((b) => !b.isDefault).length;
   const prs = g.pulls.length === 0 ? "No open pull requests" : `${plural(g.pulls.length, "open pull request", "open pull requests")}`;

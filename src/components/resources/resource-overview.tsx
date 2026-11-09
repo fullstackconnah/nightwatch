@@ -7,6 +7,7 @@ import { SegmentButton } from "@/components/ui/segment-button";
 import { cn } from "@/lib/utils";
 import { SERIES_SLOTS, assignSlots, layoutEndLabels, type SeriesSlot } from "@/lib/chart-series";
 import { relativeTime } from "@/lib/format";
+import { localStamp } from "@/lib/local-time";
 import { legendEntries, snapScale } from "@/lib/watchlist";
 
 export interface OverviewSegment {
@@ -362,7 +363,6 @@ export interface MetricHistoryPanelProps {
  *  minutes of real samples is technically correct and practically misleading. */
 const THIN_HISTORY_MS = 60 * 60 * 1000;
 
-const utc = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
 
 /** The band's lower half: compare picker, chart, legend and the one-line hint (reserved height, never shifts). */
 export function MetricHistoryPanel({
@@ -401,7 +401,7 @@ export function MetricHistoryPanel({
   else if (isThin) hint = `Recording since ${relativeTime(recordingSince)}: a fuller picture needs about an hour.`;
   else if (isLoading && noData) hint = "Loading history…";
   else if (bucketTimes.length > 0 && recordingSince > bucketTimes[0]) {
-    hint = `Recording since ${utc(recordingSince)} UTC: the start of this window has no data yet (gap, not zero).`;
+    hint = `Recording since ${localStamp(recordingSince)}: the start of this window has no data yet (gap, not zero).`;
   }
 
   const dataMax = Math.max(0, ...series.flatMap((s) => s.points.filter((v): v is number => v != null)));

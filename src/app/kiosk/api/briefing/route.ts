@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getBriefing } from "@/lib/briefing";
+import { localDateString } from "@/lib/local-time";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,7 @@ export async function GET() {
     return NextResponse.json(result, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return NextResponse.json(
-      { status: "unconfigured", date: new Date().toISOString().slice(0, 10), detail: "Briefing unavailable." },
+      { status: "unconfigured", date: localDateString(undefined), detail: "Briefing unavailable." },
       { headers: { "Cache-Control": "no-store" } },
     );
   }

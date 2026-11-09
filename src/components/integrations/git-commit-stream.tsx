@@ -34,7 +34,7 @@ export function GitCommitStream({ stream }: { stream: GitCommitEntry[] }) {
                 rel="noreferrer"
                 className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 px-1 py-2 min-h-11 md:min-h-0 border-b border-line/50 last:border-0 hover:bg-panel-2/60 transition-colors"
               >
-                <span className="font-mono text-xs text-ink-faint tabular-nums shrink-0 w-14" title={c.date}>{relativeTime(c.date)}</span>
+                <span className="font-mono text-xs text-ink-faint tabular-nums shrink-0 w-14" title={c.date ?? undefined}>{c.date ? relativeTime(c.date) : "—"}</span>
                 <Badge variant="accent" className="shrink-0">{c.repo}</Badge>
                 <span className="min-w-0 flex-1 basis-40 text-ink text-sm truncate" title={c.message}>{c.message}</span>
                 <span className="shrink-0 text-xs text-ink-dim truncate max-w-[9rem]" title={c.authorName}>{c.authorName}</span>
