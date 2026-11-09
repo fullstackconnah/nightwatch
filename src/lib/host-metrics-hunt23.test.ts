@@ -96,3 +96,22 @@ test("runDu collects Buffer chunks and decodes once", () => {
   assert.match(d, /Buffer\.concat\(chunks\)\.toString\("utf8"\)/);
   assert.doesNotMatch(d, /stdout \+= d\.toString/);
 });
+
+// H23HR-1
+test("groupPercent is used over used plus summed avail (df maths)", async () => {
+  const { groupPercent, statfsUsage: su } = await import("./host-metrics-pure.ts");
+  const a = su({ blocks: 100, bfree: 10, bavail: 5, bsize: 1 });
+  assert.equal(a.avail, 5);
+  assert.ok(Math.abs(groupPercent(a.used, a.avail) - 94.7368) < 0.01);
+  const b = su({ blocks: 100, bfree: 50, bavail: 45, bsize: 1 });
+  assert.equal(groupPercent(a.used + b.used, a.avail + b.avail), (140 / 190) * 100);
+  assert.equal(groupPercent(0, 0), 0);
+});
+
+// H23HR-2
+test("isPartitionName covers mmc boot/rpmb and nbd partitions", () => {
+  for (const p of ["mmcblk0boot0", "mmcblk0boot1", "mmcblk0rpmb", "nbd0p1"]) {
+    assert.equal(isPartitionName(p), true, p);
+  }
+  assert.equal(isPartitionName("nbd0"), false);
+});

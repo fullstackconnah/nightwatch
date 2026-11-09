@@ -63,7 +63,12 @@ export function statfsUsage(s: { blocks: number; bfree: number; bavail: number; 
   const total = s.blocks * s.bsize;
   const used = (s.blocks - s.bfree) * s.bsize;
   const avail = s.bavail * s.bsize;
-  return { total, used, percent: used + avail > 0 ? (used / (used + avail)) * 100 : 0 };
+  return { total, used, avail, percent: groupPercent(used, avail) };
+}
+
+/** df percent: used over used plus available; also applied to summed per-disk groups. */
+export function groupPercent(used: number, avail: number): number {
+  return used + avail > 0 ? (used / (used + avail)) * 100 : 0;
 }
 
 /** Hottest sane zone in °C; one throwing zone or a bogus (>150 °C) sensor does not spoil the rest. */
@@ -82,5 +87,5 @@ export function maxThermalC(reads: (() => number)[]): number | null {
 
 /** nvme/mmc partitions end in p<digits>; sd/vd/xvd/hd partitions are letters then digits. */
 export function isPartitionName(name: string): boolean {
-  return /^(nvme\d+n\d+|mmcblk\d+)p\d+$/.test(name) || /^(sd|vd|xvd|hd)[a-z]+\d+$/.test(name);
+  return /^(nvme\d+n\d+|mmcblk\d+|nbd\d+)p\d+$/.test(name) || /^mmcblk\d+(boot\d+|rpmb)$/.test(name) || /^(sd|vd|xvd|hd)[a-z]+\d+$/.test(name);
 }

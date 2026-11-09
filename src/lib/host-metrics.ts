@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import si from "systeminformation";
 import { Memo } from "@/lib/cache";
-import { sumHostNetCounters, statfsUsage, maxThermalC, isPartitionName } from "./host-metrics-pure.ts";
+import { sumHostNetCounters, statfsUsage, groupPercent, maxThermalC, isPartitionName } from "./host-metrics-pure.ts";
 
 /**
  * Host vitals. Inside the container /proc/stat, /proc/meminfo and /proc/uptime
@@ -373,6 +373,7 @@ export interface PerMountDisk {
   mount: string;
   total: number;
   used: number;
+  avail: number;
 }
 
 /**
@@ -387,13 +388,14 @@ export function groupDisksByPhysicalDisk(
   perMount: PerMountDisk[],
   dmResolve: (mapperName: string) => string | null,
 ): HostVitals["disk"] {
-  const groups = new Map<string, { mounts: string[]; total: number; used: number }>();
+  const groups = new Map<string, { mounts: string[]; total: number; used: number; avail: number }>();
   for (const pd of perMount) {
     const label = parentDiskOf(pd.device, dmResolve);
-    const g = groups.get(label) ?? { mounts: [], total: 0, used: 0 };
+    const g = groups.get(label) ?? { mounts: [], total: 0, used: 0, avail: 0 };
     g.mounts.push(pd.mount);
     g.total += pd.total;
     g.used += pd.used;
+    g.avail += pd.avail;
     groups.set(label, g);
   }
   const grouped = Array.from(groups.entries()).map(([label, g]) => ({
@@ -401,7 +403,7 @@ export function groupDisksByPhysicalDisk(
     mounts: g.mounts,
     total: g.total,
     used: g.used,
-    percent: g.total > 0 ? (g.used / g.total) * 100 : 0,
+    percent: groupPercent(g.used, g.avail),
   }));
   grouped.sort((a, b) => {
     const aRoot = a.mounts.includes("/");
@@ -466,7 +468,7 @@ async function collectHostVitals(): Promise<HostVitals> {
         );
         if (isDuplicate) continue;
         seenFingerprints.push({ device: m.device, total: d.total, used: d.used });
-        perMountDisks.push({ device: m.device, mount: d.mount, total: d.total, used: d.used });
+        perMountDisks.push({ device: m.device, mount: d.mount, total: d.total, used: d.used, avail: d.avail });
       }
       disks = groupDisksByPhysicalDisk(perMountDisks, makeDmResolver(HOST_SYS));
     }
