@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { postJson } from "@/lib/client";
 import { actionsForWidgetType, type WidgetActionDef } from "@/lib/widgets/actions";
 import { cn } from "@/lib/utils";
+import { useConfirmFocus } from "@/components/use-confirm-focus";
 
 interface ActionResult {
   id: string;
@@ -81,6 +82,8 @@ export function WidgetActionRow({
 }) {
   const actions = actionsForWidgetType(widgetType);
   const { confirmId, setConfirmId, pendingId, result, run } = useWidgetActionRunner(container);
+  const { trigger, cancel, onKeyDown } = useConfirmFocus(confirmId !== null, () => setConfirmId(null));
+  const lastId = useRef<string | null>(null); // the hook has one trigger ref; point it at the action just cancelled
   if (!actions.length) return null;
 
   return (
@@ -95,9 +98,10 @@ export function WidgetActionRow({
                 key={`${action.id}-confirm`}
                 className="nw-confirm inline-flex items-center gap-1.5 flex-wrap"
                 style={{ "--nw-confirm-origin": "left center" } as CSSProperties}
+                onKeyDown={onKeyDown}
               >
                 <span className="text-[0.7rem] text-ink-dim">{action.confirm}</span>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmId(null)}>
+                <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
                   Cancel
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => void run(action)}>
@@ -109,11 +113,15 @@ export function WidgetActionRow({
           return (
             <Button
               key={action.id}
+              ref={lastId.current === action.id ? trigger : undefined}
               size="sm"
               variant="ghost"
               disabled={pendingId !== null}
               aria-busy={busy}
-              onClick={() => setConfirmId(action.id)}
+              onClick={() => {
+                lastId.current = action.id;
+                setConfirmId(action.id);
+              }}
             >
               {busy && <RotateCw size={12} className="animate-spin motion-reduce:animate-none" />}
               {action.label}

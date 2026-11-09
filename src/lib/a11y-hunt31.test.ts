@@ -59,7 +59,8 @@ test("R1 every confirm focuses Cancel, and only Cancel", () => {
   ]) {
     const s = src(`components/${f}`);
     assert.match(s, cancelFocused, f);
-    assert.equal((s.match(/autoFocus/g) ?? []).length, 1, f);
+    // widget-actions.tsx holds two confirms: the detail-page row and the overview popover.
+    assert.equal((s.match(/autoFocus/g) ?? []).length, f === "widget-actions.tsx" ? 2 : 1, f);
   }
   assert.doesNotMatch(src("components/strips/write-action.tsx"), /autoFocus=\{/);
 });
@@ -76,4 +77,14 @@ test("R2 the dialog focus hook can skip the restore, and the More sheet skips it
 
 test("R3 the widget popup group is labelled Actions", () => {
   assert.match(src("components/widget-actions.tsx"), /role="group"\s+aria-label="Actions"/);
+});
+
+test("F7 the detail page WidgetActionRow confirm focuses Cancel through the confirm-focus hook", () => {
+  const s = src("components/widget-actions.tsx");
+  const row = s.slice(s.indexOf("export function WidgetActionRow"), s.indexOf("export function WidgetActionsMenu"));
+  assert.match(row, /useConfirmFocus\(/);
+  assert.match(row, /onKeyDown=\{onKeyDown\}/);
+  assert.match(row, /ref=\{[^}]*\btrigger\b/);
+  assert.equal((row.match(/autoFocus/g) ?? []).length, 1);
+  assert.match(row, cancelFocused);
 });
