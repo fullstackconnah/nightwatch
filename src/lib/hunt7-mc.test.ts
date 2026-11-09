@@ -11,7 +11,7 @@ describe("hunt 7 minecraft and jellyfin", () => {
     assert.equal(sanitizeSlug("../Bad Slug"), "m---bad-slug");
     assert.equal(sanitizeSlug("ok-1"), "ok-1");
   });
-  it("A4: upload forwards only the five fields, sanitised, with a timeout", () => {
+  it("A4: upload forwards only the six fields, sanitised, with a timeout", () => {
     const s = read("../app/api/minecraft/instances/upload/route.ts");
     assert.ok(s.includes("sanitizeSlug("));
     assert.ok(s.includes('query.set("memoryGb"'));

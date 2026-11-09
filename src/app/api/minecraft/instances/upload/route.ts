@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   }
 
   const contentType = req.headers.get("content-type");
-  if (!contentType?.startsWith("multipart/form-data")) {
+  if (!contentType?.toLowerCase().startsWith("multipart/form-data")) {
     return NextResponse.json({ error: "Send the pack as a multipart form upload." }, { status: 400 });
   }
   const tooBig = contentLengthError(req.headers.get("content-length"), PACK_MAX_BYTES, "The pack");

@@ -3,6 +3,8 @@ export const MC_VERSION_RE = /^[0-9][0-9A-Za-z.\-]{0,31}$/;
 
 /** C3: the pack page URL becomes the manager's packRef, so only https pages on the two pack sites (or their subdomains) pass. */
 export function packPageUrlOk(u: string): boolean {
+  // new URL() drops tab/LF/CR silently, and the raw value lands in instance.env
+  if (/[\x00-\x1f\x7f]/.test(u)) return false;
   try {
     const url = new URL(u);
     return url.protocol === "https:" && PACK_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
