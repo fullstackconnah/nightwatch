@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
+import { isDeskGlancePath } from "@/lib/desk-auth";
 import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "@/lib/auth";
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
@@ -23,6 +24,8 @@ const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // The desktop widget's glance checks its own bearer token inside the route (GET only, no cookie to forge).
+  if (isDeskGlancePath(pathname)) return NextResponse.next();
   // Before the public-path return so login/kiosk/logout writes are covered too.
   // /api/mcp uses a bearer token, no cookie, so there is nothing to forge.
   if (pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/") && crossSiteWriteRefused(req.method, req.headers)) {

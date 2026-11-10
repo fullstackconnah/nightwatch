@@ -1,5 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { systemSetting } from "@/lib/config";
+import { bearerMatches } from "@/lib/bearer";
 
 /**
  * Bearer-token auth for /api/mcp, entirely separate from the cookie-session
@@ -14,30 +14,11 @@ import { systemSetting } from "@/lib/config";
  * mcpEnabled() first and return 503 before ever calling isAuthorized().
  */
 
-const BEARER_PREFIX = "Bearer ";
-
 export function mcpEnabled(): boolean {
   return !!systemSetting("mcpToken", "MCP_TOKEN");
 }
 
-/**
- * Constant-time bearer-token check. Returns false (never throws) for a
- * missing header, a malformed header, a mismatched token, or a disabled
- * server. Length differences are folded away by comparing the token against
- * itself on that path, so a mismatched-length guess costs the same time as
- * a same-length one — `timingSafeEqual` itself throws on unequal-length
- * inputs, so it can't be called directly on attacker-controlled input.
- */
+/** Constant-time bearer-token check (see bearerMatches); false for a disabled server. */
 export function isAuthorized(authorizationHeader: string | null): boolean {
-  const token = systemSetting("mcpToken", "MCP_TOKEN");
-  if (!token) return false;
-  if (!authorizationHeader || !authorizationHeader.startsWith(BEARER_PREFIX)) return false;
-
-  const provided = Buffer.from(authorizationHeader.slice(BEARER_PREFIX.length), "utf8");
-  const expected = Buffer.from(token, "utf8");
-  if (provided.length !== expected.length) {
-    timingSafeEqual(expected, expected);
-    return false;
-  }
-  return timingSafeEqual(provided, expected);
+  return bearerMatches(authorizationHeader, systemSetting("mcpToken", "MCP_TOKEN"));
 }

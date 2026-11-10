@@ -250,6 +250,13 @@ scope** — everything comes from bind mounts that already existed.
 - Copy `.env.example` to `.env` beside the compose file and fill the placeholders: `MEDIA_WORKER_TOKEN` (32+ characters, the same value goes into nightwatch Settings), `MEDIA_WORKER_BIND` (the server's LAN address), `PUID`, `PGID`, `TZ`.
 - It publishes port 8091 on `MEDIA_WORKER_BIND` only. There is **no Nginx Proxy Manager route**, by design; never add one.
 
+## Desk widget token (`/api/desk/glance`)
+
+- `GET /api/desk/glance` is the read-only feed for the desktop widget. It uses a bearer token, not the login session.
+- Set `system.deskToken` in `data/config.json` (shipped by scp, never git; placeholder `"deskToken": "REPLACE_ME"`), or the `DESK_TOKEN` env var as the fallback. The config value wins. At least 32 characters, and it must differ from `mcpToken`. There is no Settings UI for it. A change takes effect on the next request, with no restart.
+- `503 {"error":"Desk access is not turned on."}`: the token is unset, under 32 characters, or equal to the MCP token (one body for all three). `401 {"error":"unauthorized"}`: the header is missing or wrong. Every response is `Cache-Control: no-store`.
+- The token travels in clear over plain LAN HTTP, as the MCP token does. The data is read-only.
+
 ## Rollback
 
 ```sh
