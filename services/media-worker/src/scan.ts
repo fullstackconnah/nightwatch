@@ -137,7 +137,7 @@ export function createScanner(opts: ScannerOpts): Scanner {
         }
       };
       await Promise.all(Array.from({ length: concurrency }, worker));
-      if (sick) throw new Error("The media drive stopped responding."); // old scan.json stays
+      if (sick) throw new Error("The media drive stopped responding."); // scannedAt is not advanced; earlier periodic flushes already wrote their results
 
       scannedAt = now().toISOString();
       flush();

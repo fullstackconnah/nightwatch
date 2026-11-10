@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { makeClip } from "./clips.ts";
@@ -42,7 +42,7 @@ function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfi
   const guard = createGuard(dirs);
   const stateDir = tempDir("mw-run-state-");
   const runner = createRunner({
-    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW, ...(over.stallMs ? { stallMs: over.stallMs } : {}),...(over.probe ? { probe: over.probe } : {}), ...(over.log ? { log: over.log } : {}),
+    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW, ...(over.stallMs ? { stallMs: over.stallMs } : {}), ...(over.probe ? { probe: over.probe } : {}), ...(over.log ? { log: over.log } : {}),
     afterSwap: async () => over.jellyfin ?? "off",
   });
   const q = createQueue({
@@ -288,6 +288,19 @@ describe("stall watchdog (B1)", () => {
     w.clear();
     await wait(150);
     assert.equal(fired, 0);
+  });
+});
+
+describe("forced close detaches the stdout handler (MWHR-N1)", () => {
+  it("removeAllListeners('data') sits between stall.clear() and the stopping check", () => {
+    // Source scan: the fake-ffmpeg flow cannot buffer progress after a forced close, so pin the order.
+    const src = readFileSync(new URL("./runner.ts", import.meta.url), "utf8");
+    const clear = src.search(/^\s+stall\.clear\(\);$/m);
+    const drop = src.search(/^\s+child\.stdout\.removeAllListeners\("data"\);/m);
+    const stop = src.search(/^\s+if \(stopping\) return;/m);
+    assert.ok(clear >= 0, "stall.clear() line found");
+    assert.ok(drop > clear, "removeAllListeners('data') follows stall.clear()");
+    assert.ok(stop > drop, "removeAllListeners('data') precedes the stopping check");
   });
 });
 

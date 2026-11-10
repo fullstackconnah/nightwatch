@@ -268,15 +268,16 @@ describe("scan survives a sick drive (H38-1b, H38-3)", () => {
     assert.equal(readFileSync(join(stateDir, "scan.json"), "utf8"), before);
   });
 
-  it("a probe that is not a timeout resets the count", async () => {
+  it("a probe that is not a timeout resets the count, and 3 more in a row still abort", async () => {
+    // T T G T T T: without the reset the 4th call would already abort (count 3); with it, the 6th does.
     let calls = 0;
     const s = createScanner({
       mediaRoot: root, stateDir, env: ENV, concurrency: 1,
-      probe: async (abs, st) => (++calls % 3 === 0 ? stubProbe(counter)(abs, st) : probeFailure(st, "ffprobe timed out", true)),
+      probe: async (abs, st) => (++calls === 3 ? stubProbe(counter)(abs, st) : probeFailure(st, "ffprobe timed out", true)),
     });
     s.start(); await s.whenIdle();
-    assert.equal(s.state().state, "idle");
-    assert.equal(calls, 7);
+    assert.equal(s.state().state, "failed");
+    assert.equal(calls, 6);
   });
 
   it("keeps the cache of a folder it could not read, and still prunes files that are gone", async () => {
