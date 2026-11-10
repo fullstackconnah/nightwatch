@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { bucketRes, parseProbe, probeFile, probeReason, type FileStat } from "./probe.ts";
+import { bucketRes, ffprobeJson, parseProbe, probeFile, probeReason, probeTimedOut, type FileStat } from "./probe.ts";
 import { needFfmpeg, SKIP_OFF_LINUX, tempDir } from "./testkit.ts";
 
 const data = (name: string) => JSON.parse(readFileSync(new URL(`../test-data/${name}`, import.meta.url), "utf8"));
@@ -149,7 +149,20 @@ describe("probeFile failure text", () => {
   });
 });
 
-describe("probeFile (real ffprobe)", { skip: SKIP_OFF_LINUX }, () => {
+describe("probe deadline (H38-1a)", () => {
+  // A child the kernel will not release: it ignores SIGTERM and SIGKILL and never closes, so execFile never calls back.
+  const stuck = (() => ({ kill: () => true })) as unknown as typeof execFile;
+  it("probeFile and ffprobeJson settle at the deadline without waiting for the child to close", { timeout: 8000 }, async () => {
+    const opts = { prefix: [], timeoutMs: 200, exec: stuck };
+    const [f, j] = await Promise.allSettled([probeFile("/mnt/media/a.mkv", st(), opts), ffprobeJson("/mnt/media/a.mkv", opts)]);
+    assert.equal(f.status === "fulfilled" && f.value.probeError, "ffprobe timed out");
+    assert.equal(f.status === "fulfilled" && probeTimedOut(f.value), true);
+    assert.equal(j.status, "rejected");
+    assert.match(String((j as PromiseRejectedResult).reason), /timed out/);
+  });
+});
+
+describe("probeFile (real ffprobe)",{ skip: SKIP_OFF_LINUX }, () => {
   it("reads a 2-second synthetic clip", async (t) => {
     if (!needFfmpeg(t)) return;
     const dir = tempDir("mw-probe-");

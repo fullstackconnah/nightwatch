@@ -104,10 +104,16 @@ export function createRunner(o: RunnerOpts) {
   };
   // B3: only the child that is still the tracked one untracks itself, so a second child isn't dropped by the first one's close.
   const track = (id: string) => (c: ChildProcess) => { procs.set(id, c); c.once("close", () => { if (procs.get(id) === c) procs.delete(id); }); };
-  /** SIGTERM to the process group, SIGKILL after the grace period. */
+  /** Per running job: resolves its exit-code wait with -1 when the child never closes. */
+  const forceClose = new Map<string, () => void>();
+  /** SIGTERM to the process group, SIGKILL after the grace period; a child stuck in the kernel ignores both, so give up 5 s later. */
   const terminate = (id: string) => {
     signal(id, "SIGTERM");
-    setTimeout(() => signal(id, "SIGKILL"), o.graceMs ?? 10_000).unref();
+    const grace = o.graceMs ?? 10_000;
+    setTimeout(() => signal(id, "SIGKILL"), grace).unref();
+    const give = setTimeout(() => forceClose.get(id)?.(), grace + 5_000);
+    give.unref();
+    procs.get(id)?.once("close", () => clearTimeout(give));
   };
 
   const fail = (rec: JobRecord, check: NonNullable<Job["failedCheck"]>, extra: Partial<JobRecord> = {}) =>
@@ -181,7 +187,11 @@ export function createRunner(o: RunnerOpts) {
       }
     });
     child.stderr.on("data", (d: Buffer) => { if (errText.length < 4000) errText += d; });
-    const code = await new Promise<number | null>((res) => { child.on("close", res); child.on("error", () => res(-1)); });
+    const code = await new Promise<number | null>((res) => {
+      child.on("close", res); child.on("error", () => res(-1));
+      forceClose.set(id, () => res(-1)); // a late close finds the promise settled: a no-op
+    });
+    forceClose.delete(id);
     stall.clear();
 
     if (stopping) return; // shutdown: the record stays `encoding`, boot recovery re-queues it

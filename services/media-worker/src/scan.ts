@@ -2,7 +2,7 @@ import { lstat as fsLstat, readdir } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { posix } from "node:path";
 import { MEDIA_ROOTS } from "./paths.ts";
-import type { FileStat } from "./probe.ts";
+import { probeTimedOut, type FileStat } from "./probe.ts";
 import { readJson, writeJsonAtomic } from "./state.ts";
 import { thresholds } from "./sweet-spot.ts";
 import type { MediaFile, ScanState } from "./types.ts";
@@ -13,6 +13,8 @@ export const VIDEO_EXT = new Set([
 ]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const CACHE_VERSION = 1;
+/** Probe timeouts in a row (across workers) after which the drive is taken to be dead and the scan stops. */
+const SICK_AFTER = 3;
 
 interface CacheFile { version: number; scannedAt: string | null; files: Record<string, MediaFile> }
 
@@ -21,6 +23,7 @@ export interface ScannerOpts {
   stateDir: string;
   probe: (abs: string, st: FileStat) => Promise<VerdictInput>;
   lstat?: (p: string) => Promise<Stats>;
+  readdir?: typeof readdir;
   now?: () => Date;
   env?: Record<string, string | undefined>;
   flushEvery?: number;
@@ -46,6 +49,7 @@ const hasVideoExt = (name: string) => VIDEO_EXT.has(name.slice(name.lastIndexOf(
 export function createScanner(opts: ScannerOpts): Scanner {
   const now = opts.now ?? (() => new Date());
   const lstat = opts.lstat ?? fsLstat;
+  const readDir = opts.readdir ?? readdir;
   const flushEvery = opts.flushEvery ?? 200;
   const concurrency = opts.concurrency ?? 2;
   const cacheFile = posix.join(opts.stateDir, "scan.json");
@@ -61,16 +65,17 @@ export function createScanner(opts: ScannerOpts): Scanner {
   const flush = () => writeJsonAtomic(cacheFile, { version: CACHE_VERSION, scannedAt, files } satisfies CacheFile);
 
   /** lstat walk of movies/ and tv/; never follows a symlink and never aborts on one bad entry. */
-  async function walk(): Promise<(FileStat & { abs: string })[]> {
+  async function walk(lost: string[]): Promise<(FileStat & { abs: string })[]> {
     const found: (FileStat & { abs: string })[] = [];
     const visit = async (rel: string, top: boolean): Promise<void> => {
       let entries;
       try {
-        entries = await readdir(posix.join(opts.mediaRoot, rel), { withFileTypes: true });
+        entries = await readDir(posix.join(opts.mediaRoot, rel), { withFileTypes: true });
       } catch (e) {
         // A missing movies/ or tv/ is a failed scan (the old cache stays), never an empty library.
         if (top) throw e;
         state.skipped++;
+        lost.push(rel);
         return;
       }
       for (const entry of entries) {
@@ -86,6 +91,7 @@ export function createScanner(opts: ScannerOpts): Scanner {
             found.push({ abs, path: childRel, name: entry.name, bytes: s.size, mtimeMs: s.mtimeMs, nlink: s.nlink });
           } catch {
             state.skipped++;
+            lost.push(childRel);
           }
         }
       }
@@ -98,10 +104,11 @@ export function createScanner(opts: ScannerOpts): Scanner {
 
   async function run(): Promise<void> {
     try {
-      const found = await walk();
+      const lost: string[] = []; // what could not be read is not gone: its cache entries stay
+      const found = await walk(lost);
       state.filesTotal = found.length;
       const present = new Set(found.map((f) => f.path));
-      for (const key of Object.keys(files)) if (!present.has(key)) delete files[key];
+      for (const key of Object.keys(files)) if (!present.has(key) && !lost.some((p) => key === p || key.startsWith(p + "/"))) delete files[key];
 
       const todo = found.filter((f) => {
         const c = files[f.path];
@@ -112,11 +119,15 @@ export function createScanner(opts: ScannerOpts): Scanner {
 
       let next = 0;
       let sinceFlush = 0;
+      let timeouts = 0;
+      let sick = false; // sticky: a probe that lands after the third timeout must not revive the scan
       const worker = async () => {
-        while (next < todo.length) {
+        while (!sick && next < todo.length) {
           const { abs, ...st } = todo[next++];
           try {
             const p = await opts.probe(abs, st);
+            timeouts = probeTimedOut(p) ? timeouts + 1 : 0;
+            if (timeouts >= SICK_AFTER) sick = true;
             files[st.path] = { ...p, verdict: judge(p, st.path) };
           } catch {
             state.skipped++;
@@ -126,6 +137,7 @@ export function createScanner(opts: ScannerOpts): Scanner {
         }
       };
       await Promise.all(Array.from({ length: concurrency }, worker));
+      if (sick) throw new Error("The media drive stopped responding."); // old scan.json stays
 
       scannedAt = now().toISOString();
       flush();
