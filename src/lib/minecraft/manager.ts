@@ -40,6 +40,7 @@ const TIMEOUT_MS = 6000;
 // Create, backup, restore and delete copy or unpack whole worlds and packs, far past the 6 s read limit.
 const SLOW_MS = 120_000;
 // The manager's restore is synchronous and unbounded (tar extract of the whole world), so give a large world room before the guard releases.
+// undici's default 300 s headers timeout ends the wait first; the client flags that as timedOut, so the route keeps the busy guard for TIMEOUT_GRACE_MS.
 const RESTORE_MS = 600_000;
 
 const UNCONFIGURED_DETAIL =
