@@ -307,3 +307,27 @@ test("every fixture title detail matches the worker's shape and its rows build",
     }
   }
 });
+
+// ---- skipped entries (nw-media-skipped) ----
+const SKIP_ONE = "1 file or folder couldn’t be read in the last scan.";
+const SKIP_MANY = (n: number) => `${n} files or folders couldn’t be read in the last scan.`;
+
+test("skipped: an idle scan that read everything shows no notice", () => {
+  assert.equal(model(body(withScan({ state: "idle", skipped: 0 }))).notice, null);
+});
+test("skipped: idle with 1 gives the singular", () => {
+  assert.equal(model(body(withScan({ state: "idle", skipped: 1 }))).notice, SKIP_ONE);
+});
+test("skipped: idle with 3 gives the plural", () => {
+  assert.equal(model(body(withScan({ state: "idle", skipped: 3 }))).notice, SKIP_MANY(3));
+});
+test("skipped: a running scan shows none", () => {
+  assert.equal(model(body(withScan({ state: "running", skipped: 2 }))).notice, null);
+});
+test("skipped: a failed scan shows none", () => {
+  assert.equal(model(body(withScan({ state: "failed", skipped: 2 }))).notice, null);
+});
+test("skipped: worker down keeps PAUSED", () => {
+  const m = model({ body: { worker: "unreachable" }, last: { data: withScan({ skipped: 2 }), at: NOW - 2 * HOUR } });
+  assert.equal(m.notice, PAUSED);
+});

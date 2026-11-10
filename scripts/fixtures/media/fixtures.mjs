@@ -131,6 +131,7 @@ export const FIXTURES = {
   firstScan: { library: { worker: "ok", data: { ...library([], { scannedAt: null }), scannedAt: null, scan: { state: "running", startedAt: new Date(NOW - 60_000).toISOString(), finishedAt: null, filesDone: 14, filesTotal: null, skipped: 0 } } }, titles: {} },
   scanning: { ...ok(titleSet), library: { worker: "ok", data: { ...library(titleSet), scan: { state: "running", startedAt: new Date(NOW - 120_000).toISOString(), finishedAt: null, filesDone: 40, filesTotal: 120, skipped: 0 } } } },
   scanFailed: { ...ok(titleSet), library: { worker: "ok", data: { ...library(titleSet), scan: { state: "failed", startedAt: new Date(NOW - 600_000).toISOString(), finishedAt: new Date(NOW - 590_000).toISOString(), filesDone: 3, filesTotal: null, skipped: 0, error: `could not read ${LEAK_PATH} at ${LEAK_ADDR}` } } } },
+  scanSkipped: { ...ok(titleSet), library: { worker: "ok", data: { ...library(titleSet), scan: { ...library(titleSet).scan, skipped: 3 } } } },
   empty: ok([]),
   normal: ok(titleSet),
   stale,

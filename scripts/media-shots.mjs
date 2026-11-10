@@ -44,6 +44,7 @@ const STATES = [
   ["first-scan", "firstScan", "Scanning", null],
   ["scanning-with-data", "scanning", null, null],
   ["scan-failed", "scanFailed", null, null],
+  ["scan-skipped", "scanSkipped", null, null],
   ["empty", "empty", null, null],
   ["normal", "normal", null, null],
   ["title-open-movie", "normal", null, OPEN.movie],
@@ -195,6 +196,29 @@ async function perState(page, name, vp) {
 
 const shot = (page, name, vp) => page.screenshot({ path: join(OUT_DIR, `${name}-${vp}.png`), fullPage: false });
 
+/** nw-media-skipped: the notice reads exactly, nothing in the head is clipped or over it, and the head is cropped (padded). */
+async function skippedHead(page, vp) {
+  const head = page.locator("main header").first();
+  const notice = head.locator("[data-feature=notice]");
+  record("K1 skipped notice text", vp, (await notice.count()) === 1 && (await notice.innerText()).trim() === "3 files or folders couldn’t be read in the last scan." ? "ok" : "wrong");
+  const g = await head.evaluate((h) => {
+    const n = h.querySelector("[data-feature=notice]");
+    const nb = n.getBoundingClientRect();
+    const clipped = [h, ...h.querySelectorAll("*")].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflowX !== "visible").length;
+    const over = [...h.querySelectorAll("*")].filter((e) => e !== n && !n.contains(e) && !e.contains(n)).filter((e) => {
+      const r = e.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.left < nb.right - 0.5 && r.right > nb.left + 0.5 && r.top < nb.bottom - 0.5 && r.bottom > nb.top + 0.5;
+    }).length;
+    const b = h.getBoundingClientRect();
+    return { clipped, over, x: b.x, y: b.y + scrollY, w: b.width, h: b.height };
+  });
+  record("K2 head: no clipped text (C1)", vp, g.clipped);
+  record("K3 nothing overlaps the notice", vp, g.over);
+  const PAD = 16;
+  const x = Math.max(0, g.x - PAD), y = Math.max(0, g.y - PAD);
+  await page.screenshot({ path: join(OUT_DIR, `scan-skipped-head-${vp}.png`), fullPage: true, clip: { x, y, width: Math.min(g.w + 2 * PAD, (page.viewportSize()?.width ?? 1440) - x), height: g.h + 2 * PAD } });
+}
+
 async function main() {
   mkdirSync(OUT_DIR, { recursive: true });
   const browser = await chromium.launch();
@@ -217,6 +241,7 @@ async function main() {
       if (chip) record("C8 chip", `${name}@${s.name}`, (await page.locator("[data-feature=chip]").innerText()).trim() === chip ? "ok" : "wrong");
       await perState(page, name, s.name);
       await shot(page, name, s.name);
+      if (name === "scan-skipped") await skippedHead(page, s.name);
       await page.close();
     }
   });
