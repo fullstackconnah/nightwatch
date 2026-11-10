@@ -72,7 +72,7 @@ async function tick(): Promise<void> {
     allContainerStats(true),
     withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null)
       .then((v) => {
-        recovered("getHostVitals");
+        if (v !== null) recovered("getHostVitals"); // null is the timeout fallback, not a success
         return v;
       })
       .catch((err: unknown) => {
@@ -89,7 +89,7 @@ async function tick(): Promise<void> {
     }),
     withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null)
       .then((v) => {
-        recovered("getGpuSnapshot");
+        if (v !== null) recovered("getGpuSnapshot");
         return v;
       })
       .catch((err: unknown) => {
