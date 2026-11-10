@@ -1,0 +1,112 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:local="clr-namespace:NightwatchDesk.App">
+
+  <!-- Keys equal the DESIGN.md token names (SHAPE "Tokens to XAML"). 1rem = 16 DIP. -->
+
+  <!-- colours -->
+  <Color x:Key="c-warn">#fbbf24</Color>
+  <Color x:Key="c-bad">#f87171</Color>
+  <SolidColorBrush x:Key="bg" Color="#070b11" />
+  <SolidColorBrush x:Key="panel" Color="#0d131c" />
+  <SolidColorBrush x:Key="panel-2" Color="#121a26" />
+  <SolidColorBrush x:Key="line" Color="#1c2736" />
+  <SolidColorBrush x:Key="line-bright" Color="#2a3a50" />
+  <SolidColorBrush x:Key="panel-lit" Color="#08DBE7F4" />
+  <SolidColorBrush x:Key="ink" Color="#dbe7f4" />
+  <SolidColorBrush x:Key="ink-dim" Color="#8296ad" />
+  <SolidColorBrush x:Key="ink-faint" Color="#657f9e" />
+  <SolidColorBrush x:Key="accent" Color="#5eead4" />
+  <SolidColorBrush x:Key="warn" Color="#fbbf24" />
+  <SolidColorBrush x:Key="bad" Color="#f87171" />
+
+  <!-- fonts (installed with Windows 11; nothing bundled) -->
+  <FontFamily x:Key="font-sans">Segoe UI</FontFamily>
+  <FontFamily x:Key="font-mono">Cascadia Mono</FontFamily>
+
+  <!-- type: size and line height -->
+  <sys:Double x:Key="fs-headline">18</sys:Double>
+  <sys:Double x:Key="lh-headline">23.4</sys:Double>
+  <sys:Double x:Key="fs-title">14</sys:Double>
+  <sys:Double x:Key="lh-title">19.6</sys:Double>
+  <sys:Double x:Key="fs-body">12</sys:Double>
+  <sys:Double x:Key="lh-body">18</sys:Double>
+  <sys:Double x:Key="fs-data">12</sys:Double>
+  <sys:Double x:Key="lh-data">18</sys:Double>
+  <sys:Double x:Key="fs-note">11.2</sys:Double>
+  <sys:Double x:Key="lh-note">16.8</sys:Double>
+  <sys:Double x:Key="fs-label">10</sys:Double>
+  <sys:Double x:Key="lh-label">14</sys:Double>
+
+  <!-- spacing, radii, hairline -->
+  <sys:Double x:Key="sp-hair">2</sys:Double>
+  <sys:Double x:Key="sp-xs">4</sys:Double>
+  <sys:Double x:Key="sp-sm">6</sys:Double>
+  <sys:Double x:Key="sp-base">8</sys:Double>
+  <sys:Double x:Key="sp-md">12</sys:Double>
+  <sys:Double x:Key="sp-lg">16</sys:Double>
+  <sys:Double x:Key="sp-xl">20</sys:Double>
+  <sys:Double x:Key="gap-answer">10</sys:Double>
+  <sys:Double x:Key="r-panel">10</sys:Double>
+  <sys:Double x:Key="r-md">6</sys:Double>
+  <sys:Double x:Key="hairline">1</sys:Double>
+
+  <!-- layout (SHAPE numeric checks) -->
+  <sys:Double x:Key="win-width">320</sys:Double>
+  <sys:Double x:Key="row-height">56</sys:Double>
+  <sys:Double x:Key="more-height">32</sys:Double>
+  <sys:Double x:Key="dot">8</sys:Double>
+  <sys:Double x:Key="chevron">12</sys:Double>
+
+  <!-- ease-calm: the one fade -->
+  <KeySpline x:Key="ease-calm">0.2,0.8 0.2,1</KeySpline>
+
+  <!-- the house focus ring: 1 DIP accent, radius md -->
+  <Style x:Key="RowFocus">
+    <Setter Property="Control.Template">
+      <Setter.Value>
+        <ControlTemplate>
+          <Border BorderBrush="{StaticResource accent}" BorderThickness="1" CornerRadius="6" Margin="2" IsHitTestVisible="False" />
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- a row is a full-width button: panel-2 on hover and press, no scale -->
+  <Style x:Key="RowButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="FocusVisualStyle" Value="{StaticResource RowFocus}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Fill" Background="{TemplateBinding Background}">
+            <Grid>
+              <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+              <Border x:Name="Ring" Visibility="Collapsed" BorderBrush="{StaticResource accent}" BorderThickness="1" CornerRadius="6" Margin="2" IsHitTestVisible="False" />
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{StaticResource panel-2}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{StaticResource panel-2}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceHover" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{StaticResource panel-2}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceFocus" Value="True">
+              <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+</ResourceDictionary>

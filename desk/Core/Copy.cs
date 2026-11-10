@@ -5,7 +5,7 @@ namespace NightwatchDesk.Core;
 /// <summary>The desk's own words for each state (the server's glance carries the rest). Strings match SHAPE.md.</summary>
 public static class Copy
 {
-    public const int TooltipMax = 63; // NotifyIcon.Text limit
+    public const int TooltipMax = 63; // NotifyIcon.Text takes 127 (probed in App.Tests, OPEN-1); 63 kept: one glanceable line
     public const int ToastTitleMax = 63;
     public const int ToastTextMax = 255;
 
