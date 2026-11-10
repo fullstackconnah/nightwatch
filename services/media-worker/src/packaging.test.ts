@@ -118,7 +118,9 @@ describe("image and ignore files", () => {
     const ci = read(REPO, ".github/workflows/ci.yml");
     // ffmpeg debs are cached per runner image: downloaded on a miss, always installed from the cache.
     assert.match(ci, /apt-get install -y --no-install-recommends --download-only ffmpeg/);
-    const install = ci.indexOf('apt-get install -y --no-install-recommends "$HOME"/ffdebs/*.deb');
+    // dpkg -i installs only the cached files; apt-get install of local debs still downloads from the mirror.
+    const install = ci.indexOf('sudo dpkg -i "$HOME"/ffdebs/*.deb');
+    assert.doesNotMatch(ci, /apt-get install[^\n]*ffdebs/);
     assert.ok(install > 0 && install < ci.indexOf("npm test"));
   });
 });
