@@ -8,7 +8,7 @@ import {
   verifyOidcFlowToken,
 } from "@/lib/oidc";
 import { requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
-import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import { SESSION_COOKIE, createSessionToken, isMissingSecretError, sessionCookieOptions } from "@/lib/auth";
 
 
 export const dynamic = "force-dynamic";
@@ -66,8 +66,16 @@ export async function GET(req: NextRequest) {
   // Same session helper the password login mints from — no forked session
   // logic, no id_token/access_token ever set on any client-visible cookie.
   // Post-login destination is always "/", never a caller-supplied path.
+  let token: string;
+  try {
+    token = await createSessionToken();
+  } catch (e) {
+    // Production without SESSION_SECRET: the login page shows its "SSO is not available" copy, not a raw 500.
+    if (!isMissingSecretError(e)) throw e;
+    return ssoErrorRedirect(req, "config");
+  }
   const res = NextResponse.redirect(new URL("/", requestOrigin(req)));
-  res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions());
+  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   res.cookies.set(OIDC_FLOW_COOKIE, "", clearedOidcFlowCookieOptions());
   return res;
 }

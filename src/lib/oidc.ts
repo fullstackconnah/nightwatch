@@ -5,8 +5,7 @@ import { systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
-import { sameIssuer } from "@/lib/oidc-issuer";
-import { httpUrlError } from "@/lib/settings-checks";
+import { checkedIssuer, sameIssuer } from "@/lib/oidc-issuer";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -56,13 +55,13 @@ export function oidcConfig(): OidcConfig | null {
   const clientSecret = systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET");
   if (!issuer || !clientId || !clientSecret) return null;
   // The env fallback skips the save-time check; a login, query or fragment must not reach the discovery URL.
-  const issuerError = httpUrlError("oidcIssuer", issuer);
-  if (issuerError) {
-    if (!warnedBadIssuer) console.warn(`OIDC disabled: ${issuerError}`);
+  const checked = checkedIssuer(issuer);
+  if ("error" in checked) {
+    if (!warnedBadIssuer) console.warn(`OIDC disabled: ${checked.error}`);
     warnedBadIssuer = true;
     return null;
   }
-  return { issuer: issuer.replace(/\/+$/, ""), clientId, clientSecret };
+  return { issuer: checked.issuer, clientId, clientSecret };
 }
 
 /** Host only (e.g. "homelab.local:9091") for the settings panel — never the
