@@ -53,8 +53,66 @@ public class LayoutTests
             var head = Ids(c.View, "head")[0];
             var tb = Fix.Walk<TextBlock>(head).First(t => t.Text.Length > 100);
             Fix.Rec("N3 long-copy answer lines at 144 dpi", (tb.ActualHeight / 23.4).ToString("0.##"));
-            Assert.True(tb.ActualHeight >= 2 * 23.4 - 0.5 && tb.ActualHeight <= 2 * 23.4 + 1.01);
+            Assert.True(tb.ActualHeight >= 2 * 23.4 - 0.5 && tb.ActualHeight <= 2 * 23.4 + 1.25);
             Assert.Equal(TextTrimming.CharacterEllipsis, tb.TextTrimming);
+        });
+    }
+
+
+    [Theory]
+    [InlineData("long-copy", 96)]
+    [InlineData("long-copy", 144)]
+    [InlineData("lanes-and-items", 96)]
+    [InlineData("lanes-and-items", 144)]
+    public void M1_answer_second_line_has_ink(string state, int dpi)
+    {
+        var c = Sta.Run(() => Fix.Compose(state, dpi));
+        var ink = Sta.Run(() =>
+        {
+            var tb = Fix.Walk<TextBlock>(Ids(c.View, "head")[0]).First(t => t.Text.Length > 20);
+            var o = tb.TransformToAncestor(c.Host).Transform(new Point(0, 0));
+            var k = dpi / 96.0;
+            var lh = Theme.D("lh-headline");
+            int x0 = (int)(o.X * k), x1 = (int)((o.X + tb.ActualWidth) * k), y0 = (int)((o.Y + lh + 2) * k), y1 = (int)((o.Y + 2 * lh - 2) * k);
+            var n = 0;
+            var buf = new byte[4];
+            for (var y = y0; y < y1; y++)
+                for (var x = x0; x < x1; x++)
+                {
+                    c.Bitmap.CopyPixels(new Int32Rect(x, y, 1, 1), buf, 4, 0);
+                    if (buf[0] > 0x60 || buf[1] > 0x60 || buf[2] > 0x60) n++; // light ink on the dark panel
+                }
+            return n;
+        });
+        Fix.Rec($"M1 second-line ink pixels ({state} {dpi})", ink.ToString());
+        Assert.True(ink > 20, $"second line empty: {ink} ink pixels");
+    }
+
+
+    [Theory]
+    [InlineData("stale")]
+    [InlineData("offline-with-last-known")]
+    public void S1_dim_states_draw_vitals_in_ink_dim(string state)
+    {
+        var c = Sta.Run(() => Fix.Compose(state));
+        Sta.Run(() =>
+        {
+            var dim = ((SolidColorBrush)Theme.B("ink-dim")).Color;
+            var runs = Ids(c.View, "vitals")[0] is TextBlock tb ? tb.Inlines.OfType<System.Windows.Documents.Run>().Where(r => r.Text.Trim() is not ("" or "·")).ToArray() : [];
+            Assert.True(runs.Length >= 6);
+            Assert.All(runs, r => Assert.Equal(dim, ((SolidColorBrush)r.Foreground).Color));
+        });
+    }
+
+    [Fact]
+    public void M2_pending_fixture_draws_the_ring_mark()
+    {
+        var c = Sta.Run(() => Fix.Compose("pending"));
+        Sta.Run(() =>
+        {
+            var ring = Fix.Walk<System.Windows.Shapes.Ellipse>(Ids(c.View, "head")[0]).Single();
+            Assert.Null(ring.Fill); // the ring is a stroke only
+            Assert.NotNull(ring.Stroke);
         });
     }
 

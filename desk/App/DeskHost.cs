@@ -59,6 +59,7 @@ internal sealed class DeskHost
         poll.Start();
         _ = PollAsync();
 
+        Application.Current.DispatcherUnhandledException += (_, e) => e.Handled = true; // a stray UI exception must not end the widget; nothing is logged, so no token can leak
         Application.Current.Exit += (_, _) => tray.Dispose();
         return Application.Current.Run();
     }
@@ -77,11 +78,12 @@ internal sealed class DeskHost
     {
         if (polling || cfg is null) return;
         polling = true;
+        var c = cfg; // a Refresh during the await may swap cfg
         Outcome o;
-        try { o = await Poller.FetchAsync(http, cfg); }
+        try { o = await Poller.FetchAsync(http, c); }
         finally { polling = false; }
         var next = state.Apply(o);
-        if (ToastDiff.Compute(prev, next, cfg.BaseUrl, tz, firstRun && prev is null) is { } toast)
+        if (ToastDiff.Compute(prev, next, c.BaseUrl, tz, firstRun && prev is null) is { } toast)
         {
             lastToast = toast.Click;
             tray.Toast(toast);

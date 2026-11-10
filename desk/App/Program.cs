@@ -20,7 +20,7 @@ internal static class Program
             return 0;
         }
         var host = new DeskHost();
-        var waiter = new Thread(() => { while (show.WaitOne()) host.Summon(); }) { IsBackground = true };
+        var waiter = new Thread(() => { try { while (show.WaitOne()) host.Summon(); } catch (ObjectDisposedException) { } }) { IsBackground = true };
         waiter.Start();
         return host.Run();
     }

@@ -11,8 +11,8 @@
     "mem": 34,
     "diskMax": 71
   },
-  "tone": "ok",
-  "answer": "All quiet so far. 3 checks still running.",
+  "tone": "pending",
+  "answer": "Nothing wrong so far, 3 checks still out",
   "lanes": [],
   "items": []
 }

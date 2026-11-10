@@ -34,7 +34,7 @@ internal static class TrayIcon
 
         var badge = kind switch { TrayKind.NeedsWarn or TrayKind.FixDesk => "warn", TrayKind.NeedsBad => "bad", _ => null };
         if (badge is null) return;
-        var d = px * .4;
+        var d = px * (px < 24 ? .35 : .4); // below 24 px the badge shrinks so it clears the glyph
         dc.DrawEllipse(Theme.B(badge), new Pen(Theme.B("bg"), 1), new Point(px - d / 2 - .5, px - d / 2 - .5), d / 2, d / 2);
     }
 

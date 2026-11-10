@@ -30,7 +30,9 @@ internal sealed record WinState(double Left, double Top, string Anchor, bool Alw
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, JsonSerializer.Serialize(this, Json));
+            var tmp = path + ".tmp";
+            File.WriteAllText(tmp, JsonSerializer.Serialize(this, Json));
+            File.Move(tmp, path, overwrite: true); // atomic: a crash mid-write never leaves a half file
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // the position is a nicety; never crash on it
     }

@@ -59,7 +59,8 @@ internal sealed class DeskView : Border
         markSlot = new Border { Width = Theme.D("dot"), Height = Theme.D("dot"), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, (lh - Theme.D("dot")) / 2, 0, 0) };
         answer = Theme.Text("", "fs-headline", "lh-headline", "ink", semibold: true, wrap: true);
         answer.TextTrimming = TextTrimming.CharacterEllipsis;
-        answer.MaxHeight = 2 * lh + 1; // +1: layout rounding at 150% must not trim the second line
+        answer.Height = 2 * lh + 1; // +1 DIP: the slot is arranged on whole device pixels, and at 150% 46.8 rounds down to 46.67, which trimmed line 2 to an ellipsis on line 1
+        answer.VerticalAlignment = VerticalAlignment.Top;
         AutomationProperties.SetLiveSetting(answer, AutomationLiveSetting.Polite);
         var answerBox = new Grid { Height = 2 * lh, ClipToBounds = true, Children = { answer } };
         var head = new Grid { Margin = new Thickness(side, Theme.D("sp-lg"), side, Theme.D("sp-md")) };
@@ -148,7 +149,8 @@ internal sealed class DeskView : Border
         var vg = GlanceOf(m.Latest) ?? g;
         vitalsBox.Visibility = g is null ? Visibility.Collapsed : Visibility.Visible;
         var vk = vg?.Vitals?.ToString() ?? "none";
-        if (vk != vitalsKey) { vitalsKey = vk; FillVitals(vg?.Vitals); }
+        vk += "|" + dim;
+        if (vk != vitalsKey) { vitalsKey = vk; FillVitals(vg?.Vitals, dim); }
 
         var f = Copy.Footer(m.Latest, tz) ?? "";
         if (f != footerKey)
@@ -291,7 +293,7 @@ internal sealed class DeskView : Border
     string? SinceClock(GlanceItem it) =>
         it.Since is { } s && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t) ? Copy.Clock(t, tz) : null;
 
-    void FillVitals(Vitals? v)
+    void FillVitals(Vitals? v, bool dim)
     {
         vitals.Inlines.Clear();
         if (v is null)
@@ -302,8 +304,8 @@ internal sealed class DeskView : Border
         void Cap(string caption, string value, bool first)
         {
             if (!first) vitals.Inlines.Add(new Run(" · ") { Foreground = Theme.B("ink-faint") });
-            vitals.Inlines.Add(new Run(caption + " ") { Foreground = Theme.B("ink-faint"), FontSize = Theme.D("fs-label"), FontWeight = FontWeights.SemiBold });
-            vitals.Inlines.Add(new Run(value) { Foreground = Theme.B("ink"), FontFamily = Theme.F("font-mono"), FontSize = Theme.D("fs-data") });
+            vitals.Inlines.Add(new Run(caption + " ") { Foreground = Theme.B(dim ? "ink-dim" : "ink-faint"), FontSize = Theme.D("fs-label"), FontWeight = FontWeights.SemiBold });
+            vitals.Inlines.Add(new Run(value) { Foreground = Theme.B(dim ? "ink-dim" : "ink"), FontFamily = Theme.F("font-mono"), FontSize = Theme.D("fs-data") });
         }
         Cap("CPU", $"{Math.Round(v.Cpu)}%", true);
         Cap("MEM", $"{Math.Round(v.Mem)}%", false);
