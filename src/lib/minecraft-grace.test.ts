@@ -93,16 +93,23 @@ const routes = {
   backups: read("../app/api/minecraft/backups/route.ts"),
   activate: read("../app/api/minecraft/instances/[slug]/activate/route.ts"),
   del: read("../app/api/minecraft/instances/[slug]/route.ts"),
+  install: read("../app/api/minecraft/instances/route.ts"),
 };
 
-test("the four guarded call sites release through the hold only on a timeout", () => {
+test("the guarded call sites in all five routes release through the hold only on a timeout", () => {
   const hold = /^\s+if \(probe\?\.timedOut\) holdAfterTimeout\(release\);\s*$/gm;
   const plain = /^\s+else release\(\);\s*$/gm;
-  assert.equal(routes.backups.match(hold)?.length, 2);
-  assert.equal(routes.backups.match(plain)?.length, 2);
-  for (const src of [routes.activate, routes.del]) {
-    assert.equal(src.match(hold)?.length, 1);
-    assert.equal(src.match(plain)?.length, 1);
-    assert.match(src, /^import \{[^}]*holdAfterTimeout[^}]*\} from "@\/lib\/minecraft-busy";$/m);
+  // `let probe` right before `try {` so the finally sees it; a `const probe` inside the try would shadow it.
+  const declared = /^\s+let probe\b[^\n]*;\r?\n\s+try \{$/gm;
+  const assigned = /^\s+probe = await mcManager\./gm;
+  const sites = { backups: 2, activate: 1, del: 1, install: 1 };
+  for (const [name, n] of Object.entries(sites)) {
+    const src = routes[name as keyof typeof routes];
+    assert.equal(src.match(hold)?.length, n, `${name}: hold`);
+    assert.equal(src.match(plain)?.length, n, `${name}: plain release`);
+    assert.equal(src.match(declared)?.length, n, `${name}: let probe before try`);
+    assert.equal(src.match(assigned)?.length, n, `${name}: probe assigned, not redeclared`);
+    assert.equal(src.match(/const probe = await mcManager\.(?!backups\()/g), null, `${name}: const probe in a guarded call`);
+    assert.match(src, /^import \{[^}]*holdAfterTimeout[^}]*\} from "@\/lib\/minecraft-busy";$/m, `${name}: import`);
   }
 });
