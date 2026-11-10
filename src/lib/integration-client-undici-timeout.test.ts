@@ -62,6 +62,7 @@ test("a refused connection is still not timedOut", async (t) => {
 
 test("a real undici headers timeout reaches the client as timedOut", async (t) => {
   // Skips, never fails, when this Node keeps its global dispatcher elsewhere.
+  void Response; // loads Node's bundled undici, which sets the global dispatcher
   const Agent = (globalThis as Record<symbol, { constructor: new (o: object) => { destroy(): Promise<void> } } | undefined>)[
     Symbol.for("undici.globalDispatcher.1")
   ]?.constructor;
