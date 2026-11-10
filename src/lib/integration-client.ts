@@ -162,7 +162,9 @@ export abstract class IntegrationClient<C> {
     let body: unknown;
     try {
       body = await readJsonCapped(res, UPSTREAM_JSON_MAX);
-    } catch {
+    } catch (e) {
+      // The deadline can pass after the headers arrived, while the body is read.
+      if (e instanceof Error && e.name === "TimeoutError") return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), timedOut: true };
       return {
         status: "unreachable",
         detail: `${this.displayName} returned a non-JSON response.`,
