@@ -41,13 +41,12 @@ test("contentLengthError noun", () => {
 
 test("route wiring", () => {
   const at = (re: RegExp) => route.search(re);
-  const fetchAt = at(/res = await fetch\(/);
+  const fetchAt = at(/fetch\(upstreamUrl/);
   const fieldsAt = at(/if \(fieldsError\) return NextResponse\.json/);
   assert.ok(fieldsAt > -1 && fieldsAt < fetchAt);
   const bigAt = at(/if \(tooBig\) return NextResponse\.json/);
   assert.ok(bigAt > -1 && bigAt < fetchAt);
   assert.match(route, /query\.set\("loaderVersion"/);
   assert.match(route, /multipart\/form-data/);
-  assert.match(route, /TimeoutError/);
-  assert.match(route, /status: 504/);
+  assert.match(route, /guardedUpload\(release,/);
 });

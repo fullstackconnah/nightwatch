@@ -4,6 +4,7 @@ import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
+import { guardedUpload } from "@/lib/minecraft/upload-proxy";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 import { uploadFieldsError } from "@/lib/minecraft/pack-check";
 import { contentLengthError } from "@/lib/upload-limit";
@@ -87,20 +88,12 @@ export async function POST(req: NextRequest) {
 
   const release = tryBegin("upload");
   if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
-  try {
-    return await proxyUpload(req, upstreamUrl, creds.token, contentType);
-  } finally {
-    release();
-  }
-}
-
-async function proxyUpload(req: NextRequest, upstreamUrl: string, token: string, contentType: string) {
-  let res: Response;
-  try {
-    res = await fetch(upstreamUrl, {
+  // guardedUpload releases the guard, or holds it when our wait timed out.
+  const { status, body } = await guardedUpload(release, () =>
+    fetch(upstreamUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${creds.token}`,
         "Content-Type": contentType,
       },
       body: req.body,
@@ -108,25 +101,7 @@ async function proxyUpload(req: NextRequest, upstreamUrl: string, token: string,
       // Node's fetch requires this whenever body is a stream — no matching
       // field exists on the DOM RequestInit type, hence the cast.
       duplex: "half",
-    } as RequestInit & { duplex: "half" });
-  } catch (e) {
-    console.error("minecraft upload proxy failed", e);
-    if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
-      return NextResponse.json(
-        { error: "The upload took longer than 10 minutes. The pack may still be installing, so check the list before you try again." },
-        { status: 504 },
-      );
-    }
-    return NextResponse.json({ error: "Could not reach the Minecraft manager." }, { status: 502 });
-  }
-
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const detail = typeof body?.detail === "string" ? body.detail.slice(0, 200) : `mc-manager returned HTTP ${res.status}`;
-    // The manager's own 401/403 is our server-to-server auth failing, not the browser's.
-    const status = res.status === 401 || res.status === 403 ? 502 : res.status;
-    return NextResponse.json({ error: detail }, { status });
-  }
-
-  return NextResponse.json(body, { status: res.status });
+    } as RequestInit & { duplex: "half" }),
+  );
+  return NextResponse.json(body, { status });
 }

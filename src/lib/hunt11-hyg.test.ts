@@ -42,7 +42,7 @@ describe("hunt 11 fixed error text", () => {
     }
   });
   it("the upload proxy maps upstream 401/403 to 502 and slices the detail", () => {
-    const src = read("../app/api/minecraft/instances/upload/route.ts");
+    const src = read("./minecraft/upload-proxy.ts");
     assert.ok(src.includes("res.status === 401 || res.status === 403 ? 502"));
     assert.ok(src.includes("body.detail.slice(0, 200)"));
   });
