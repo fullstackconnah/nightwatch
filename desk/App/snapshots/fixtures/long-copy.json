@@ -1,0 +1,37 @@
+{
+  "v": 1,
+  "checkedAt": "2026-01-01T14:05:00.000Z",
+  "probes": {
+    "answered": 7,
+    "failed": 0,
+    "pending": 0
+  },
+  "vitals": {
+    "cpu": 12,
+    "mem": 34,
+    "diskMax": 71
+  },
+  "tone": "warn",
+  "answer": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx and the answer sentence itself runs far past two lines of the panel so the clamp has to cut it with an ellipsis rather than grow the head",
+  "lanes": [
+    {
+      "id": "l",
+      "severity": "warn",
+      "headline": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx",
+      "href": "/",
+      "detail": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx",
+      "action": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx"
+    }
+  ],
+  "items": [
+    {
+      "id": "i",
+      "severity": "bad",
+      "headline": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx",
+      "href": "/",
+      "detail": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx",
+      "action": "A very long headline that keeps going well past what one line of this narrow panel can hold so it has to be cut cleanly xxxxxxxxxxxxxxxxxxxx",
+      "since": "2026-01-01T09:00:00.000Z"
+    }
+  ]
+}

@@ -5,9 +5,12 @@ namespace NightwatchDesk.Core;
 /// <summary>The desk's own words for each state (the server's glance carries the rest). Strings match SHAPE.md.</summary>
 public static class Copy
 {
-    public const int TooltipMax = 63; // NotifyIcon.Text limit
+    public const int TooltipMax = 63; // NotifyIcon.Text takes 127 (probed in App.Tests, OPEN-1); 63 kept: one glanceable line
     public const int ToastTitleMax = 63;
     public const int ToastTextMax = 255;
+
+    /// <summary>The config folder with U+2060 between every character, so a line breaks before the path, never inside it.</summary>
+    public static readonly string ConfigDirText = string.Join("\u2060", @"%APPDATA%\NightwatchDesk".ToCharArray());
 
     public static string Clock(DateTimeOffset t, TimeZoneInfo tz) =>
         TimeZoneInfo.ConvertTime(t, tz).ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -43,7 +46,7 @@ public static class Copy
             ConfigResult.Unreadable u => $"It isn't valid JSON (line {u.Line}). Fix it, then choose Refresh.",
             ConfigResult.TokenMissing => "Set \"token\" in desk.json to the desk token from nightwatch's config. Then choose Refresh.",
             ConfigResult.BadAddress => "Set \"baseUrl\" in desk.json to a full address, like http://homelab.local:3005. Then choose Refresh.",
-            _ => @"Run desk\install.ps1, or create desk.json in %APPDATA%\NightwatchDesk with baseUrl and token. Then choose Refresh.",
+            _ => @"Run desk\install.ps1, or create desk.json in " + ConfigDirText + " with baseUrl and token. Then choose Refresh.",
         },
         View.WrongToken => "The token in desk.json doesn't match the server's. Replace it, then choose Refresh.",
         View.DeskOff => "Set system.deskToken on the server: 32 or more characters, different from the MCP token.",

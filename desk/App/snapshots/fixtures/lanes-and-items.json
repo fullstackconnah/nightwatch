@@ -1,0 +1,49 @@
+{
+  "v": 1,
+  "checkedAt": "2026-01-01T14:05:00.000Z",
+  "probes": {
+    "answered": 5,
+    "failed": 1,
+    "pending": 1
+  },
+  "vitals": {
+    "cpu": 12,
+    "mem": 34,
+    "diskMax": 71
+  },
+  "tone": "bad",
+  "answer": "4 things need you. First: Disk /data is almost full",
+  "lanes": [
+    {
+      "id": "orchestra:dev",
+      "severity": "warn",
+      "headline": "dev-lead is waiting for you",
+      "href": "/orchestrators",
+      "detail": "Usually a permission prompt"
+    },
+    {
+      "id": "orchestra:design",
+      "severity": "warn",
+      "headline": "design-lead is waiting for you",
+      "href": "/orchestrators"
+    }
+  ],
+  "items": [
+    {
+      "id": "disks:/data",
+      "severity": "bad",
+      "headline": "Disk /data is almost full",
+      "href": "/resources?metric=disk",
+      "detail": "97% used",
+      "action": "Free some space",
+      "since": "2026-01-01T13:00:00.000Z"
+    },
+    {
+      "id": "backup:backup",
+      "severity": "warn",
+      "headline": "Backup is late",
+      "href": "/",
+      "since": "2026-01-01T12:30:00.000Z"
+    }
+  ]
+}

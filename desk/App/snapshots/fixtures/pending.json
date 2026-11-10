@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "checkedAt": "2026-01-01T14:05:00.000Z",
+  "probes": {
+    "answered": 4,
+    "failed": 0,
+    "pending": 3
+  },
+  "vitals": {
+    "cpu": 12,
+    "mem": 34,
+    "diskMax": 71
+  },
+  "tone": "pending",
+  "answer": "Nothing wrong so far, 3 checks still out",
+  "lanes": [],
+  "items": []
+}

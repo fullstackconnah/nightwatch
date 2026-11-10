@@ -52,7 +52,7 @@ public class CopyTests
     public void Client_error_copy_is_exact()
     {
         Assert.Equal("Desk isn't set up yet", Copy.Head(new View.Config(new ConfigResult.Missing())));
-        Assert.Equal(@"Run desk\install.ps1, or create desk.json in %APPDATA%\NightwatchDesk with baseUrl and token. Then choose Refresh.", Copy.Note(new View.Config(new ConfigResult.Missing())));
+        Assert.Equal(@"Run desk\install.ps1, or create desk.json in " + string.Join("\u2060", @"%APPDATA%\NightwatchDesk".ToCharArray()) + " with baseUrl and token. Then choose Refresh.", Copy.Note(new View.Config(new ConfigResult.Missing())));
         Assert.Equal("desk.json can't be read", Copy.Head(new View.Config(new ConfigResult.Unreadable(3))));
         Assert.Equal("It isn't valid JSON (line 3). Fix it, then choose Refresh.", Copy.Note(new View.Config(new ConfigResult.Unreadable(3))));
         Assert.Equal("Desk token missing", Copy.Head(new View.Config(new ConfigResult.TokenMissing())));
