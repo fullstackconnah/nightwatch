@@ -28,11 +28,14 @@ jobs:
       - run: echo 'Acquire::Retries "3"; Acquire::http::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80-ci-retries
       # The debs are cached per runner image (ImageOS + ImageVersion), so the mirror is only
       # needed when the image changes; a slow mirror then costs one re-run, not every run.
+      # ImageOS/ImageVersion are runner shell vars, not in the `env` expression context.
+      - id: ffkey
+        run: echo "key=ffmpeg-debs-${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         id: ffdebs
         with:
           path: ~/ffdebs
-          key: ffmpeg-debs-${{ env.ImageOS }}-${{ env.ImageVersion }}
+          key: ${{ steps.ffkey.outputs.key }}
       - name: Download ffmpeg debs (cache miss)
         if: steps.ffdebs.outputs.cache-hit != 'true'
         timeout-minutes: 6
