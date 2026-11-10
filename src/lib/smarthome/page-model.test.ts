@@ -218,6 +218,7 @@ test("open reads as open, opening is busy and not secured", () => {
   const m = smarthomeModel(input({ ha: ok(entities({ locks: [lock("open")] })) }));
   assert.match(m.strips.find((s) => s.id === "lock")!.state, /open/);
   assert.equal(w(m, "unlock").enabled, false);
+  assert.equal(w(m, "unlock").reason, "Already open.");
   assert.equal(w(m, "lock").enabled, true);
 });
 

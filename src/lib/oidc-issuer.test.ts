@@ -22,3 +22,9 @@ test("oidc.ts uses sameIssuer for the discovery check and keeps the id token iss
   assert.match(src, /^\s*if \(!sameIssuer\(doc\.issuer, issuer\)\) \{/m);
   assert.match(src, /^\s*issuer: doc\.issuer,/m);
 });
+
+test("oidcConfig runs the saved-issuer URL check on the env fallback too and turns SSO off on an error", () => {
+  const src = readFileSync(new URL("./oidc.ts", import.meta.url), "utf8");
+  assert.match(src, /^\s*const issuerError = httpUrlError\("oidcIssuer", issuer\);/m);
+  assert.match(src, /^\s*if \(issuerError\) \{/m);
+});

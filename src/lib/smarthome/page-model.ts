@@ -215,7 +215,8 @@ export function smarthomeModel(i: ModelInput): Model {
     if (e.locks.length === 0) return "No lock is shared.";
     if (busy) return e.locks.some(moving) ? "A lock is moving. Wait for it to finish." : "Another lock command is in flight.";
     if (e.locks.every((l) => !lockUp(l))) return "The lock isn’t answering.";
-    return verb === "lock" ? "Already locked." : "Already unlocked.";
+    if (verb === "lock") return "Already locked.";
+    return e.locks.every((l) => l.state === "open") ? "Already open." : "Already unlocked.";
   };
   const deviceWhy = (list: { available: boolean }[], none: string) => (stale ? PAUSED : list.some((d) => d.available) ? null : none);
   const on = (ok: boolean, why: string | null) => ({ enabled: ok, reason: ok ? null : why });

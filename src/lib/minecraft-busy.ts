@@ -5,9 +5,11 @@
  */
 export type McJob = "restore" | "run" | "activate" | "start" | "install" | "upload" | "delete";
 
-/** Start or restart of the minecraft container: a restart of a stopped container starts it. Stop is never guarded. */
+/** Actions that can start the minecraft container: a restart of a stopped container starts it. Stop is never guarded. */
+export const isGuardedAction = (action: string) => action === "start" || action === "restart";
+
 export const guardsMinecraftStart = (action: string, name: string | undefined) =>
-  (action === "start" || action === "restart") && name === "minecraft";
+  isGuardedAction(action) && name === "minecraft";
 
 const g = globalThis as unknown as { __mcBusy?: { kind: McJob; token: object } | null };
 
