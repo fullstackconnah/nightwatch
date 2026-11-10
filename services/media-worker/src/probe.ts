@@ -43,11 +43,17 @@ const num = (v: unknown): number | null => {
 };
 const lang = (s: RawStream) => s.tags?.language ?? null;
 
-export function probeFailure(st: FileStat, message: string): VerdictInput {
-  return {
+/** Results of probes that hit the deadline: a flag the scanner reads without matching message text, kept out of the cache. */
+const timedOut = new WeakSet<object>();
+export const probeTimedOut = (p: object): boolean => timedOut.has(p);
+
+export function probeFailure(st: FileStat, message: string, timeout = false): VerdictInput {
+  const f: VerdictInput = {
     ...st, durationSec: null, container: "", video: null, videoStreams: 0, attachments: 0,
     audio: [], subs: [], probeError: message,
   };
+  if (timeout) timedOut.add(f);
+  return f;
 }
 
 /** Pure: ffprobe's JSON plus the lstat numbers in, a MediaFile without its verdict out. */
@@ -114,30 +120,44 @@ export function probeReason(err: { killed?: boolean; stderr?: unknown }, abs: st
   return line ? `ffprobe failed: ${line}` : "ffprobe failed";
 }
 
-/** Runs ffprobe (60 s limit). Never throws: a failure becomes probeError. */
-export function probeFile(
-  abs: string, st: FileStat, opts: { prefix?: string[]; timeoutMs?: number } = {},
-): Promise<VerdictInput> {
+/** `exec` is a test seam: a fake that never calls back stands in for a child the kernel will not release. */
+export interface ProbeOpts { prefix?: string[]; timeoutMs?: number; exec?: typeof execFile }
+
+class ProbeError extends Error {
+  timeout: boolean;
+  constructor(message: string, timeout: boolean) { super(message); this.timeout = timeout; }
+}
+
+/** ffprobe's stdout. A child stuck in the kernel can outlive SIGKILL and never close, so past the limit plus a 5 s grace
+ *  this settles on its own timer (verify.ts execProc does the same; it can't be imported here, it imports NICE from this file). */
+function ffprobeRaw(abs: string, opts: ProbeOpts): Promise<string> {
   const [cmd, ...pre] = [...(opts.prefix ?? NICE), "ffprobe"];
-  return new Promise((resolve) => {
-    execFile(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: opts.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return resolve(probeFailure(st, probeReason({ killed: err.killed, stderr }, abs)));
-      try {
-        resolve(parseProbe(JSON.parse(stdout), st));
-      } catch {
-        resolve(probeFailure(st, "Not a media file"));
-      }
+  const limit = opts.timeoutMs ?? 60_000;
+  return new Promise((resolve, reject) => {
+    const child = (opts.exec ?? execFile)(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: limit, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
+      clearTimeout(deadline);
+      if (err) return reject(new ProbeError(probeReason({ killed: err.killed, stderr }, abs), !!err.killed));
+      resolve(stdout);
     });
+    const deadline = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+      reject(new ProbeError("ffprobe timed out", true));
+    }, limit + 5_000);
   });
 }
 
+/** Runs ffprobe (60 s limit). Never throws: a failure becomes probeError. */
+export async function probeFile(abs: string, st: FileStat, opts: ProbeOpts = {}): Promise<VerdictInput> {
+  try {
+    return parseProbe(JSON.parse(await ffprobeRaw(abs, opts)), st);
+  } catch (e) {
+    if (e instanceof ProbeError) return probeFailure(st, e.message, e.timeout);
+    return probeFailure(st, "Not a media file");
+  }
+}
+
 /** ffprobe's raw JSON for one file, or a rejection with a short reason (the runner re-probes at job start, M4). */
-export function ffprobeJson(abs: string, opts: { prefix?: string[]; timeoutMs?: number } = {}): Promise<unknown> {
-  const [cmd, ...pre] = [...(opts.prefix ?? NICE), "ffprobe"];
-  return new Promise((resolve, reject) => {
-    execFile(cmd, [...pre, ...FFPROBE_ARGS, abs], { timeout: opts.timeoutMs ?? 60_000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(probeReason({ killed: err.killed, stderr }, abs)));
-      try { resolve(JSON.parse(stdout)); } catch { reject(new Error("Not a media file")); }
-    });
-  });
+export async function ffprobeJson(abs: string, opts: ProbeOpts = {}): Promise<unknown> {
+  const out = await ffprobeRaw(abs, opts);
+  try { return JSON.parse(out); } catch { throw new Error("Not a media file"); }
 }

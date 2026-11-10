@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, truncateSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { makeClip } from "./clips.ts";
@@ -37,12 +37,12 @@ before((t) => {
 after(() => { rmSync(root, { recursive: true, force: true }); rmSync(clips, { recursive: true, force: true }); });
 
 /** A queue and runner over a fresh media root (no scanner, no http): the unit under test is `runner.run`. */
-function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfin?: "told" | "failed" | "off"; probe?: typeof ffprobeJson; log?: (l: string) => void } = {}) {
+function world(over: { statfs?: () => { bavail: number; bsize: number }; jellyfin?: "told" | "failed" | "off"; probe?: typeof ffprobeJson; log?: (l: string) => void; stallMs?: number } = {}) {
   const dirs = checkReady(root).dirs;
   const guard = createGuard(dirs);
   const stateDir = tempDir("mw-run-state-");
   const runner = createRunner({
-    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW, ...(over.probe ? { probe: over.probe } : {}), ...(over.log ? { log: over.log } : {}),
+    dirs, guard, fs: realFs, statfs: over.statfs ?? PLENTY, mediaRoot: root, th: TH, prefix: [], graceMs: 300, now: () => NOW, ...(over.stallMs ? { stallMs: over.stallMs } : {}),...(over.probe ? { probe: over.probe } : {}), ...(over.log ? { log: over.log } : {}),
     afterSwap: async () => over.jellyfin ?? "off",
   });
   const q = createQueue({
@@ -231,6 +231,41 @@ describe("runner end to end (B3-B5, S2, S7, M4)", () => {
     assert.equal(w.q.get(rec.id)?.state, "cancelled");
     assert.deepEqual(readdirSync(w.dirs.work), []);
     assert.equal(statSync(rec.abs).size, before);
+  });
+});
+
+describe("an encoder that never closes (H38-2)", { skip: process.platform !== "linux" && "needs Linux (sh, setsid)" }, () => {
+  it("the stall kill gives up at grace + 5 s: the job fails, run() returns, and the late close does not swap", { timeout: 15_000 }, async () => {
+    // The fake ffmpeg dies on SIGTERM, but a setsid child keeps its stdout open for 8 s, so `close` is late (a drive that dropped).
+    const bin = tempDir("mw-fakebin-");
+    writeFileSync(join(bin, "ffmpeg"), "#!/bin/sh\nsetsid sleep 8 &\nexec sleep 30\n", { mode: 0o755 });
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${bin}:${oldPath}`;
+    try {
+      const json = {
+        format: { duration: "100", size: "1000", bit_rate: "80000000", format_name: "matroska,webm" },
+        streams: [{ codec_type: "video", codec_name: "h264", width: 1920, height: 1080, pix_fmt: "yuv420p", bit_rate: "80000000" }],
+      };
+      const w = world({ stallMs: 200, probe: async () => json });
+      const rel = `movies/Film hang${++n} (2000)/Film.mkv`;
+      mkdirSync(join(root, "movies", `Film hang${n} (2000)`), { recursive: true });
+      writeFileSync(join(root, rel), ""); truncateSync(join(root, rel), 3 * GB); // sparse
+      const id = `run${n}`;
+      const rec = { id, path: rel, state: "queued", createdAt: "x", crf: 21, sourceBytes: 1, attempts: 0, abs: join(root, rel), container: "matroska" } as JobRecord;
+      w.q.all().push(rec);
+      w.q.patch(id, {});
+      const t0 = Date.now();
+      await w.runner.run(rec);
+      assert.ok(Date.now() - t0 < 7000, `run() returned after ${Date.now() - t0} ms`);
+      assert.equal((w.q.get(id) as JobRecord).state, "failed");
+      assert.equal((w.q.get(id) as JobRecord).failedCheck, "encoder", JSON.stringify(w.q.get(id)));
+      await new Promise((r) => setTimeout(r, 3000)); // the real close lands now, with the group long dead
+      assert.equal((w.q.get(id) as JobRecord).state, "failed");
+      assert.ok(existsSync(rec.abs), "the original is untouched");
+    } finally {
+      process.env.PATH = oldPath;
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 });
 

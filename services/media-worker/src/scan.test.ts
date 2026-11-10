@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { readdir } from "node:fs/promises";
 import { buildLibrary, titleDetail } from "./library.ts";
-import type { FileStat } from "./probe.ts";
+import { probeFailure, type FileStat } from "./probe.ts";
 import { createScanner, nextRunAt, scheduleNightly, type ScannerOpts } from "./scan.ts";
 import { SKIP_OFF_LINUX, start, tempDir, type Started } from "./testkit.ts";
 import type { VerdictInput } from "./verdict.ts";
@@ -237,6 +238,60 @@ describe("scan over http", { skip: SKIP_OFF_LINUX }, () => {
     const done = (await (await fetch(`${s.base}/library`, { headers: s.auth })).json()) as { scan: { state: string }; titles: unknown[] };
     assert.equal(done.scan.state, "idle");
     assert.equal(done.titles.length, 3);
+  });
+});
+
+describe("scan survives a sick drive (H38-1b, H38-3)", () => {
+  let root: string;
+  let stateDir: string;
+  const counter = { calls: [] as string[] };
+  const FILES = ["movies/A/A.mkv", "movies/B/B.mkv", "movies/C/C.mkv", "movies/D/D.mkv", "movies/E/E.mkv", "movies/F/F.mkv", "tv/Show/e1.mkv"];
+  beforeEach(() => {
+    root = tempDir("mw-sick-"); stateDir = tempDir("mw-sick-st-"); counter.calls = [];
+    for (const f of FILES) put(root, f, 1000);
+  });
+  afterEach(() => { for (const d of [root, stateDir]) rmSync(d, { recursive: true, force: true }); });
+
+  it("stops after 3 probe timeouts in a row, ends failed and keeps the old cache", async () => {
+    const good = createScanner({ mediaRoot: root, stateDir, probe: stubProbe(counter), env: ENV });
+    good.start(); await good.whenIdle();
+    const before = readFileSync(join(stateDir, "scan.json"), "utf8");
+    for (const f of FILES) writeFileSync(join(root, f), Buffer.alloc(2000));
+    let calls = 0;
+    const s = createScanner({
+      mediaRoot: root, stateDir, env: ENV, concurrency: 2,
+      probe: async (_abs, st) => { calls++; return probeFailure(st, "ffprobe timed out", true); },
+    });
+    s.start(); await s.whenIdle();
+    assert.equal(s.state().state, "failed");
+    assert.ok(calls <= 3 + 1, `probe calls: ${calls}`);
+    assert.equal(readFileSync(join(stateDir, "scan.json"), "utf8"), before);
+  });
+
+  it("a probe that is not a timeout resets the count", async () => {
+    let calls = 0;
+    const s = createScanner({
+      mediaRoot: root, stateDir, env: ENV, concurrency: 1,
+      probe: async (abs, st) => (++calls % 3 === 0 ? stubProbe(counter)(abs, st) : probeFailure(st, "ffprobe timed out", true)),
+    });
+    s.start(); await s.whenIdle();
+    assert.equal(s.state().state, "idle");
+    assert.equal(calls, 7);
+  });
+
+  it("keeps the cache of a folder it could not read, and still prunes files that are gone", async () => {
+    const first = createScanner({ mediaRoot: root, stateDir, probe: stubProbe(counter), env: ENV });
+    first.start(); await first.whenIdle();
+    rmSync(join(root, "movies/B"), { recursive: true });
+    const s = createScanner({
+      mediaRoot: root, stateDir, probe: stubProbe(counter), env: ENV,
+      readdir: ((p: string, o: object) => (p.replaceAll("\\", "/").endsWith("movies/A") ? Promise.reject(new Error("EIO")) : readdir(p, o as never))) as typeof readdir,
+    });
+    s.start(); await s.whenIdle();
+    const keys = Object.keys(s.files());
+    assert.ok(keys.includes("movies/A/A.mkv"), "unreadable folder keeps its entry");
+    assert.ok(!keys.includes("movies/B/B.mkv"), "a folder that is gone is pruned");
+    assert.ok(keys.includes("movies/C/C.mkv"));
   });
 });
 
