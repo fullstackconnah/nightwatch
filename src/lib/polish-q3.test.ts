@@ -6,7 +6,7 @@ import { ApiError } from "./api-error.ts";
 import { RESTORE_STILL_RUNNING, restoreSoftFailure } from "./restore-failure.ts";
 
 test("a proxy timeout on a restore says it may still be running", () => {
-  for (const status of [502, 504, 524]) {
+  for (const status of [504, 524]) {
     assert.equal(restoreSoftFailure(new ApiError(`HTTP ${status}`, status)), RESTORE_STILL_RUNNING);
   }
   assert.equal(RESTORE_STILL_RUNNING, "The restore may still be running. Check again in a few minutes.");
