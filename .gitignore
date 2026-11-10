@@ -26,3 +26,5 @@ test-media/
 .impeccable/
 .superpowers/
 docs/PENDING-SETUP.md
+desk/**/bin/
+desk/**/obj/
