@@ -16,7 +16,7 @@ const CACHE_VERSION = 1;
 /** Probe timeouts in a row (across workers) after which the drive is taken to be dead and the scan stops. */
 const SICK_AFTER = 3;
 
-interface CacheFile { version: number; scannedAt: string | null; files: Record<string, MediaFile> }
+interface CacheFile { version: number; scannedAt: string | null; skipped?: number; files: Record<string, MediaFile> }
 
 export interface ScannerOpts {
   mediaRoot: string;
@@ -56,13 +56,16 @@ export function createScanner(opts: ScannerOpts): Scanner {
 
   let files: Record<string, MediaFile> = {};
   let scannedAt: string | null = null;
+  let skippedAtScan = 0; // the last finished scan's count; a mid-scan flush must not write the running one
   let state: ScanState = { state: "idle", startedAt: null, finishedAt: null, filesDone: 0, filesTotal: null, skipped: 0 };
   let running: Promise<void> = Promise.resolve();
 
   const cached = readJson<CacheFile>(cacheFile);
   if (cached?.version === CACHE_VERSION) ({ files, scannedAt } = cached);
+  skippedAtScan = (cached?.version === CACHE_VERSION && cached.skipped) || 0;
+  state.skipped = skippedAtScan;
 
-  const flush = () => writeJsonAtomic(cacheFile, { version: CACHE_VERSION, scannedAt, files } satisfies CacheFile);
+  const flush = () => writeJsonAtomic(cacheFile, { version: CACHE_VERSION, scannedAt, skipped: skippedAtScan, files } satisfies CacheFile);
 
   /** lstat walk of movies/ and tv/; never follows a symlink and never aborts on one bad entry. */
   async function walk(lost: string[]): Promise<(FileStat & { abs: string })[]> {
@@ -140,6 +143,7 @@ export function createScanner(opts: ScannerOpts): Scanner {
       if (sick) throw new Error("The media drive stopped responding."); // scannedAt is not advanced; earlier periodic flushes already wrote their results
 
       scannedAt = now().toISOString();
+      skippedAtScan = state.skipped;
       flush();
       state = { ...state, state: "idle", finishedAt: scannedAt };
     } catch (e) {

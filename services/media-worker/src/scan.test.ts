@@ -296,6 +296,54 @@ describe("scan survives a sick drive (H38-1b, H38-3)", () => {
   });
 });
 
+describe("scan keeps the skipped count across a worker restart (H42-1)", () => {
+  let root: string;
+  let stateDir: string;
+  const counter = { calls: [] as string[] };
+  const FILES = ["movies/A/A.mkv", "movies/B/B.mkv", "movies/C/C.mkv", "movies/D/D.mkv", "tv/Show/e1.mkv"];
+  const scanner = (over: Partial<ScannerOpts> = {}) => createScanner({ mediaRoot: root, stateDir, probe: stubProbe(counter), env: ENV, ...over });
+  const unreadable = (...names: string[]) => async (p: string) => { if (names.some((n) => p.endsWith(n))) throw new Error("EIO"); return statSync(p); };
+  const scan = async (s: ReturnType<typeof scanner>) => { s.start(); await s.whenIdle(); };
+  beforeEach(() => {
+    root = tempDir("mw-skip-"); stateDir = tempDir("mw-skip-st-"); counter.calls = [];
+    for (const f of FILES) put(root, f, 1000);
+  });
+  afterEach(() => { for (const d of [root, stateDir]) rmSync(d, { recursive: true, force: true }); });
+
+  it("a new scanner on the same state dir reports the last finished scan's skipped count while idle", async () => {
+    const s = scanner({ lstat: unreadable("A.mkv", "B.mkv") });
+    await scan(s);
+    assert.equal(s.state().skipped, 2);
+    const reborn = scanner();
+    assert.equal(reborn.state().state, "idle");
+    assert.equal(reborn.state().skipped, 2);
+  });
+
+  it("a cache written before the field existed loads as 0", async () => {
+    await scan(scanner({ lstat: unreadable("A.mkv") }));
+    const file = join(stateDir, "scan.json");
+    const old = JSON.parse(readFileSync(file, "utf8"));
+    delete old.skipped;
+    writeFileSync(file, JSON.stringify(old));
+    const s = scanner();
+    assert.equal(Object.keys(s.files()).length, 4); // the cache itself still loads
+    assert.equal(s.state().skipped, 0);
+  });
+
+  it("a scan that fails partway leaves the last finished scan's count on disk, mid-scan flushes included", async () => {
+    await scan(scanner({ lstat: unreadable("A.mkv", "B.mkv") })); // finished with 2 skipped
+    for (const f of FILES) writeFileSync(join(root, f), Buffer.alloc(2000)); // everything is re-probed
+    const s = scanner({
+      lstat: unreadable("A.mkv"), flushEvery: 1, concurrency: 1,
+      probe: async (_abs, st) => probeFailure(st, "ffprobe timed out", true), // 3 timeouts in a row fail the scan
+    });
+    await scan(s);
+    assert.equal(s.state().state, "failed");
+    assert.equal(JSON.parse(readFileSync(join(stateDir, "scan.json"), "utf8")).skipped, 2); // not this scan's running 1
+    assert.equal(scanner().state().skipped, 2);
+  });
+});
+
 describe("nightly schedule (injected clock)", () => {
   it("nextRunAt is the next 04:00, never now", () => {
     assert.deepEqual(nextRunAt(new Date(2026, 10, 5, 3, 0, 0)), new Date(2026, 10, 5, 4, 0, 0));

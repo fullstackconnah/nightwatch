@@ -98,6 +98,7 @@ async function visit(s, key, { hash = "", live = false, reduced = false } = {}) 
   await page.clock.install({ time: NOW });
   try {
     await page.goto(`${BASE_URL}/media${hash}`, { waitUntil: "domcontentloaded" });
+    await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
     await page.locator("[data-feature=chip]").waitFor({ timeout: SLOW });
     if (key !== "loading") await page.waitForFunction(() => document.querySelector("[data-feature=chip]")?.textContent?.trim() !== "Checking", null, { timeout: SLOW });
     await page.waitForTimeout(500);
