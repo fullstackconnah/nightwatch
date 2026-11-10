@@ -162,7 +162,7 @@ describe("probe deadline (H38-1a)", () => {
   });
 });
 
-describe("probeFile (real ffprobe)",{ skip: SKIP_OFF_LINUX }, () => {
+describe("probeFile (real ffprobe)", { skip: SKIP_OFF_LINUX }, () => {
   it("reads a 2-second synthetic clip", async (t) => {
     if (!needFfmpeg(t)) return;
     const dir = tempDir("mw-probe-");

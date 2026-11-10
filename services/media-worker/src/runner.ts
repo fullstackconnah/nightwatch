@@ -193,6 +193,7 @@ export function createRunner(o: RunnerOpts) {
     });
     forceClose.delete(id);
     stall.clear();
+    child.stdout.removeAllListeners("data"); // after a forced close buffered output must not patch the failed record or re-arm the stall timer
 
     if (stopping) return; // shutdown: the record stays `encoding`, boot recovery re-queues it
     if (q.isCancelRequested(id)) { cleanPart(rec); return void q.patch(id, { state: "cancelled", finishedAt: now().toISOString(), progress: undefined }); }
