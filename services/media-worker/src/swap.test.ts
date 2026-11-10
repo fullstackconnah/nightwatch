@@ -72,13 +72,15 @@ describe("swapIn (B5, M3, S6)", () => {
 
   it("a poller never sees the path missing while the swap runs", { skip: SKIP_OFF_LINUX }, async () => {
     const p = fixture();
-    const flag = new Int32Array(new SharedArrayBuffer(8));
+    const flag = new Int32Array(new SharedArrayBuffer(12));
     const w = new Worker(
-      `const {workerData:{path,flag}}=require("node:worker_threads");const fs=require("node:fs");let miss=0;
+      `const {workerData:{path,flag}}=require("node:worker_threads");const fs=require("node:fs");let miss=0;flag[2]=1;
        while(Atomics.load(flag,0)===0){try{fs.accessSync(path)}catch{miss++}} flag[1]=miss;`,
       { eval: true, workerData: { path: p.src, flag } },
     );
-    await new Promise((r) => setTimeout(r, 50));
+    // wait (up to 5 s) until the worker has started polling
+    for (let i = 0; i < 500 && Atomics.load(flag, 2) === 0; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.equal(Atomics.load(flag, 2), 1);
     swapIn(realFs, guard, p, () => {});
     Atomics.store(flag, 0, 1);
     await new Promise((r) => w.on("exit", r));
