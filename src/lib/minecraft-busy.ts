@@ -27,3 +27,14 @@ export const isBusy = () => !!g.__mcBusy;
 
 export const busyMessage = () =>
   `Another Minecraft job is running (${g.__mcBusy?.kind ?? "unknown"}). Try again when it finishes.`;
+
+/** The manager's own compose timeout is 1800 s, so a job that outlived our fetch can run this long. */
+export const TIMEOUT_GRACE_MS = 30 * 60_000;
+
+/**
+ * Release after a manager timeout: the manager keeps working, so hold the guard until the grace ends.
+ * shortcut: per-process memory, so the hold is lost on a redeploy; the real fix is a manager lock plus a status route.
+ */
+export function holdAfterTimeout(release: () => void): void {
+  setTimeout(release, TIMEOUT_GRACE_MS).unref?.();
+}
