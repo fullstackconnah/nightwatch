@@ -41,6 +41,8 @@ export interface IntegrationStatus {
 
 export interface SettingsFullResponse {
   config: AppConfig;
+  /** Version tags the dashboard PUT sends back as baseVersion. */
+  versions?: { tiles: string; widgets: string };
   meta: {
     widgetTypes: string[];
     publicHost: string;

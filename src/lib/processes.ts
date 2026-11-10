@@ -2,6 +2,7 @@ import fsp from "node:fs/promises";
 import { HOST_PROC, HOST_SYS } from "@/lib/host-metrics";
 import { listContainers } from "@/lib/docker";
 import { Memo } from "@/lib/cache";
+import { allResolve, namesForIds, type NamedContainer } from "@/lib/container-names";
 import { processCpuShare } from "@/lib/cpu-share";
 import { capCmdline, redactCmdline } from "@/lib/redact";
 import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
@@ -267,21 +268,16 @@ async function readPidDetail(pid: number, ownContainerId: string | null): Promis
  *  docker.ts's requestedRuntimeIds, and safe for the same reason: one caller. */
 let pendingContainerIds: Set<string> = new Set();
 
-const namesMemo = new Memo<Map<string, string>>({
+// The whole container list is cached, not the names of one call's ids, so a later call
+// with other ids resolves from it; a list missing one of them reloads (isValid).
+const namesMemo = new Memo<NamedContainer[]>({
   key: "processes.containerNames",
   ttlMs: CONTAINER_NAME_TTL_MS,
   // A docker failure should leave the previous names on screen rather than
   // blanking every row — this is the whole reason serveStaleOnError exists.
   serveStaleOnError: true,
-  load: async () => {
-    const containers = await listContainers();
-    const map = new Map<string, string>();
-    for (const id of pendingContainerIds) {
-      const match = containers.find((c) => c.id === id || c.id.startsWith(id));
-      if (match) map.set(id, match.name);
-    }
-    return map;
-  },
+  load: async () => (await listContainers()).map((c) => ({ id: c.id, name: c.name })),
+  isValid: (cached) => allResolve(cached, pendingContainerIds),
 });
 
 /** Resolves 64-hex container ids to human names via the existing docker
@@ -296,7 +292,7 @@ async function resolveContainerNames(containerIds: Set<string>): Promise<Map<str
   // blanking every row. The bare `new Map()` half of that expression is what
   // Memo does anyway when it has nothing cached and rethrows — except it would
   // rethrow, so the empty-map default is kept explicit at the call site below.
-  return namesMemo.get().catch(() => new Map<string, string>());
+  return namesMemo.get().then((list) => namesForIds(list, containerIds), () => new Map<string, string>());
 }
 
 // --- cgroup io.stat -----------------------------------------------------------

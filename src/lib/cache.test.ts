@@ -281,3 +281,22 @@ describe("KeyedMemo", () => {
     assert.equal(calls, 5, "both reloaded");
   });
 });
+
+describe("Memo.invalidate generation", () => {
+  it("a load that settles after invalidate does not refill the cache, but its caller still gets it", async () => {
+    const d = deferred<string>();
+    let calls = 0;
+    const memo = new Memo({
+      key: k("gen"),
+      ttlMs: 60_000,
+      load: () => (calls++ === 0 ? d.promise : Promise.resolve("fresh")),
+    });
+    const old = memo.get();
+    memo.invalidate();
+    d.resolve("stale");
+    assert.equal(await old, "stale");
+    assert.equal(memo.peek(), null);
+    assert.equal(await memo.get(), "fresh");
+    assert.equal(calls, 2);
+  });
+});

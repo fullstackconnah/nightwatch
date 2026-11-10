@@ -36,6 +36,8 @@ interface Entry<T> {
 interface MemoState<T> {
   entry: Entry<T> | null;
   inflight: Promise<T> | null;
+  /** Bumped by invalidate(); a load that settles under an older value must not write the cache. */
+  gen?: number;
 }
 
 const globalForCache = globalThis as unknown as {
@@ -137,10 +139,12 @@ export class Memo<T> {
 
     if (state.inflight) return state.inflight;
 
+    const gen = state.gen ?? 0;
     const promise = this.load().then(
       (data) => {
-        state.entry = { data, ts: this.now() };
-        state.inflight = null;
+        // Invalidated while loading: the caller still gets the result, the cache does not keep it.
+        if ((state.gen ?? 0) === gen) state.entry = { data, ts: this.now() };
+        if (state.inflight === promise) state.inflight = null;
         return data;
       },
       (err) => {
@@ -148,7 +152,7 @@ export class Memo<T> {
         // rejected load that left this set would wedge every future caller
         // behind a promise that already settled. briefing.ts's guard learned
         // this the same way.
-        state.inflight = null;
+        if (state.inflight === promise) state.inflight = null;
         if (this.serveStaleOnError && state.entry) return state.entry.data;
         throw err;
       },
@@ -164,12 +168,16 @@ export class Memo<T> {
   }
 
   /**
-   * Drop the cached value. Does NOT cancel an in-flight load — that load will
-   * still populate the cache when it settles, which is correct: it was started
-   * against the same upstream this invalidation is trying to re-read.
+   * Drop the cached value. Does NOT cancel an in-flight load, but that load no
+   * longer writes the cache when it settles: it started before the change this
+   * invalidation reports, so its result may be the old state. Its callers still
+   * get it, and the next get() starts a fresh load.
    */
   invalidate(): void {
-    slot<T>(this.key).entry = null;
+    const state = slot<T>(this.key);
+    state.entry = null;
+    state.inflight = null;
+    state.gen = (state.gen ?? 0) + 1;
   }
 
   private fresh(state: MemoState<T>): Entry<T> | null {

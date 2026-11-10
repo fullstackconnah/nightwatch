@@ -3,6 +3,7 @@ import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
 import { listContainers } from "@/lib/docker";
 import { restoreRefusal } from "@/lib/mc-backup-reason";
+import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 
 export const dynamic = "force-dynamic";
 
@@ -35,29 +36,42 @@ export async function POST(req: NextRequest) {
   const action = body && typeof body === "object" ? (body as Record<string, unknown>).action : undefined;
 
   if (action === "run") {
-    const probe = await mcManager.runBackup();
-    if (!isProbeOk(probe)) {
-      const { status, error } = probeErrorResponse(probe);
-      return NextResponse.json({ error }, { status });
+    const release = tryBegin("run");
+    if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+    try {
+      const probe = await mcManager.runBackup();
+      if (!isProbeOk(probe)) {
+        const { status, error } = probeErrorResponse(probe);
+        return NextResponse.json({ error }, { status });
+      }
+      return NextResponse.json(probe.data);
+    } finally {
+      release();
     }
-    return NextResponse.json(probe.data);
   }
 
   if (action === "restore" && isRestoreBody(body)) {
     if (!plainName(body.instance) || !plainName(body.file)) {
       return NextResponse.json({ error: "instance and file must be plain names" }, { status: 400 });
     }
-    // Trust boundary: the UI disables Restore while running, but the route must refuse it too.
-    const all = await listContainers().catch(() => null);
-    if (!all) return NextResponse.json({ error: "Couldn't check whether the server is running." }, { status: 503 });
-    const refusal = restoreRefusal(all.find((c) => c.name === "minecraft")?.state);
-    if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
-    const probe = await mcManager.restoreBackup(body.instance, body.file);
-    if (!isProbeOk(probe)) {
-      const { status, error } = probeErrorResponse(probe);
-      return NextResponse.json({ error }, { status });
+    // Taken before the running check, so a Start can't slip in between that check and the restore.
+    const release = tryBegin("restore");
+    if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+    try {
+      // Trust boundary: the UI disables Restore while running, but the route must refuse it too.
+      const all = await listContainers().catch(() => null);
+      if (!all) return NextResponse.json({ error: "Couldn't check whether the server is running." }, { status: 503 });
+      const refusal = restoreRefusal(all.find((c) => c.name === "minecraft")?.state);
+      if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
+      const probe = await mcManager.restoreBackup(body.instance, body.file);
+      if (!isProbeOk(probe)) {
+        const { status, error } = probeErrorResponse(probe);
+        return NextResponse.json({ error }, { status });
+      }
+      return NextResponse.json(probe.data);
+    } finally {
+      release();
     }
-    return NextResponse.json(probe.data);
   }
 
   return NextResponse.json(

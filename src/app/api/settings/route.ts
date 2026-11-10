@@ -12,6 +12,7 @@ import {
   type AppConfig,
 } from "@/lib/config";
 import { mergeDashPut } from "@/lib/settings/dash-put";
+import { checkBaseVersion, dashVersions } from "@/lib/settings/dash-version";
 import { sanitizeConfig } from "@/lib/settings/public-config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest) {
   const config = loadConfig();
   return NextResponse.json({
     config: sanitizeConfig(config),
+    versions: dashVersions(config),
     meta: {
       widgetTypes: WIDGET_TYPE_NAMES,
       publicHost: publicHost(),
@@ -158,10 +160,12 @@ export async function PUT(req: NextRequest) {
     // K12: read-modify-write. Each Dashboard save sends only its own fields ({ widgets } or { groups, urls, icons,
     // hidden }); mergeDashPut keeps everything else from the stored config (homeassistant/npm/forgejo/github/hermes/
     // jellyfin/...) and refuses an empty or wrongly shaped body with 400 before anything is written.
+    const stale = checkBaseVersion(current, body);
+    if (stale) return NextResponse.json({ error: stale.error }, { status: stale.status });
     const merged = mergeDashPut(current, body);
     if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
     saveConfig(merged.next);
-    return NextResponse.json({ ok: true, config: sanitizeConfig(merged.next) });
+    return NextResponse.json({ ok: true, config: sanitizeConfig(merged.next), versions: dashVersions(merged.next) });
   } catch (e) {
     console.error("settings save", e);
     return NextResponse.json(
