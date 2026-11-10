@@ -73,7 +73,7 @@ for (const [name, path, kinds] of [
     const s = src(path);
     for (const k of kinds) assert.match(s, new RegExp(`^\\s+(?:const|let) release = .*tryBegin\\(${k}\\)`, "m"));
     // One finally-release per guarded handler, so removing any one fails.
-    assert.equal(s.match(/^\s+\} finally \{\s*\n\s+release\(\);/gm)?.length, kinds.length);
+    assert.equal(s.match(/^\s+\} finally \{\s*\n(?:\s+if \(probe\?\.timedOut\) holdAfterTimeout\(release\);\s*\n\s+else )?\s*release\(\);/gm)?.length, kinds.length);
     assert.match(s, /busyMessage\(\) \}, \{ status: 409 \}/);
   });
 }

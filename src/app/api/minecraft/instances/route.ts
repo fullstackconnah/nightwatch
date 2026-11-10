@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
-import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
+import { busyMessage, holdAfterTimeout, tryBegin } from "@/lib/minecraft-busy";
 import { loadConfig } from "@/lib/config";
 import type { PackResult } from "@/lib/minecraft/packs";
 import { packFieldsError } from "@/lib/minecraft/pack-check";
@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
   // Install makes the pack active, so it must not overlap a restore, backup or activate.
   const release = tryBegin("install");
   if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+  let probe: Awaited<ReturnType<typeof mcManager.createInstance>> | undefined;
   try {
-    const probe = await mcManager.createInstance({
+    probe = await mcManager.createInstance({
       slug,
       name: pack.name,
       source: pack.source,
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(probe.data);
   } finally {
-    release();
+    if (probe?.timedOut) holdAfterTimeout(release);
+    else release();
   }
 }

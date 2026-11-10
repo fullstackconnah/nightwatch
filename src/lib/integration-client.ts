@@ -38,6 +38,7 @@ export type ProbeStatus = "unconfigured" | "unreachable" | "unauthorized" | "ok"
 export interface ProbeOk<T> {
   status: "ok";
   data: T;
+  timedOut?: undefined; // lets a caller read `probe?.timedOut` on the whole union
 }
 
 export interface ProbeFail {
@@ -50,6 +51,8 @@ export interface ProbeFail {
    * ever being handed the Response itself.
    */
   httpStatus?: number;
+  /** True when our own fetch timeout fired, so the upstream may still be working. */
+  timedOut?: boolean;
 }
 
 export type Probe<T> = ProbeOk<T> | ProbeFail;
@@ -130,7 +133,9 @@ export abstract class IntegrationClient<C> {
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
       console.error(`${this.displayName} at ${base} did not respond within ${timeoutMs / 1000}s.`);
-      return { status: "unreachable", detail: this.unreachableDetail(timeoutMs) };
+      // AbortSignal.timeout rejects fetch with a DOMException named TimeoutError (Node 22).
+      const timedOut = e instanceof Error && e.name === "TimeoutError";
+      return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), ...(timedOut && { timedOut }) };
     }
 
     if (res.status === 401 || res.status === 403) {

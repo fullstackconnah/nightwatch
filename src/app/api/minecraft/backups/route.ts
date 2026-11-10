@@ -3,7 +3,7 @@ import { mcManager, probeErrorResponse } from "@/lib/minecraft/manager";
 import { isProbeOk } from "@/lib/integration-client";
 import { listContainers } from "@/lib/docker";
 import { restoreRefusal } from "@/lib/mc-backup-reason";
-import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
+import { busyMessage, holdAfterTimeout, tryBegin } from "@/lib/minecraft-busy";
 
 export const dynamic = "force-dynamic";
 
@@ -38,15 +38,17 @@ export async function POST(req: NextRequest) {
   if (action === "run") {
     const release = tryBegin("run");
     if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+    let probe: Awaited<ReturnType<typeof mcManager.runBackup>> | undefined;
     try {
-      const probe = await mcManager.runBackup();
+      probe = await mcManager.runBackup();
       if (!isProbeOk(probe)) {
         const { status, error } = probeErrorResponse(probe);
         return NextResponse.json({ error }, { status });
       }
       return NextResponse.json(probe.data);
     } finally {
-      release();
+      if (probe?.timedOut) holdAfterTimeout(release);
+      else release();
     }
   }
 
@@ -57,20 +59,22 @@ export async function POST(req: NextRequest) {
     // Taken before the running check, so a Start can't slip in between that check and the restore.
     const release = tryBegin("restore");
     if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
+    let probe: Awaited<ReturnType<typeof mcManager.restoreBackup>> | undefined;
     try {
       // Trust boundary: the UI disables Restore while running, but the route must refuse it too.
       const all = await listContainers().catch(() => null);
       if (!all) return NextResponse.json({ error: "Couldn't check whether the server is running." }, { status: 503 });
       const refusal = restoreRefusal(all.find((c) => c.name === "minecraft")?.state);
       if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
-      const probe = await mcManager.restoreBackup(body.instance, body.file);
+      probe = await mcManager.restoreBackup(body.instance, body.file);
       if (!isProbeOk(probe)) {
         const { status, error } = probeErrorResponse(probe);
         return NextResponse.json({ error }, { status });
       }
       return NextResponse.json(probe.data);
     } finally {
-      release();
+      if (probe?.timedOut) holdAfterTimeout(release);
+      else release();
     }
   }
 
