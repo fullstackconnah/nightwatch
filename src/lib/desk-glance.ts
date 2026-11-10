@@ -3,6 +3,7 @@
 import type { AttentionHit, AttentionReport } from "./attention-report.ts";
 import { answerFor, type Tone } from "./home.ts";
 import type { KioskVitalsData } from "./kiosk-vitals-view.ts";
+import type { WeatherResponse } from "./weather.ts";
 
 export interface GlanceItem {
   id: string;
@@ -12,6 +13,18 @@ export interface GlanceItem {
   action?: string;
   since?: string;
   href: string;
+}
+export interface GlanceWeather {
+  tempC: number | null;
+  feelsC: number | null;
+  label: string;
+  highC: number | null;
+  lowC: number | null;
+  rainPct: number | null;
+}
+export interface GlanceExtras {
+  weather: GlanceWeather | null;
+  camera: boolean;
 }
 export interface Glance {
   v: 1;
@@ -23,6 +36,9 @@ export interface Glance {
   items: GlanceItem[];
   probes: { answered: number; failed: number; pending: number };
   vitals: { cpu: number; mem: number; diskMax: number | null } | null;
+  weather: GlanceWeather | null;
+  /** True when the desk camera is switched on AND a door camera resolves; the widget hides its block otherwise. */
+  camera: boolean;
 }
 
 // Copy field by field: a hit may carry more than it declares, and none of it may leave the box.
@@ -39,7 +55,7 @@ function toItem(h: AttentionHit): GlanceItem {
   return item;
 }
 
-export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | null): Glance {
+export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | null, extras: GlanceExtras = { weather: null, camera: false }): Glance {
   const { tone, text } = answerFor({ report, error: false, running: null, backupAgo: null });
   const count = (state: string) => report.probes.filter((p) => p.state === state).length;
   return {
@@ -57,5 +73,33 @@ export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | n
           diskMax: vitals.disk.length ? Math.max(...vitals.disk.map((d) => d.percent)) : null,
         }
       : null,
+    weather: extras.weather,
+    camera: extras.camera,
   };
+}
+
+/** Allowlist: today's numbers and the label only. No coordinates, place, humidity, wind or sun leave the box. */
+export function glanceWeather(w: WeatherResponse): GlanceWeather | null {
+  if (w.status !== "ok") return null;
+  const day = w.days[0];
+  return {
+    tempC: w.current.tempC,
+    feelsC: w.current.feelsC,
+    label: w.current.label,
+    highC: day?.maxC ?? null,
+    lowC: day?.minC ?? null,
+    rainPct: day?.rainPct ?? null,
+  };
+}
+
+/** Resolves to `fallback` on a throw or when `p` takes longer than `ms`, so a slow upstream cannot slow the poll. */
+export async function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<T>((r) => (timer = setTimeout(() => r(fallback), ms)))]);
+  } catch {
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
 }
