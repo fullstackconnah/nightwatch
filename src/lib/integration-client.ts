@@ -32,6 +32,17 @@
 import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
 import { readJsonCapped, UPSTREAM_JSON_MAX } from "./read-capped.ts";
 
+/**
+ * Our AbortSignal.timeout rejects as TimeoutError. Node's own fetch (undici) ends a wait first after
+ * 300 s without headers or body bytes, as a TypeError whose `cause.code` names which timeout it was.
+ */
+function isTimeout(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  if (e.name === "TimeoutError") return true;
+  const code = (e.cause as { code?: unknown } | null | undefined)?.code;
+  return code === "UND_ERR_HEADERS_TIMEOUT" || code === "UND_ERR_BODY_TIMEOUT";
+}
+
 /** Every integration reports one of these. "ok" carries data; the rest carry prose. */
 export type ProbeStatus = "unconfigured" | "unreachable" | "unauthorized" | "ok";
 
@@ -133,8 +144,7 @@ export abstract class IntegrationClient<C> {
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
       console.error(`${this.displayName} at ${base} did not respond within ${timeoutMs / 1000}s.`);
-      // AbortSignal.timeout rejects fetch with a DOMException named TimeoutError (Node 22).
-      const timedOut = e instanceof Error && e.name === "TimeoutError";
+      const timedOut = isTimeout(e);
       return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), ...(timedOut && { timedOut }) };
     }
 
@@ -164,7 +174,7 @@ export abstract class IntegrationClient<C> {
       body = await readJsonCapped(res, UPSTREAM_JSON_MAX);
     } catch (e) {
       // The deadline can pass after the headers arrived, while the body is read.
-      if (e instanceof Error && e.name === "TimeoutError") return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), timedOut: true };
+      if (isTimeout(e)) return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), timedOut: true };
       return {
         status: "unreachable",
         detail: `${this.displayName} returned a non-JSON response.`,
