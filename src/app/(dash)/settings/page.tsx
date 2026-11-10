@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { PageHead } from "@/components/strips/page-head";
 import { StripList, type StripSpec } from "@/components/strips/strip-list";
-import { putJson, useContainers } from "@/lib/client";
+import { ApiError, putJson, useContainers } from "@/lib/client";
 import type { AppConfig, WidgetInstance } from "@/lib/config";
 import { legacyStripHash, settingsModel, type FormId, type FormState, type StripId } from "@/lib/settings/page-model";
 import { useNow } from "@/lib/use-now";
@@ -63,7 +63,13 @@ export default function SettingsPage() {
 
   // K12: each save PUTs only its own fields; the route keeps the rest. A widget save never touches the tile draft.
   async function persist(body: Pick<AppConfig, "widgets"> | Pick<AppConfig, "groups" | "urls" | "icons" | "hidden">, baseVersion?: string) {
-    const res = await putJson("/api/settings", { ...body, baseVersion });
+    let res;
+    try {
+      res = await putJson("/api/settings", { ...body, baseVersion });
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) await mutate();
+      throw e;
+    }
     await mutate();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
