@@ -2,7 +2,7 @@ import { holdAfterTimeout } from "../minecraft-busy.ts";
 import { isTimeout } from "../integration-client.ts";
 
 const TIMEOUT_COPY =
-  "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the list before you try again.";
+  "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the Installed list before you try again.";
 
 /**
  * Runs the upstream upload call and maps its outcome to a status and JSON body. The guard is held, not
@@ -16,7 +16,7 @@ export async function guardedUpload(release: () => void, doFetch: () => Promise<
       res = await doFetch();
     } catch (e) {
       console.error("minecraft upload proxy failed", e);
-      timedOut = isTimeout(e) || (e instanceof DOMException && e.name === "AbortError");
+      timedOut = isTimeout(e);
       return timedOut
         ? { status: 504, body: { error: TIMEOUT_COPY } }
         : { status: 502, body: { error: "Could not reach the Minecraft manager." } };

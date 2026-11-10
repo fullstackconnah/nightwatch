@@ -4,7 +4,7 @@ import { isBusy, tryBegin, TIMEOUT_GRACE_MS } from "../minecraft-busy.ts";
 import { guardedUpload } from "./upload-proxy.ts";
 
 const COPY =
-  "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the list before you try again.";
+  "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the Installed list before you try again.";
 
 // Fake timers also keep the 30 min hold from outliving the test; reset frees whatever a test held.
 test.beforeEach(() => mock.timers.enable({ apis: ["setTimeout"] }));
@@ -27,6 +27,12 @@ test("our own AbortSignal.timeout answers 504 and keeps the busy guard", async (
   const answer = await run(() => Promise.reject(new DOMException("x", "TimeoutError")));
   assert.deepEqual(answer, { status: 504, body: { error: COPY } });
   assert.equal(isBusy(), true);
+});
+
+test("a bare AbortError is not our timeout: it answers 502 and frees the guard", async () => {
+  const answer = await run(() => Promise.reject(new DOMException("x", "AbortError")));
+  assert.deepEqual(answer, { status: 502, body: { error: "Could not reach the Minecraft manager." } });
+  assert.equal(isBusy(), false);
 });
 
 test("a refused connection answers 502 and frees the guard at once", async () => {
