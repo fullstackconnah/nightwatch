@@ -142,6 +142,7 @@ export default function HomePage() {
         sort={sort}
         setSort={setSort}
         filterRef={filterRef}
+        onChanged={() => void mutate()}
       />
     </section>
   );

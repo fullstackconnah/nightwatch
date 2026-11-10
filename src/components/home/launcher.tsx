@@ -40,6 +40,7 @@ export function Launcher({
   sort,
   setSort,
   filterRef,
+  onChanged,
 }: {
   data: ContainersResponse | undefined;
   /** Docker could not be reached and there is nothing to show. */
@@ -51,13 +52,15 @@ export function Launcher({
   sort: SortKey;
   setSort: (s: SortKey) => void;
   filterRef: React.RefObject<HTMLInputElement | null>;
+  /** A start, stop or restart finished: refresh the container list. */
+  onChanged: () => void;
 }) {
   const counts = data?.counts;
   const unknown = error || !counts;
   const countText = unknown
     ? "unknown"
     : `${counts.running} running · ${counts.stopped} stopped${counts.unhealthy > 0 ? ` · ${counts.unhealthy} unhealthy` : ""}`;
-  const card = (c: TiledContainer) => <AppCard key={c.id} c={c} widget={widgets?.[c.name]} />;
+  const card = (c: TiledContainer) => <AppCard key={c.id} c={c} widget={widgets?.[c.name]} onChanged={onChanged} />;
 
   let body: React.ReactNode;
   if (error) body = <p className="hm-note">Apps are unknown while Docker can&apos;t be reached.</p>;
@@ -87,10 +90,6 @@ export function Launcher({
         <span className="font-mono text-xs text-ink-dim" data-feature="counts">
           {countText}
         </span>
-        <span className="flex-1" />
-        <Link href="/resources" className="hm-link" data-feature="lifecycle-link">
-          Start, stop or restart in Resources
-        </Link>
       </div>
       <div className="hm-tools">
         <div className="hm-search">

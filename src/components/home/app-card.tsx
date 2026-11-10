@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { ContainerStatus, OpenAppLink } from "@/components/resources/container-controls";
+import { ContainerStatus, LifecycleActions, LifecycleError, OpenAppLink, useLifecycle } from "@/components/resources/container-controls";
 import { stateDotClass } from "@/components/resources/container-tile";
 import { hasWidgetActions, WidgetActionsMenu } from "@/components/widget-actions";
 import type { TiledContainer, WidgetData } from "@/lib/client";
 import { cn } from "@/lib/utils";
 
-/** One app in the launcher: state, name link, status, widget values (never painted), open-app, widget actions. */
-export function AppCard({ c, widget }: { c: TiledContainer; widget?: WidgetData }) {
+/** One app in the launcher: state, name link, status, widget values (never painted), start/stop/restart, open-app, widget actions. */
+export function AppCard({ c, widget, onChanged }: { c: TiledContainer; widget?: WidgetData; onChanged: () => void }) {
+  const lifecycle = useLifecycle(c.id, onChanged);
   const showFields = widget && (widget.error || widget.fields.length > 0);
   return (
     <div className="hm-app" data-row-id={`app:${c.name}`} data-name={c.name}>
@@ -34,6 +35,9 @@ export function AppCard({ c, widget }: { c: TiledContainer; widget?: WidgetData 
         </div>
       )}
       <div className="hm-app-acts">
+        <span className="hm-act" data-feature="lifecycle">
+          <LifecycleActions state={c.state} name={c.name} lifecycle={lifecycle} />
+        </span>
         {c.tile.url && (
           <span className="hm-act" data-feature="open-app">
             <OpenAppLink url={c.tile.url} name={c.name} />
@@ -45,6 +49,7 @@ export function AppCard({ c, widget }: { c: TiledContainer; widget?: WidgetData 
           </span>
         )}
       </div>
+      <LifecycleError lifecycle={lifecycle} className="hm-app-err" />
     </div>
   );
 }

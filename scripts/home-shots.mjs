@@ -29,7 +29,7 @@ const WIDTHS = [
 const STATES = ["loading", "quiet", "one", "several", "partial", "dockerFailed", "otherFailed", "error"];
 const FEATURES = [
   "answer", "attention", "changes", "launcher", "filter", "slash-key", "groups", "counts", "container-link",
-  "open-app", "widget-fields", "widget-actions", "sort-link", "lifecycle-link", "box-digest", "resources-link",
+  "open-app", "widget-fields", "widget-actions", "sort-link", "lifecycle", "box-digest", "resources-link",
   "backup", "orchestra-link",
 ];
 

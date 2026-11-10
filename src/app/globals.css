@@ -3355,7 +3355,7 @@ body {
   display: grid;
   align-content: start;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "main acts" "fields fields";
+  grid-template-areas: "main acts" "fields fields" "err err";
   gap: 0 0.5rem;
   padding: 0.25rem 0.375rem 0.25rem 0.75rem;
   background: var(--color-panel);
@@ -3420,6 +3420,10 @@ body {
 }
 .hm-act {
   display: inline-flex;
+}
+.hm-app-err {
+  grid-area: err;
+  padding-bottom: 0.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
