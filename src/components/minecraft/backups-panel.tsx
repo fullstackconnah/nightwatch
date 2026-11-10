@@ -9,6 +9,7 @@ import { WriteAction } from "@/components/strips/write-action";
 import { postJson } from "@/lib/client";
 import { backupReason, canRestore } from "@/lib/mc-backup-reason";
 import { relativeTime } from "@/lib/format";
+import { restoreSoftFailure } from "@/lib/restore-failure";
 import type { McBackup } from "@/lib/minecraft/manager";
 import { useState } from "react";
 
@@ -90,6 +91,7 @@ export function BackupsDetail({
                 danger
                 flight="Restoring…"
                 failure="Couldn’t restore"
+                softFailure={restoreSoftFailure}
                 disabled={blocked || writesOff || busy}
                 describedBy={blocked ? "mc-backup-reason" : undefined}
                 onPending={setBusy}

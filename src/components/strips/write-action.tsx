@@ -24,6 +24,7 @@ export function WriteAction({
   disabled,
   describedBy,
   run,
+  softFailure,
   onPending,
   onActive,
   autoCancelMs,
@@ -46,6 +47,8 @@ export function WriteAction({
   describedBy?: string;
   /** Throws on failure; the message becomes the reason. */
   run: () => Promise<void>;
+  /** A failure that reads as a whole sentence instead of "failure: reason" (null keeps the plain text). */
+  softFailure?: (e: unknown) => string | null;
   /** Lets a list hold its other writes while one is in flight. */
   onPending?: (pending: boolean) => void;
   /** True from the question until the write is done or dismissed; lets a pair of writes show one frame at a time. */
@@ -59,6 +62,7 @@ export function WriteAction({
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [reason, setReason] = useState("");
+  const [soft, setSoft] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   const frame = useRef<HTMLDivElement>(null);
@@ -81,6 +85,7 @@ export function WriteAction({
       await run();
       setPhase("idle");
     } catch (e) {
+      setSoft(softFailure?.(e) ?? null);
       setReason(e instanceof Error && e.message ? e.message.replace(/\.$/, "") : "no reason given");
       setPhase("failed");
     } finally {
@@ -168,7 +173,7 @@ export function WriteAction({
   return (
     <div key="error" data-kind="error" className="st-frame nw-confirm">
       <p className="st-say" role="alert">
-        {failure}: {reason}.
+        {soft ?? `${failure}: ${reason}.`}
       </p>
       <div className="st-acts">
         <Button size="sm" variant="outline" onClick={() => (autoCancelMs ? setPhase("asking") : void go())}>

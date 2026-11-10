@@ -162,19 +162,18 @@ export function KioskForecastRail({
           aria-label="Open the rain radar"
           data-sr-radar
           title="Rain radar"
-          /* Sized to the rail, not to the 44px touch floor the rest of the
-             kiosk holds — the same documented exception the Today cell used to
-             carry: this rail is 28-40px tall in full mode and sits inside the
+          /* The visible ring stays 32px, sized to the rail: it sits inside the
              sticky header whose height feeds the shared-element FLIP
-             measurement, so growing it to 44px would reintroduce a fragility
-             the redesign spent real effort removing. Full mode is the
-             up-close view; the ring makes it a target, per the rail's own rule
-             that a border here means something you press. */
+             measurement, so a 44px box would reintroduce a fragility the
+             redesign spent real effort removing. The 44px kiosk touch floor
+             is met by an absolutely positioned ::after (-inset-1.5 = 6px each
+             side), which takes no layout space — the hit-area-without-body
+             split the climate tile's .kiosk-hitarea buttons make. */
           // kiosk-press replaces active:scale-[0.98] + the bare `transition`
           // utility (see globals.css's KIOSK MOTION VOCABULARY) — the hover
           // ring-colour swap is a box-shadow change, which `.kiosk-press`
           // already transitions, so the Tailwind utility was dead weight.
-          className="flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-md text-ink-dim outline-none ring-1 ring-line kiosk-press hover:text-ink hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent"
+          className="relative flex size-8 shrink-0 items-center after:absolute after:-inset-1.5 after:content-[''] justify-center self-center rounded-md text-ink-dim outline-none ring-1 ring-line kiosk-press hover:text-ink hover:ring-line-bright focus-visible:ring-1 focus-visible:ring-accent"
         >
           <Radar size={15} aria-hidden />
         </button>
