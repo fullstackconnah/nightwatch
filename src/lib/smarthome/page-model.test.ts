@@ -259,3 +259,8 @@ test("a last answer in the future (clock skew) reads 0 s, never a negative age",
   const m = smarthomeModel(input({ lastOkAt: NOW + 5000 }));
   assert.match(m.evidence, /updated 0 s ago/);
 });
+
+test("an open lock beside an unavailable one still says Already open, not Already unlocked", () => {
+  const m = smarthomeModel(input({ ha: ok(entities({ locks: [lock("open"), lock("unavailable", { entityId: "lock.back" })] })) }));
+  assert.equal(w(m, "unlock").reason, "Already open.");
+});
