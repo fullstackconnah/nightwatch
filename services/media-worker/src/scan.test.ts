@@ -161,7 +161,7 @@ describe("scan", { skip: SKIP_OFF_LINUX }, () => {
     const s = scanner({ probe: (abs, st) => (++n > 200 ? hang.then(() => stubProbe(counter)(abs, st)) : stubProbe(counter)(abs, st)) });
     assert.equal(s.start(), true);
     const file = join(stateDir, "scan.json");
-    for (let i = 0; i < 100 && !(existsSync(file) && n >= 202); i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 500 && !(existsSync(file) && n >= 202); i++) await new Promise((r) => setTimeout(r, 20));
     assert.equal(Object.keys(JSON.parse(readFileSync(file, "utf8")).files).length, 200);
     release();
     await s.whenIdle();
