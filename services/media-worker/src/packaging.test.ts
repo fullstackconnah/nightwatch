@@ -116,8 +116,10 @@ describe("image and ignore files", () => {
     const pkg = JSON.parse(read(REPO, "package.json"));
     assert.match(pkg.scripts.test, /"services\/\*\*\/\*\.test\.ts"/);
     const ci = read(REPO, ".github/workflows/ci.yml");
-    assert.match(ci, /apt-get install -y --no-install-recommends ffmpeg/);
-    assert.ok(ci.indexOf("apt-get install") < ci.indexOf("npm test"));
+    // ffmpeg debs are cached per runner image: downloaded on a miss, always installed from the cache.
+    assert.match(ci, /apt-get install -y --no-install-recommends --download-only ffmpeg/);
+    const install = ci.indexOf('apt-get install -y --no-install-recommends "$HOME"/ffdebs/*.deb');
+    assert.ok(install > 0 && install < ci.indexOf("npm test"));
   });
 });
 

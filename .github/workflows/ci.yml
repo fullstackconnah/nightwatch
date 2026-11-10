@@ -26,7 +26,30 @@ jobs:
       # The media worker's suites probe and encode real clips; they fail, not skip, without it.
       # A stalled mirror once hung this step 14 min; fail fast and let a re-run retry.
       - run: echo 'Acquire::Retries "3"; Acquire::http::Timeout "30";' | sudo tee /etc/apt/apt.conf.d/80-ci-retries
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      # The debs are cached per runner image (ImageOS + ImageVersion), so the mirror is only
+      # needed when the image changes; a slow mirror then costs one re-run, not every run.
+      # ImageOS/ImageVersion are runner shell vars, not in the `env` expression context.
+      - id: ffkey
+        run: echo "key=ffmpeg-debs-${ImageOS:?}-${ImageVersion:?}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: ffdebs
+        with:
+          path: ~/ffdebs
+          key: ${{ steps.ffkey.outputs.key }}
+      - name: Download ffmpeg debs (cache miss)
+        if: steps.ffdebs.outputs.cache-hit != 'true'
         timeout-minutes: 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends --download-only ffmpeg
+          mkdir -p ~/ffdebs
+          cp /var/cache/apt/archives/*.deb ~/ffdebs/
+          # --download-only fetches nothing if ffmpeg is already on the image
+          ls ~/ffdebs/*.deb >/dev/null 2>&1 || { echo "::error::no debs downloaded; is ffmpeg preinstalled on this image?"; exit 1; }
+      - name: Install ffmpeg from cached debs
+        timeout-minutes: 2
+        run: |
+          sudo apt-get install -y --no-install-recommends "$HOME"/ffdebs/*.deb
+          ffmpeg -version | head -1
       - run: npm test
       - run: npm run build
