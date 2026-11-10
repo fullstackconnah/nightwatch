@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { hostname } from "node:os";
 import { findTarget, isProtectedContainer, LOOKUP_FAILED_MESSAGE, PROTECTED_MESSAGE, protectedActionRefused } from "@/lib/protected-containers";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
-import { busyMessage, guardsMinecraftStart, isBusy, tryBegin } from "@/lib/minecraft-busy";
+import { busyMessage, guardsMinecraftStart, isBusy, isGuardedAction, tryBegin } from "@/lib/minecraft-busy";
 import { isContainerId } from "@/lib/container-id";
 import {
   CONTAINER_ACTIONS,
@@ -62,9 +62,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
   }
   // Starting the Minecraft server mid-restore would boot on half-written world files; stop stays open.
-  const lookup = await listContainers().catch(() => null);
-  // A failed lookup fails open, except while a job holds the guard.
-  if (!lookup && isBusy()) return NextResponse.json({ error: LOOKUP_FAILED_MESSAGE }, { status: 503 });
+  const lookup = isGuardedAction(action) ? await listContainers().catch(() => null) : null;
+  // A failed lookup fails open, except while a job holds the guard. Only start and restart look up or get refused.
+  if (!lookup && isBusy() && isGuardedAction(action)) return NextResponse.json({ error: LOOKUP_FAILED_MESSAGE }, { status: 503 });
   const isMc = guardsMinecraftStart(action, lookup ? findTarget(lookup, id)?.name : undefined);
   const release = isMc ? tryBegin("start") : () => {};
   if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });

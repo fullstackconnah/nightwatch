@@ -6,6 +6,7 @@ import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import { sameIssuer } from "@/lib/oidc-issuer";
+import { httpUrlError } from "@/lib/settings-checks";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -44,6 +45,8 @@ export interface OidcConfig {
   clientSecret: string;
 }
 
+let warnedBadIssuer = false;
+
 /** The single feature gate: all three env vars present, or the feature does
  *  not exist. Never throws — callers use this to decide whether to expose
  *  any OIDC surface at all (404 the routes, hide the login button). */
@@ -52,6 +55,13 @@ export function oidcConfig(): OidcConfig | null {
   const clientId = systemSetting("oidcClientId", "OIDC_CLIENT_ID");
   const clientSecret = systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET");
   if (!issuer || !clientId || !clientSecret) return null;
+  // The env fallback skips the save-time check; a login, query or fragment must not reach the discovery URL.
+  const issuerError = httpUrlError("oidcIssuer", issuer);
+  if (issuerError) {
+    if (!warnedBadIssuer) console.warn(`OIDC disabled: ${issuerError}`);
+    warnedBadIssuer = true;
+    return null;
+  }
   return { issuer: issuer.replace(/\/+$/, ""), clientId, clientSecret };
 }
 

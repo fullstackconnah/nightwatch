@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { busyMessage, guardsMinecraftStart, isBusy, tryBegin } from "./minecraft-busy.ts";
+import { busyMessage, guardsMinecraftStart, isBusy, isGuardedAction, tryBegin } from "./minecraft-busy.ts";
 
 test("only start and restart on the minecraft container are guarded", () => {
   assert.equal(guardsMinecraftStart("start", "minecraft"), true);
@@ -82,6 +82,13 @@ test("docker route and MCP guard through the shared helper, start or restart on 
   const route = src("../app/api/docker/containers/[id]/action/route.ts");
   assert.match(route, /guardsMinecraftStart\(action, /);
   assert.match(route, /isBusy\(\)/);
+  // Stop, pause and unpause never touch the lookup, so a failed one while busy can't refuse them.
+  assert.match(route, /^\s+const lookup = isGuardedAction\(action\) \? await listContainers\(\)/m);
+  assert.match(route, /^\s+if \(!lookup && isBusy\(\) && isGuardedAction\(action\)\)/m);
+  assert.equal(isGuardedAction("stop"), false);
+  assert.equal(isGuardedAction("pause"), false);
+  assert.equal(isGuardedAction("start"), true);
+  assert.equal(isGuardedAction("restart"), true);
   const mcp = src("./mcp/tools.ts");
   assert.match(mcp, /guardsMinecraftStart\(action, container\.name\)/);
   assert.match(mcp, /tryBegin\("start"\)/);
