@@ -1,13 +1,16 @@
 import { createHash } from "node:crypto";
 import type { AppConfig } from "../config.ts";
+import { publicWidgets } from "./dash-put.ts";
 
 const TILES = ["groups", "urls", "icons", "hidden"] as const;
 const WIDGETS = ["widgets"] as const;
 const ALL = [...TILES, ...WIDGETS] as const;
 
-/** Short tag of the saved JSON of the named dashboard sections. */
+/** Short tag of the saved JSON of the named dashboard sections. Widgets go in as the browser sees them, so a secret never feeds the hash. */
 const tag = (config: AppConfig, keys: readonly (typeof ALL)[number][]) =>
-  createHash("sha256").update(JSON.stringify(keys.map((k) => config[k] ?? null))).digest("hex").slice(0, 16);
+  createHash("sha256")
+    .update(JSON.stringify(keys.map((k) => (k === "widgets" ? publicWidgets(config.widgets ?? []) : config[k] ?? null))))
+    .digest("hex").slice(0, 16);
 
 /** One tag per card: the tile editor and the widget list save independently. */
 export const dashVersions = (config: AppConfig) => ({ tiles: tag(config, TILES), widgets: tag(config, WIDGETS) });

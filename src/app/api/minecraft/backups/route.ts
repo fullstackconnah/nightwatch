@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
       if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
       probe = await mcManager.restoreBackup(body.instance, body.file);
       if (!isProbeOk(probe)) {
-        const { status, error } = probeErrorResponse(probe);
+        // A timeout is the one case where the restore may still be running; the client keys its soft copy on 504.
+        const { status, error } = probe.timedOut ? { status: 504, error: probeErrorResponse(probe).error } : probeErrorResponse(probe);
         return NextResponse.json({ error }, { status });
       }
       return NextResponse.json(probe.data);
