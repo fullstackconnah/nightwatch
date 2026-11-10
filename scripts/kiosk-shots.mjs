@@ -650,6 +650,37 @@ for (const size of SIZES) {
     await context.close();
   });
 }
+// pq3.radarHit: the radar button keeps its 32 px ring but presses at >= 44x44 (elementFromPoint 6 px outside each corner
+// still lands on the button; 8 px outside does not), its glyph stays 15 px, and the forecast row height is recorded
+results.pq3 = {};
+for (const theme of ["sunroom", "terminal"]) {
+  const size = SIZES[1];
+  await guarded(`pq3 radarHit ${theme}`, async () => {
+    const { context, page } = await visit(CONTROLS_URL.replace("theme=sunroom", `theme=${theme}`), { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+    results.pq3[theme] = await page.evaluate(() => {
+      const b = document.querySelector("[data-sr-radar]");
+      const r = b.getBoundingClientRect();
+      const hit = (x, y) => { const e = document.elementFromPoint(x, y); return !!e && (e === b || b.contains(e)); };
+      const svg = b.querySelector("svg").getBoundingClientRect();
+      const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]').getBoundingClientRect();
+      const cell = document.querySelector(".sr-fc")?.getBoundingClientRect();
+      return {
+        ring: [r.width, r.height],
+        hit6: [hit(r.left - 5, r.top - 5), hit(r.right + 5, r.bottom + 5)].every(Boolean),
+        miss8: !hit(r.left - 7, r.top - 7),
+        hitBox: hit(r.left - 5, r.top - 5) && hit(r.right + 5, r.bottom + 5) ? [r.width + 12, r.height + 12] : [r.width, r.height],
+        glyph: [svg.width, svg.height],
+        railHeight: rail.height,
+        cellHeight: cell?.height ?? null,
+        clip: { x: Math.max(0, r.left - 16), y: Math.max(0, r.top - 16), width: 360, height: Math.max(rail.height, r.height) + 32 },
+      };
+    });
+    const m = results.pq3[theme];
+    await page.screenshot({ path: join(OUT_DIR, `pq3-radar-row-${theme}-1024x768.png`), clip: m.clip });
+    await page.screenshot({ path: join(OUT_DIR, `pq3-full-${theme}-1024x768.png`), fullPage: true });
+    await context.close();
+  });
+}
 // main at rest after a 10 s idle (N17: nothing animates), glance is the default layout
 await guarded("ambient rest", async () => {
   const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true });

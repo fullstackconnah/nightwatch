@@ -65,6 +65,10 @@
   /* 16 px to the first cell box (.sr-fc, measured): end margin + the rail gap-2 (8) - the cell's own -mx-1 (4) = 16, so the end margin is space-4 - space-1 (12). */
   margin-inline-end: calc(var(--sr-space-4) - var(--sr-space-1));
 }
+/* The box is already 44 px here; the other themes get theirs from the button's ::after, so drop it. */
+[data-kiosk-theme="sunroom"] button[data-sr-radar]::after {
+  content: none;
+}
 
 /* ---------- Weather now and the notes that stand for a missing feed ---------- */
 [data-kiosk-theme="sunroom"] .sr-word {
