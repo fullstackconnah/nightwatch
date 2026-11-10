@@ -5,7 +5,7 @@ import test, { type TestContext } from "node:test";
 import { IntegrationClient } from "./integration-client.ts";
 
 // Node's own fetch (undici) ends a wait after 300 s of no headers or no body bytes, before our
-// AbortSignal.timeout (a restore gets 600 s). Those rejections must read as timeouts too.
+// AbortSignal.timeout (a restore waits up to 300 s). Those rejections must read as timeouts too.
 
 class Client extends IntegrationClient<string> {
   protected readonly displayName = "Test Service";

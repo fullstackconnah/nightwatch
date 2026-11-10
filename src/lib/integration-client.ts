@@ -36,7 +36,7 @@ import { readJsonCapped, UPSTREAM_JSON_MAX } from "./read-capped.ts";
  * Our AbortSignal.timeout rejects as TimeoutError. Node's own fetch (undici) ends a wait first after
  * 300 s without headers or body bytes, as a TypeError whose `cause.code` names which timeout it was.
  */
-function isTimeout(e: unknown): boolean {
+export function isTimeout(e: unknown): boolean {
   if (!(e instanceof Error)) return false;
   if (e.name === "TimeoutError") return true;
   const code = (e.cause as { code?: unknown } | null | undefined)?.code;

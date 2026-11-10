@@ -30,7 +30,7 @@ describe("hunt 6 secrets", () => {
 
 describe("hunt 10 fixed error text", () => {
   it("the upload proxy answers 502 with a fixed message and logs the real error", () => {
-    const src = read("../app/api/minecraft/instances/upload/route.ts");
+    const src = read("./minecraft/upload-proxy.ts");
     assert.ok(!src.includes("e.message"));
     assert.ok(src.includes('"Could not reach the Minecraft manager."'));
     assert.ok(src.includes("console.error("));

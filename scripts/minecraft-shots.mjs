@@ -520,6 +520,34 @@ try {
       await page.close();
     }),
   );
+  // A timed-out pack upload answers 504 with the honest copy; the failure sits in the Upload section, unclipped.
+  await guarded("upload-timeout", () =>
+    each(async (s) => {
+      const copy = "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the Installed list before you try again.";
+      const { page } = await visit(s, "calm");
+      await page.route("**/api/minecraft/instances/upload*", (route) =>
+        route.fulfill({ status: 504, contentType: "application/json", body: JSON.stringify({ error: copy }) }),
+      );
+      await openStrip(page, "pack");
+      const section = detail(page).locator('section[aria-label="Upload a server pack"]');
+      await section.locator('input[type="file"]').setInputFiles({ name: "pack.zip", mimeType: "application/zip", buffer: Buffer.from("PK") });
+      await section.getByLabel("Name").fill("Test pack");
+      await section.getByLabel("MC version").fill("1.21.1");
+      await section.getByRole("button", { name: "Upload" }).click();
+      await page.getByRole("button", { name: "Yes, upload" }).click();
+      const alert = section.getByRole("alert");
+      const shown = await seen(alert);
+      const text = shown ? (await alert.innerText()).trim() : "";
+      const clipped = shown ? await alert.evaluate((el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1) : true;
+      // Centre the alert so its border and the Try again / Dismiss row sit inside the viewport with 24 px to spare.
+      if (shown) await alert.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      const box = shown ? await alert.boundingBox() : null;
+      const whole = Boolean(box) && box.y >= 0 && box.y + box.height <= s.opts.viewport.height - 24;
+      record("upload-timeout", s.name, { shown, text: text.includes(copy), clipped, overflowPx: await overflow(page), whole, ok: whole });
+      await shoot(page, s, "upload-timeout", false);
+      await page.close();
+    }),
+  );
 } finally {
   await browser.close();
 }

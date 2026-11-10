@@ -67,7 +67,6 @@ for (const [name, path, kinds] of [
   ["docker action", "../app/api/docker/containers/[id]/action/route.ts", ['"start"']],
   ["install", "../app/api/minecraft/instances/route.ts", ['"install"']],
   ["delete", "../app/api/minecraft/instances/[slug]/route.ts", ['"delete"']],
-  ["upload", "../app/api/minecraft/instances/upload/route.ts", ['"upload"']],
 ] as const) {
   test(`${name} route takes the guard and releases it in finally`, () => {
     const s = src(path);
@@ -77,6 +76,14 @@ for (const [name, path, kinds] of [
     assert.match(s, /busyMessage\(\) \}, \{ status: 409 \}/);
   });
 }
+
+test("upload route takes the guard and hands its release to guardedUpload, which releases or holds in finally", () => {
+  const route = src("../app/api/minecraft/instances/upload/route.ts");
+  assert.match(route, /^\s+const release = tryBegin\("upload"\)/m);
+  assert.match(route, /busyMessage\(\) \}, \{ status: 409 \}/);
+  assert.match(route, /guardedUpload\(release,/);
+  assert.match(src("./minecraft/upload-proxy.ts"), /^\s+\} finally \{\s*\n\s+if \(timedOut\) holdAfterTimeout\(release\);\s*\n\s+else release\(\);/m);
+});
 
 test("docker route and MCP guard through the shared helper, start or restart on minecraft", () => {
   const route = src("../app/api/docker/containers/[id]/action/route.ts");
