@@ -8,3 +8,4 @@ data
 services/*
 !services/media-worker/src/types.ts
 test-media
+desk/
