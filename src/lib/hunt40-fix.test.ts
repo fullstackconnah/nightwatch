@@ -38,6 +38,9 @@ test("H40-F3: widget secrets don't move the widgets tag, a visible change does",
   assert.equal(base.widgets, dashVersions(cfg([w({ key: "k2", password: "p2", headers: { A: "v2" } })])).widgets);
   assert.notEqual(base.widgets, dashVersions(cfg([w({ name: "Other", key: "k1", password: "p1", headers: { A: "v1" } })])).widgets);
   assert.notEqual(dashVersions(cfg([w()])).widgets, dashVersions(cfg([w({ key: "k" })])).widgets);
+  // H40R-3: the passwordSet flip and a header-name change are visible, so they move the tag
+  assert.notEqual(dashVersions(cfg([w()])).widgets, dashVersions(cfg([w({ password: "p" })])).widgets);
+  assert.notEqual(dashVersions(cfg([w({ headers: { A: "" } })])).widgets, dashVersions(cfg([w({ headers: { B: "" } })])).widgets);
 });
 
 test("H40-F3: the tiles tag ignores widgets and checkBaseVersion still gates widget saves", () => {
