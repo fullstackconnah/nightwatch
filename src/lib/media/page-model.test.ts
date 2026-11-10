@@ -321,6 +321,9 @@ test("skipped: idle with 1 gives the singular", () => {
 test("skipped: idle with 3 gives the plural", () => {
   assert.equal(model(body(withScan({ state: "idle", skipped: 3 }))).notice, SKIP_MANY(3));
 });
+test("skipped: 1204 is grouped with a comma", () => {
+  assert.equal(model(body(withScan({ state: "idle", skipped: 1204 }))).notice, "1,204 files or folders couldn’t be read in the last scan.");
+});
 test("skipped: a running scan shows none", () => {
   assert.equal(model(body(withScan({ state: "running", skipped: 2 }))).notice, null);
 });

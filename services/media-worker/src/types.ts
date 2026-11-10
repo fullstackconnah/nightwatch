@@ -68,7 +68,7 @@ export interface ScanState {
   finishedAt: string | null;
   filesDone: number;
   filesTotal: number | null;
-  /** Entries that could not be read (lstat or probe error); they never abort the scan. */
+  /** Entries the walk could not read (readdir or lstat error); they never abort the scan. A probe failure shows on its file's row instead. */
   skipped: number;
   error?: string;
 }
