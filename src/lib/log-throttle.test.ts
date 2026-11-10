@@ -30,10 +30,16 @@ test("logs the first failure, suppresses repeats for 60 s, then reports the coun
     }
     mock.timers.tick(60_000);
     throttledError("a1", new Error("boom"));
+    // The second log reset the window: +30 s is suppressed (count 1), +60 s logs again with that 1.
+    mock.timers.tick(30_000);
+    throttledError("a1", new Error("boom"));
+    mock.timers.tick(30_000);
+    throttledError("a1", new Error("boom"));
   });
-  assert.equal(lines.length, 2);
+  assert.equal(lines.length, 3);
   assert.doesNotMatch(lines[0], /suppressed/);
   assert.match(lines[1], /\(59 similar suppressed\)/);
+  assert.match(lines[2], /\(1 similar suppressed\)/);
 });
 
 test("recovered logs once after failures and never without them", () => {
@@ -72,5 +78,15 @@ test("both compose files cap the dashboard container log", () => {
     const text = root(`../../${f}`);
     const block = text.split(/^  dashboard:$/m)[1].split(/^\S/m)[0];
     assert.match(block, /max-size: "10m"/, f);
+    // dashboard and socket-proxy are both capped
+    assert.equal((text.match(/max-size: "10m"/g) ?? []).length, 2, f);
+  }
+});
+
+test("a withTimeout null fallback is not a recovery", () => {
+  for (const k of ["getHostVitals", "getGpuSnapshot"]) {
+    const lines = root("./telemetry.ts").match(new RegExp(`^.*recovered\\("${k}"\\).*$`, "gm")) ?? [];
+    assert.equal(lines.length, 1, k);
+    assert.match(lines[0], /^\s*if \(v !== null\) recovered\(/, k);
   }
 });
