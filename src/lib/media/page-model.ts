@@ -243,13 +243,14 @@ function libraryModel(i: ModelInput): Model {
       action: on,
     });
   }
+  const notice = scan.skipped > 0 ? `${scan.skipped === 1 ? "1 file or folder" : `${num(scan.skipped)} files or folders`} couldn’t be read in the last scan.` : null;
   if (!data.scannedAt) {
-    return head({ ...shape, answer: "The library hasn’t been scanned yet.", evidence: "Rescan to read it.", action: on });
+    return head({ ...shape, answer: "The library hasn’t been scanned yet.", evidence: "Rescan to read it.", action: on, notice });
   }
   if (data.titles.length === 0) {
-    return head({ ...shape, chip: { tone: "neutral", label: "Empty" }, answer: "No movies or shows found in the media folders.", evidence: scanned, action: on });
+    return head({ ...shape, chip: { tone: "neutral", label: "Empty" }, answer: "No movies or shows found in the media folders.", evidence: scanned, action: on, notice });
   }
-  return head({ ...shape, chip: { tone: "ok", label: "Up to date" }, answer: normalAnswer, evidence: scanned, action: on });
+  return head({ ...shape, chip: { tone: "ok", label: "Up to date" }, answer: normalAnswer, evidence: scanned, action: on, notice });
 }
 
 // ---- file rows (the title detail) ----
