@@ -4,6 +4,7 @@ import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/
 import { getInterfaceCounters } from "@/lib/network";
 import { recordMetricsHistoryTick } from "@/lib/metrics-history";
 import { withTimeout } from "@/lib/single-flight";
+import { recovered, throttledError } from "@/lib/log-throttle";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "@/lib/types/telemetry";
 
 /**
@@ -69,10 +70,15 @@ async function tick(): Promise<void> {
   const readAt = performance.now();
   const [raw, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
     allContainerStats(true),
-    withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
-      console.error("[telemetry] getHostVitals failed:", err);
-      return null;
-    }),
+    withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null)
+      .then((v) => {
+        recovered("getHostVitals");
+        return v;
+      })
+      .catch((err: unknown) => {
+        throttledError("getHostVitals", err);
+        return null;
+      }),
     getHostDiskIoCounters().catch((err: unknown) => {
       console.error("[telemetry] getHostDiskIoCounters failed:", err);
       return null;
@@ -81,10 +87,15 @@ async function tick(): Promise<void> {
       console.error("[telemetry] getHostNetCounters failed:", err);
       return null;
     }),
-    withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null).catch((err: unknown) => {
-      console.error("[telemetry] getGpuSnapshot failed:", err);
-      return null;
-    }),
+    withTimeout(getGpuSnapshot(), TELEMETRY_CALL_MS, () => null)
+      .then((v) => {
+        recovered("getGpuSnapshot");
+        return v;
+      })
+      .catch((err: unknown) => {
+        throttledError("getGpuSnapshot", err);
+        return null;
+      }),
   ]);
   const prev = globalForTelemetry.__telemetryPrevious ?? {};
   const prevTs = globalForTelemetry.__telemetryPrevTs;
@@ -190,8 +201,9 @@ async function tick(): Promise<void> {
   let ifaceCounters: Record<string, { rxBytes: number; txBytes: number }> | null;
   try {
     ifaceCounters = getInterfaceCounters();
+    recovered("getInterfaceCounters");
   } catch (err) {
-    console.error("[telemetry] getInterfaceCounters failed:", err);
+    throttledError("getInterfaceCounters", err);
     ifaceCounters = null;
   }
   if (ifaceCounters) {
@@ -233,8 +245,9 @@ async function tick(): Promise<void> {
       mounts: hostVitals?.disk ?? null,
       containers,
     });
+    recovered("recordMetricsHistoryTick");
   } catch (err) {
-    console.error("[telemetry] recordMetricsHistoryTick threw:", err);
+    throttledError("recordMetricsHistoryTick", err);
   }
 
   const r = ring();
@@ -247,7 +260,8 @@ async function tick(): Promise<void> {
     } catch (err) {
       // One wedged subscriber (an SSE controller closed underneath us) must not stop
       // delivery to every other connected client.
-      console.error("[telemetry] subscriber threw:", err);
+      // No recovered() here: the key is shared by every subscriber, so one success proves nothing.
+      throttledError("subscriber", err);
     }
   }
 }
@@ -261,9 +275,10 @@ async function loop(): Promise<void> {
       const start = performance.now();
       try {
         await tick();
+        recovered("tick");
       } catch (err) {
         // One failed tick (daemon hiccup, proxy restart) must never kill the loop.
-        console.error("[telemetry] tick failed:", err);
+        throttledError("tick", err);
       }
       await sleep(Math.max(0, TARGET_MS - (performance.now() - start)));
     }
