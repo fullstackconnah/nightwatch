@@ -29,6 +29,9 @@ services:
     image: tecnativa/docker-socket-proxy@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
     container_name: homelab-dashboard-test-proxy
     restart: "no"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     environment:
       - CONTAINERS=1
       - IMAGES=1
@@ -92,6 +95,9 @@ services:
       dockerfile: Dockerfile.dev
     container_name: homelab-dashboard-test
     restart: "no"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     # host 3006 -> the dev server's own 3005 inside the container
     ports:
       - "3006:3005"
