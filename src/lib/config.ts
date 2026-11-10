@@ -190,6 +190,8 @@ export interface AppConfig {
    *  or re-sign already-issued session JWTs), so they have no field here. */
   system?: {
     mcpToken?: string;
+    /** Bearer token for GET /api/desk/glance (the desktop widget); 32+ chars, differs from mcpToken. Config-file only, no Settings UI. */
+    deskToken?: string;
     kioskPin?: string;
     hermesApiUrl?: string;
     hermesApiToken?: string;

@@ -43,7 +43,7 @@ const FULL = {
   media: { workerUrl: "http://m.test", workerToken: "" },
   hermes: { tier: "local", model: "m", openrouterApiKey: "", anthropicApiKey: "" },
   system: {
-    mcpToken: "", kioskPin: "", hermesApiUrl: "http://h.test", hermesApiToken: "", orchestraUrl: "http://o.test",
+    mcpToken: "", deskToken: "", kioskPin: "", hermesApiUrl: "http://h.test", hermesApiToken: "", orchestraUrl: "http://o.test",
     orchestraToken: "", oidcIssuer: "http://i.test", oidcClientId: "id", oidcClientSecret: "", adminPasswordHash: "",
   },
 };
