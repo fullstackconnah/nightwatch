@@ -5,6 +5,7 @@ import { systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
+import { sameIssuer } from "@/lib/oidc-issuer";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -110,9 +111,10 @@ async function fetchDiscovery(issuer: string): Promise<DiscoveryDocument> {
   if (!doc.authorization_endpoint || !doc.token_endpoint || !doc.jwks_uri || !doc.issuer) {
     throw new OidcError("discovery_failed", "discovery document missing required fields");
   }
-  if (doc.issuer !== issuer) {
+  if (!sameIssuer(doc.issuer, issuer)) {
     // RFC-recommended check: the discovery document's own issuer claim must
-    // exactly match what we requested, or something is misconfigured/spoofed.
+    // match what we requested (modulo a trailing slash), or something is
+    // misconfigured/spoofed. The id token's iss stays exact (doc.issuer).
     throw new OidcError("discovery_failed", "discovery document issuer mismatch");
   }
 
