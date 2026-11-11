@@ -62,6 +62,8 @@ describe("F5: overlay titles use the DS title style through the type tokens", ()
     assert.match(css, /\[data-sr-group\]\s*\{[^}]*font:\s*var\(--sr-type-micro\)/);
   });
   it("no hex literals in overlays.css", () => assert.doesNotMatch(css, /#[0-9a-fA-F]{3,8}\b/));
+  it("the tabIndex -1 dialog container shows no focus ring (buttons keep theirs)", () =>
+    assert.match(css, /\[role="dialog"\]\[tabindex="-1"\]:focus-visible\s*\{[^}]*outline:\s*none/));
 });
 
 describe("N12 static: nothing that updates more than once a minute is transitioned in overlays.css", () => {
