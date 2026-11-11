@@ -476,6 +476,19 @@ await guarded("overlays extra doorbell", async () => {
   Object.assign(out, await page.evaluate(SCAN_AT, "[data-sr-face]"));
   await context.close();
 });
+// kiosk-door-link: /kiosk?door=1 opens the doorbell modal by itself, then drops `door` from the URL (the other params stay). No cropElement helper exists in this repo, so a plain screenshot.
+for (const size of SIZES) {
+  await guarded(`overlays extra door link ${size.name}`, async () => {
+    const { context, page } = await visit(`${BASE_URL}/kiosk?door=1&theme=sunroom&wx=overcast&wxsun=day`, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: "flow", ha: true, routes: { "/kiosk/api/doorbell": DOORBELL_OK }, initScript: AUDIO_STUB });
+    const out = (results.overlays.extra[`doorLink-${size.name}`] = {});
+    if (!(await seen(page, "[role=dialog]", 8000))) return void (out.missing = "door link did not open the dialog");
+    await settle(page);
+    await page.screenshot({ path: join(OUT_DIR, `kiosk-door-link-${size.name}.png`) });
+    out.search = new URL(page.url()).search;
+    out.dialogs = await page.locator("[role=dialog]").count();
+    await context.close();
+  });
+}
 await guarded("overlays extra alerts", async () => {
   const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_WARN });
   const take = (results.overlays.extra.alertTakeover = {});
