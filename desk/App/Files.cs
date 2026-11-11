@@ -41,7 +41,11 @@ internal sealed record WinState(double Left, double Top, string Anchor, bool Alw
 /// <summary>The only network code: one GET. The exception text is dropped on purpose (N20: nothing near the token is ever surfaced).</summary>
 internal static class Poller
 {
-    public static HttpClient NewClient() => new(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(10) };
+    public const long MaxGlanceBytes = 256 * 1024;
+
+    /// <summary>The glance is buffered, so the cap makes an oversize body throw (mapped to Failed). The camera reads headers-first and streams under its own cap.</summary>
+    public static HttpClient NewClient(HttpMessageHandler? handler = null) =>
+        new(handler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(10), MaxResponseContentBufferSize = MaxGlanceBytes };
 
     public static async Task<Outcome> FetchAsync(HttpClient http, ConfigResult.Ok cfg)
     {

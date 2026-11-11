@@ -84,6 +84,27 @@ public class LimitsAndSecretsTests
         Assert.Empty(hits);
     }
 
+    sealed class Fake(Func<HttpResponseMessage> make) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct) => Task.FromResult(make());
+    }
+
+    // A valid glance padded with trailing whitespace: only the body cap, not the parser, can make the big one fail.
+    static Outcome Glance(int bytes)
+    {
+        var json = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "snapshots", "fixtures", "lanes-and-items.json"));
+        using var http = Poller.NewClient(new Fake(() => new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(json.PadRight(bytes)) }));
+        return Poller.FetchAsync(http, new ConfigResult.Ok("http://h:1", Canary)).GetAwaiter().GetResult();
+    }
+
+    [Fact]
+    public void DESK_N5_an_oversize_glance_body_is_Failed_not_a_crash_and_the_cap_does_not_touch_a_normal_body()
+    {
+        Assert.IsType<Outcome.Failed>(Glance(300 * 1024));
+        Assert.IsType<Outcome.Ok>(Glance(100 * 1024));
+        Assert.Equal(256 * 1024, Poller.NewClient().MaxResponseContentBufferSize);
+    }
+
     [Fact]
     public void N20_the_token_is_in_no_camera_outcome_text_or_automation_name_and_the_bytes_stay_off_disk()
     {
