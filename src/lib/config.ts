@@ -192,6 +192,8 @@ export interface AppConfig {
     mcpToken?: string;
     /** Bearer token for GET /api/desk/glance (the desktop widget); 32+ chars, differs from mcpToken. Config-file only, no Settings UI. */
     deskToken?: string;
+    /** Opt-in (default off) for GET /api/desk/camera and glance's `camera`; a boolean, read per request, config-file only. */
+    deskCamera?: boolean;
     kioskPin?: string;
     hermesApiUrl?: string;
     hermesApiToken?: string;

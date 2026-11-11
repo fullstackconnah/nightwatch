@@ -38,5 +38,14 @@
     "cpu": 12,
     "mem": 34,
     "diskMax": 71
-  }
+  },
+  "weather": {
+    "tempC": 21.4,
+    "feelsC": 19.9,
+    "label": "Partly cloudy",
+    "highC": 25,
+    "lowC": 14,
+    "rainPct": 60
+  },
+  "camera": true
 }

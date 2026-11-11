@@ -256,6 +256,14 @@ scope** — everything comes from bind mounts that already existed.
 - Set `system.deskToken` in `data/config.json` (shipped by scp, never git; placeholder `"deskToken": "REPLACE_ME"`), or the `DESK_TOKEN` env var as the fallback. The config value wins. At least 32 characters, and it must differ from `mcpToken`. There is no Settings UI for it. A change takes effect on the next request, with no restart.
 - `503 {"error":"Desk access is not turned on."}`: the token is unset, under 32 characters, or equal to the MCP token (one body for all three). `401 {"error":"unauthorized"}`: the header is missing or wrong. Every response is `Cache-Control: no-store`.
 - The token travels in clear over plain LAN HTTP, as the MCP token does. The data is read-only.
+- The glance also carries `weather` (today's numbers and the label only; no coordinates, humidity or wind) and `camera` (a boolean). Both fall back to `null`/`false` after about 1.5 s, so a slow upstream never slows the poll.
+
+### Desk camera (`/api/desk/camera`)
+
+- `GET /api/desk/camera` returns one door-camera still (`image/jpeg` or `image/png`, at most 1.5 MiB) for the widget. It takes no query or path input: the camera is `viewCamera` or the first door camera that the doorbell allowlist names; indoor cameras are unreachable.
+- It is off until you set `"deskCamera": true` inside `system` in `data/config.json` (placeholder `"deskCamera": true`). It is read on every request, so toggling it needs no restart. It uses the same bearer as the glance. The picture is already open on the LAN through `/kiosk`, so the flag is an off switch, not secrecy.
+- With the flag off, or desk access off, the response is the same `503` body as the glance. A bad bearer gives an empty `401`, no configured door camera an empty `404`, and any Home Assistant failure, oversize frame or other content type an empty `502`. One frame is cached for 5 s (failures too), so several clients cause at most one Home Assistant call per 5 s.
+- A change to the `DESK_TOKEN` env var needs a container recreate (`docker compose up -d --force-recreate`), because the process reads env once at start. A `system.deskToken` change in `config.json` needs none.
 
 ## Rollback
 

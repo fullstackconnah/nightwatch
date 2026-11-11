@@ -12,6 +12,11 @@ export function deskAccess(deskToken: string | undefined, mcpToken: string | und
   return "on";
 }
 
+/** Exact match, like the glance one: never widen this to a /api/desk/ prefix. */
+export function isDeskCameraPath(pathname: string): boolean {
+  return pathname === "/api/desk/camera";
+}
+
 /** Exact match: PUBLIC_PATHS matches by prefix, which would also open /api/desk/glance-anything. */
 export function isDeskGlancePath(pathname: string): boolean {
   return pathname === "/api/desk/glance";

@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildGlance } from "./desk-glance.ts";
+import { readFileSync } from "node:fs";
+import { buildGlance, glanceWeather, within } from "./desk-glance.ts";
+import type { WeatherResponse } from "./weather.ts";
 import { answerFor } from "./home.ts";
 import type { AttentionHit, AttentionReport, ProbeStatus } from "./attention-report.ts";
 
@@ -44,7 +46,9 @@ test("orchestra hits go to lanes only, even with a bad disk hit; items keep orde
 test("exact key sets; extra fields on hits do not leak", () => {
   const leaky = { ...hit("disks", "disk:/a", { detail: "d", action: "a", since: "s" }), error: "sock", logs: "secret" } as AttentionHit;
   const g = buildGlance(report([leaky]), vit);
-  assert.deepEqual(keys(g), ["answer", "checkedAt", "items", "lanes", "probes", "tone", "v", "vitals"]);
+  assert.deepEqual(keys(g), ["answer", "camera", "checkedAt", "items", "lanes", "probes", "tone", "v", "vitals", "weather"]);
+  assert.equal(g.weather, null);
+  assert.equal(g.camera, false);
   assert.deepEqual(keys(g.items[0]), ["action", "detail", "headline", "href", "id", "severity", "since"]);
   assert.deepEqual(keys(g.probes), ["answered", "failed", "pending"]);
   assert.deepEqual(keys(g.vitals!), ["cpu", "diskMax", "mem"]);
@@ -100,4 +104,45 @@ test("hit ids stay the same when only the headline numbers change", () => {
   const a = buildGlance(report([hit("disks", "disk:/a", { headline: "Disk 91% full" })]), vit);
   const b = buildGlance(report([hit("disks", "disk:/a", { headline: "Disk 93% full" })]), vit);
   assert.equal(a.items[0].id, b.items[0].id);
+});
+
+const wx = (over: object = {}) =>
+  ({
+    status: "ok",
+    place: "Somewhere",
+    current: { tempC: 21.4, feelsC: 19.9, humidityPct: 50, windKmh: 12, precipMm: 0, cloudCoverPct: 10, code: "clear", label: "Clear" },
+    days: [{ date: "2026-01-01", code: "rain", label: "Rain", maxC: 25, minC: 14, rainPct: 60, sunrise: "x", sunset: "y" }],
+    sun: { elevationDeg: 1, phase: "day", progress01: 0.5, hourAngleDeg: 0 },
+    rain: { nowcast: [], hours: [], summary: "rain soon" },
+    lat: -33.1,
+    lon: 151.2,
+    ...over,
+  }) as unknown as WeatherResponse;
+
+test("weather is an allowlist: no lat, lon, humidity, wind, place or sun", () => {
+  const w = glanceWeather(wx());
+  assert.deepEqual(w, { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: 25, lowC: 14, rainPct: 60 });
+  const text = JSON.stringify(buildGlance(report(), vit, { weather: w, camera: true }));
+  for (const banned of ["lat", "lon", "humidity", "wind", "Somewhere", "sun"]) assert.equal(text.includes(banned), false, banned);
+});
+
+test("weather is null when unconfigured or unreachable, and tolerates no forecast day", () => {
+  assert.equal(glanceWeather({ status: "unconfigured", detail: "x" }), null);
+  assert.equal(glanceWeather({ status: "unreachable", detail: "x" }), null);
+  assert.deepEqual(glanceWeather(wx({ days: [] })), { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: null, lowC: null, rainPct: null });
+});
+
+test("within: a never-resolving promise, a rejection and a value", async () => {
+  const t0 = Date.now();
+  assert.equal(await within(new Promise<string>(() => {}), 50, "fallback"), "fallback");
+  assert.ok(Date.now() - t0 < 1000);
+  assert.equal(await within(Promise.reject(new Error("x")), 50, null), null);
+  assert.equal(await within(Promise.resolve(7), 50, 0), 7);
+});
+
+test("the new output's keys are a strict superset of the legacy fixture's, and vitals/probes keep their shape", () => {
+  const legacy = JSON.parse(readFileSync(new URL("../../desk/Core.Tests/fixtures/glance.v1-legacy.json", import.meta.url), "utf8"));
+  const now = JSON.parse(JSON.stringify(buildGlance(report(), vit)));
+  for (const k of Object.keys(legacy)) assert.ok(k in now, k);
+  assert.deepEqual(Object.keys(now).filter((k) => !(k in legacy)).sort(), ["camera", "weather"]);
 });

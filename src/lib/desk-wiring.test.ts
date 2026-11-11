@@ -65,3 +65,10 @@ test("mcp auth delegates to bearerMatches", () => {
   assert.match(a, /^import \{ bearerMatches \} from "@\/lib\/bearer";/m);
   assert.doesNotMatch(a, /timingSafeEqual/);
 });
+
+test("glance route races its weather and camera extras and reads the flag as a strict boolean", () => {
+  assert.match(route, /within\(getWeather\(\)\.then\(glanceWeather\), EXTRA_MS, null\)/);
+  assert.match(route, /within\(cameraAvailable\(\), EXTRA_MS, false\)/);
+  assert.match(route, /loadConfig\(\)\.system\?\.deskCamera === true/);
+  assert.match(route, /^const EXTRA_MS = 1500;/m);
+});
