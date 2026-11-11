@@ -43,12 +43,12 @@ async function readFrame(res: Response): Promise<Frame | null> {
  * One answer per camera for 5 s, failures included, with one shared in-flight fetch. The fetch has its
  * own timeout and never a caller's signal, so one client going away cannot fail the others.
  */
-export function createFrameCache(upstream: UpstreamFetch, now: () => number = Date.now) {
+export function createFrameCache(upstream: UpstreamFetch, now: () => number = Date.now, timeoutMs: number = FETCH_TIMEOUT_MS) {
   const hits = new Map<string, { at: number; frame: Frame | null }>();
   const flights = new Map<string, Promise<Frame | null>>();
   const load = async (entity: string): Promise<Frame | null> => {
     try {
-      const res = await upstream(entity, AbortSignal.timeout(FETCH_TIMEOUT_MS));
+      const res = await upstream(entity, AbortSignal.timeout(timeoutMs));
       return res instanceof Response ? await readFrame(res) : null;
     } catch {
       return null;
@@ -96,14 +96,14 @@ export async function deskCameraResponse(a: {
   deskToken: string | undefined;
   mcpToken: string | undefined;
   authorization: string | null;
-  flag: boolean;
+  flag: () => boolean;
   resolve: () => Promise<string | null>;
   cache: { get(entity: string): Promise<Frame | null> };
 }): Promise<DeskCameraResult> {
   try {
     if (deskAccess(a.deskToken, a.mcpToken) === "off") return OFF;
     if (!bearerMatches(a.authorization, a.deskToken)) return empty(401);
-    if (!a.flag) return OFF;
+    if (!a.flag()) return OFF;
     const entity = await a.resolve();
     if (!entity) return empty(404);
     const frame = await a.cache.get(entity);

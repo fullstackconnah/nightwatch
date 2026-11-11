@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       deskToken: systemSetting("deskToken", "DESK_TOKEN"),
       mcpToken: systemSetting("mcpToken", "MCP_TOKEN"),
       authorization: req.headers.get("authorization"),
-      flag: loadConfig().system?.deskCamera === true,
+      flag: () => loadConfig().system?.deskCamera === true,
       resolve: async () => doorCameraEntity(await getDoorbellSnapshot()),
       cache,
     });
