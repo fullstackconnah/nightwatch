@@ -392,6 +392,51 @@ public class CameraTests
     }
 
     [Fact]
+    public void N1_state_is_pure_and_a_stale_frame_drops_on_hide()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig(30);
+            r.Feed.BlockHidden = false; // first frame at t0
+            Assert.NotNull(r.Feed.Image);
+            r.Now = r.Now.AddSeconds(301);
+            Assert.Equal(FrameState.NoPicture, r.Feed.State);
+            Assert.Equal(FrameState.NoPicture, r.Feed.State);
+            Assert.NotNull(r.Feed.Image); // reading State twice clears nothing
+            r.Feed.BlockHidden = true; // hiding drops the stale frame; the time stays
+            Assert.Null(r.Feed.Image);
+            Assert.NotNull(r.Feed.FrameAt);
+        });
+    }
+
+    [Fact]
+    public void N3_resume_and_tick_during_a_fetch_make_no_second_fetch_and_the_feed_is_not_stuck()
+    {
+        var jpeg = Sta.Run(() => { Theme.EnsureLoaded(); return Snapshot.TestFrame(640, 360, "16:9"); });
+        var gate = new TaskCompletionSource<FrameOutcome>();
+        var fetches = 0;
+        var feed = Sta.Run(() => new CameraFeed(_ => { fetches++; return fetches == 1 ? gate.Task : Task.FromResult<FrameOutcome>(new FrameOutcome.Frame(jpeg)); },
+            () => new DateTimeOffset(2026, 1, 1, 14, 0, 0, TimeSpan.Zero), () => 1));
+        Sta.Run(() =>
+        {
+            feed.BlockHidden = false; // resume starts fetch 1, held at the gate
+            Assert.Equal(1, fetches);
+            feed.WindowHidden = true; feed.WindowHidden = false; // a resume while in flight
+            feed.TickAsync().GetAwaiter().GetResult(); // and a tick
+            Assert.Equal(1, fetches);
+            gate.SetResult(new FrameOutcome.Frame(jpeg)); // the continuation queues on the dispatcher
+        });
+        Sta.Run(() => { }); // runs after the queued continuation
+        Sta.Run(() =>
+        {
+            Assert.NotNull(feed.FrameAt);
+            feed.TickAsync().GetAwaiter().GetResult();
+            Assert.Equal(2, fetches); // not stuck
+        });
+    }
+
+    [Fact]
     public void N35_no_fetch_while_paused_and_exactly_one_on_each_resume()
     {
         Sta.Run(() =>
@@ -449,6 +494,7 @@ public class CameraTests
             Assert.Equal(FrameState.Stale, At(stale));
             Assert.NotNull(r.Feed.Image);
             Assert.Equal(FrameState.NoPicture, At(none));
+            r.Feed.BlockHidden = true; // the pause drops the stale bitmap (State itself is pure)
             Assert.Null(r.Feed.Image); // No picture drops the bitmap
             Assert.NotNull(r.Feed.FrameAt); // and keeps the time for the line under it
             Fix.Rec($"N33 I={i}", $"{live}s live / {stale}s stale / {none}s no picture");
