@@ -37,22 +37,18 @@ internal sealed class CameraFeed
 
     public bool Active => FrameGate.ShouldFetch(windowHidden, blockHidden, clientError, locked, suspended);
 
-    /// <summary>The state now. At No picture the kept bitmap is dropped from memory; the time of the last frame stays for the line under it.</summary>
-    public FrameState State
-    {
-        get
-        {
-            var s = FrameClock.Compute(clock(), FrameAt, IntervalSeconds, fetching, everFailed);
-            if (s == FrameState.NoPicture) Image = null;
-            return s;
-        }
-    }
+    /// <summary>The state now. Pure: the stale bitmap is dropped by DropStale on a tick, a result and a pause.</summary>
+    public FrameState State => FrameClock.Compute(clock(), FrameAt, IntervalSeconds, fetching, everFailed);
+
+    /// <summary>At No picture the kept bitmap is dropped from memory; the time of the last frame stays for the line under it.</summary>
+    void DropStale() { if (State == FrameState.NoPicture) Image = null; }
 
     void Set(ref bool field, bool value)
     {
         if (field == value) return;
         var was = Active;
         field = value;
+        if (!Active) DropStale(); // a hidden block never ticks, so free the frame as it pauses
         if (!was && Active) _ = ResumeAsync();
     }
 
@@ -66,6 +62,7 @@ internal sealed class CameraFeed
     /// <summary>The interval timer calls this; it does nothing while paused or while a fetch is still running.</summary>
     public async Task TickAsync()
     {
+        DropStale();
         if (!Active || fetching) return;
         fetching = true;
         FrameOutcome o;
@@ -76,6 +73,7 @@ internal sealed class CameraFeed
             Image = img; FrameAt = clock(); everFailed = false;
         }
         else if (FrameAt is null) everFailed = true; // a failure keeps the last frame; with none, the block says so
+        DropStale();
         Changed?.Invoke();
     }
 
