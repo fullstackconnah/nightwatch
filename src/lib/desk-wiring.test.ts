@@ -18,16 +18,16 @@ test("every response path is no-store", () => {
   assert.match(route, /^const NO_STORE = \{ "Cache-Control": "no-store" \};/m);
   const responses = [...route.matchAll(/NextResponse\.json\(/g)].length;
   const withHeader = [...route.matchAll(/NextResponse\.json\([^;]*headers: NO_STORE/g)].length;
-  assert.equal(responses, 3);
+  assert.equal(responses, 1);
   assert.equal(withHeader, responses);
 });
 
-test("route reads both settings per request and checks deskAccess before bearerMatches", () => {
-  assert.match(route, /^\s+const deskToken = systemSetting\("deskToken", "DESK_TOKEN"\);/m);
-  assert.match(route, /^\s+const mcpToken = systemSetting\("mcpToken", "MCP_TOKEN"\);/m);
+test("route reads both settings per request and hands the check order to deskGlanceResponse", () => {
+  assert.match(route, /^\s+deskToken: systemSetting\("deskToken", "DESK_TOKEN"\),/m);
+  assert.match(route, /^\s+mcpToken: systemSetting\("mcpToken", "MCP_TOKEN"\),/m);
   assert.doesNotMatch(route, /^const \w+ = systemSetting/m);
-  assert.ok(route.indexOf("deskAccess(") < route.indexOf("bearerMatches("));
-  assert.match(route, /Desk access is not turned on\./);
+  assert.match(route, /await deskGlanceResponse\(/);
+  assert.match(route, /build: buildReport,/);
   assert.match(route, /buildGlance\(/);
 });
 
@@ -55,7 +55,7 @@ test("settings/system POST keeps an unknown existing field (so deskToken) and ne
 });
 
 test("no console. in the new files, the middleware or mcp auth", () => {
-  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
+  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
     assert.doesNotMatch(read(p), /console\./, p);
   }
 });

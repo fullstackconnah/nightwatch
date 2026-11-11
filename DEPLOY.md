@@ -253,7 +253,7 @@ scope** — everything comes from bind mounts that already existed.
 ## Desk widget token (`/api/desk/glance`)
 
 - `GET /api/desk/glance` is the read-only feed for the desktop widget. It uses a bearer token, not the login session.
-- Set `system.deskToken` in `data/config.json` (shipped by scp, never git; placeholder `"deskToken": "REPLACE_ME"`), or the `DESK_TOKEN` env var as the fallback. The config value wins. At least 32 characters, and it must differ from `mcpToken`. There is no Settings UI for it. A change takes effect on the next request, with no restart.
+- Set `system.deskToken` in `data/config.json` (shipped by scp, never git; placeholder `"deskToken": "REPLACE_ME"`), or the `DESK_TOKEN` env var as the fallback. The config value wins. At least 32 characters, and it must differ from `mcpToken`. There is no Settings UI for it. A change in `config.json` takes effect on the next request, with no restart; a `DESK_TOKEN` env change needs `docker compose up -d` (a recreate).
 - `503 {"error":"Desk access is not turned on."}`: the token is unset, under 32 characters, or equal to the MCP token (one body for all three). `401 {"error":"unauthorized"}`: the header is missing or wrong. Every response is `Cache-Control: no-store`.
 - The token travels in clear over plain LAN HTTP, as the MCP token does. The data is read-only.
 - The glance also carries `weather` (today's numbers and the label only; no coordinates, humidity or wind) and `camera` (a boolean). Both fall back to `null`/`false` after about 1.5 s, so a slow upstream never slows the poll.

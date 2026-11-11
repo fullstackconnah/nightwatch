@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAttentionReport } from "@/lib/attention";
-import { bearerMatches } from "@/lib/bearer";
 import { loadConfig, systemSetting } from "@/lib/config";
-import { deskAccess } from "@/lib/desk-auth";
 import { doorCameraEntity } from "@/lib/desk-camera";
+import { deskGlanceResponse } from "@/lib/desk-glance-response";
 import { buildGlance, glanceWeather, within } from "@/lib/desk-glance";
 import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
 import { getHostVitals } from "@/lib/host-metrics";
@@ -26,14 +25,16 @@ async function cameraAvailable(): Promise<boolean> {
  * body for every "off" reason; a probe failure is a `failed` status, never a 500.
  */
 export async function GET(req: Request) {
-  const deskToken = systemSetting("deskToken", "DESK_TOKEN");
-  const mcpToken = systemSetting("mcpToken", "MCP_TOKEN");
-  if (deskAccess(deskToken, mcpToken) === "off") {
-    return NextResponse.json({ error: "Desk access is not turned on." }, { status: 503, headers: NO_STORE });
-  }
-  if (!bearerMatches(req.headers.get("authorization"), deskToken)) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: NO_STORE });
-  }
+  const r = await deskGlanceResponse({
+    deskToken: systemSetting("deskToken", "DESK_TOKEN"),
+    mcpToken: systemSetting("mcpToken", "MCP_TOKEN"),
+    authorization: req.headers.get("authorization"),
+    build: buildReport,
+  });
+  return NextResponse.json(r.body, { status: r.status, headers: NO_STORE });
+}
+
+async function buildReport() {
   // Each extra degrades to null/false: a slow or down upstream must not slow or fail the poll.
   const weather = within(getWeather().then(glanceWeather), EXTRA_MS, null);
   const camera = within(cameraAvailable(), EXTRA_MS, false);
@@ -44,5 +45,5 @@ export async function GET(req: Request) {
   } catch {
     // vitals stay null: the widget shows no vitals line rather than zeros
   }
-  return NextResponse.json(buildGlance(report, vitals, { weather: await weather, camera: await camera }), { headers: NO_STORE });
+  return buildGlance(report, vitals, { weather: await weather, camera: await camera });
 }
