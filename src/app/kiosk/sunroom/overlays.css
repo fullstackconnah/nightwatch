@@ -153,8 +153,3 @@
     transition: none;
   }
 }
-
-/* The doorbell dialog takes programmatic focus (tabIndex -1) when deep-linked; only its buttons show a ring. */
-.panel[role="dialog"][tabindex="-1"]:focus-visible {
-  outline: none;
-}

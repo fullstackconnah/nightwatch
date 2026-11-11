@@ -615,7 +615,7 @@ export function KioskDoorbellModal({
         // exists to reclaim an ABANDONED screen, not to hurry anyone along.
         onPointerDown={keepOpen}
         data-sr-face="float"
-        className="panel relative z-(--z-modal) w-full max-w-3xl p-4 transition-[opacity,transform] motion-reduce:transition-none md:p-5"
+        className="panel outline-none relative z-(--z-modal) w-full max-w-3xl p-4 transition-[opacity,transform] motion-reduce:transition-none md:p-5"
         // With an originRect, WAAPI owns the panel's entrance and exit
         // (containerExpand/-Collapse composite over inline style), so the
         // inline style holds constant resting values and the CSS transition
