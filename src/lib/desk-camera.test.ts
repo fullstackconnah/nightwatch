@@ -19,7 +19,7 @@ function setup(upstream: UpstreamFetch, over: Partial<Parameters<typeof deskCame
       deskToken: TOKEN,
       mcpToken: MCP,
       authorization: AUTH,
-      flag: true,
+      flag: () => true,
       resolve: async () => "camera.front_door",
       cache,
       ...over,
@@ -53,7 +53,7 @@ test("image/png is forwarded as png; anything else is 502", async () => {
 test("503 is byte-identical between desk-off and flag-off, and flag-off needs a valid bearer to be reached", async () => {
   const { call } = setup(async () => jpeg());
   const deskOff = await call({ deskToken: undefined });
-  const flagOff = await call({ flag: false });
+  const flagOff = await call({ flag: () => false });
   assert.equal(deskOff.status, 503);
   assert.deepEqual(flagOff, deskOff);
   assert.equal(bodyText(deskOff), JSON.stringify({ error: "Desk access is not turned on." }));
@@ -66,7 +66,7 @@ test("401 for a missing, wrong or wrong-length bearer, in both flag states, with
   const { call } = setup(async () => jpeg());
   for (const flag of [true, false]) {
     for (const authorization of [null, "", "Bearer nope", `Bearer ${"x".repeat(40)}`, `Bearer ${TOKEN}extra`, TOKEN]) {
-      const r = await call({ flag, authorization });
+      const r = await call({ flag: () => flag, authorization });
       assert.equal(r.status, 401, `${flag} ${authorization}`);
       assert.equal(bodyText(r), "");
     }
@@ -133,7 +133,7 @@ test("exactly the cap is accepted", async () => {
   assert.equal((await call()).status, 200);
 });
 
-test("concurrent callers share one fetch and the fetch signal is its own, so a caller abort cannot fail the others", async () => {
+test("concurrent callers share one fetch, and its signal is its own and still live", async () => {
   let calls = 0;
   let seen: AbortSignal | undefined;
   let release!: () => void;
@@ -144,12 +144,9 @@ test("concurrent callers share one fetch and the fetch signal is its own, so a c
     await gate;
     return jpeg(10);
   });
-  const callerAbort = new AbortController();
   const first = call();
   const second = call();
   await new Promise((r) => setTimeout(r, 5)); // let the resolver and the fetch start
-  callerAbort.abort(); // the first caller's request goes away
-  assert.notEqual(seen, callerAbort.signal);
   assert.equal(seen?.aborted, false);
   release();
   const [a, b] = await Promise.all([first, second]);
@@ -179,6 +176,30 @@ test("two calls in a row after a failure make one upstream call", async () => {
   assert.equal(b.status, 502);
   assert.equal(bodyText(a), "");
   assert.equal(calls, 1);
+});
+
+test("an upstream that never resolves is cut off by the fetch's own timeout: an empty 502, cached as a failure", { timeout: 5000 }, async () => {
+  let calls = 0;
+  const t = 1_000;
+  // AbortSignal.timeout is unref'd: a ref'd timer keeps the loop alive so node:test does not cancel the file.
+  const keep = setTimeout(() => {}, 5000);
+  const cache = createFrameCache((_e, signal) => {
+    calls++;
+    return new Promise((_r, rej) => signal.addEventListener("abort", () => rej(new Error("aborted"))));
+  }, () => t, 20);
+  const call = () => deskCameraResponse({ deskToken: TOKEN, mcpToken: MCP, authorization: AUTH, flag: () => true, resolve: async () => "camera.front_door", cache });
+  const r = await call();
+  assert.equal(r.status, 502);
+  assert.equal(bodyText(r), "");
+  await call();
+  assert.equal(calls, 1);
+  clearTimeout(keep);
+});
+
+test("a flag that throws is never called for a bad bearer", async () => {
+  const { call } = setup(async () => jpeg());
+  const r = await call({ flag: () => { throw new Error("corrupt config"); }, authorization: "Bearer nope" });
+  assert.equal(r.status, 401);
 });
 
 test("an upstream that throws is an empty 502", async () => {

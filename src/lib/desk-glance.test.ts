@@ -132,7 +132,7 @@ test("weather is null when unconfigured or unreachable, and tolerates no forecas
   assert.deepEqual(glanceWeather(wx({ days: [] })), { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: null, lowC: null, rainPct: null, icon: "clear" });
 });
 
-test("within: a never-resolving promise, a rejection and a value", async () => {
+test("within: a never-resolving promise, a rejection and a value", { timeout: 5000 }, async () => {
   const t0 = Date.now();
   assert.equal(await within(new Promise<string>(() => {}), 50, "fallback"), "fallback");
   assert.ok(Date.now() - t0 < 1000);
