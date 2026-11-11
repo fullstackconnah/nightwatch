@@ -59,3 +59,14 @@ jobs:
           ffmpeg -version | head -1
       - run: npm test
       - run: npm run build
+
+  # The WPF app's tests render offscreen (no window), so they run on a hosted Windows runner.
+  # Its own job: nw-ship requires every check on the head, so this gates merges too.
+  desk-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - run: dotnet test desk/App.Tests

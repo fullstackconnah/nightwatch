@@ -13,7 +13,7 @@ Needs the .NET 9 SDK on Windows.
 
 ```powershell
 dotnet test desk/Core.Tests     # any OS, runs on CI
-dotnet test desk/App.Tests      # Windows only, not on CI
+dotnet test desk/App.Tests      # Windows only; runs on CI in the desk-app job
 powershell -File desk\snapshots.ps1 out   # 20 states at 100% and 150% plus the tray sheet, offscreen
 ```
 
