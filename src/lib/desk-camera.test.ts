@@ -181,6 +181,8 @@ test("two calls in a row after a failure make one upstream call", async () => {
 test("an upstream that never resolves is cut off by the fetch's own timeout: an empty 502, cached as a failure", { timeout: 5000 }, async () => {
   let calls = 0;
   const t = 1_000;
+  // AbortSignal.timeout is unref'd: a ref'd timer keeps the loop alive so node:test does not cancel the file.
+  const keep = setTimeout(() => {}, 5000);
   const cache = createFrameCache((_e, signal) => {
     calls++;
     return new Promise((_r, rej) => signal.addEventListener("abort", () => rej(new Error("aborted"))));
@@ -191,6 +193,7 @@ test("an upstream that never resolves is cut off by the fetch's own timeout: an 
   assert.equal(bodyText(r), "");
   await call();
   assert.equal(calls, 1);
+  clearTimeout(keep);
 });
 
 test("a flag that throws is never called for a bad bearer", async () => {
