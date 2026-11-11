@@ -5,7 +5,7 @@ namespace NightwatchDesk.Core;
 public abstract record ConfigResult
 {
     // The token is never part of ToString, so a logged result cannot leak it.
-    public sealed record Ok(string BaseUrl, string Token) : ConfigResult
+    public sealed record Ok(string BaseUrl, string Token, int CameraIntervalSeconds = DeskConfig.DefaultCameraInterval) : ConfigResult
     {
         public override string ToString() => $"Ok {{ BaseUrl = {BaseUrl} }}";
     }
@@ -39,13 +39,21 @@ public static class DeskConfig
             var baseUrl = Str(root, "baseUrl")?.Trim().TrimEnd('/');
             if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
                 return new ConfigResult.BadAddress();
-            return new ConfigResult.Ok(baseUrl!, token);
+            return new ConfigResult.Ok(baseUrl!, token, CameraInterval(root));
         }
         catch (JsonException e)
         {
             return new ConfigResult.Unreadable((int)(e.LineNumber ?? 0) + 1); // LineNumber is zero-based
         }
     }
+
+    public const int DefaultCameraInterval = 30;
+
+    /// <summary>cameraIntervalSeconds clamped to 5-300; absent or not a number gives 30.</summary>
+    static int CameraInterval(JsonElement o) =>
+        o.TryGetProperty("cameraIntervalSeconds", out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDouble(out var d)
+            ? (int)Math.Clamp(Math.Round(d), 5, 300)
+            : DefaultCameraInterval;
 
     static string? Str(JsonElement o, string name) =>
         o.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;

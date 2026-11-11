@@ -121,7 +121,7 @@ const wx = (over: object = {}) =>
 
 test("weather is an allowlist: no lat, lon, humidity, wind, place or sun", () => {
   const w = glanceWeather(wx());
-  assert.deepEqual(w, { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: 25, lowC: 14, rainPct: 60 });
+  assert.deepEqual(w, { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: 25, lowC: 14, rainPct: 60, icon: "clear" });
   const text = JSON.stringify(buildGlance(report(), vit, { weather: w, camera: true }));
   for (const banned of ["lat", "lon", "humidity", "wind", "Somewhere", "sun"]) assert.equal(text.includes(banned), false, banned);
 });
@@ -129,7 +129,7 @@ test("weather is an allowlist: no lat, lon, humidity, wind, place or sun", () =>
 test("weather is null when unconfigured or unreachable, and tolerates no forecast day", () => {
   assert.equal(glanceWeather({ status: "unconfigured", detail: "x" }), null);
   assert.equal(glanceWeather({ status: "unreachable", detail: "x" }), null);
-  assert.deepEqual(glanceWeather(wx({ days: [] })), { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: null, lowC: null, rainPct: null });
+  assert.deepEqual(glanceWeather(wx({ days: [] })), { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: null, lowC: null, rainPct: null, icon: "clear" });
 });
 
 test("within: a never-resolving promise, a rejection and a value", async () => {

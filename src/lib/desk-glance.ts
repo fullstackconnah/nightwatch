@@ -21,6 +21,8 @@ export interface GlanceWeather {
   highC: number | null;
   lowC: number | null;
   rainPct: number | null;
+  /** A WeatherIconKey; the desk maps an unknown value or null to a cloud. */
+  icon: string | null;
 }
 export interface GlanceExtras {
   weather: GlanceWeather | null;
@@ -89,6 +91,7 @@ export function glanceWeather(w: WeatherResponse): GlanceWeather | null {
     highC: day?.maxC ?? null,
     lowC: day?.minC ?? null,
     rainPct: day?.rainPct ?? null,
+    icon: w.current.code ?? null,
   };
 }
 
