@@ -3355,13 +3355,20 @@ body {
   display: grid;
   align-content: start;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "main acts" "fields fields";
+  grid-template-areas: "main acts" "fields fields" "err err";
   gap: 0 0.5rem;
   padding: 0.25rem 0.375rem 0.25rem 0.75rem;
   background: var(--color-panel);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-panel);
   min-width: 0;
+}
+/* An open stop confirm is wide: give the actions their own row so the name keeps its column. */
+.hm-app:has(.nw-confirm) {
+  grid-template-areas: "main main" "acts acts" "fields fields" "err err";
+}
+.hm-app:has(.nw-confirm) .hm-app-acts {
+  justify-content: flex-end;
 }
 .hm-app-main {
   grid-area: main;
@@ -3420,6 +3427,10 @@ body {
 }
 .hm-act {
   display: inline-flex;
+}
+.hm-app-err {
+  grid-area: err;
+  padding-bottom: 0.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -196,10 +196,11 @@ export const CONTAINERS = {
     app("sonarr", "Media", { tile: { url: "http://app.invalid:8989", icon: null, group: "Media", hidden: false, hasWidget: true } }),
     app("jellyfin", "Media"),
     app("proxy", "Infra"),
+    app("nightwatch", "Infra"),
     app("scratch", "Infra", { state: "exited", status: "Exited (0) 3 hours ago", startedAt: null, finishedAt: Date.now() - 3 * 3_600_000, exitCode: 0 }),
   ],
   groups: ["Media", "Infra"],
-  counts: { total: 4, running: 3, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
+  counts: { total: 5, running: 4, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
 };
 
 export const WIDGETS = {

@@ -29,7 +29,7 @@ const WIDTHS = [
 const STATES = ["loading", "quiet", "one", "several", "partial", "dockerFailed", "otherFailed", "error"];
 const FEATURES = [
   "answer", "attention", "changes", "launcher", "filter", "slash-key", "groups", "counts", "container-link",
-  "open-app", "widget-fields", "widget-actions", "sort-link", "lifecycle-link", "box-digest", "resources-link",
+  "open-app", "widget-fields", "widget-actions", "sort-link", "lifecycle", "box-digest", "resources-link",
   "backup", "orchestra-link",
 ];
 
@@ -425,11 +425,46 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- LC: the stop confirm and a lifecycle error on a card (sonarr, `several`): the name keeps its 2.75rem column ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "several" });
+  await page.route("**/api/docker/containers/*/action", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Could not stop sonarr" }) }));
+  const card = page.locator(".hm-app", { hasText: "sonarr" }).first();
+  const measure = () =>
+    card.evaluate((el) => {
+      const rect = (n) => n.getBoundingClientRect();
+      const name = rect(el.querySelector(".hm-app-name"));
+      const acts = rect(el.querySelector(".hm-app-acts"));
+      const overlap = name.left < acts.right && name.right > acts.left && name.top < acts.bottom && name.bottom > acts.top;
+      return { w: name.width, overlap, min: parseFloat(getComputedStyle(el.querySelector(".hm-app-name")).minWidth) };
+    });
+  const shoot = async (file) => {
+    const r = await card.boundingBox();
+    const x = Math.max(0, r.x - 8), y = Math.max(0, r.y - 8);
+    await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(r.width + 16, width.viewport.width - x), height: r.height + 16 } });
+  };
+  await card.getByRole("button", { name: "Stop sonarr" }).click();
+  await card.locator(".nw-confirm").waitFor();
+  await page.waitForTimeout(400);
+  const a = await measure();
+  await shoot(`home-confirm-open-${width.name}.png`);
+  record("LC", a.w >= a.min && !a.overlap, `@${width.name} confirm open: name ${Math.round(a.w)} px (min ${Math.round(a.min)}), overlaps actions: ${a.overlap}`);
+  if (width.name === "390") {
+    await card.getByRole("button", { name: "Yes, stop sonarr" }).click();
+    await card.getByRole("alert").waitFor();
+    await page.waitForTimeout(400);
+    const e = await measure();
+    await shoot("home-lifecycle-error-390.png");
+    record("LC", e.w >= e.min && !e.overlap, `@390 lifecycle error: name ${Math.round(e.w)} px (min ${Math.round(e.min)}), overlaps actions: ${e.overlap}`);
+  }
+  await context.close();
+}
+
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };
