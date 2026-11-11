@@ -9,7 +9,7 @@ $proj = Join-Path $PSScriptRoot 'App\App.csproj'
 # 0. Stop a running widget so publish can replace the exe: only the installed path, never a dev build or a look-alike.
 Get-Process -Name NightwatchDesk -ErrorAction SilentlyContinue |
   Where-Object { $_.Path -and $_.Path.StartsWith(($dest + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase) } |
-  ForEach-Object { $_.Kill(); $_.WaitForExit(5000) | Out-Null }
+  ForEach-Object { try { $_.Kill(); $_.WaitForExit(5000) | Out-Null } catch [System.InvalidOperationException] {} }  # exited between the filter and the kill
 
 # 1. Publish a single file next to nothing else (framework-dependent: needs the .NET 9 Desktop Runtime).
 dotnet publish $proj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o $dest
