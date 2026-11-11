@@ -5,6 +5,7 @@ import { KioskSurface } from "@/components/kiosk/kiosk-surface";
 import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk/kiosk-display";
 import { KioskPinPad } from "@/components/kiosk/kiosk-pin-pad";
 import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk/kiosk-doorbell";
+import { doorLinkDecision, hasDoorParam, withoutDoorParam } from "@/lib/kiosk-door-link";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
 
@@ -152,6 +153,25 @@ function KioskPageInner() {
   // dismissing the modal at 2am leaves a usable surface behind it rather than
   // dropping straight back to the calm clock.
   const doorbell = useDoorbellWatch(wakeNight);
+
+  // `/kiosk?door=1` (the desk widget's link): once per page load, after the
+  // camera list has loaded, open the picture as a manual open and wake the
+  // night overlay like a tap would, then drop `door` so a reload doesn't repeat.
+  const doorLinkDoneRef = useRef(false);
+  const doorSnapshotLoaded = doorbell.snapshot !== undefined;
+  const { hasCamera: doorHasCamera, openManually: openDoorManually } = doorbell;
+  useEffect(() => {
+    if (doorLinkDoneRef.current) return;
+    const { pathname, search, hash } = window.location;
+    const decision = doorLinkDecision(search, doorSnapshotLoaded, doorHasCamera);
+    if (decision === "wait") return;
+    doorLinkDoneRef.current = true;
+    if (decision === "open") {
+      wakeNight();
+      openDoorManually();
+    }
+    if (hasDoorParam(search)) window.history.replaceState(window.history.state, "", withoutDoorParam(pathname, search, hash));
+  }, [doorSnapshotLoaded, doorHasCamera, openDoorManually, wakeNight]);
 
   // Leaving night (clock rolls past 5am, or a `?period=` override changes it)
   // drops any pending wake state rather than letting a stale timer flip it

@@ -269,7 +269,7 @@ public class CameraTests
             c.View.Open = opened.Add; c.View.CameraToggled = () => toggled++;
             c.View.CameraFrameButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
             c.View.CameraHeaderButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
-            Assert.Equal(new[] { "/kiosk" }, opened);
+            Assert.Equal(new[] { "/kiosk?door=1" }, opened);
             Assert.Equal(1, toggled);
             var peer = (IExpandCollapseProvider)new CameraHeaderPeerAccess().Peer(c.View.CameraHeaderButton);
             Assert.Equal(ExpandCollapseState.Expanded, peer.ExpandCollapseState);

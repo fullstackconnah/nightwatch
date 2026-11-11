@@ -297,7 +297,7 @@ internal sealed class DeskView : Border
         camFrame.Content = content;
         camFrame.ToolTip = Copy.CameraFrameTip;
         AutomationProperties.SetAutomationId(camFrame, "camera-frame");
-        camFrame.Click += (_, _) => Open?.Invoke("/kiosk");
+        camFrame.Click += (_, _) => Open?.Invoke("/kiosk?door=1");
 
         camBox.Children.Add(Hairline());
         camBox.Children.Add(camHeader);
