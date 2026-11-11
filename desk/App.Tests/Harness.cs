@@ -34,10 +34,15 @@ internal static class Fix
         return ((Outcome.Ok)GlanceParser.Parse(File.ReadAllText(p))).Glance;
     }
 
-    /// <summary>The fixture each of the 20 states renders from (see snapshots.ps1, which uses the same table).</summary>
+    /// <summary>The fixture each of the 35 states renders from (see snapshots.ps1, which uses the same table).</summary>
     public static string For(string state) => state switch
     {
-        "healthy" or "first-launch" => "healthy",
+        "healthy" or "first-launch" or "weather-null" => "healthy",
+        "weather-on" or "weather-dim" => "healthy-weather",
+        "weather-long" => "weather-long",
+        "camera-folded" => "camera-3-items",
+        "camera-loading" or "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame"
+            or "camera-collapsed" or "camera-hidden" or "camera-hover-frame" or "camera-focus-header" => "camera",
         "pending" => "pending",
         "one-lane" => "one-lane",
         "overflow" => "overflow",
@@ -47,7 +52,15 @@ internal static class Fix
     };
 
     public static Snapshot.Composed Compose(string state, double dpi = 96) =>
-        Snapshot.Compose(Snapshot.ModelFor(state, Load(For(state))), dpi);
+        Snapshot.Compose(Snapshot.ModelFor(state, Load(For(state)), dpi), dpi);
+
+    /// <summary>Every ancestor is Visible: IsVisible is false for the detached offscreen tree.</summary>
+    public static bool Shown(UIElement e)
+    {
+        for (DependencyObject? o = e; o is not null; o = o is Visual ? VisualTreeHelper.GetParent(o) : null)
+            if (o is UIElement u && u.Visibility != Visibility.Visible) return false;
+        return true;
+    }
 
     public static IEnumerable<T> Walk<T>(DependencyObject root) where T : DependencyObject
     {

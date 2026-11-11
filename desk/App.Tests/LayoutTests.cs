@@ -185,7 +185,7 @@ public class LayoutTests
     }
 
     // CIE76 on sRGB, enough for "no state colour".
-    static (double L, double a, double b) Lab(Color c)
+    internal static (double L, double a, double b) Lab(Color c)
     {
         static double F(double v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.Pow((v + 0.055) / 1.055, 2.4); }
         double r = F(c.R), g = F(c.G), bl = F(c.B);
@@ -194,9 +194,9 @@ public class LayoutTests
         return (116 * T(y) - 16, 500 * (T(x) - T(y)), 200 * (T(y) - T(z)));
     }
 
-    static double DeltaE(Color p, Color q) { var a = Lab(p); var b = Lab(q); return Math.Sqrt(Math.Pow(a.L - b.L, 2) + Math.Pow(a.a - b.a, 2) + Math.Pow(a.b - b.b, 2)); }
+    internal static double DeltaE(Color p, Color q) { var a = Lab(p); var b = Lab(q); return Math.Sqrt(Math.Pow(a.L - b.L, 2) + Math.Pow(a.a - b.a, 2) + Math.Pow(a.b - b.b, 2)); }
 
-    static Color Pixel(BitmapSource bmp, int x, int y)
+    internal static Color Pixel(BitmapSource bmp, int x, int y)
     {
         var px = new byte[4];
         bmp.CopyPixels(new Int32Rect(x, y, 1, 1), px, 4, 0);
@@ -259,7 +259,7 @@ public class LayoutTests
         Sta.Run(() =>
         {
             var line = ((SolidColorBrush)Theme.B("line")).Color;
-            foreach (var h in Ids(c.View, "hairline"))
+            foreach (var h in Ids(c.View, "hairline").Where(Fix.Shown))
             {
                 var r = h.TransformToAncestor(c.Host).TransformBounds(new Rect(0, 0, h.ActualWidth, h.ActualHeight));
                 var top = r.Top * 1.5; var hgt = r.Height * 1.5;

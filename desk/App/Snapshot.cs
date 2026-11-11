@@ -19,15 +19,54 @@ internal static class Snapshot
         "healthy", "first-launch", "pending", "one-lane", "lanes-and-items", "overflow", "long-copy", "vitals-null", "stale",
         "offline-with-last-known", "offline-never-answered", "config-missing", "config-invalid-json", "token-missing",
         "wrong-token-401", "desk-off-503", "server-too-new", "hover-row-1", "focus-row-1", "update-held",
+        "weather-on", "weather-long", "weather-null", "weather-dim", "camera-loading", "camera-live", "camera-letterbox", "camera-stale",
+        "camera-no-picture", "offline-last-frame", "camera-collapsed", "camera-folded", "camera-hidden", "camera-hover-frame", "camera-focus-header",
     };
 
-    public static Model ModelFor(string state, Glance g)
+    const int CameraInterval = 30; // the default I; frame ages below are multiples of it
+    public const double FoldedWorkHeight = 464; // 768 px at 150%: 512 DIP less the 48 DIP taskbar
+
+    /// <summary>A generated test picture (never a real camera frame): a greyscale diagonal gradient, a grid every 1/8 of the width and the aspect in white. JPEG, in memory.</summary>
+    public static byte[] TestFrame(int w, int h, string label)
+    {
+        var v = new DrawingVisual();
+        using (var dc = v.RenderOpen())
+        {
+            dc.DrawRectangle(new LinearGradientBrush(Color.FromRgb(0x20, 0x20, 0x20), Color.FromRgb(0xb0, 0xb0, 0xb0), new Point(0, 0), new Point(1, 1)), null, new Rect(0, 0, w, h));
+            var grid = new Pen(new SolidColorBrush(Color.FromArgb(0x60, 0xff, 0xff, 0xff)), 1);
+            for (var x = 0; x <= w; x += w / 8) dc.DrawLine(grid, new Point(x, 0), new Point(x, h));
+            for (var y = 0; y <= h; y += w / 8) dc.DrawLine(grid, new Point(0, y), new Point(w, y));
+            var t = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface("Segoe UI"), h / 4.0, Brushes.White, 1.0);
+            dc.DrawText(t, new Point((w - t.Width) / 2, (h - t.Height) / 2));
+        }
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(v);
+        var enc = new JpegBitmapEncoder { QualityLevel = 85 };
+        enc.Frames.Add(BitmapFrame.Create(rtb));
+        using var ms = new MemoryStream();
+        enc.Save(ms);
+        return ms.ToArray();
+    }
+
+    static Cam FrameCam(string state, double dpi)
+    {
+        Theme.EnsureLoaded(); // the CLI builds the model before it composes
+        var aspect43 = state == "camera-letterbox";
+        var age = state is "camera-stale" or "offline-last-frame" ? 2 * CameraInterval + 5 : state == "camera-no-picture" ? 301 : 10; // Snap.FrameAge
+        var at = At.AddSeconds(-age);
+        var s = FrameClock.Compute(At, at, CameraInterval, false, false);
+        var img = s == FrameState.NoPicture ? null : CameraFeed.Decode(aspect43 ? TestFrame(480, 360, "4:3") : TestFrame(640, 360, "16:9"), dpi / 96);
+        return new Cam(state == "camera-collapsed", state == "camera-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
+            HoverFrame: state == "camera-hover-frame", FocusHeader: state == "camera-focus-header");
+    }
+
+    public static Model ModelFor(string state, Glance g, double dpi = 96)
     {
         View v = state switch
         {
             "first-launch" => new View.FirstLaunch(),
-            "stale" => new View.Stale(g, At),
-            "offline-with-last-known" => new View.Offline(g, At),
+            "stale" or "weather-dim" => new View.Stale(g, At),
+            "offline-with-last-known" or "offline-last-frame" => new View.Offline(g, At),
             "offline-never-answered" => new View.Offline(null, null),
             "config-missing" => new View.Config(new ConfigResult.Missing()),
             "config-invalid-json" => new View.Config(new ConfigResult.Unreadable(3)),
@@ -37,7 +76,15 @@ internal static class Snapshot
             "server-too-new" => new View.ServerTooNew(2),
             _ => new View.Live(g),
         };
-        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1");
+        var strip = g.Weather is { } w ? new Strip(w, v is View.Stale or View.Offline) : null; // fixtures without weather draw no strip
+        Cam? cam = state switch
+        {
+            "camera-loading" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null),
+            "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
+                or "camera-folded" or "camera-hover-frame" or "camera-focus-header" => FrameCam(state, dpi),
+            _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
+        };
+        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam);
     }
 
     public sealed record Composed(Border Host, DeskView View, RenderTargetBitmap Bitmap, double Dpi);
@@ -116,7 +163,7 @@ internal static class Snapshot
         if (a[2] == "tray-sheet") { SavePng(TraySheet(), a[3]); return 0; }
         if (!States.Contains(a[2])) { Console.Error.WriteLine("unknown state " + a[2]); return 2; }
         if (GlanceParser.Parse(File.ReadAllText(a[1])) is not Outcome.Ok ok) { Console.Error.WriteLine("fixture is not a v1 glance"); return 2; }
-        SavePng(Compose(ModelFor(a[2], ok.Glance), dpi).Bitmap, a[3]);
+        SavePng(Compose(ModelFor(a[2], ok.Glance, dpi), dpi).Bitmap, a[3]);
         return 0;
     }
 }

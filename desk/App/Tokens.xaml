@@ -58,6 +58,10 @@
   <sys:Double x:Key="more-height">32</sys:Double>
   <sys:Double x:Key="dot">8</sys:Double>
   <sys:Double x:Key="chevron">12</sys:Double>
+  <sys:Double x:Key="glyph">16</sys:Double>
+  <sys:Double x:Key="frame-w">288</sys:Double>
+  <sys:Double x:Key="frame-h">162</sys:Double>
+  <sys:Double x:Key="frame-dim">0.5</sys:Double>
 
   <!-- ease-calm: the one fade -->
   <KeySpline x:Key="ease-calm">0.2,0.8 0.2,1</KeySpline>
@@ -100,6 +104,40 @@
             </Trigger>
             <Trigger Property="local:Snap.ForceHover" Value="True">
               <Setter TargetName="Fill" Property="Background" Value="{StaticResource panel-2}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceFocus" Value="True">
+              <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter TargetName="Fill" Property="Background" Value="Transparent" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- the camera frame: the picture, a 1 DIP line drawn over it (the image area stays frame-w x frame-h), line-bright on hover -->
+  <Style x:Key="FrameButton" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusVisualStyle" Value="{StaticResource RowFocus}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Grid>
+            <ContentPresenter />
+            <Border x:Name="Edge" BorderBrush="{StaticResource line}" BorderThickness="1" CornerRadius="6" IsHitTestVisible="False" />
+            <Border x:Name="Ring" Visibility="Collapsed" BorderBrush="{StaticResource accent}" BorderThickness="1" CornerRadius="6" Margin="2" IsHitTestVisible="False" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Edge" Property="BorderBrush" Value="{StaticResource line-bright}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceHover" Value="True">
+              <Setter TargetName="Edge" Property="BorderBrush" Value="{StaticResource line-bright}" />
             </Trigger>
             <Trigger Property="local:Snap.ForceFocus" Value="True">
               <Setter TargetName="Ring" Property="Visibility" Value="Visible" />

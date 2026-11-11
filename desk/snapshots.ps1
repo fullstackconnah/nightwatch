@@ -1,4 +1,4 @@
-# Renders the 20 widget states at 96 and 144 dpi plus the tray sheet (41 PNGs) offscreen.
+# Renders the 35 widget states at 96 and 144 dpi plus the tray sheet (71 PNGs) offscreen.
 # Usage: powershell -File desk\snapshots.ps1 <outdir> [-NoBuild]
 param([Parameter(Mandatory)][string]$OutDir, [switch]$NoBuild)
 $ErrorActionPreference = 'Stop'
@@ -13,10 +13,16 @@ New-Item -ItemType Directory -Force $OutDir | Out-Null
 $fixture = @{
   'healthy' = 'healthy'; 'first-launch' = 'healthy'; 'pending' = 'pending'; 'one-lane' = 'one-lane'
   'overflow' = 'overflow'; 'long-copy' = 'long-copy'; 'vitals-null' = 'vitals-null'
+  'weather-on' = 'healthy-weather'; 'weather-dim' = 'healthy-weather'; 'weather-long' = 'weather-long'; 'weather-null' = 'healthy'
+  'camera-folded' = 'camera-3-items'
+  'camera-loading' = 'camera'; 'camera-live' = 'camera'; 'camera-letterbox' = 'camera'; 'camera-stale' = 'camera'; 'camera-no-picture' = 'camera'
+  'offline-last-frame' = 'camera'; 'camera-collapsed' = 'camera'; 'camera-hidden' = 'camera'; 'camera-hover-frame' = 'camera'; 'camera-focus-header' = 'camera'
 }
 $states = 'healthy','first-launch','pending','one-lane','lanes-and-items','overflow','long-copy','vitals-null','stale',
   'offline-with-last-known','offline-never-answered','config-missing','config-invalid-json','token-missing',
-  'wrong-token-401','desk-off-503','server-too-new','hover-row-1','focus-row-1','update-held'
+  'wrong-token-401','desk-off-503','server-too-new','hover-row-1','focus-row-1','update-held',
+  'weather-on','weather-long','weather-null','weather-dim','camera-loading','camera-live','camera-letterbox','camera-stale',
+  'camera-no-picture','offline-last-frame','camera-collapsed','camera-folded','camera-hidden','camera-hover-frame','camera-focus-header'
 
 function Snap($fixtureFile, $state, $out, $dpi) {
   # Start-Process -Wait: a WinExe is not waited on by the call operator

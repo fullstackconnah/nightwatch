@@ -15,7 +15,7 @@ internal static class DeskFiles
     public static readonly string State = Path.Combine(Dir, "state.json");
 }
 
-internal sealed record WinState(double Left, double Top, string Anchor, bool AlwaysOnTop, Box? WorkArea)
+internal sealed record WinState(double Left, double Top, string Anchor, bool AlwaysOnTop, Box? WorkArea, bool CameraCollapsed = false)
 {
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 

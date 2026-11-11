@@ -166,6 +166,52 @@ public class CameraTests
         }
     }
 
+    // --- weather visibility ---------------------------------------------------------------
+    static Outcome OkW(bool weather) => new Outcome.Ok(GlanceTests.Golden() with { Weather = weather ? new WeatherNow(22, 19, "Partly cloudy", 24, 15, 30, "partly-cloudy") : null });
+
+    [Fact]
+    public void Weather_stays_hidden_until_the_first_value_and_dims_for_one_or_two_nulls()
+    {
+        var v = new WeatherVisibility();
+        for (var n = 0; n < 5; n++) { v.OnPoll(OkW(false)); Assert.False(v.Visible); }
+        v.OnPoll(OkW(true));
+        Assert.True(v.Visible); Assert.False(v.Dim);
+        v.OnPoll(OkW(false));
+        Assert.True(v.Visible); Assert.True(v.Dim);
+        v.OnPoll(OkW(false));
+        Assert.True(v.Visible); Assert.True(v.Dim);
+        v.OnPoll(OkW(true));
+        Assert.False(v.Dim);
+    }
+
+    [Fact]
+    public void Weather_hides_on_the_third_null_in_a_row_and_a_value_resets_the_count()
+    {
+        var v = new WeatherVisibility();
+        v.OnPoll(OkW(true));
+        v.OnPoll(OkW(false)); v.OnPoll(OkW(true));
+        v.OnPoll(OkW(false)); v.OnPoll(OkW(false));
+        Assert.True(v.Visible);
+        v.OnPoll(OkW(false));
+        Assert.False(v.Visible); Assert.False(v.Dim);
+    }
+
+    [Fact]
+    public void Weather_failed_polls_count_nothing_and_a_client_error_hides_at_once()
+    {
+        var v = new WeatherVisibility();
+        v.OnPoll(OkW(true));
+        v.OnPoll(OkW(false)); v.OnPoll(OkW(false));
+        for (var n = 0; n < 5; n++) v.OnPoll(new Outcome.Failed());
+        Assert.True(v.Visible);
+        foreach (Outcome err in new Outcome[] { new Outcome.Unauthorized(), new Outcome.Off(), new Outcome.TooNew(2) })
+        {
+            v.OnPoll(OkW(true));
+            v.OnPoll(err);
+            Assert.False(v.Visible);
+        }
+    }
+
     // --- poll gate ------------------------------------------------------------------------
     [Fact]
     public void Fetch_is_allowed_only_when_nothing_pauses_it()

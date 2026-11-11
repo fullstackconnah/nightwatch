@@ -83,4 +83,24 @@ public class LimitsAndSecretsTests
         Fix.Rec("N20 canary hits across 20 states", hits.Count.ToString());
         Assert.Empty(hits);
     }
+
+    [Fact]
+    public void N20_the_token_is_in_no_camera_outcome_text_or_automation_name_and_the_bytes_stay_off_disk()
+    {
+        using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(2) };
+        var o = CameraFrame.FetchAsync(http, "http://127.0.0.1:1", Canary).GetAwaiter().GetResult();
+        Assert.IsType<FrameOutcome.Failure>(o);
+        Assert.DoesNotContain(Canary, o.ToString());
+        // The feed has no path to disk: no file API in the camera path (the runtime check is N39 in CameraTests).
+        var src = string.Join("\n", new[] { "CameraFeed.cs", "DeskHost.cs" }.Select(f => File.ReadAllText(Path.Combine(SourceDir(), f))));
+        foreach (var banned in new[] { "File.Write", "File.Create", "FileStream", "WriteAllBytes", "SaveAs", "Console.Write", "Debug.Write", "Trace.Write" })
+            Assert.DoesNotContain(banned, src.Replace("File.WriteAllText", "")); // DeskHost writes only its own state file through Files.cs
+    }
+
+    static string SourceDir()
+    {
+        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
+            if (File.Exists(Path.Combine(d.FullName, "App", "CameraFeed.cs"))) return Path.Combine(d.FullName, "App");
+        throw new FileNotFoundException("App/CameraFeed.cs");
+    }
 }

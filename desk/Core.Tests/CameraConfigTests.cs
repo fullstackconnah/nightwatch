@@ -60,14 +60,4 @@ public class CameraConfigTests : IDisposable
     [InlineData("\"cameraIntervalSeconds\":\"10\"", 30)]
     [InlineData("\"cameraIntervalSeconds\":null", 30)]
     public void Camera_interval_defaults_to_30_and_clamps_to_5_300(string? extra, int want) => Assert.Equal(want, Interval(extra));
-
-    [Fact]
-    public void Collapsed_flag_round_trips_and_an_old_state_file_means_expanded()
-    {
-        Assert.True(DeskMemory.Parse(new DeskMemory(true).ToJson()).CameraCollapsed);
-        Assert.False(DeskMemory.Parse(new DeskMemory(false).ToJson()).CameraCollapsed);
-        Assert.False(DeskMemory.Parse("{\"left\":10,\"top\":20,\"anchor\":\"top\",\"alwaysOnTop\":false}").CameraCollapsed);
-        Assert.False(DeskMemory.Parse("not json").CameraCollapsed);
-        Assert.False(DeskMemory.Parse("").CameraCollapsed);
-    }
 }

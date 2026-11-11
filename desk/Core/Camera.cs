@@ -1,5 +1,4 @@
 using System.Net.Http.Headers;
-using System.Text.Json;
 
 namespace NightwatchDesk.Core;
 
@@ -116,16 +115,34 @@ public static class FrameGate
         !(windowHidden || blockHidden || clientError || sessionLocked || suspended);
 }
 
-/// <summary>The desk's own memory in state.json that the camera adds. Unknown keys (the window's position) are ignored on read.</summary>
-public sealed record DeskMemory(bool CameraCollapsed = false)
+/// <summary>
+/// Whether the weather strip exists. Same rhythm as <see cref="CameraVisibility"/>: hidden until the first weather, then it
+/// stays through 1 or 2 null polls (<see cref="Dim"/>) and hides on the 3rd; a failed poll counts nothing; a client error hides at once.
+/// </summary>
+public sealed class WeatherVisibility
 {
-    static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
+    public const int HideAfterNulls = 3;
+    int nulls;
 
-    public static DeskMemory Parse(string? json)
+    public bool Visible { get; private set; }
+    /// <summary>The last values are showing but the newest poll had none.</summary>
+    public bool Dim => Visible && nulls > 0;
+
+    public void OnPoll(Outcome o)
     {
-        try { return string.IsNullOrWhiteSpace(json) ? new DeskMemory() : JsonSerializer.Deserialize<DeskMemory>(json, Options) ?? new DeskMemory(); }
-        catch (JsonException) { return new DeskMemory(); }
+        switch (o)
+        {
+            case Outcome.Ok { Glance.Weather: not null }:
+                Visible = true; nulls = 0;
+                break;
+            case Outcome.Ok:
+                if (Visible && ++nulls >= HideAfterNulls) { Visible = false; nulls = 0; }
+                break;
+            case Outcome.Failed:
+                break;
+            default:
+                Visible = false; nulls = 0;
+                break;
+        }
     }
-
-    public string ToJson() => JsonSerializer.Serialize(this, Options);
 }

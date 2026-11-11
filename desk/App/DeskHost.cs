@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Http;
 using System.Windows;
+using Microsoft.Win32;
 using System.Windows.Threading;
 using NightwatchDesk.Core;
 
@@ -24,6 +25,15 @@ internal sealed class DeskHost
     bool polling;
     Click? lastToast;
 
+    // The camera and the weather (SHAPE 2, 3). The *Vis objects are fed once per poll outcome; what shows changes only at a gate commit.
+    readonly WeatherVisibility weatherVis = new();
+    readonly CameraVisibility camVis = new();
+    CameraFeed feed = null!;
+    DispatcherTimer camTimer = null!;
+    WeatherNow? lastWeather;
+    bool shownWeather, shownCam, collapsed;
+    double workHeight = double.PositiveInfinity;
+
     public int Run()
     {
         Theme.EnsureLoaded();
@@ -31,6 +41,17 @@ internal sealed class DeskHost
         view = new DeskView(tz) { Open = OpenHref };
         widget = new Widget(view, saved);
         tray = new Tray(widget.AlwaysOnTop);
+
+        collapsed = widget.CameraCollapsed;
+        feed = new CameraFeed(
+            ct => cfg is { } c ? CameraFrame.FetchAsync(http, c.BaseUrl, c.Token, ct) : Task.FromResult<FrameOutcome>(new FrameOutcome.Failure()),
+            () => DateTimeOffset.Now, () => widget.DpiScale);
+        feed.Changed += () => Update();
+        view.CameraToggled = () => { collapsed = !collapsed; widget.SetCameraCollapsed(collapsed); Update(); };
+        widget.VisibilityChanged += () => feed.WindowHidden = widget.IsHiddenOrMinimised;
+        widget.DisplayChanged += () => { workHeight = widget.WorkHeight(); Update(); };
+        SystemEvents.SessionSwitch += OnSession;
+        SystemEvents.PowerModeChanged += OnPower;
 
         widget.PointerOver += on => Update(gate.SetPointer(on));
         widget.FocusInside += on => Update(gate.SetFocus(on));
@@ -57,10 +78,18 @@ internal sealed class DeskHost
         var poll = new DispatcherTimer { Interval = PollEvery };
         poll.Tick += (_, _) => _ = PollAsync();
         poll.Start();
+        camTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(feed.IntervalSeconds) };
+        camTimer.Tick += (_, _) => _ = feed.TickAsync();
+        camTimer.Start();
         _ = PollAsync();
 
         Application.Current.DispatcherUnhandledException += (_, e) => e.Handled = true; // a stray UI exception must not end the widget; nothing is logged, so no token can leak
-        Application.Current.Exit += (_, _) => tray.Dispose();
+        Application.Current.Exit += (_, _) =>
+        {
+            SystemEvents.SessionSwitch -= OnSession;
+            SystemEvents.PowerModeChanged -= OnPower;
+            tray.Dispose();
+        };
         return Application.Current.Run();
     }
 
@@ -72,6 +101,11 @@ internal sealed class DeskHost
         var r = DeskConfig.Load(DeskFiles.Config);
         state.SetConfig(r);
         cfg = r as ConfigResult.Ok;
+        if (cfg is not null && feed is not null)
+        {
+            feed.IntervalSeconds = cfg.CameraIntervalSeconds;
+            if (camTimer is not null) camTimer.Interval = TimeSpan.FromSeconds(cfg.CameraIntervalSeconds);
+        }
     }
 
     async Task PollAsync()
@@ -83,6 +117,9 @@ internal sealed class DeskHost
         try { o = await Poller.FetchAsync(http, c); }
         finally { polling = false; }
         var next = state.Apply(o);
+        weatherVis.OnPoll(o);
+        camVis.OnPoll(o);
+        if (o is Outcome.Ok { Glance.Weather: { } w }) lastWeather = w;
         if (ToastDiff.Compute(prev, next, c.BaseUrl, tz, firstRun && prev is null) is { } toast)
         {
             lastToast = toast.Click;
@@ -97,8 +134,32 @@ internal sealed class DeskHost
     {
         var latest = state.Current;
         var changed = gate.Offer(latest);
-        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld), committed || changed);
+        var err = latest is View.Config or View.WrongToken or View.DeskOff or View.ServerTooNew;
+        if (!gate.Held) // showing or hiding either block changes the height, so it waits for a commit
+        {
+            shownWeather = weatherVis.Visible && !err;
+            shownCam = camVis.Visible && !err;
+            if (shownCam && !collapsed) workHeight = widget.WorkHeight();
+        }
+        var dim = latest is View.Stale or View.Offline;
+        var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim) : null;
+        var cam = shownCam ? new Cam(collapsed, workHeight, feed.State, feed.Image, feed.FrameAt) : null;
+        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam), committed || changed);
+        feed.ClientError = err;
+        feed.BlockHidden = !shownCam || collapsed || view.CameraFolded;
         tray.Set(TrayState.Of(latest), Copy.Tooltip(latest, tz));
+    }
+
+    void OnSession(object? s, SessionSwitchEventArgs e)
+    {
+        if (e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionUnlock)
+            Application.Current?.Dispatcher.BeginInvoke((Action)(() => feed.Locked = e.Reason == SessionSwitchReason.SessionLock));
+    }
+
+    void OnPower(object? s, PowerModeChangedEventArgs e)
+    {
+        if (e.Mode is PowerModes.Suspend or PowerModes.Resume)
+            Application.Current?.Dispatcher.BeginInvoke((Action)(() => feed.Suspended = e.Mode == PowerModes.Suspend));
     }
 
     void OpenHref(string href) => OpenUrl((cfg?.BaseUrl ?? "") + (href.StartsWith('/') ? href : "/"));
