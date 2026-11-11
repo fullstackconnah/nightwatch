@@ -60,8 +60,35 @@ internal sealed class Widget : Window
         PreviewMouseLeftButtonDown += OnDown;
         MouseRightButtonUp += (_, _) => ContextMenuRequested?.Invoke();
         SystemEvents.DisplaySettingsChanged += OnDisplayChanged;
+        IsVisibleChanged += (_, _) => VisibilityChanged?.Invoke();
+        StateChanged += (_, _) => VisibilityChanged?.Invoke();
         Closed += (_, _) => SystemEvents.DisplaySettingsChanged -= OnDisplayChanged;
     }
+
+    /// <summary>The window was shown, hidden, minimised or restored.</summary>
+    public event Action? VisibilityChanged;
+    /// <summary>The monitors changed; the fit-fold measures again.</summary>
+    public event Action? DisplayChanged;
+
+    public bool IsHiddenOrMinimised => !IsVisible || WindowState == WindowState.Minimized;
+    public bool CameraCollapsed => state.CameraCollapsed;
+
+    /// <summary>The user's own collapse choice; saved with the position through the one Save path.</summary>
+    public void SetCameraCollapsed(bool collapsed)
+    {
+        state = state with { CameraCollapsed = collapsed };
+        Save();
+    }
+
+    /// <summary>Height of the work area of the monitor the window is on, in DIP. Falls back to the primary one.</summary>
+    public double WorkHeight()
+    {
+        var box = new Box(Left, Top, Width, CurrentHeight());
+        var work = WorkAreas().FirstOrDefault(w => w.Contains(box));
+        return work.Width > 0 ? work.Height : Primary().Height;
+    }
+
+    public double DpiScale => Scale;
 
     public void SetAlwaysOnTop(bool on)
     {
@@ -102,7 +129,7 @@ internal sealed class Widget : Window
         Clamp();
     }
 
-    void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke((Action)Clamp);
+    void OnDisplayChanged(object? s, EventArgs e) => Dispatcher.BeginInvoke((Action)(() => { Clamp(); DisplayChanged?.Invoke(); }));
 
     double Scale => VisualTreeHelper.GetDpi(this).DpiScaleX;
 
@@ -144,7 +171,7 @@ internal sealed class Widget : Window
         var box = new Box(Left, Top, Width, CurrentHeight());
         var work = WorkAreas().FirstOrDefault(w => w.Contains(box));
         bottomAnchor = work.Width > 0 && !Placement.GrowsDown(box, work);
-        state = new WinState(Left, Top, bottomAnchor ? "bottom" : "top", Topmost, work.Width > 0 ? work : null);
+        state = state with { Left = Left, Top = Top, Anchor = bottomAnchor ? "bottom" : "top", AlwaysOnTop = Topmost, WorkArea = work.Width > 0 ? work : null };
         state.Save(DeskFiles.State);
     }
 }

@@ -15,7 +15,30 @@ namespace NightwatchDesk.App;
 internal enum Mark { None, Ring, Amber, Red, Off }
 
 /// <summary>What to draw: the committed body, the newest view (footer, vitals and the dim restyle read it), and the gate's flag.</summary>
-internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false);
+internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null);
+
+/// <summary>The weather strip; null on the model means hidden. Dim: the last values, temperature and glyph quieter.</summary>
+internal sealed record Strip(WeatherNow Weather, bool Dim);
+
+/// <summary>The camera block; null on the model means hidden. WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold).</summary>
+internal sealed record Cam(bool Collapsed, double WorkHeight, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false);
+
+/// <summary>The camera header is a button that also reports ExpandCollapse to screen readers.</summary>
+internal sealed class CameraHeader : Button
+{
+    public bool Expanded { get; set; }
+    protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new Peer(this);
+
+    sealed class Peer(CameraHeader h) : System.Windows.Automation.Peers.ButtonAutomationPeer(h), System.Windows.Automation.Provider.IExpandCollapseProvider
+    {
+        public override object? GetPattern(System.Windows.Automation.Peers.PatternInterface p) =>
+            p == System.Windows.Automation.Peers.PatternInterface.ExpandCollapse ? this : base.GetPattern(p);
+        public System.Windows.Automation.ExpandCollapseState ExpandCollapseState =>
+            h.Expanded ? System.Windows.Automation.ExpandCollapseState.Expanded : System.Windows.Automation.ExpandCollapseState.Collapsed;
+        public void Expand() { if (!h.Expanded) h.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+        public void Collapse() { if (h.Expanded) h.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+    }
+}
 
 /// <summary>The one panel column (SHAPE "Layout"). Built in code from Tokens.xaml; every size comes from a token.</summary>
 internal sealed class DeskView : Border
@@ -31,12 +54,29 @@ internal sealed class DeskView : Border
     readonly TextBlock vitals;
     readonly TextBlock footer;
     readonly TextBlock held;
-    string? bodyKey, vitalsKey, footerKey;
+    string? bodyKey, vitalsKey, footerKey, weatherKey, foldKey;
+    bool foldValue;
     Mark? lastMark;
     HashSet<string> shown = new();
 
+    readonly StackPanel weatherBox = new() { Visibility = Visibility.Collapsed };
+    readonly StackPanel camBox = new() { Visibility = Visibility.Collapsed };
+    readonly CameraHeader camHeader = new();
+    readonly Button camFrame = new();
+    readonly Image frameImage = new();
+    // Built in BuildCamera: they read tokens, which load in the constructor.
+    TextBlock camAge = null!, frameMsg1 = null!, frameMsg2 = null!;
+    FrameworkElement camChev = null!;
+
     /// <summary>Called with a relative href ("/..."); the host prefixes the base address.</summary>
     public Action<string>? Open;
+    /// <summary>The camera header was clicked; the host flips and saves the collapsed flag.</summary>
+    public Action? CameraToggled;
+    /// <summary>True while the camera block is showing only its header because the screen is too short (a view state, never saved).</summary>
+    public bool CameraFolded { get; private set; }
+
+    public Button CameraHeaderButton => camHeader;
+    public Button CameraFrameButton => camFrame;
 
     public DeskView(TimeZoneInfo tz)
     {
@@ -95,6 +135,9 @@ internal sealed class DeskView : Border
         var stack = new StackPanel();
         stack.Children.Add(head);
         stack.Children.Add(body);
+        stack.Children.Add(weatherBox);
+        BuildCamera(side);
+        stack.Children.Add(camBox);
         stack.Children.Add(vitalsBox);
         stack.Children.Add(foot);
 
@@ -161,6 +204,157 @@ internal sealed class DeskView : Border
         }
         footer.Foreground = Theme.B(m.Latest is View.Stale or View.Offline or View.WrongToken or View.DeskOff ? "warn" : "ink-dim");
         held.Visibility = m.UpdateHeld ? Visibility.Visible : Visibility.Hidden;
+
+        RenderWeather(m.Weather);
+        CameraFolded = m.Camera is { Collapsed: false } c && FitFolds(c.WorkHeight);
+        FillCamera(m.Camera);
+    }
+
+    // --- weather strip (SHAPE 2): two lines in the row shape, not interactive, not a tab stop ---
+    void RenderWeather(Strip? s)
+    {
+        var key = s?.ToString() ?? "";
+        if (key == weatherKey) return;
+        weatherKey = key;
+        weatherBox.Children.Clear();
+        weatherBox.Visibility = s is null ? Visibility.Collapsed : Visibility.Visible;
+        if (s is null) return;
+
+        var w = s.Weather;
+        var side = Theme.D("sp-lg") - Theme.D("hairline");
+        var l1 = Theme.Text("", "fs-title", "lh-title", "ink-dim");
+        l1.Inlines.Add(new Run(Copy.WeatherTemp(w)) { FontFamily = Theme.F("font-mono"), FontSize = Theme.D("fs-title"), Foreground = Theme.B(s.Dim ? "ink-dim" : "ink") });
+        l1.Inlines.Add(new Run("  " + Copy.WeatherLabel(w)) { FontSize = Theme.D("fs-body") });
+        var l2 = Theme.Text(Copy.WeatherLine2(w), "fs-note", "lh-note", "ink-dim", mono: true);
+        l2.Height = Theme.D("lh-note"); // an empty line 2 still holds its place
+        l2.Margin = new Thickness(0, Theme.D("sp-hair"), 0, 0);
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { l1, l2 } };
+        Grid.SetColumn(text, 2);
+
+        var glyph = WeatherGlyph.Build(w.Icon, s.Dim ? "ink-faint" : "ink-dim");
+        var lines = Theme.D("lh-title") + Theme.D("sp-hair") + Theme.D("lh-note");
+        glyph.VerticalAlignment = VerticalAlignment.Top;
+        glyph.HorizontalAlignment = HorizontalAlignment.Left;
+        glyph.Margin = new Thickness(0, (Theme.D("row-height") - lines) / 2 + (Theme.D("lh-title") - Theme.D("glyph")) / 2, 0, 0); // centred on line 1
+
+        var strip = new Grid { Height = Theme.D("row-height"), Margin = new Thickness(side, 0, side, 0), Background = Brushes.Transparent };
+        strip.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Theme.D("glyph")) });
+        strip.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Theme.D("sp-sm")) });
+        strip.ColumnDefinitions.Add(new ColumnDefinition());
+        strip.Children.Add(glyph);
+        strip.Children.Add(text);
+        var tip = Copy.WeatherTooltip(w);
+        strip.ToolTip = tip;
+        AutomationProperties.SetName(strip, tip);
+        AutomationProperties.SetAutomationId(strip, "weather");
+        weatherBox.Children.Add(Hairline());
+        weatherBox.Children.Add(strip);
+    }
+
+    // --- camera block (SHAPE 3) ---
+    void BuildCamera(double side)
+    {
+        camAge = Theme.Text("", "fs-note", "lh-note", "ink-dim", mono: true);
+        camAge.VerticalAlignment = VerticalAlignment.Center;
+        camChev = Chevron();
+        camChev.VerticalAlignment = VerticalAlignment.Center;
+        camChev.RenderTransformOrigin = new Point(.5, .5);
+        camChev.Margin = new Thickness(Theme.D("sp-base"), 0, 0, 0);
+        var title = Theme.Text(Copy.CameraTitle.ToUpperInvariant(), "fs-label", "lh-label", "ink-faint", semibold: true);
+        title.VerticalAlignment = VerticalAlignment.Center;
+        var right = new StackPanel { Orientation = Orientation.Horizontal, Children = { camAge, camChev } };
+        Grid.SetColumn(right, 1);
+        var head = new Grid { Margin = new Thickness(side, 0, side, 0) };
+        head.ColumnDefinitions.Add(new ColumnDefinition());
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.Children.Add(title);
+        head.Children.Add(right);
+        camHeader.Style = (Style)Application.Current.Resources["RowButton"];
+        camHeader.Height = Theme.D("more-height");
+        camHeader.Content = head;
+        AutomationProperties.SetAutomationId(camHeader, "camera-header");
+        AutomationProperties.SetName(camHeader, Copy.CameraHeaderName);
+        camHeader.Click += (_, _) => CameraToggled?.Invoke();
+
+        var w = Theme.D("frame-w"); var h = Theme.D("frame-h");
+        frameImage.Stretch = Stretch.Uniform;
+        RenderOptions.SetBitmapScalingMode(frameImage, BitmapScalingMode.HighQuality);
+        frameMsg1 = Theme.Text("", "fs-body", "lh-body", "ink-dim");
+        frameMsg2 = Theme.Text("", "fs-note", "lh-note", "ink-faint", mono: true);
+        frameMsg1.TextAlignment = TextAlignment.Center;
+        frameMsg2.TextAlignment = TextAlignment.Center;
+        frameMsg2.Margin = new Thickness(0, Theme.D("sp-xs"), 0, 0);
+        var msg = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { frameMsg1, frameMsg2 } };
+        var content = new Grid
+        {
+            Width = w, Height = h, Background = Theme.B("bg"), Children = { frameImage, msg },
+            Clip = new RectangleGeometry(new Rect(0, 0, w, h), Theme.D("r-md"), Theme.D("r-md")),
+        };
+        camFrame.Style = (Style)Application.Current.Resources["FrameButton"];
+        camFrame.Width = w; camFrame.Height = h;
+        camFrame.HorizontalAlignment = HorizontalAlignment.Left;
+        camFrame.Margin = new Thickness(side, 0, side, Theme.D("sp-md"));
+        camFrame.Content = content;
+        camFrame.ToolTip = Copy.CameraFrameTip;
+        AutomationProperties.SetAutomationId(camFrame, "camera-frame");
+        camFrame.Click += (_, _) => Open?.Invoke("/kiosk");
+
+        camBox.Children.Add(Hairline());
+        camBox.Children.Add(camHeader);
+        camBox.Children.Add(camFrame);
+    }
+
+    static double OpenCameraHeight => Theme.D("hairline") + Theme.D("more-height") + Theme.D("frame-h") + Theme.D("sp-md");
+
+    /// <summary>True when the window with the camera open would be taller than the work area less sp-lg (SHAPE 1, fit-fold). Measured without the block, so it never depends on the block's own state.</summary>
+    bool FitFolds(double workHeight)
+    {
+        var key = $"{bodyKey}|{weatherKey}|{vitalsBox.Visibility}|{workHeight}";
+        if (key == foldKey) return foldValue;
+        foldKey = key;
+        camBox.Visibility = Visibility.Collapsed;
+        Measure(new Size(Width, double.PositiveInfinity));
+        var h = DesiredSize.Height;
+        Stale(this); // the probe left every cached size short of the block; the next layout pass measures it all again
+        return foldValue = h + OpenCameraHeight > workHeight - Theme.D("sp-lg");
+    }
+
+    static void Stale(DependencyObject o)
+    {
+        (o as UIElement)?.InvalidateMeasure();
+        for (var i = 0; o is Visual && i < VisualTreeHelper.GetChildrenCount(o); i++) Stale(VisualTreeHelper.GetChild(o, i));
+    }
+
+    void FillCamera(Cam? c)
+    {
+        if (c is null) { camBox.Visibility = Visibility.Collapsed; return; }
+        var folded = CameraFolded;
+        var open = !c.Collapsed && !folded;
+        camBox.Visibility = Visibility.Visible;
+
+        camHeader.Expanded = open;
+        camHeader.IsEnabled = !folded;
+        camHeader.Cursor = folded ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        camHeader.ToolTip = Copy.CameraHeaderTip(c.Collapsed, folded);
+        camChev.Visibility = folded ? Visibility.Collapsed : Visibility.Visible;
+        camChev.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
+        Snap.SetForceFocus(camHeader, c.FocusHeader);
+
+        var shown = open && c.State is FrameState.Live or FrameState.Stale && c.FrameAt is not null;
+        var at = c.FrameAt is { } t ? TimeZoneInfo.ConvertTime(t, tz).DateTime : (DateTime?)null;
+        camAge.Text = folded ? Copy.CameraFolded : open && shown ? Copy.FrameAge(at!.Value) : "";
+        camAge.FontFamily = Theme.F(folded ? "font-sans" : "font-mono");
+        camAge.Foreground = Theme.B(folded ? "ink-faint" : c.State == FrameState.Stale ? "warn" : "ink-dim");
+
+        camFrame.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        Snap.SetForceHover(camFrame, c.HoverFrame);
+        AutomationProperties.SetName(camFrame, Copy.CameraFrameName(c.State, at));
+        frameImage.Source = open && c.State is FrameState.Live or FrameState.Stale ? c.Image : null;
+        frameImage.Opacity = c.State == FrameState.Stale ? Theme.D("frame-dim") : 1;
+        frameMsg1.Text = c.State switch { FrameState.Loading => Copy.CameraLoading, FrameState.NoPicture => Copy.CameraNoPicture, _ => "" };
+        frameMsg2.Text = c.State == FrameState.NoPicture ? Copy.CameraLastFrame(at) : "";
+        frameMsg2.Visibility = frameMsg2.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        frameMsg1.Visibility = frameMsg1.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void RebuildBody(View v, Glance? g, bool dim, string? asOf, Model m, bool animate)

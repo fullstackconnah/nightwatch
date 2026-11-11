@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "checkedAt": "2026-01-01T14:05:00.000Z",
+  "probes": { "answered": 7, "failed": 0, "pending": 0 },
+  "vitals": { "cpu": 12, "mem": 34, "diskMax": 71 },
+  "tone": "ok",
+  "answer": "All quiet. Nothing needs you.",
+  "lanes": [],
+  "items": [],
+  "weather": { "tempC": 22.4, "feelsC": 19, "label": "Partly cloudy", "highC": 24, "lowC": 15, "rainPct": 30, "icon": "partly-cloudy" },
+  "camera": false
+}
