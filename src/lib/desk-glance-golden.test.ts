@@ -55,7 +55,7 @@ const vitals = {
   ts: 1,
 };
 
-const weather = { tempC: 21.4, feelsC: 19.9, label: "Partly cloudy", highC: 25, lowC: 14, rainPct: 60 };
+const weather = { tempC: 21.4, feelsC: 19.9, label: "Partly cloudy", highC: 25, lowC: 14, rainPct: 60, icon: "partly-cloudy" };
 
 test("the committed golden fixture equals buildGlance of the pinned input", () => {
   const file = JSON.parse(readFileSync(new URL("../../desk/Core.Tests/fixtures/glance.v1.json", import.meta.url), "utf8"));

@@ -9,7 +9,8 @@ public sealed record Probes(int Answered, int Failed, int Pending)
     public int Total => Answered + Failed + Pending;
 }
 public sealed record Vitals(double Cpu, double Mem, double? DiskMax);
-public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals);
+public sealed record WeatherNow(double? TempC, double? FeelsC, string? Label, double? HighC, double? LowC, double? RainPct, string? Icon);
+public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false);
 
 /// <summary>What one poll came back with. The HTTP layer maps its result onto these.</summary>
 public abstract record Outcome

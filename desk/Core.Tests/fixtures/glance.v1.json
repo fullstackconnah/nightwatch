@@ -45,7 +45,8 @@
     "label": "Partly cloudy",
     "highC": 25,
     "lowC": 14,
-    "rainPct": 60
+    "rainPct": 60,
+    "icon": "partly-cloudy"
   },
   "camera": true
 }

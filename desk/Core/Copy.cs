@@ -79,4 +79,69 @@ public static class Copy
         if (cut > 0 && char.IsHighSurrogate(s[cut - 1])) cut--;
         return s[..cut] + "…";
     }
+
+    // --- Camera and weather (SHAPE 2 and 4). Strings are exact; none has an apostrophe or quote. ---
+    public const string CameraTitle = "Front door";
+    public const string CameraLoading = "Waking the camera…";
+    public const string CameraNoPicture = "No picture";
+    public const string CameraFolded = "Hidden to fit the screen";
+    public const string CameraFrameTip = "Open the kiosk to watch live";
+    public const string CameraHeaderName = "Front door camera";
+    public const string NullFigure = "—";
+
+    /// <summary>HH:mm:ss, 24 hour, invariant. The caller passes local time.</summary>
+    public static string AgeClock(DateTime t) => t.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public static string FrameAge(DateTime t) => $"as of {AgeClock(t)}";
+
+    public static string CameraLastFrame(DateTime? t) => t is { } x ? $"Last frame at {AgeClock(x)}" : "No frame from the camera yet";
+
+    public static string CameraHeaderTip(bool collapsed, bool folded) =>
+        folded ? "There is no room for the picture on this screen right now. It comes back when there is." : collapsed ? "Show the camera" : "Hide the camera";
+
+    public static string CameraFrameName(FrameState s, DateTime? t) => s switch
+    {
+        FrameState.Loading => "Front door camera, waking. Opens the kiosk.",
+        FrameState.NoPicture => "Front door camera, no picture. Opens the kiosk.",
+        _ => t is { } x ? $"Front door camera, {FrameAge(x)}. Opens the kiosk." : "Front door camera, waking. Opens the kiosk.",
+    };
+
+    // The kiosk rounds with JS Math.round (half up); C# default is banker rounding, which differs at .5.
+    static int Round(double x) => (int)Math.Floor(x + 0.5);
+    static string Deg(double? x) => x is { } v ? $"{Round(v).ToString(CultureInfo.InvariantCulture)}°" : NullFigure;
+
+    public static string WeatherTemp(WeatherNow w) => Deg(w.TempC);
+
+    public static string WeatherLabel(WeatherNow w) => w.Label ?? "";
+
+    public static string WeatherLine2(WeatherNow w) => string.Join(" · ", Clauses(
+        w.FeelsC is { } f ? $"feels {Deg(f)}" : null,
+        w.HighC is { } h ? $"H {Deg(h)}" : null,
+        w.LowC is { } l ? $"L {Deg(l)}" : null,
+        w.RainPct is { } r ? $"{Round(r).ToString(CultureInfo.InvariantCulture)}% rain" : null));
+
+    /// <summary>"{label}, {t}, feels like {f}. High {h}, low {l}, {r}% chance of rain." with null clauses dropped.</summary>
+    public static string WeatherTooltip(WeatherNow w)
+    {
+        var now = string.Join(", ", Clauses(string.IsNullOrEmpty(w.Label) ? null : w.Label, w.TempC is { } t ? Deg(t) : null, w.FeelsC is { } f ? $"feels like {Deg(f)}" : null));
+        var day = string.Join(", ", Clauses(w.HighC is { } h ? $"High {Deg(h)}" : null, w.LowC is { } l ? $"low {Deg(l)}" : null,
+            w.RainPct is { } r ? $"{Round(r).ToString(CultureInfo.InvariantCulture)}% chance of rain" : null));
+        return string.Join(" ", new[] { now, day }.Where(s => s.Length > 0).Select(s => s + "."));
+    }
+
+    static IEnumerable<string> Clauses(params string?[] parts) => parts.Where(p => p is not null)!;
+
+    /// <summary>The lucide icon name for a glance weather icon key; an unknown or missing key is a cloud (as weather.ts does).</summary>
+    public static string GlyphKey(string? icon) => icon switch
+    {
+        "clear" => "sun",
+        "partly-cloudy" => "cloud-sun",
+        "fog" => "cloud-fog",
+        "drizzle" => "cloud-drizzle",
+        "rain" => "cloud-rain",
+        "snow" => "cloud-snow",
+        "showers" => "cloud-rain-wind",
+        "thunderstorm" => "cloud-lightning",
+        _ => "cloud",
+    };
 }
