@@ -22,3 +22,9 @@ test("home controls: the page's refresh is threaded page -> Launcher -> AppCard"
 test("home controls: the redundant Resources lifecycle link is gone", () => {
   assert.doesNotMatch(src("components/home/launcher.tsx"), /lifecycle-link|Start, stop or restart in Resources/);
 });
+
+test("home controls: an open stop confirm gives the actions a full-width row", () => {
+  const css = src("app/globals.css");
+  assert.match(css, /\.hm-app:has\(\.nw-confirm\)\s*\{\s*grid-template-areas:\s*"main main" "acts acts" "fields fields" "err err";?\s*\}/);
+  assert.match(css, /\.hm-app:has\(\.nw-confirm\) \.hm-app-acts\s*\{\s*justify-content:\s*flex-end;?\s*\}/);
+});

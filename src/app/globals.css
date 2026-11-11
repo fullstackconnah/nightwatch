@@ -3363,6 +3363,13 @@ body {
   border-radius: var(--radius-panel);
   min-width: 0;
 }
+/* An open stop confirm is wide: give the actions their own row so the name keeps its column. */
+.hm-app:has(.nw-confirm) {
+  grid-template-areas: "main main" "acts acts" "fields fields" "err err";
+}
+.hm-app:has(.nw-confirm) .hm-app-acts {
+  justify-content: flex-end;
+}
 .hm-app-main {
   grid-area: main;
   display: flex;
