@@ -273,4 +273,5 @@ git archive --format=tar HEAD~1 | ssh homelab@homelab.local \
   "sudo tar -xf - -C /mnt/docker/stacks/homelab-dashboard"
 ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
-# nuclear: sudo docker compose down```
+# nuclear: sudo docker compose down
+```
