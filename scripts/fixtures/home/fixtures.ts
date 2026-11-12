@@ -122,7 +122,7 @@ const stalledLane = (now: number, minAgo: number) =>
 // DQ: copy from doorbellQuietCopy in src/lib/attention-copy.ts (68 days, the live case).
 const doorbellQuiet = (now: number, minAgo: number) =>
   hit(now, "doorbell", "doorbell", "warn", "Front door camera has gone quiet", minAgo, {
-    detail: "No motion reported for 68 days",
+    detail: "No motion reported for 68 days.",
     action: "Reload its integration in Home Assistant; it may need signing in.",
     owner: { href: "/smarthome", label: "Open Smart home" },
   });

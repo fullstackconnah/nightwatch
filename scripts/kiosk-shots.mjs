@@ -449,7 +449,7 @@ await guarded("overlays elevated", async () => {
 const EXTRA_URL = `${CONTROLS_URL}&period=day`;
 const DOORBELL_OK = { status: "ok", cameras: [{ entityId: "camera.front_door", name: "Front door", available: true }], triggers: [], latest: null, autoOpen: true, viewCamera: null }; // HaDoorbellSnapshot (types/ha.ts:193)
 const ATTENTION_WARN = { status: "attention", severity: "warn", headline: "A container stopped", detail: "Placeholder detail for the capture.", action: "Open the dashboard", since: "2026-06-15T09:00:00+10:00" }; // AttentionResult (attention.ts:62)
-const ATTENTION_DOORBELL = { status: "attention", severity: "warn", headline: "Front door camera has gone quiet", detail: "No motion reported for 68 days", action: "Reload its integration in Home Assistant; it may need signing in.", since: "2026-06-15T09:00:00+10:00" }; // copy from doorbellQuietCopy (attention-copy.ts)
+const ATTENTION_DOORBELL = { status: "attention", severity: "warn", headline: "Front door camera has gone quiet", detail: "No motion reported for 68 days.", action: "Reload its integration in Home Assistant; it may need signing in.", since: "2026-06-15T09:00:00+10:00" }; // copy from doorbellQuietCopy (attention-copy.ts)
 const downloads = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `h${i}`, name: `Placeholder download ${i + 1}`, progress: 0.3 + i * 0.2, dlspeed: 2_500_000, size: 4_000_000_000, eta: 900 })) }); // KioskDownloadsResult (types/downloads.ts:29)
 // counts the oscillators the chime makes: Web Audio is locked until a gesture, so the page gets a running stub
 const AUDIO_STUB = "window.__osc = 0; window.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; } resume() { return Promise.resolve(); } createOscillator() { window.__osc++; return { type: '', frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; } createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; } };";
@@ -464,6 +464,12 @@ const SCAN_AT = (sel) => {
   return { bottomGap: el ? Math.round((innerHeight - el.getBoundingClientRect().bottom) * 10) / 10 : null, present: !!el, inHost: !!(el && host && host.contains(el)), face: el ? getComputedStyle(el).boxShadow !== "none" : false, n13Ancestors: ancestors };
 };
 const extraVisit = (routes, viewport = SIZES[0].viewport) => visit(EXTRA_URL, { viewport, weather: weatherFor("midday"), fixedTime: "flow", ha: true, routes, initScript: AUDIO_STUB });
+// The hook seeds its FIRST poll as already-seen (no takeover on reload), so the takeover needs a quiet first poll, then a new alert on a later one.
+const raiseAlert = async (routes, page, alert) => {
+  await page.waitForTimeout(5500); // past SWR's 5 s focus throttle, first poll landed
+  routes["/kiosk/api/attention"] = alert;
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+};
 results.overlays.extra = {};
 await guarded("overlays extra doorbell", async () => {
   const { context, page } = await extraVisit({ "/kiosk/api/doorbell": DOORBELL_OK });
@@ -491,8 +497,10 @@ for (const size of SIZES) {
   });
 }
 await guarded("overlays extra alerts", async () => {
-  const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_WARN });
+  const routes = { "/kiosk/api/attention": { status: "quiet" } };
+  const { context, page } = await extraVisit(routes);
   const take = (results.overlays.extra.alertTakeover = {});
+  await raiseAlert(routes, page, ATTENTION_WARN);
   if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for one raised alert");
   await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-alert-takeover-1180x820.png") });
@@ -510,8 +518,10 @@ await guarded("overlays extra alerts", async () => {
   await context.close();
 });
 await guarded("overlays extra alert doorbell", async () => {
-  const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_DOORBELL });
+  const routes = { "/kiosk/api/attention": { status: "quiet" } };
+  const { context, page } = await extraVisit(routes);
   const take = (results.overlays.extra.alertDoorbell = {});
+  await raiseAlert(routes, page, ATTENTION_DOORBELL);
   if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for the doorbell alert");
   await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
   await page.screenshot({ path: join(OUT_DIR, "kiosk-alert-doorbell-1180x820.png") }); // state kiosk-alert-doorbell

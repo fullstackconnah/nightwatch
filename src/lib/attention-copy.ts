@@ -201,7 +201,7 @@ export function backupCheckStopped(rel: string): AlertCopy {
 export function doorbellQuietCopy(days: number | null): AlertCopy {
   return {
     headline: "Front door camera has gone quiet",
-    detail: days == null ? "It has not reported any motion" : `No motion reported for ${plural(days, "day", "days")}`,
+    detail: days == null ? "It has not reported any motion." : `No motion reported for ${plural(days, "day", "days")}.`,
     action: "Reload its integration in Home Assistant; it may need signing in.",
   };
 }
