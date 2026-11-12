@@ -156,3 +156,42 @@ test("a day file cut off mid-line (no newline) does not swallow the next appende
   const { lines } = await readChangeLog(NOW - DAY, NOW + 30_000);
   assert.deepEqual(lines, [{ at: NOW + 10_000, k: "start", name: "a", id: "a-id" }]);
 });
+
+const spyWarn = () => {
+  const calls: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: unknown) => void calls.push(String(m));
+  return { calls, restore: () => void (console.warn = orig) };
+};
+
+test("H46-2 a tick that fails, recovers and fails again warns both times", async () => {
+  const w = spyWarn();
+  try {
+    const boom = async () => {
+      throw new Error("docker down");
+    };
+    await recordChangeLogTick(NOW, boom);
+    await seed([live("a")]);
+    await recordChangeLogTick(NOW + 30_000, boom);
+    assert.equal(w.calls.filter((c) => c.includes("tick failed")).length, 2);
+  } finally {
+    w.restore();
+  }
+});
+
+test("H46-2 one unreadable day file is skipped and warned once; the readable lines are still returned", async () => {
+  await seed([live("a")]);
+  const line = { at: NOW - 1000, k: "start", name: "a", id: "a-id" };
+  fs.writeFileSync(today(), `${JSON.stringify(line)}\n`);
+  fs.mkdirSync(file(`changes-${dateOf(NOW - DAY)}.jsonl`)); // a directory: readFile fails with EISDIR
+  const w = spyWarn();
+  try {
+    const first = await readChangeLog(NOW - 2 * DAY, NOW);
+    assert.deepEqual(first.lines, [line]);
+    assert.equal(typeof first.loggedFrom, "number");
+    await readChangeLog(NOW - 2 * DAY, NOW);
+    assert.equal(w.calls.filter((c) => c.includes("could not be read")).length, 1);
+  } finally {
+    w.restore();
+  }
+});

@@ -27,6 +27,10 @@ export function resetChangeLogState(): void {
   g.__changeLogWarned = undefined;
 }
 
+// The two outage warnings re-arm after a good tick, so a second outage is not silent.
+const WARN_TICK_FAILED = "tick failed";
+const WARN_APPEND_FAILED = "append failed; will retry next tick";
+
 function warnOnce(reason: string, err?: unknown): void {
   const seen = (g.__changeLogWarned ??= new Set());
   if (seen.has(reason)) return;
@@ -88,13 +92,15 @@ export async function recordChangeLogTick(ts: number, load: () => Promise<LiveCo
       if (lines.length > 0) await appendLines(ts, lines);
     } catch (err) {
       g.__changeLogBaseline = stored;
-      warnOnce("append failed; will retry next tick", err);
+      warnOnce(WARN_APPEND_FAILED, err);
       return;
     }
+    g.__changeLogWarned?.delete(WARN_TICK_FAILED);
+    g.__changeLogWarned?.delete(WARN_APPEND_FAILED);
     await writeBaseline(baseline).catch((err) => warnOnce("baseline write failed", err));
     await prune(ts).catch((err) => warnOnce("prune failed", err));
   } catch (err) {
-    warnOnce("tick failed", err);
+    warnOnce(WARN_TICK_FAILED, err);
   } finally {
     g.__changeLogBusy = false;
   }
@@ -131,9 +137,15 @@ export async function readChangeLog(sinceMs: number, now: number): Promise<{ lin
     } catch (err) {
       if (!isMissing(err)) throw err;
     }
-    const lines = (await Promise.all(names.map((n) => fs.readFile(path.join(historyDir(), n), "utf8")))).flatMap(parseLines);
+    const results = await Promise.allSettled(names.map((n) => fs.readFile(path.join(historyDir(), n), "utf8")));
+    const lines: ChangeLine[] = [];
+    for (const r of results) {
+      if (r.status === "fulfilled") lines.push(...parseLines(r.value));
+      else if (!isMissing(r.reason)) warnOnce("a day file could not be read; its events are missing from the counts", r.reason);
+    }
     return { lines, loggedFrom: Math.max(baseline.seededAt, now - RETENTION_DAYS * DAY_MS) };
-  } catch {
+  } catch (err) {
+    warnOnce("read failed", err);
     return { lines: [], loggedFrom: null };
   }
 }

@@ -10,6 +10,8 @@ import { useAttentionReport, useBackupStatus, useContainers, useWidgets } from "
 import { nightlyAt } from "@/lib/backup-status";
 import { LAST_LOOKED_KEY, WEEK_MS, ageText, answerFor, clock, parseLastLooked, probeLine, refreshedWeekSince } from "@/lib/home";
 
+const WEEK_REPIN_MS = 10 * 60_000; // how often a visible tab re-checks its 7-day window
+
 /** When the last fetch succeeded. SWR keeps the same `data` object when a poll returns the same JSON, so watch `isValidating`. */
 function useFetchedAt(r: { data?: unknown; error?: unknown; isValidating: boolean }): number | null {
   const [at, setAt] = useState<number | null>(null);
@@ -58,7 +60,11 @@ export default function HomePage() {
   useEffect(() => {
     const onShow = () => document.visibilityState === "visible" && setWeekSince((p) => refreshedWeekSince(p, Date.now()));
     document.addEventListener("visibilitychange", onShow);
-    return () => document.removeEventListener("visibilitychange", onShow);
+    const timer = setInterval(onShow, WEEK_REPIN_MS); // a tab that stays visible never fires visibilitychange
+    return () => {
+      document.removeEventListener("visibilitychange", onShow);
+      clearInterval(timer);
+    };
   }, []);
   const since = weekSince ?? looked?.since ?? null;
   const report = useAttentionReport(since);
