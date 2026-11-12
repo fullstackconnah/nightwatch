@@ -278,7 +278,7 @@ test("T14 merge: a restarts itself twice (own row, handled), b starts; a as a hi
 test("same-count restarts in one project and minute stay one grouped row", () => {
   const t = SINCE + 600_000;
   const cs = ["a", "b", "c"].map((n, i) => ctr({ name: n, composeProject: "app", startedAt: t + i * 1000 }));
-  const tl = logTally(["a", "b", "c"].flatMap((n) => [ln(n, "start", t - 200_000), ln(n, "start", t + 1000)]));
+  const tl = logTally(["a", "b", "c"].flatMap((n, i) => [ln(n, "start", t - 200_000), ln(n, "start", t + i * 1000)]));
   const ev = deriveChanges(cs, null, SINCE, [], tl);
   assert.deepEqual(ev.map((e) => e.text), ["a, b and c restarted 2 times"]);
   assert.equal(ev[0].kind, "routine");
