@@ -19,7 +19,7 @@ public class GlanceTests
         Assert.Equal(new GlanceItem("orchestra:orchestra", "warn", "dev-lead is waiting for you", "Usually a permission prompt", null, null, "/orchestrators"), lane);
         Assert.Equal(2, g.Items.Length);
         Assert.Equal(new GlanceItem("disks:/data", "bad", "Disk /data is almost full", "97% used", "Free some space", "2026-01-01T13:00:00.000Z", "/resources?metric=disk"), g.Items[0]);
-        Assert.Equal(new GlanceItem("backup:backup", "warn", "Backup is late", null, null, null, "/"), g.Items[1]);
+        Assert.Equal(new GlanceItem("backup:backup", "warn", "Backup is late", null, null, null, "/#backup"), g.Items[1]);
         Assert.Equal(new Probes(5, 1, 1), g.Probes);
         Assert.Equal(new Vitals(12, 34, 71), g.Vitals);
     }
