@@ -158,12 +158,19 @@ function KioskPageInner() {
   // camera list has loaded, open the picture as a manual open and wake the
   // night overlay like a tap would, then drop `door` so a reload doesn't repeat.
   const doorLinkDoneRef = useRef(false);
-  const doorSnapshotLoaded = doorbell.snapshot !== undefined;
+  const doorStatus = doorbell.snapshot?.status;
+  // Give up after 15 s so a late recovery never pops the picture over the wall display.
+  const [doorDeadlinePassed, setDoorDeadlinePassed] = useState(false);
+  useEffect(() => {
+    if (!hasDoorParam(window.location.search)) return;
+    const t = setTimeout(() => setDoorDeadlinePassed(true), 15_000);
+    return () => clearTimeout(t);
+  }, []);
   const { hasCamera: doorHasCamera, openManually: openDoorManually } = doorbell;
   useEffect(() => {
     if (doorLinkDoneRef.current) return;
     const { pathname, search, hash } = window.location;
-    const decision = doorLinkDecision(search, doorSnapshotLoaded, doorHasCamera);
+    const decision = doorLinkDecision(search, doorStatus, doorHasCamera, doorDeadlinePassed);
     if (decision === "wait") return;
     doorLinkDoneRef.current = true;
     if (decision === "open") {
@@ -171,7 +178,7 @@ function KioskPageInner() {
       openDoorManually();
     }
     if (hasDoorParam(search)) window.history.replaceState(window.history.state, "", withoutDoorParam(pathname, search, hash));
-  }, [doorSnapshotLoaded, doorHasCamera, openDoorManually, wakeNight]);
+  }, [doorStatus, doorDeadlinePassed, doorHasCamera, openDoorManually, wakeNight]);
 
   // Leaving night (clock rolls past 5am, or a `?period=` override changes it)
   // drops any pending wake state rather than letting a stale timer flip it
