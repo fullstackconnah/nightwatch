@@ -132,3 +132,18 @@ test("a file dated before since is not read", async () => {
   assert.deepEqual((await readChangeLog(NOW - 2 * DAY, NOW)).lines, []);
   assert.equal((await readChangeLog(NOW - 7 * DAY, NOW)).lines.length, 1);
 });
+
+test("a failed append keeps the baseline file and memory, and the next tick writes the event once", async () => {
+  await seed([live("a")]);
+  const baselineFile = file("changes-baseline.json");
+  const before = fs.readFileSync(baselineFile);
+  const tick = () => recordChangeLogTick(NOW + 30_000, async () => [live("a", { startedAt: NOW + 10_000 })]);
+  fs.mkdirSync(today()); // a directory where the day file goes: the append throws
+  await tick();
+  assert.deepEqual(fs.readFileSync(baselineFile), before);
+  fs.rmdirSync(today());
+  await tick();
+  const lines = fs.readFileSync(today(), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepEqual(lines, [{ at: NOW + 10_000, k: "start", name: "a", id: "a-id" }]);
+  assert.equal(JSON.parse(fs.readFileSync(baselineFile, "utf8")).byName.a.startedAt, NOW + 10_000);
+});
