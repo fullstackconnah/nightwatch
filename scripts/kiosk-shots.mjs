@@ -447,7 +447,7 @@ await guarded("overlays elevated", async () => {
 // Own visits: a real clock (SWR's dedupe and focus throttle read Date.now, which a pinned clock freezes) and ?period=day against the night overlay.
 // Keys: overlays.extra.<state>.{present,inHost,face,n13Ancestors,chimeOscillators} (or {missing}). Radar's loop (status ok) needs real image URLs, so it is shot unconfigured above.
 const EXTRA_URL = `${CONTROLS_URL}&period=day`;
-const DOORBELL_OK = { status: "ok", cameras: [{ entityId: "camera.front_door", name: "Front door", available: true }], triggers: [], latest: null, autoOpen: true, viewCamera: null }; // HaDoorbellSnapshot (types/ha.ts:193)
+const DOORBELL_OK = { status: "ok", cameras: [{ entityId: "camera.front_door", name: "Front door", available: true }], triggers: [], latest: null, autoOpen: true, viewCamera: null, lastSeenAt: "2026-06-15T04:32:00.000Z" }; // HaDoorbellSnapshot (types/ha.ts:193)
 const ATTENTION_WARN = { status: "attention", severity: "warn", headline: "A container stopped", detail: "Placeholder detail for the capture.", action: "Open the dashboard", since: "2026-06-15T09:00:00+10:00" }; // AttentionResult (attention.ts:62)
 const ATTENTION_DOORBELL = { status: "attention", severity: "warn", headline: "Front door camera has gone quiet", detail: "No motion reported for 68 days.", action: "Reload its integration in Home Assistant; it may need signing in.", since: "2026-06-15T09:00:00+10:00" }; // copy from doorbellQuietCopy (attention-copy.ts)
 const downloads = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `h${i}`, name: `Placeholder download ${i + 1}`, progress: 0.3 + i * 0.2, dlspeed: 2_500_000, size: 4_000_000_000, eta: 900 })) }); // KioskDownloadsResult (types/downloads.ts:29)

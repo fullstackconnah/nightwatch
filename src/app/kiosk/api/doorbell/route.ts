@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * would make src/lib/client.ts's fetcher redirect the wall tablet to /login.
  */
 export async function GET() {
-  const snapshot = await getDoorbellSnapshot();
+  const snapshot = await getDoorbellSnapshot({ lastSeen: true });
   return NextResponse.json(snapshot, {
     headers: { "Cache-Control": "no-store" },
   });

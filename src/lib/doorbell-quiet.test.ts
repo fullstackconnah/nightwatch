@@ -24,6 +24,7 @@ const snap = (triggers: HaDoorbellTrigger[], over: Partial<HaDoorbellSnapshot> =
   latest: null,
   autoOpen: true,
   viewCamera: null,
+  lastSeenAt: null,
   ...over,
 });
 const BINARIES = [trig("binary_sensor.front_motion", "motion", null), trig("binary_sensor.front_person", "person", null)];
