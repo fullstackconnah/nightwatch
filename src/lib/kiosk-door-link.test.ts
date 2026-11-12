@@ -12,12 +12,28 @@ test("only door=1 exactly counts", () => {
   }
 });
 
-test("decision: wait for the camera list, ignore with no camera or no param, else open", () => {
-  assert.equal(doorLinkDecision("?door=1", false, false), "wait");
-  assert.equal(doorLinkDecision("?door=1", true, false), "ignore");
-  assert.equal(doorLinkDecision("?layout=glance", true, true), "ignore");
-  assert.equal(doorLinkDecision("?door=2", true, true), "ignore");
-  assert.equal(doorLinkDecision("?door=1", true, true), "open");
+test("decision: wait for a real answer, give up at the deadline, open only on ok with a camera", () => {
+  for (const st of [undefined, "unreachable", "unauthorized"] as const) {
+    assert.equal(doorLinkDecision("?door=1", st, false, false), "wait", String(st));
+    assert.equal(doorLinkDecision("?door=1", st, true, false), "wait", String(st));
+  }
+  assert.equal(doorLinkDecision("?door=1", "unconfigured", false, false), "ignore");
+  assert.equal(doorLinkDecision("?door=1", "ok", false, false), "ignore");
+  assert.equal(doorLinkDecision("?layout=glance", "ok", true, false), "ignore");
+  assert.equal(doorLinkDecision("?door=2", "ok", true, false), "ignore");
+  assert.equal(doorLinkDecision("?door=1", "ok", true, false), "open");
+});
+
+test("decision: a passed deadline beats every status", () => {
+  for (const st of [undefined, "unreachable", "unauthorized", "unconfigured", "ok"] as const) {
+    assert.equal(doorLinkDecision("?door=1", st, true, true), "ignore", String(st));
+  }
+});
+
+test("page passes the snapshot status and a 15 s deadline", () => {
+  const page = readFileSync(fileURLToPath(new URL("../app/kiosk/page.tsx", import.meta.url)), "utf8");
+  assert.ok(page.includes("doorbell.snapshot?.status"));
+  assert.ok(page.includes("setDoorDeadlinePassed(true)"));
 });
 
 test("withoutDoorParam drops door and keeps every other param", () => {
