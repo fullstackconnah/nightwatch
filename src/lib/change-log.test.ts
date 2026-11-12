@@ -133,6 +133,9 @@ test("T8 a corrupt or invalid line is skipped, not fatal", () => {
   const text = [
     good("a", 1),
     "{bad",
+    "null",
+    "[]",
+    "5",
     JSON.stringify({ at: 1e20, k: "start", name: "x", id: "abc" }), // past the largest valid Date: toISOString would throw
     good("b", 2),
     '{"at":1',
