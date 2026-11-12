@@ -88,7 +88,7 @@ test("#2 the pills fade through data-on, not inline visibility", () => {
 
 test("#4 both saved badges are always rendered and fade", () => {
   const src = read("components/settings/settings-access.tsx");
-  assert.equal((src.match(/className="nw-fade"/g) ?? []).length, 2);
+  assert.equal((src.match(/className="nw-fade"/g) ?? []).length, 3);
   assert.doesNotMatch(src, /\{saved && <Badge/);
 });
 

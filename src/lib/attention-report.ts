@@ -3,7 +3,7 @@
 import type { RuntimeContainer } from "./docker.ts";
 import { BACKUP_KIND_LABEL, type BackupStatus } from "./backup-status.ts";
 
-export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra";
+export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
   | { id: ProbeId; label: string; state: "answered"; hits: number }
   | { id: ProbeId; label: string; state: "pending" } // missed the deadline
@@ -30,7 +30,7 @@ export interface ChangeEvent {
 }
 export interface AttentionReport {
   checkedAt: string; // when the memo computed, not the request time
-  probes: ProbeStatus[]; // always 9, in priority order
+  probes: ProbeStatus[]; // 9 in priority order, 10 when the outside check is on
   hits: AttentionHit[]; // sortHits: bad first, then oldest (since ?? firstSeen)
   changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[] };
 }
@@ -108,6 +108,8 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
       return { href: "/smarthome", label: "Open Smart home" };
     case "orchestra":
       return { href: "/orchestrators", label: "Open AI lanes" };
+    case "outside":
+      return { href: "/resources", label: "Open in Resources" };
     default:
       return DISKS; // smart, mounts, disks
   }

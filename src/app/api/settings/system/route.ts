@@ -4,6 +4,7 @@ import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfigForSave, saveConfig, saveErrorText, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
 import { secretForUrl } from "@/lib/settings/dash-put";
+import { mergeOutsideHost } from "@/lib/outside-check";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,8 @@ interface Body {
   hermesApiUrl?: unknown;
   hermesApiToken?: unknown;
   clearHermesApiToken?: unknown;
+
+  outsideCheckHost?: unknown;
 
   orchestraUrl?: unknown;
   orchestraToken?: unknown;
@@ -136,6 +139,10 @@ export async function POST(req: NextRequest) {
   const orchestra = mergeOrchestraSettings(body, existing);
   if ("error" in orchestra) return NextResponse.json({ error: orchestra.error }, { status: 400 });
 
+  // --- Outside check: a hostname only, blank = off --------------------------
+  const outside = mergeOutsideHost(body, existing.outsideCheckHost);
+  if ("error" in outside) return NextResponse.json({ error: outside.error }, { status: 400 });
+
   // --- Voice --------------------------------------------------------------
   const voiceServerUrl = "voiceServerUrl" in body ? (str(body.voiceServerUrl) ?? existing.voiceServerUrl) : existing.voiceServerUrl;
   const voiceTtsUrl = "voiceTtsUrl" in body ? (str(body.voiceTtsUrl) ?? existing.voiceTtsUrl) : existing.voiceTtsUrl;
@@ -161,6 +168,7 @@ export async function POST(req: NextRequest) {
       hermesApiToken,
       orchestraUrl: orchestra.orchestraUrl,
       orchestraToken: orchestra.orchestraToken,
+      outsideCheckHost: outside.outsideCheckHost,
       voiceServerUrl,
       voiceTtsUrl,
       voiceSttModel,
@@ -222,6 +230,7 @@ export async function POST(req: NextRequest) {
         systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"),
       ),
       orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN")),
+      outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
       oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     },
   });

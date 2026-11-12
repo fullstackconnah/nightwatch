@@ -265,6 +265,10 @@ scope** — everything comes from bind mounts that already existed.
 - With the flag off, or desk access off, the response is the same `503` body as the glance. A bad bearer gives an empty `401`, no configured door camera an empty `404`, and any Home Assistant failure, oversize frame or other content type an empty `502`. One frame is cached for 5 s (failures too), so several clients cause at most one Home Assistant call per 5 s.
 - A change to the `DESK_TOKEN` env var needs a container recreate (`docker compose up -d --force-recreate`), because the process reads env once at start. A `system.deskToken` change in `config.json` needs none.
 
+## Outside check (Home, Settings > Access)
+
+Set a public address (for example `status.example.com`) in Settings > Access > Outside check, or `OUTSIDE_CHECK_HOST`. Blank means off: no row, no requests. Every 30 s the box resolves the name through public DNS (DNS over HTTPS), refuses any non-public answer, opens it once over HTTPS pinned to that address, follows no redirect, and reads only the headers. A reply carrying a `cf-ray` header proves the path through Cloudflare to the box; three failures in a row raise the Home alert. It cannot prove the site behind a Cloudflare Access login works (that reads as "could not check"), and a cached reply proves only the edge. The test stack reads `NW_OUTSIDE_FAKE` (only in `docker-compose.test.yml`) so captures need no internet.
+
 ## Rollback
 
 ```sh

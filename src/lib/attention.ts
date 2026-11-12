@@ -36,6 +36,8 @@ import {
   type AlertCopy,
 } from "@/lib/attention-copy";
 import { Memo } from "@/lib/cache";
+import { systemSetting } from "@/lib/config";
+import { createOutsideTracker, OUTSIDE_START, outsideCopy, outsideRun, pickReader, realDeps, type OutsideState } from "@/lib/outside-check";
 import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
 import { doorbellQuiet } from "@/lib/doorbell-quiet";
 import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
@@ -445,6 +447,35 @@ async function probeOrchestra(): Promise<RawHit[] | typeof PENDING> {
   }
 }
 
+// --- (g) can the outside world reach the site through Cloudflare -------------
+// Off unless a public address is saved: blank means no row and no request. The hook
+// reads NW_OUTSIDE_FAKE only for the test stack (only docker-compose.test.yml sets it).
+
+const trackOutside = createOutsideTracker(pickReader(process.env.NW_OUTSIDE_FAKE, realDeps));
+const outsideMemo = new Memo<OutsideState>({
+  key: "attention.outside",
+  ttlMs: CACHE_TTL_MS,
+  load: () => outsideRun(outsideHostSetting(), trackOutside) ?? Promise.resolve(OUTSIDE_START),
+});
+
+const outsideHostSetting = () => systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim() || undefined;
+
+/** Same race as the orchestra: a slow check returns its last decision; a never-settled memo is pending. */
+async function probeOutside(): Promise<RawHit[] | typeof PENDING> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<OutsideState | null>((resolve) => {
+    timer = setTimeout(() => resolve(outsideMemo.peek()), ORCHESTRA_RACE_MS);
+  });
+  try {
+    const last = await Promise.race([outsideMemo.get(), timeout]);
+    if (!last) return PENDING;
+    const copy = outsideCopy(last); // throws a fixed Error for a could-not-check: the grey row
+    return copy ? [hit("outside", "bad", copy)] : [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // --- orchestration -----------------------------------------------------------
 
 /** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
@@ -485,6 +516,7 @@ async function computeReport(): Promise<Computed> {
     backupFailure = e;
   }
 
+  const outsideHost = outsideHostSetting();
   const defs: ProbeDef[] = [
     { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(containers)) },
     { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(containers)) },
@@ -495,6 +527,7 @@ async function computeReport(): Promise<Computed> {
     { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure) },
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
+    ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
     { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },
