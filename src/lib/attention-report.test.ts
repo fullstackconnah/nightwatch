@@ -101,7 +101,7 @@ function sequentialFirst(sets: RawHit[][]) {
   }
   return { status: "quiet" };
 }
-const PROBES: ProbeDef["id"][] = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "orchestra"];
+const PROBES: ProbeDef["id"][] = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "doorbell", "orchestra"];
 async function viaReport(sets: (RawHit[] | "throw")[]) {
   const defs = sets.map((s, i) =>
     def(PROBES[i], () => {
@@ -239,4 +239,11 @@ test("pruneRestartCounts: drops containers that are gone, keeps the rest", () =>
   const counts = new Map([["a", 1], ["gone", 4]]);
   pruneRestartCounts(counts, ["a", "b"]);
   assert.deepEqual([...counts.keys()], ["a"]);
+});
+
+test("a doorbell hit gets the stable id doorbell:doorbell and the Smart home owner", async () => {
+  const out = await runProbes([def("doorbell", () => [raw("doorbell", "warn")])], 50);
+  const [h] = toHits(out, () => "2026-11-04T00:00:00.000Z");
+  assert.equal(h.id, "doorbell:doorbell");
+  assert.deepEqual(h.owner, { href: "/smarthome", label: "Open Smart home" });
 });

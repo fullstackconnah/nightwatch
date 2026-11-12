@@ -194,3 +194,14 @@ export function backupCheckStopped(rel: string): AlertCopy {
     action: "Make sure the backup check is still scheduled.",
   };
 }
+
+// --- front door camera ------------------------------------------------------------------------
+
+/** `days` is null when no motion was ever reported. The count stays in the detail: a ticking number in the headline would re-raise the alert. */
+export function doorbellQuietCopy(days: number | null): AlertCopy {
+  return {
+    headline: "Front door camera has gone quiet",
+    detail: days == null ? "It has not reported any motion" : `No motion reported for ${plural(days, "day", "days")}`,
+    action: "Reload its integration in Home Assistant; it may need signing in.",
+  };
+}

@@ -19,7 +19,7 @@ import { createRanker } from "./watchlist.ts";
 import { nightlyAt } from "./backup-status.ts";
 import type { AttentionHit, AttentionReport, ProbeId, ProbeStatus } from "./attention-report.ts";
 
-const IDS: ProbeId[] = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "orchestra"];
+const IDS: ProbeId[] = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "doorbell", "orchestra"];
 const DOCKER: ProbeId[] = ["crashes", "restarts", "health"];
 const answered = (id: ProbeId, hits = 0): ProbeStatus => ({ id, label: id, state: "answered", hits });
 const failed = (id: ProbeId, error = "x"): ProbeStatus => ({ id, label: id, state: "failed", error });
@@ -131,15 +131,15 @@ test("no input with a pending or failed probe says All clear or the ok tone", ()
 
 // --- probeLine / calmLine ---
 test("probeLine", () => {
-  assert.equal(probeLine(null, "08:30"), "Asking 8 sources…");
-  assert.equal(probeLine(report(), "08:30"), "8 of 8 checks answered at 08:30");
+  assert.equal(probeLine(null, "08:30"), "Asking 9 sources…");
+  assert.equal(probeLine(report(), "08:30"), "9 of 9 checks answered at 08:30");
   assert.equal(
     probeLine(report({ probes: probes(pending("orchestra")) }), "08:30"),
-    "7 of 8 checks answered at 08:30 · waiting on orchestra",
+    "8 of 9 checks answered at 08:30 · waiting on orchestra",
   );
   assert.equal(
     probeLine(report({ probes: probes(failed("backup")) }), "08:30"),
-    "7 of 8 checks answered at 08:30 · backup failed",
+    "8 of 9 checks answered at 08:30 · backup failed",
   );
 });
 test("calmLine", () => {

@@ -28,6 +28,7 @@ import {
   containerUnhealthy,
   diskFull,
   driveAlert,
+  doorbellQuietCopy,
   driveUnreadable,
   integrityAlert,
   keepsRestarting,
@@ -35,6 +36,8 @@ import {
   type AlertCopy,
 } from "@/lib/attention-copy";
 import { Memo } from "@/lib/cache";
+import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
+import { doorbellQuiet } from "@/lib/doorbell-quiet";
 import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
 import { isLive, orchestraAttention } from "@/lib/orchestra-view";
 import type { OrchestratorDetail } from "@/lib/types/orchestra";
@@ -374,6 +377,19 @@ function probeUnhealthy(containers: RuntimeContainer[]): RawHit[] {
     .map((c) => hit(`container:${c.name}`, "warn", containerUnhealthy(c.name)));
 }
 
+// --- (e2) the front door camera went quiet ---------------------------------
+
+/** The snapshot sits on a 1.5 s HA cache and Home, the kiosk and the desk widget all poll attention, so the verdict is held for a minute. */
+const doorbellMemo = new Memo<RawHit[]>({
+  key: "attention.doorbell",
+  ttlMs: 60_000,
+  // HA down is not a hit and not a failed probe: the Smart home page already shows outages.
+  load: async () => {
+    const quiet = doorbellQuiet(await getDoorbellSnapshot(), Date.now());
+    return quiet ? [hit("doorbell", "warn", doorbellQuietCopy(quiet.days))] : [];
+  },
+});
+
 // --- (f) a stalled agent or an unanswering orchestra service ----------------
 
 const ORCHESTRA_RACE_MS = 3_000;
@@ -479,6 +495,7 @@ async function computeReport(): Promise<Computed> {
     { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure) },
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
+    { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
     { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },
   ];

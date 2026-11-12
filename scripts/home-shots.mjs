@@ -425,6 +425,35 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- DQ: a quiet front door camera raises an item next to the disk one (state attention-doorbell) ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "doorbellQuiet" });
+  const row = page.locator('.hm-att-row[data-subject="doorbell"]');
+  await row.waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await row.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth })).catch(() => ({ text: "", over: 0 }));
+  record("DQ", /Front door camera has gone quiet/.test(m.text) && /68 days/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 140)}", page overflow ${m.over}px`);
+  const PAD = 12;
+  const h = await row.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 400 });
+  await row.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  const r = await row.boundingBox().catch(() => null);
+  if (r) {
+    const covered = await row.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return [...document.querySelectorAll("body *")].some((n) => {
+        if (n.contains(el) || el.contains(n)) return false;
+        const cs = getComputedStyle(n);
+        const nb = n.getBoundingClientRect();
+        return (cs.position === "fixed" || cs.position === "sticky") && nb.width > 0 && nb.height > 0 && nb.left < b.right && nb.right > b.left && nb.top < b.bottom && nb.bottom > b.top;
+      });
+    });
+    record("DQ", !covered, `@${width.name}: fixed or sticky chrome over the crop: ${covered}`);
+    const cx = Math.max(0, r.x - PAD), cy = Math.max(0, r.y - PAD);
+    await page.screenshot({ path: join(OUT_DIR, `home-attention-doorbell-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(r.width + 2 * PAD, width.viewport.width - cx), height: r.height + 2 * PAD } });
+  }
+  await context.close();
+}
+
 // ---- LC: the stop confirm and a lifecycle error on a card (sonarr, `several`): the name keeps its 2.75rem column ----
 for (const width of WIDTHS) {
   const { context, page } = await open({ width, fixture: "several" });

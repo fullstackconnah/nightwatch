@@ -7,6 +7,7 @@ import {
   containerDown,
   containerUnhealthy,
   diskFull,
+  doorbellQuietCopy,
   driveAlert,
   driveUnreadable,
   id,
@@ -231,5 +232,23 @@ test("every builder stays inside the headline, detail and action limits", () => 
     assert.ok((a.detail ?? "").length <= 100, `detail ${a.detail?.length}: ${a.detail}`);
     assert.ok((a.action ?? "").length <= 70, `action ${a.action?.length}: ${a.action}`);
     assert.doesNotMatch(a.headline, /SMART|restart-loop|healthcheck|exited|bitfield|threshold|UNKNOWN|\/dev\//);
+  }
+});
+
+// --- front door camera ---
+// Copy.cs ToastTitleMax / ToastTextMax (desk/Core/Copy.cs): the desk widget raises hits as toasts.
+const DESK_TOAST_TITLE_MAX = 63;
+const DESK_TOAST_TEXT_MAX = 255;
+test("doorbellQuiet copy: with and without a day count, and it fits every surface", () => {
+  const c = doorbellQuietCopy(68);
+  assert.equal(c.headline, "Front door camera has gone quiet");
+  assert.equal(c.detail, "No motion reported for 68 days");
+  assert.equal(doorbellQuietCopy(1).detail, "No motion reported for 1 day");
+  assert.equal(doorbellQuietCopy(null).detail, "It has not reported any motion");
+  for (const x of [c, doorbellQuietCopy(null)]) {
+    assert.ok(x.headline.length <= 48 && x.headline.length <= DESK_TOAST_TITLE_MAX);
+    assert.ok(x.detail!.length <= 100 && x.detail!.length <= DESK_TOAST_TEXT_MAX);
+    assert.ok(x.action!.length <= 70);
+    assert.ok(!/ring|!/i.test(`${x.headline}${x.detail}${x.action}`.replace(/during|bring/gi, "")));
   }
 });
