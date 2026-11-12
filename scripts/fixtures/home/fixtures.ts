@@ -216,6 +216,10 @@ export function buildWeek(now: number) {
     // nw-change-log: count rows, and each heading state (loggedFrom against since = now - 7 d; the pinned clock is a Thursday).
     weekCovered: weekReport(now, logEvents(now), { loggedFrom: iso(now, 8 * 24 * 60) }),
     weekPartial: weekReport(now, logEvents(now), { loggedFrom: iso(now, 3 * 24 * 60) }), // Monday: "counted since Mon"
+    // No log (loggedFrom null): rows from live state only, today's heading copy.
+    weekNoLog: weekReport(now, logEvents(now), { loggedFrom: null }),
+    // A log that covers the range but holds no events: today's empty copy.
+    weekEmptyLogged: weekReport(now, [], { loggedFrom: iso(now, 8 * 24 * 60) }),
     // A stop at the earlier time beside the start now: both rows, newest first.
     weekEarlierStop: weekReport(
       now,
