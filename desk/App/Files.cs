@@ -43,9 +43,11 @@ internal static class Poller
 {
     public const long MaxGlanceBytes = 256 * 1024;
 
+    internal static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+
     /// <summary>The glance is buffered, so the cap makes an oversize body throw (mapped to Failed). The camera reads headers-first and streams under its own cap.</summary>
     public static HttpClient NewClient(HttpMessageHandler? handler = null) =>
-        new(handler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(10), MaxResponseContentBufferSize = MaxGlanceBytes };
+        new(handler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout, MaxResponseContentBufferSize = MaxGlanceBytes };
 
     public static async Task<Outcome> FetchAsync(HttpClient http, ConfigResult.Ok cfg)
     {
