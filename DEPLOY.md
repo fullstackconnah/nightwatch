@@ -93,8 +93,8 @@ ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
 
 ## Gotchas
 
-- **Port**: 3005 until Homepage is actually decommissioned; only then edit the
-  compose port mapping to `3001:3000` and stop/remove the `homepage` container.
+- **Port**: 3005. Homepage (3001) was retired on 2026-11-12 and its service is
+  gone from the homelab stack; keep the `3005:3000` mapping.
 - **Login disabled?** `ADMIN_PASSWORD_HASH` missing/empty in `.env` — production
   refuses all logins rather than running open.
 - **qBittorrent widget** works only in prod (its WebUI whitelists the docker
@@ -273,5 +273,5 @@ git archive --format=tar HEAD~1 | ssh homelab@homelab.local \
   "sudo tar -xf - -C /mnt/docker/stacks/homelab-dashboard"
 ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
-# nuclear: sudo docker compose down (Homepage on 3001 is untouched either way)
+# nuclear: sudo docker compose down
 ```
