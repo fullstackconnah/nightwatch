@@ -545,7 +545,7 @@ for (const width of WIDTHS) {
     const x = Math.max(0, box.x - 8), y = Math.max(0, box.y - 8);
     await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(box.width + 16, vw - x), height: box.height + 16 } });
   };
-  const week = ["Today 08:00","Today 06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
+  const week = ["08:00", "06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
   const plan = [
     { n: "wk1-recent", widths: ["390", "1440"], week: null },
     { n: "wk2-week", widths: ["390", "1440"], week: "week" },
@@ -611,6 +611,51 @@ for (const width of WIDTHS) {
     record("WK", m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped && Math.abs(m.headH - m.headMin) < 0.6, `wk8@360 h2 lines ${h2Lines}, h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, head ${m.headH}px (min ${m.headMin}px), heading "${m.heading}"`);
     await crop(page, "home-wk8-recent-failed-360.png", 360, '[data-feature="changes"] .hm-sec-head');
     await context.close();
+  }
+
+  // ---- CL: the stored change log (nw-change-log). Numeric checks 1 to 5 and 7 of its shape brief; wk3/wk4 cover week-empty and loading. ----
+  const textFits = (page) =>
+    page.evaluate(() => {
+      const sec = document.querySelector('[data-feature="changes"]');
+      return [...sec.querySelectorAll(".hm-chg-text")].every((n) => n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight + 1);
+    });
+  const rectsOf = (page) => measure(page).then((m) => JSON.stringify([m.listRect, m.moreRect, m.rowH]));
+  const clPlan = [
+    // check 3, 4 (a "Wed 08:00" Recent time), 7 (count 4 -> 1 moves no rect), and the 52-char name at 390.
+    { n: "cl1-recent-counts", widths: ["390", "1440"], fixture: "changesCounts", other: "changesCountsOne", heading: "Since you last looked · 01:00" },
+    { n: "cl2-week-covered", widths: ["390", "1440"], week: "weekCovered", heading: "Last 7 days" },
+    { n: "cl3-week-partial", widths: ["390", "1440"], week: "weekPartial", heading: "Last 7 days · counted since Mon" },
+    { n: "cl4-week-earlier-stop", widths: ["390"], week: "weekEarlierStop", heading: "Last 7 days", times: ["08:00", "Tue 08:40"] },
+  ];
+  for (const p of clPlan) {
+    for (const width of WIDTHS.filter((w) => p.widths.includes(w.name))) {
+      const { context, page, state } = await open({ width, fixture: p.fixture ?? "quiet", pinned: true });
+      const tag = `${p.n}@${width.name}`;
+      const phone = width.name === "390";
+      if (p.week) {
+        state.week = p.week;
+        await page.getByRole("button", { name: "Last 7 days" }).click();
+        await page.waitForTimeout(500);
+      }
+      const m = await measure(page);
+      record("CL", m.heading === p.heading, `${tag} heading "${m.heading}"`); // check 5 copy
+      record("CL", Math.abs(m.headH - m.headMin) < 0.6 && m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped, `${tag} head ${m.headH}px (min ${m.headMin}px), h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}`); // 5
+      record("CL", m.rowH.every((h) => h === (phone ? 76 : 52)), `${tag} row heights ${m.rowH.join(",")}`); // 1
+      record("CL", m.listH === (phone ? 76 : 52) * Math.min(m.rowH.length, 4) + 2 || m.rowH.length < 4, `${tag} list ${Math.round(m.listH)}px`); // 2
+      record("CL", await textFits(page), `${tag} count text is not truncated`); // 3
+      record("CL", m.atFits, `${tag} time column fits, widest ${m.atMax}px`); // 4
+      if (p.times) record("CL", m.times.join() === p.times.join(), `${tag} times ${m.times}`);
+      if (p.n === "cl1-recent-counts") {
+        record("CL", /^(Mon|Tue|Wed) \d\d:\d\d$/.test(m.times[2] ?? "") && /^\d\d:\d\d$/.test(m.times[0]), `${tag} day prefix only on the older row: ${m.times}`);
+        const before = await rectsOf(page);
+        state.cur = p.other;
+        await page.reload();
+        await page.waitForTimeout(500);
+        record("CL", before === (await rectsOf(page)), `${tag} count 4 -> 1 moves no rect`); // 7
+      }
+      await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
+      await context.close();
+    }
   }
 }
 

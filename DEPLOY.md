@@ -91,6 +91,8 @@ ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
 
 `.env` and `data/` are never in the archive, so updates don't clobber them.
 
+The container change log lives in `data/history/changes-YYYY-MM-DD.jsonl` (30 days) and `changes-baseline.json`. Safe to delete both: the next tick reseeds and Home counts from then on.
+
 ## Gotchas
 
 - **Port**: 3005. Homepage (3001) was retired on 2026-11-12 and its service is
