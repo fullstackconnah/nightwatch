@@ -11,7 +11,7 @@ namespace NightwatchDesk.App;
 internal sealed class DeskHost
 {
     static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(30);
-    static readonly TimeSpan DoorEvery = TimeSpan.FromSeconds(5), DoorBackoff = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan DoorEvery = TimeSpan.FromSeconds(5), DoorBackoff = TimeSpan.FromSeconds(20);
 
     readonly TimeZoneInfo tz = TimeZoneInfo.Local;
     readonly DeskState state = new(() => DateTimeOffset.Now);
