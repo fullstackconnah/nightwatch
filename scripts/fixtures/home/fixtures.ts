@@ -82,7 +82,7 @@ function report(
     checkedAt: iso(now, 0),
     probes: probes(hits, over),
     hits,
-    changes: { since: iso(now, 8 * 60), status: "answered", events, ...changes },
+    changes: { since: iso(now, 8 * 60), status: "answered", events, loggedFrom: null, ...changes },
   };
 }
 

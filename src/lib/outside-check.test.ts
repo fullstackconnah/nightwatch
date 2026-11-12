@@ -73,7 +73,7 @@ async function reportFor(st: ReturnType<typeof run>): Promise<AttentionReport> {
     checkedAt: "2026-11-12T08:30:00.000Z",
     probes: outcomes.map((o) => o.status),
     hits: toHits(outcomes, () => "2026-11-12T08:00:00.000Z"),
-    changes: { since: "2026-11-11T08:30:00.000Z", status: "answered", events: [] },
+    changes: { since: "2026-11-11T08:30:00.000Z", status: "answered", events: [], loggedFrom: null },
   };
 }
 

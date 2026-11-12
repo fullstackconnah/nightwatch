@@ -1,4 +1,6 @@
-import { allContainerStats, TELEMETRY_CALL_MS, type ContainerStatsRow } from "@/lib/docker";
+import { allContainerStats, listContainersWithRuntime, TELEMETRY_CALL_MS, type ContainerStatsRow } from "@/lib/docker";
+import { recordChangeLogTick } from "@/lib/change-log-store";
+import { shouldSkipTick } from "@/lib/metrics-history-math";
 import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { getInterfaceCounters } from "@/lib/network";
@@ -35,6 +37,7 @@ const globalForTelemetry = globalThis as unknown as {
   __telemetryPrevNetRx?: number; // cumulative rx bytes, previous tick
   __telemetryPrevNetTx?: number; // cumulative tx bytes, previous tick
   __telemetryPrevIfaces?: Record<string, { rxBytes: number; txBytes: number }>;
+  __telemetryChangeLogTs?: number; // ts of the last change-log tick
 };
 
 function ring(): TelemetrySample[] {
@@ -276,6 +279,18 @@ async function tick(feedRing: boolean): Promise<void> {
     recovered("recordMetricsHistoryTick");
   } catch (err) {
     throttledError("recordMetricsHistoryTick", err);
+  }
+
+  // Container change log: one list and its inspects every ~30s, stored so Home can count restarts.
+  // Never awaited and never throws (the store catches everything), so it cannot cost the ring a tick.
+  try {
+    if (!shouldSkipTick(sample.ts, globalForTelemetry.__telemetryChangeLogTs ?? 0, SAMPLE_INTERVAL_MS)) {
+      globalForTelemetry.__telemetryChangeLogTs = sample.ts;
+      void recordChangeLogTick(sample.ts, listContainersWithRuntime);
+    }
+    recovered("recordChangeLogTick");
+  } catch (err) {
+    throttledError("recordChangeLogTick", err);
   }
 
   if (!feedRing) return; // idle tick: history only, no ring, no subscribers

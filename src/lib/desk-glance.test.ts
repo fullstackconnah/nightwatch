@@ -22,7 +22,7 @@ const report = (hits: AttentionHit[] = [], probes: ProbeStatus[] = answered()): 
   checkedAt: "2026-01-01T00:00:30.000Z",
   probes,
   hits,
-  changes: { since: "x", status: "answered", events: [] },
+  changes: { since: "x", status: "answered", events: [], loggedFrom: null },
 });
 const vit = {
   cpu: { percent: 12 },

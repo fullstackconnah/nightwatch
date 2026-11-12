@@ -45,7 +45,7 @@ const report: AttentionReport = {
       owner: { href: "/orchestrators", label: "Orchestrators" },
     }),
   ],
-  changes: { since: "x", status: "answered", events: [] },
+  changes: { since: "x", status: "answered", events: [], loggedFrom: null },
 };
 const vitals = {
   cpu: { percent: 12 },

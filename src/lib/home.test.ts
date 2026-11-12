@@ -47,7 +47,7 @@ const report = (over: Partial<AttentionReport> = {}): AttentionReport => ({
   checkedAt: "2026-11-04T08:30:00.000Z",
   probes: probes(),
   hits: [],
-  changes: { since: "2026-11-03T08:30:00.000Z", status: "answered", events: [] },
+  changes: { since: "2026-11-03T08:30:00.000Z", status: "answered", events: [], loggedFrom: null },
   ...over,
 });
 const base = { running: 48, backupAgo: "9 h" as string | null, error: false };
