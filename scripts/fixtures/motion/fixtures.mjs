@@ -33,7 +33,7 @@ function containers() {
   };
 }
 
-const PROBES = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "orchestra"];
+const PROBES = ["crashes", "restarts", "smart", "mounts", "backup", "disks", "health", "doorbell", "orchestra"];
 
 /** One warn hit and one handled event, so "Needs you" and the change feed both have a row. */
 function attention() {
