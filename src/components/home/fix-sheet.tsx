@@ -59,6 +59,7 @@ export function FixSheet({
       timer.current = setTimeout(() => void mutate(), 2000); // the box shows the new start
     } catch (e) {
       setErr(actionErrorText(e, action, online()));
+      if (e instanceof TypeError && online()) onDone(Date.now()); // sent, no answer: same memory as a success, so a later report still listing it re-arms
     } finally {
       setPending(false);
     }
@@ -69,10 +70,10 @@ export function FixSheet({
   const canAct = action !== null && !resolved && !finished && !gone;
   const status = resolved
     ? "Cleared at the last check."
-    : finished
-      ? doneText(action ?? "restart", done.at)
-      : err
-        ? err.text
+    : err
+      ? err.text
+      : finished
+        ? doneText(action ?? "restart", done.at)
         : done?.still
           ? `Still failing at the ${done.still} check. Read the lines above, then try again.`
           : "";

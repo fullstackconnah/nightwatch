@@ -56,7 +56,11 @@ function hms(t: number, offsetMin?: number): string {
 }
 
 const STAMP = /^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?Z\s?/;
-const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, max)}…`);
+// Code points, so a surrogate pair is never cut.
+const clip = (s: string, max: number) => {
+  const cp = Array.from(s);
+  return cp.length <= max ? s : `${cp.slice(0, max).join("")}…`;
+};
 
 /** The last `n` non-blank lines as "HH:MM:SS message", each message clipped to `max` chars plus an ellipsis. Plain strings only. */
 export function tailLines(logs: string, offsetMin?: number, n = 20, max = 200): string[] {
@@ -75,7 +79,9 @@ export function tailLines(logs: string, offsetMin?: number, n = 20, max = 200): 
 const isOffline = (e: unknown, online: boolean) => !online || e instanceof TypeError;
 
 export function actionErrorText(e: unknown, action: FixAction, online: boolean): { text: string; rearm: boolean } {
-  if (isOffline(e, online)) return { text: "You're offline. Nothing was sent.", rearm: true };
+  if (!online) return { text: "You're offline. Nothing was sent.", rearm: true };
+  // Online but no answer: the request may have gone out (dropped connection, the dashboard's own container restarting).
+  if (e instanceof TypeError) return { text: "Couldn't confirm it went through. This row updates at the next check, within 30 s.", rearm: false };
   const status = e instanceof ApiError ? e.status : 0;
   if (status === 401) return { text: `You're signed out. Sign in again to ${action} it.`, rearm: false };
   if (status === 404) return { text: LOGS_COPY.gone, rearm: false };

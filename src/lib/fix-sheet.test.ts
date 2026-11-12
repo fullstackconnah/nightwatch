@@ -47,6 +47,8 @@ test("tailLines keeps the last 20 non-blank lines, shortens the timestamp and cl
   assert.equal(out[19], "14:02:01 line 29");
   const long = tailLines(L("09:05:07", "x".repeat(500)), 0)[0];
   assert.equal(long, `09:05:07 ${"x".repeat(200)}…`);
+  const emoji = tailLines(`${"a".repeat(199)}😀 more text`)[0];
+  assert.equal(emoji, `${"a".repeat(199)}😀…`);
   assert.equal(tailLines(L("23:30:00", "a"), 60)[0], "00:30:00 a"); // offset applies
   assert.equal(tailLines("no stamp here", 0)[0], "no stamp here");
 });
@@ -71,7 +73,11 @@ test("actionErrorText maps status to copy and rearm", () => {
   const clipped = actionErrorText(new ApiError("y".repeat(300), 500), "restart", true).text;
   assert.equal(clipped.length, 201);
   const off = { text: "You're offline. Nothing was sent.", rearm: true };
-  assert.deepEqual(actionErrorText(new TypeError("Failed to fetch"), "restart", true), off);
+  assert.deepEqual(actionErrorText(new TypeError("Failed to fetch"), "restart", false), off);
+  assert.deepEqual(actionErrorText(new TypeError("Failed to fetch"), "restart", true), {
+    text: "Couldn't confirm it went through. This row updates at the next check, within 30 s.",
+    rearm: false,
+  });
   assert.deepEqual(actionErrorText(new ApiError("x", 500), "restart", false), off);
   assert.equal(actionErrorText(new ApiError("HTTP 500", 500), "restart", true).rearm, true);
 });
