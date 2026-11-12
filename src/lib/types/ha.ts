@@ -207,6 +207,9 @@ export interface HaDoorbellSnapshot {
    *  as "no pin" (fall back to device pairing) instead of an empty panel, and so
    *  the pin can never name a camera the proxy would refuse anyway. */
   viewCamera: string | null;
+  /** ISO instant a visitor sensor last turned on within the past 24 h, from HA history;
+   *  null when none did or the history read failed. Secondary: never blocks the fields above. */
+  lastSeenAt: string | null;
 }
 
 export type HaActionName =

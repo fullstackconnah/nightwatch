@@ -1,6 +1,7 @@
 import { loadConfig } from "@/lib/config";
 import { UNCONFIGURED_DETAIL, ha, haCredentials, type HaCredentials } from "@/lib/ha";
 import { Memo } from "@/lib/cache";
+import { lastSeenFromHistory } from "@/lib/doorbell-last-seen";
 import type {
   HaDoorbellCamera,
   HaDoorbellSnapshot,
@@ -74,7 +75,7 @@ const statesMemo = new Memo<RawEntity[] | { error: HaDoorbellSnapshot }>({
   ttlMs: STATES_CACHE_MS,
   load: async () => {
     const fail = (status: HaDoorbellSnapshot["status"], detail: string): { error: HaDoorbellSnapshot } => ({
-      error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null },
+      error: { status, detail, cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null, lastSeenAt: null },
     });
 
     const probe = await ha.getJson<unknown>("/api/states");
@@ -85,6 +86,47 @@ const statesMemo = new Memo<RawEntity[] | { error: HaDoorbellSnapshot }>({
     return (probe.data as RawEntity[]).filter((e) => typeof e?.entity_id === "string");
   },
 });
+
+/** "Last seen" is a secondary line: history is read at most once a minute and the snapshot
+ *  waits only briefly for it (the load keeps running and lands in the memo for the next poll). */
+const LAST_SEEN_CACHE_MS = 60_000;
+const LAST_SEEN_WAIT_MS = 1500;
+let lastSeenIds: string[] = [];
+const lastSeenMemo = new Memo<{ key: string; at: string | null }>({
+  key: "haDoorbell.lastSeen",
+  ttlMs: LAST_SEEN_CACHE_MS,
+  isValid: (c) => c.key === lastSeenIds.join(","),
+  load: async () => {
+    const ids = lastSeenIds;
+    const now = Date.now();
+    const start = new Date(now - 86_400_000).toISOString();
+    try {
+      // History, not last_changed: an HA restart or unavailable-to-off resets last_changed.
+      const q = `filter_entity_id=${ids.join(",")}&end_time=${encodeURIComponent(new Date(now).toISOString())}&minimal_response&no_attributes`;
+      const probe = await ha.getJson<unknown>(`/api/history/period/${encodeURIComponent(start)}?${q}`);
+      return { key: ids.join(","), at: probe.status === "ok" ? lastSeenFromHistory(probe.data, ids, now) : null };
+    } catch {
+      return { key: ids.join(","), at: null };
+    }
+  },
+});
+
+async function lastSeenAt(triggers: HaDoorbellTrigger[]): Promise<string | null> {
+  const ids = triggers.filter((t) => domainOf(t.entityId) === "binary_sensor").map((t) => t.entityId);
+  if (ids.length === 0) return null;
+  lastSeenIds = ids;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      lastSeenMemo.get().then((v) => v.at),
+      new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), LAST_SEEN_WAIT_MS))),
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function fetchStates(): Promise<RawEntity[] | { error: HaDoorbellSnapshot }> {
   return statesMemo.get();
@@ -333,6 +375,7 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
       latest: null,
       autoOpen,
       viewCamera: null,
+      lastSeenAt: null,
     };
   }
 
@@ -349,7 +392,7 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
   const pinned = cfg.viewCamera?.trim();
   const viewCamera = pinned && cameras.some((c) => c.entityId === pinned) ? pinned : null;
 
-  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen, viewCamera };
+  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen, viewCamera, lastSeenAt: await lastSeenAt(triggers) };
 }
 
 /** True only for a camera THIS resolver named — the allowlist described in the

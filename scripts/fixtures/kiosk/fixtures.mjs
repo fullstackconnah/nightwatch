@@ -118,7 +118,7 @@ export const VITALS = {
 export const HEALTH = { total: 10, running: 9, paused: 0, restarting: 0, stopped: 1, unhealthy: 0, dead: 0 };
 
 /** /kiosk/api/doorbell as the unconfigured HaDoorbellSnapshot (ha-doorbell.ts:329): kiosk-doorbell.tsx:257 reads data.cameras.length, so QUIET threw there. */
-export const DOORBELL = { status: "unconfigured", cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null };
+export const DOORBELL = { status: "unconfigured", cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null, lastSeenAt: null };
 
 /** Every /kiosk/api/* path the glance and standard layouts fetch, with its real-shaped body. Anything not listed (or weather and
  *  attention, which visit() answers itself) gets QUIET. */

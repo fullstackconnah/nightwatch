@@ -27,6 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import useSWR from "swr";
 import { DoorOpen, RefreshCw, Video, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatWallClock } from "@/lib/format";
 import { fetcher } from "@/lib/client";
 import {
   KIOSK_EASE_OUT,
@@ -259,6 +260,9 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
   const { data } = useDoorbellSnapshot();
   if (!data?.cameras.length) return null;
 
+  // Only while idle: a live visitor already has the modal and its own age line.
+  const seen = data.lastSeenAt && !data.triggers.some((t) => t.active) ? formatWallClock(new Date(data.lastSeenAt)) : null;
+
   return (
     <button
       type="button"
@@ -271,7 +275,14 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
       className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
     >
       <DoorOpen size={14} aria-hidden />
-      <span>Front door</span>
+      <span className="flex min-w-0 flex-col items-start">
+        <span>Front door</span>
+        {seen && (
+          <span className="max-w-32 truncate text-[10px] leading-tight text-ink-faint">
+            Last seen {seen.time} {seen.period}
+          </span>
+        )}
+      </span>
     </button>
   );
 }
