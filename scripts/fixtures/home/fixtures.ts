@@ -162,6 +162,12 @@ export function build(now: number) {
       ev(now, "c:grafana", "routine", 1500, ["container:grafana"], "grafana started"),
       ...baseEvents(now).slice(0, 1),
     ]),
+    // nw-change-log: today-only single events: every time is a bare HH:MM, today's copy, no count text.
+    changesToday: report(now, [], [
+      ev(now, "c:vpn", "handled", 20, ["container:transmission-openvpn"], "transmission-openvpn restarted itself and is running again"),
+      ev(now, "c:sonarr", "routine", 90, ["container:sonarr"], "sonarr stopped (exit 137)"),
+      ev(now, "c:grafana", "routine", 150, ["container:grafana"], "grafana started"),
+    ]),
     otherFailed: report(now, [], e,{ smart: { state: "failed", error: "smartctl exited with status 2" } }),
     // C1: the start (1 hit) and the arrival (a crash and a disk; the orchestra hit clears).
     c1Before: report(now, [lane(now, 40)], e),
@@ -217,7 +223,16 @@ export function buildWeek(now: number) {
     weekCovered: weekReport(now, logEvents(now), { loggedFrom: iso(now, 8 * 24 * 60) }),
     weekPartial: weekReport(now, logEvents(now), { loggedFrom: iso(now, 3 * 24 * 60) }), // Monday: "counted since Mon"
     // No log (loggedFrom null): rows from live state only, today's heading copy.
-    weekNoLog: weekReport(now, logEvents(now), { loggedFrom: null }),
+    weekNoLog: weekReport(
+      now,
+      [
+        ev(now, "n:jellyfin", "routine", 60, ["container:jellyfin"], "jellyfin started"),
+        ev(now, "n:sonarr", "routine", 150, ["container:sonarr"], "sonarr stopped (exit 137)"),
+        ev(now, "n:grafana", "routine", 1560, ["container:grafana"], "grafana started"),
+        ev(now, "n:loki", "routine", 3000, ["container:loki"], "loki started"),
+      ],
+      { loggedFrom: null },
+    ),
     // A log that covers the range but holds no events: today's empty copy.
     weekEmptyLogged: weekReport(now, [], { loggedFrom: iso(now, 8 * 24 * 60) }),
     // A stop at the earlier time beside the start now: both rows, newest first.

@@ -622,11 +622,11 @@ for (const width of WIDTHS) {
   const rectsOf = (page) => measure(page).then((m) => JSON.stringify([m.listRect, m.moreRect, m.rowH]));
   const clPlan = [
     // check 3, 4 (a "Wed 08:00" Recent time), 7 (count 4 -> 1 moves no rect), and the 52-char name at 390.
-    { n: "cl0-recent-normal", widths: ["390", "1440"], fixture: "changesCountsOne", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted itself and is running again" },
+    { n: "cl0-recent-normal", widths: ["390", "1440"], fixture: "changesToday", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted itself and is running again", bare: true, texts: ["transmission-openvpn restarted itself and is running again", "sonarr stopped (exit 137)", "grafana started"] },
     { n: "cl1-recent-count-and-day-prefix", widths: ["390", "1440"], fixture: "changesCounts", other: "changesCountsOne", heading: "Since you last looked · 01:00" },
     { n: "cl2-week-covered-counts", widths: ["390", "1440"], week: "weekCovered", heading: "Last 7 days" },
     { n: "cl3-week-partial-log", widths: ["390", "1440"], week: "weekPartial", heading: "Last 7 days · counted since Mon" },
-    { n: "cl4-week-no-log", widths: ["390"], week: "weekNoLog", heading: "Last 7 days · latest per app" },
+    { n: "cl4-week-no-log", widths: ["390"], week: "weekNoLog", heading: "Last 7 days · latest per app", noCount: true },
     { n: "cl4-week-earlier-stop", widths: ["390"], week: "weekEarlierStop", heading: "Last 7 days", times: ["Today 08:00", "Tue 08:40"] },
     { n: "cl5-week-empty", widths: ["390"], week: "weekEmptyLogged", heading: "Last 7 days", empty: "Nothing changed in the last 7 days." },
     { n: "cl6-count-long-name", widths: ["390", "1440"], fixture: "changesCounts", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted 12 times, 11 by itself", long: true },
@@ -661,15 +661,23 @@ for (const width of WIDTHS) {
         record("CL", r?.text === p.text0, `${tag} first row text "${r?.text}"`);
         if (p.long) record("CL", (phone ? r.sh <= r.ch : r.sw <= r.cw) && !r.overlap, `${tag} long name: scrollW ${r.sw}/${r.cw}, scrollH ${r.sh}/${r.ch}, overlap ${r.overlap}`); // 3
       }
+      if (p.bare || p.noCount || p.texts) {
+        const texts = await page.evaluate(() => [...document.querySelectorAll('[data-feature="changes"] .hm-chg-text')].map((n) => n.textContent ?? ""));
+        if (p.texts) record("CL", texts.join("|") === p.texts.join("|"), `${tag} row texts ${texts.join(" | ")}`);
+        if (p.bare) record("CL", m.times.length === p.texts.length && m.times.every((t) => /^\d\d:\d\d$/.test(t)), `${tag} every time is a bare HH:MM: ${m.times}`);
+        if (p.noCount) record("CL", texts.length > 0 && !texts.some((t) => /\d+ times/.test(t)), `${tag} no row reads "N times" (${texts.length} rows)`);
+      }
       if (p.n === "cl1-recent-count-and-day-prefix") {
         record("CL", /^(Mon|Tue|Wed) \d\d:\d\d$/.test(m.times[2] ?? "") && /^\d\d:\d\d$/.test(m.times[0]), `${tag} day prefix only on the older row: ${m.times}`);
         const before = await rectsOf(page);
+        await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width); // before the fixture switch: the PNG shows this state
+        await page.evaluate(() => window.scrollTo(0, 0)); // the crop scrolls; the rect check compares from the top
         state.cur = p.other;
         await page.reload();
         await page.waitForTimeout(500);
         record("CL", before === (await rectsOf(page)), `${tag} count 4 -> 1 moves no rect`); // 7
       }
-      await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
+      if (p.n !== "cl1-recent-count-and-day-prefix") await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
       await context.close();
     }
   }
