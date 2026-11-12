@@ -25,7 +25,7 @@ export function useKioskAutoUpdate() {
       if (busy) return;
       busy = true;
       try {
-        const res = await fetch("/kiosk/api/version", { cache: "no-store" });
+        const res = await fetch("/kiosk/api/version", { cache: "no-store", signal: AbortSignal.timeout(10_000) }) // a hung request must not hold `busy` forever;
         const serverBuild = versionBuildId(res.ok, (await res.json()) as { buildId?: unknown });
         const verdict = autoUpdateDecision({
           pageBuild: BUILD_ID,
