@@ -147,6 +147,8 @@ export function build(now: number) {
         health: { state: "failed", error: "Cannot connect to the Docker daemon" },
       },
     ),
+    // The app-changes lookup itself failed: the Changes heading gains " · app changes unknown" (wk8).
+    changesFailed: report(now, [], [], {}, { status: "failed", error: "Cannot connect to the Docker daemon" }),
     otherFailed: report(now, [], e, { smart: { state: "failed", error: "smartctl exited with status 2" } }),
     // C1: the start (1 hit) and the arrival (a crash and a disk; the orchestra hit clears).
     c1Before: report(now, [lane(now, 40)], e),
@@ -169,6 +171,40 @@ export function build(now: number) {
     // C10: two warn rows shown; then a bad crash arrives, and the pill is tapped.
     c10Before: report(now, [disk(now, 90), lane(now, 40)], e),
     c10After: report(now, [crash(now, "radarr", 1), disk(now, 90), lane(now, 40)], e),
+  } satisfies Record<string, AttentionReport>;
+}
+
+/* The 7-day range (nw-weekly-digest). `now` is the pinned clock: the report's `since` is exactly now - 7 days, as the
+ * page asks for it. Rows: 2 today, 4 earlier, the last on the previous Thursday (10 000 min = 6 d 22 h 40 min ago). */
+const weekReport = (now: number, events: ChangeEvent[], over: Partial<AttentionReport["changes"]> = {}) =>
+  report(now, [], events, {}, { since: iso(now, 7 * 24 * 60), ...over });
+
+const weekEvents = (now: number) => [
+  ev(now, "w:jellyfin", "handled", 60, ["container:jellyfin"], "jellyfin restarted and is healthy"),
+  ev(now, "w:backup", "handled", 150, ["backup"], "Nightly backup finished: 41 GB in 12 min"),
+  ev(now, "w:sonarr", "routine", 1560, ["container:sonarr"], "sonarr recreated from a new image"),
+  ev(now, "w:grafana", "routine", 3000, ["container:grafana"], "grafana restarted once"),
+  ev(now, "w:loki", "routine", 5000, ["container:loki"], "loki recreated from a new image"),
+  ev(now, "w:lidarr", "routine", 10000, ["container:lidarr"], "lidarr restarted once"),
+];
+
+export function buildWeek(now: number) {
+  return {
+    week: weekReport(now, weekEvents(now)),
+    weekEmpty: weekReport(now, []),
+    // 14 rows, opened with "Show fewer".
+    weekMany: weekReport(
+      now,
+      Array.from({ length: 14 }, (_, i) =>
+        ev(now, `w:app${i}`, "routine", 90 + i * 700, [`container:app${i}`], `app${i} restarted once`),
+      ),
+    ),
+    // Two 60-character container names: the one-line ellipsis on desktop, the two-line clamp on a phone.
+    weekLong: weekReport(now, [
+      ev(now, "w:long1", "routine", 60, ["container:l1"], `${"very-long-container-name-".repeat(3).slice(0, 60)} restarted once`),
+      ev(now, "w:long2", "routine", 1560, ["container:l2"], `${"another-quite-long-service-".repeat(3).slice(0, 60)} was recreated from a new image`),
+      ...weekEvents(now).slice(1, 3),
+    ]),
   } satisfies Record<string, AttentionReport>;
 }
 

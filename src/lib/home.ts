@@ -5,6 +5,8 @@ import { ACTION_LINE, fixFor } from "./fix-sheet.ts";
 
 export type Tone = "ok" | "warn" | "bad" | "pending";
 const DAY = 86_400_000;
+export const WEEK_MS = 7 * DAY;
+export type ChangesRange = "recent" | "week";
 const DOCKER_PROBES: readonly ProbeId[] = ["crashes", "restarts", "health"];
 const FEED_CLOSED_SLOTS = 4;
 export const LAST_LOOKED_KEY = "home-last-looked";
@@ -19,6 +21,31 @@ export function clock(t: number | string, offsetMin?: number): string {
   if (offsetMin === undefined) return `${two(d.getHours())}:${two(d.getMinutes())}`;
   const s = new Date(d.getTime() + offsetMin * 60_000);
   return `${two(s.getUTCHours())}:${two(s.getUTCMinutes())}`;
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** "Today 14:02" on the viewer's local today, else "Mon 14:02". offsetMin as in clock() (tests only). */
+export function dayClock(t: number | string, now: number, offsetMin?: number): string {
+  const shift = (x: number | string) => new Date(new Date(x).getTime() + (offsetMin ?? 0) * 60_000);
+  const parts = (d: Date) =>
+    offsetMin === undefined
+      ? { day: d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate(), wd: d.getDay() }
+      : { day: d.getUTCFullYear() * 400 + d.getUTCMonth() * 31 + d.getUTCDate(), wd: d.getUTCDay() };
+  // Local get* on the unshifted date; UTC get* on the shifted one (the same split clock() makes).
+  const e = parts(offsetMin === undefined ? new Date(t) : shift(t));
+  const n = parts(offsetMin === undefined ? new Date(now) : shift(now));
+  return `${e.day === n.day ? "Today" : WEEKDAYS[e.wd]} ${clock(t, offsetMin)}`;
+}
+
+/** 7-day range: null until the report on screen is the one asked for (keepPreviousData shows the old one). */
+export function changesFor<C extends { since: string }>(
+  changes: C | null,
+  sinceMs: number | null,
+  range: ChangesRange,
+): C | null {
+  if (range === "recent" || !changes) return changes;
+  return sinceMs !== null && Math.abs(Date.parse(changes.since) - sinceMs) <= 60_000 ? changes : null;
 }
 
 // ---- needs-you rows ----

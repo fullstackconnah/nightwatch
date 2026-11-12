@@ -14,13 +14,17 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { backupOk, build, CONTAINERS, WIDGETS } from "./fixtures/home/fixtures.ts";
+import { backupOk, build, buildWeek, CONTAINERS, WIDGETS } from "./fixtures/home/fixtures.ts";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
 const NOW = Date.now();
 const FIX = build(NOW);
 const ZONE = "Australia/Sydney";
+const WEEK_MS = 7 * 86_400_000;
+// WK (7-day range): the pinned clock, a Thursday. The page asks for since = this - 7 days.
+const WK_NOW = Date.parse("2026-11-12T09:00:00+11:00");
+const FIXW = buildWeek(WK_NOW);
 const WIDTHS = [
   { name: "1440", viewport: { width: 1440, height: 900 }, bound: 180 },
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, bound: 169 },
@@ -42,11 +46,12 @@ const foreign = [];
 const browser = await chromium.launch({ headless: true });
 
 /** One page on its own context. `fixture` is a key of FIX, "loading" or "error"; `state.cur` can be swapped. */
-async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false } = {}) {
+async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false, pinned = false } = {}) {
   const { name, bound, ...ctxOpts } = width;
   const context = await browser.newContext({
     ...ctxOpts,
     timezoneId: ZONE,
+    ...(pinned ? { locale: "en-AU" } : {}),
     reducedMotion: reduced ? "reduce" : "no-preference",
   });
   const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
@@ -67,10 +72,11 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
         }
       }
     },
-    { lastLooked: NOW - 8 * 3600_000, doThrow: throwStorage },
+    { lastLooked: (pinned ? WK_NOW : NOW) - 8 * 3600_000, doThrow: throwStorage },
   );
   const page = await context.newPage();
-  const state = { cur: fixture };
+  const state = { cur: fixture, week: "week" };
+  if (pinned) await page.clock.setFixedTime(WK_NOW);
   page.on("pageerror", () => pageErrors++);
   page.on("request", (r) => {
     const u = r.url();
@@ -78,9 +84,15 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
     if (new URL(u).origin !== new URL(BASE_URL).origin) foreign.push(u);
   });
   await page.route("**/api/attention*", (route) => {
+    // The 7-day request is the one whose since is the pinned clock minus 7 days; `state.week` picks its answer.
+    if (pinned && Math.abs(Number(new URL(route.request().url()).searchParams.get("since")) - (WK_NOW - WEEK_MS)) < 60_000) {
+      if (state.week === "loading") return;
+      if (state.week === "error") return route.fulfill({ status: 500, body: "{}" });
+      return route.fulfill({ json: FIXW[state.week] });
+    }
     if (state.cur === "loading") return; // never answered
     if (state.cur === "error") return route.fulfill({ status: 500, body: "{}" });
-    return route.fulfill({ json: FIX[state.cur] });
+    return route.fulfill({ json: (pinned ? build(WK_NOW) : FIX)[state.cur] });
   });
   await page.route("**/api/docker/containers", (route) => route.fulfill({ json: CONTAINERS }));
   await page.route("**/api/backup", (route) => route.fulfill({ json: backupOk(NOW) }));
@@ -150,9 +162,10 @@ const readState = () => {
   // C5: interactive targets visible in .hm
   const small = [...hm.querySelectorAll("a, button, input, [role=menuitem]")]
     .filter(visible)
-    .map((el) => ({ el, r: rect(el) }))
+    // .hm-att-disclose stretches its tap area over the positioned ancestor (::after, inset 0), so that box is the target.
+    .map((el) => ({ el, r: rect(el.classList.contains("hm-att-disclose") && el.offsetParent ? el.offsetParent : el) }))
     .filter(({ r }) => r.width < 44 || r.height < 44)
-    .map(({ el, r }) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} ${Math.round(r.width)}x${Math.round(r.height)}`);
+    .map(({ el, r }) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} ${Math.round(r.width)}x${Math.round(r.height)}${el.classList.contains("hm-att-disclose") ? " (tap area)" : ""}`);
   // C6: computed-style contrast of every leaf text element (WCAG ratio against the composited background)
   let minRatio = 99;
   let worst = "";
@@ -489,11 +502,123 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- WK: the Recent / 7 days range on the Changes list (nw-weekly-digest). Pinned clock, en-AU, Australia/Sydney. ----
+// Captures wk1..wk8 of the shape brief and numeric checks 1 to 5 of "Layout and numeric checks". Check 6 (default pixel
+// parity with origin/main) is a comparison: wk1 prints its list and "Show N more" rects, to diff against a run on main.
+{
+  const measure = (page) =>
+    page.evaluate(() => {
+      const r = (n) => n.getBoundingClientRect();
+      const rect = (n) => (n ? [r(n).x, r(n).y, r(n).width, r(n).height].map(Math.round) : null);
+      const sec = document.querySelector('[data-feature="changes"]');
+      const head = sec.querySelector(".hm-sec-head");
+      const h2 = head.querySelector("h2");
+      const group = head.querySelector('[role="group"]');
+      const at = [...sec.querySelectorAll(".hm-chg-at")];
+      return {
+        headH: r(head).height,
+        headMin: parseFloat(getComputedStyle(head).minHeight),
+        h2Right: r(h2).right,
+        groupLeft: r(group).left,
+        gap: parseFloat(getComputedStyle(head).columnGap) || 8,
+        h2Clipped: h2.scrollWidth > h2.clientWidth,
+        btns: [...group.querySelectorAll("button")].map((b) => ({ w: r(b).width, h: r(b).height })),
+        atFits: at.every((n) => n.scrollWidth <= n.clientWidth),
+        atMax: Math.max(0, ...at.map((n) => n.scrollWidth)),
+        rowH: [...sec.querySelectorAll(".hm-chg-row")].map((n) => Math.round(r(n).height)),
+        listH: r(sec.querySelector(".hm-chg-list")).height,
+        listRect: rect(sec.querySelector(".hm-chg-list")),
+        moreRect: rect(sec.querySelector(".hm-more")),
+        heading: h2.textContent,
+        label: sec.getAttribute("aria-label"),
+        pressed: [...group.querySelectorAll("button")].map((b) => b.getAttribute("aria-pressed")),
+        times: at.map((n) => n.textContent),
+        empty: sec.querySelector(".hm-chg-empty")?.textContent ?? null,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+  // sel: the element to crop; it is scrolled into the upper part of the viewport first so no fixed chrome covers it.
+  const crop = async (page, file, vw, sel = '[data-feature="changes"]') => {
+    await page.locator(sel).evaluate((n) => { window.scrollTo(0, Math.max(0, n.getBoundingClientRect().top + scrollY - 120)); });
+    await page.waitForTimeout(200);
+    const box = await page.locator(sel).boundingBox();
+    const x = Math.max(0, box.x - 8), y = Math.max(0, box.y - 8);
+    await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(box.width + 16, vw - x), height: box.height + 16 } });
+  };
+  const week = ["Today 08:00","Today 06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
+  const plan = [
+    { n: "wk1-recent", widths: ["390", "1440"], week: null },
+    { n: "wk2-week", widths: ["390", "1440"], week: "week" },
+    { n: "wk3-empty", widths: ["390"], week: "weekEmpty" },
+    { n: "wk4-loading", widths: ["1440"], week: "loading" },
+    { n: "wk5-error", widths: ["390"], week: "error" },
+    { n: "wk6-open", widths: ["1440"], week: "weekMany", open: true },
+    { n: "wk7-long", widths: ["390", "1440"], week: "weekLong" },
+  ];
+  for (const p of plan) {
+    for (const width of WIDTHS.filter((w) => p.widths.includes(w.name))) {
+      const { context, page, state } = await open({ width: p.open ? { ...width, viewport: { ...width.viewport, height: 1400 } } : width, pinned: true });
+      const tag = `${p.n}@${width.name}`;
+      if (p.week) {
+        state.week = p.week;
+        await page.getByRole("button", { name: "Last 7 days" }).click();
+        await page.waitForTimeout(500);
+        if (p.open) {
+          await page.locator(".hm-more").click();
+          await page.waitForTimeout(500);
+        }
+      }
+      const m = await measure(page);
+      const phone = width.name === "390";
+      // 1: the head is its min-height in both ranges. 2: SegmentButton's own tap targets (44 below md, 32 from md).
+      record("WK", Math.abs(m.headH - m.headMin) < 0.6, `${tag} head ${m.headH}px, min-height ${m.headMin}px`);
+      record("WK", m.btns.every((b) => (phone ? b.h >= 44 && b.w >= 44 : b.h >= 32)), `${tag} segments ${m.btns.map((b) => `${Math.round(b.w)}x${Math.round(b.h)}`).join(" ")}`);
+      // 3: the heading never overlaps the group and is not clipped. 4: the time column fits (7.5rem on desktop).
+      record("WK", m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped, `${tag} h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, gap ${m.gap}, clipped ${m.h2Clipped}`);
+      record("WK", m.atFits, `${tag} time column fits: ${m.atFits}, widest ${m.atMax}px`);
+      // 5: closed rows keep --hm-chg-row (3.25rem desktop, 4.75rem phone); an opened list is taller by design.
+      if (!p.open) record("WK", m.rowH.every((h) => h === (phone ? 76 : 52)), `${tag} row heights ${m.rowH.join(",")}, list ${Math.round(m.listH)}px`);
+      record("WK", m.pageOverflow <= 0, `${tag} page overflow ${m.pageOverflow}`);
+      // Copy and state, per the shape table. 01:00 = the pinned clock minus the 8 h last look.
+      record("WK", m.heading === (p.week ? "Last 7 days · latest per app" : "Since you last looked · 01:00"), `${tag} heading "${m.heading}"`);
+      record("WK", m.label === (p.week ? "Last 7 days" : "Since you last looked") && m.pressed.join() === (p.week ? "false,true" : "true,false"), `${tag} label "${m.label}", pressed ${m.pressed}`);
+      if (p.n === "wk2-week") record("WK", m.times.join() === week.slice(0, m.times.length).join() && m.times.length > 0, `${tag} times ${m.times}`);
+      if (p.n === "wk3-empty") record("WK", m.empty === "Nothing changed in the last 7 days.", `${tag} empty "${m.empty}"`);
+      if (p.n === "wk4-loading") record("WK", m.empty === "Looking for changes…" && m.times.length === 0, `${tag} loading "${m.empty}", stale rows ${m.times.length}`);
+      if (p.n === "wk5-error") record("WK", m.empty === "Unknown.", `${tag} error "${m.empty}"`);
+      if (p.n === "wk1-recent") console.log(`WK parity rects ${tag} list ${m.listRect} more ${m.moreRect}`);
+      if (p.open) {
+        // The whole opened section is in the crop: its last row and "Show fewer" end inside the box the crop takes.
+        const c = await page.evaluate(() => {
+          const sec = document.querySelector('[data-feature="changes"]');
+          const b = sec.querySelector(".hm-more").getBoundingClientRect();
+          return { rows: sec.querySelectorAll(".hm-chg-row").length, btnBottom: b.bottom, secBottom: sec.getBoundingClientRect().bottom, vh: innerHeight, text: sec.querySelector(".hm-more").textContent };
+        });
+        record("WK", c.rows === 14 && /fewer/i.test(c.text) && c.btnBottom <= c.secBottom + 0.5 && c.secBottom + 8 <= c.vh, `${tag} opened: ${c.rows} rows, "${c.text}" bottom ${Math.round(c.btnBottom)} within section bottom ${Math.round(c.secBottom)} (viewport ${c.vh})`);
+      }
+      await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
+      if (p.n === "wk2-week") await page.screenshot({ path: join(OUT_DIR, `home-wk2-week-full-${width.name}.png`), fullPage: true });
+      await context.close();
+    }
+  }
+  // wk8: Recent at 360 with "· app changes unknown" (the heading wrap, check 3).
+  {
+    const width = { name: "360", viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true };
+    const { context, page } = await open({ width, fixture: "changesFailed", pinned: true });
+    const m = await measure(page);
+    const h2Lines = await page.locator('[data-feature="changes"] .hm-sec-head h2').evaluate((n) => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)));
+    record("WK", m.heading.includes("app changes unknown"), `wk8@360 heading names the failed state: "${m.heading}"`);
+    record("WK", m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped && Math.abs(m.headH - m.headMin) < 0.6, `wk8@360 h2 lines ${h2Lines}, h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, head ${m.headH}px (min ${m.headMin}px), heading "${m.heading}"`);
+    await crop(page, "home-wk8-recent-failed-360.png", 360, '[data-feature="changes"] .hm-sec-head');
+    await context.close();
+  }
+}
+
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

@@ -8,7 +8,7 @@ import { Launcher, isSortKey, type SortKey } from "@/components/home/launcher";
 import { SidePanel } from "@/components/home/side-panel";
 import { useAttentionReport, useBackupStatus, useContainers, useWidgets } from "@/lib/client";
 import { nightlyAt } from "@/lib/backup-status";
-import { LAST_LOOKED_KEY, ageText, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
+import { LAST_LOOKED_KEY, WEEK_MS, ageText, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
 
 /** When the last fetch succeeded. SWR keeps the same `data` object when a poll returns the same JSON, so watch `isValidating`. */
 function useFetchedAt(r: { data?: unknown; error?: unknown; isValidating: boolean }): number | null {
@@ -52,7 +52,10 @@ export default function HomePage() {
     };
   }, []);
 
-  const report = useAttentionReport(looked?.since ?? null);
+  // 7-day look: `since` is fixed at the tap so the request key stays stable; null = Recent (today's request).
+  const [weekSince, setWeekSince] = useState<number | null>(null);
+  const since = weekSince ?? looked?.since ?? null;
+  const report = useAttentionReport(since);
   const reportAt = useFetchedAt(report);
   const containersAt = useFetchedAt(containers);
 
@@ -126,7 +129,9 @@ export default function HomePage() {
           changes={report.data?.changes ?? null}
           hiddenNames={hiddenNames}
           listed={listed}
-          sinceMs={looked?.since ?? null}
+          sinceMs={since}
+          range={weekSince === null ? "recent" : "week"}
+          onRange={(r) => setWeekSince(r === "week" ? Date.now() - WEEK_MS : null)}
           fallbackLabel={looked?.label != null}
           error={!!report.error}
         />
