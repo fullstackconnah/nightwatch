@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FixSheet, type FixDone } from "@/components/home/fix-sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
+import { fixFor, stillFailing } from "@/lib/fix-sheet";
 import { calmLine, clock, gate, homeRows, pillText, reveal, slotOrder, type HomeRow } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,10 @@ export function AttentionList({
   const [shown, setShown] = useState<string[] | null>(null);
   const [rankedLive, setRankedLive] = useState<string[]>([]);
   const [held, setHeld] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  // A fix that went through, per row id, until the id leaves `live` (stops a second tap while the hit lingers).
+  const [doneAt, setDoneAt] = useState<ReadonlyMap<string, FixDone>>(new Map());
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
   const rankerRef = useRef(createRanker());
   const cache = useRef(new Map<string, HomeRow>());
   const goneAt = useRef(new Map<string, number>());
@@ -71,12 +77,35 @@ export function AttentionList({
     if (!report) return;
     if (shown === null) setShown(live);
     const ids = shown === null ? live : liveShown;
-    if (rankerRef.current.offer(ids, Date.now(), held)) {
+    if (rankerRef.current.offer(ids, Date.now(), held || openId !== null)) {
       if (shown !== null) snapshot();
       setRankedLive(rankerRef.current.order!.slice());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [report, held, shown]);
+  }, [report, held, shown, openId]);
+
+  // A later check that still lists the hit re-arms the action; a done entry for an id that left `live` is dropped.
+  useEffect(() => {
+    if (!report) return;
+    const liveSet = new Set(live);
+    setDoneAt((m) => {
+      let next: Map<string, FixDone> | null = null;
+      for (const [id, d] of m) {
+        if (!liveSet.has(id)) (next ??= new Map(m)).delete(id);
+        else if (d.still === undefined && stillFailing(d.at, report.checkedAt, true)) (next ??= new Map(m)).set(id, { at: d.at, still: clock(report.checkedAt) });
+      }
+      return next ?? m;
+    });
+  }, [report, live]);
+
+  // The open row left the display (the pill tap dropped it): close, and put focus on the section heading.
+  const displayHasOpen = openId !== null && display.includes(openId);
+  useEffect(() => {
+    if (openId !== null && !displayHasOpen) {
+      setOpenId(null);
+      headingRef.current?.focus();
+    }
+  }, [openId, displayHasOpen]);
 
   // The slide (FLIP): rows that changed place move from where they were; rows that entered fade in.
   useLayoutEffect(() => {
@@ -128,7 +157,9 @@ export function AttentionList({
       }}
     >
       <div className="hm-sec-head">
-        <h2 className="microlabel">Needs you</h2>
+        <h2 className="microlabel" ref={headingRef} tabIndex={-1}>
+          Needs you
+        </h2>
         <span className="font-mono text-xs text-ink-dim">{display.length}</span>
         <span className="flex-1" />
         {/* Always in the DOM: its slot is reserved from first paint, so it never moves anything. */}
@@ -152,6 +183,8 @@ export function AttentionList({
             const r = cache.current.get(id);
             if (!r) return null;
             const resolved = goneAt.current.has(id);
+            const fix = fixFor(r);
+            const open = fix !== null && openId === id;
             return (
               <li
                 key={id}
@@ -159,6 +192,15 @@ export function AttentionList({
                 data-row-id={id}
                 data-subject={r.subject}
                 data-resolved={resolved ? "" : undefined}
+                onKeyDown={
+                  open
+                    ? (e) => {
+                        if (e.key !== "Escape") return;
+                        setOpenId(null);
+                        els.current.get(id)?.querySelector<HTMLElement>(".hm-att-disclose")?.focus();
+                      }
+                    : undefined
+                }
                 ref={(el) => {
                   if (el) els.current.set(id, el);
                   else els.current.delete(id);
@@ -167,7 +209,20 @@ export function AttentionList({
                 <span className={cn("dot", resolved ? "dot-running" : SEV_DOT[r.severity])} aria-hidden />
                 <div className="hm-att-body">
                   <div className="hm-att-head">
-                    <span className="hm-att-title">{r.headline}</span>
+                    {fix ? (
+                      <button
+                        type="button"
+                        className="dk-disclose hm-att-disclose"
+                        aria-expanded={open}
+                        aria-controls={open ? `hm-fix-${id}` : undefined}
+                        onClick={() => setOpenId(open ? null : id)}
+                      >
+                        <ChevronDown size={14} aria-hidden className={cn("dk-chev", open && "dk-chev-open")} />
+                        <span className="hm-att-title">{r.headline}</span>
+                      </button>
+                    ) : (
+                      <span className="hm-att-title">{r.headline}</span>
+                    )}
                     <span className="hm-att-since font-mono">
                       {resolved ? `fixed ${clock(goneAt.current.get(id)!)}` : `since ${clock(r.since)}`}
                     </span>
@@ -179,6 +234,15 @@ export function AttentionList({
                   {r.owner.label}
                   <ChevronRight size={12} aria-hidden />
                 </Link>
+                {open && (
+                  <FixSheet
+                    id={id}
+                    fix={fix}
+                    resolved={resolved}
+                    done={doneAt.get(id) ?? null}
+                    onDone={(at) => setDoneAt((m) => new Map(m).set(id, { at }))}
+                  />
+                )}
               </li>
             );
           })}
