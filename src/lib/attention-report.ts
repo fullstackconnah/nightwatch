@@ -3,7 +3,7 @@
 import type { RuntimeContainer } from "./docker.ts";
 import { BACKUP_KIND_LABEL, type BackupStatus } from "./backup-status.ts";
 
-export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "orchestra";
+export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra";
 export type ProbeStatus =
   | { id: ProbeId; label: string; state: "answered"; hits: number }
   | { id: ProbeId; label: string; state: "pending" } // missed the deadline
@@ -11,7 +11,7 @@ export type ProbeStatus =
 export interface AttentionHit {
   id: string; // `${probe}:${subject}`, stable across ticks
   probe: ProbeId;
-  subject: string; // "container:radarr" | "drive:sda" | "array" | "mount:/mnt/media" | "disk:/mnt/media" | "backup" | "orchestra"
+  subject: string; // "container:radarr" | "drive:sda" | "array" | "mount:/mnt/media" | "disk:/mnt/media" | "backup" | "doorbell" | "orchestra"
   severity: "warn" | "bad";
   headline: string;
   detail?: string;
@@ -30,7 +30,7 @@ export interface ChangeEvent {
 }
 export interface AttentionReport {
   checkedAt: string; // when the memo computed, not the request time
-  probes: ProbeStatus[]; // always 8, in priority order
+  probes: ProbeStatus[]; // always 9, in priority order
   hits: AttentionHit[]; // sortHits: bad first, then oldest (since ?? firstSeen)
   changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[] };
 }
@@ -104,6 +104,8 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
       return { href: `${RESOURCES_ALL}${encodeURIComponent(subject.replace(/^container:/, ""))}`, label: "Open in Resources" };
     case "backup":
       return { href: "#backup", label: "Backup detail" };
+    case "doorbell":
+      return { href: "/smarthome", label: "Open Smart home" };
     case "orchestra":
       return { href: "/orchestrators", label: "Open AI lanes" };
     default:

@@ -23,6 +23,7 @@ const PROBES: ReadonlyArray<readonly [ProbeId, string]> = [
   ["backup", "Backup"],
   ["disks", "Disks"],
   ["health", "Health"],
+  ["doorbell", "Front door"],
   ["orchestra", "AI lanes"],
 ];
 
@@ -118,6 +119,14 @@ const stalledLane = (now: number, minAgo: number) =>
     owner: { href: "/orchestrators", label: "Open AI lanes" },
   });
 
+// DQ: copy from doorbellQuietCopy in src/lib/attention-copy.ts (68 days, the live case).
+const doorbellQuiet = (now: number, minAgo: number) =>
+  hit(now, "doorbell", "doorbell", "warn", "Front door camera has gone quiet", minAgo, {
+    detail: "No motion reported for 68 days",
+    action: "Reload its integration in Home Assistant; it may need signing in.",
+    owner: { href: "/smarthome", label: "Open Smart home" },
+  });
+
 export function build(now: number) {
   const e = baseEvents(now);
   return {
@@ -125,6 +134,7 @@ export function build(now: number) {
     one: report(now, [disk(now, 90)], e),
     // radarr is crashed and dev is stuck: neither may appear in the feed (R3).
     several: report(now, [crash(now, "radarr", 130), lane(now, 40), disk(now, 300)], e),
+    doorbellQuiet: report(now, [disk(now, 90), doorbellQuiet(now, 120)], e),
     stalledLane: report(now, [stalledLane(now, 25)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(

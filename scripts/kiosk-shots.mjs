@@ -449,6 +449,7 @@ await guarded("overlays elevated", async () => {
 const EXTRA_URL = `${CONTROLS_URL}&period=day`;
 const DOORBELL_OK = { status: "ok", cameras: [{ entityId: "camera.front_door", name: "Front door", available: true }], triggers: [], latest: null, autoOpen: true, viewCamera: null }; // HaDoorbellSnapshot (types/ha.ts:193)
 const ATTENTION_WARN = { status: "attention", severity: "warn", headline: "A container stopped", detail: "Placeholder detail for the capture.", action: "Open the dashboard", since: "2026-06-15T09:00:00+10:00" }; // AttentionResult (attention.ts:62)
+const ATTENTION_DOORBELL = { status: "attention", severity: "warn", headline: "Front door camera has gone quiet", detail: "No motion reported for 68 days", action: "Reload its integration in Home Assistant; it may need signing in.", since: "2026-06-15T09:00:00+10:00" }; // copy from doorbellQuietCopy (attention-copy.ts)
 const downloads = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `h${i}`, name: `Placeholder download ${i + 1}`, progress: 0.3 + i * 0.2, dlspeed: 2_500_000, size: 4_000_000_000, eta: 900 })) }); // KioskDownloadsResult (types/downloads.ts:29)
 // counts the oscillators the chime makes: Web Audio is locked until a gesture, so the page gets a running stub
 const AUDIO_STUB = "window.__osc = 0; window.AudioContext = class { constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; } resume() { return Promise.resolve(); } createOscillator() { window.__osc++; return { type: '', frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; } createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; } };";
@@ -506,6 +507,15 @@ await guarded("overlays extra alerts", async () => {
   await settle(page, '[role=dialog][aria-label="Alerts"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-alert-tray-1180x820.png") });
   Object.assign(tray, await page.evaluate(SCAN_AT, '[role=dialog][aria-label="Alerts"]'));
+  await context.close();
+});
+await guarded("overlays extra alert doorbell", async () => {
+  const { context, page } = await extraVisit({ "/kiosk/api/attention": ATTENTION_DOORBELL });
+  const take = (results.overlays.extra.alertDoorbell = {});
+  if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for the doorbell alert");
+  await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
+  await page.screenshot({ path: join(OUT_DIR, "kiosk-alert-doorbell-1180x820.png") }); // state kiosk-alert-doorbell
+  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'));
   await context.close();
 });
 // overlays.extra.stale.{alerts,downloads}: a failed re-poll after a good one keeps the data and adds ONE Stale tag (alerts: on the button; downloads: in the open tray).
