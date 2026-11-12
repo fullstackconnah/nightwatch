@@ -26,3 +26,8 @@ export function lastSeenFromHistory(reply: unknown, ids: readonly string[], nowM
   }
   return Number.isFinite(best) ? new Date(best).toISOString() : null;
 }
+
+/** True when `iso` falls on `now`'s local calendar date; the 24 h window makes anything else yesterday. */
+export function lastSeenIsToday(iso: string, now: Date): boolean {
+  return new Date(iso).toDateString() === now.toDateString();
+}

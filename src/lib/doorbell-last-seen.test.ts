@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { lastSeenFromHistory } from "./doorbell-last-seen.ts";
+import { lastSeenFromHistory, lastSeenIsToday } from "./doorbell-last-seen.ts";
 
 const NOW = Date.parse("2026-11-12T12:00:00.000Z");
 const H = 3_600_000;
@@ -58,4 +58,13 @@ test("event states unknown, unavailable and empty do not count", () => {
 test("newest across an event series and a binary_sensor series wins", () => {
   assert.equal(lastSeenFromHistory([[e(IDS[0], "on", at(5 * H))], [ev(at(2 * H))]], IDS2, NOW), at(2 * H));
   assert.equal(lastSeenFromHistory([[e(IDS[0], "on", at(1 * H))], [ev(at(2 * H))]], IDS2, NOW), at(1 * H));
+});
+
+// Local components so the cases hold in any time zone.
+const local = (d: number, h: number, m: number) => new Date(2026, 10, d, h, m);
+test("lastSeenIsToday: earlier today, local midnight, and a later clock time yesterday", () => {
+  const now = local(12, 10, 30);
+  assert.equal(lastSeenIsToday(local(12, 8, 0).toISOString(), now), true);
+  assert.equal(lastSeenIsToday(local(12, 0, 0).toISOString(), now), true);
+  assert.equal(lastSeenIsToday(local(11, 14, 32).toISOString(), now), false);
 });

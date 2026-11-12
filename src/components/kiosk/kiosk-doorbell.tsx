@@ -28,6 +28,7 @@ import useSWR from "swr";
 import { DoorOpen, RefreshCw, Video, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatWallClock } from "@/lib/format";
+import { lastSeenIsToday } from "@/lib/doorbell-last-seen";
 import { fetcher } from "@/lib/client";
 import {
   KIOSK_EASE_OUT,
@@ -279,7 +280,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
         <span>Front door</span>
         {seen && (
           <span className="max-w-32 truncate text-2xs leading-tight text-ink-faint">
-            Last seen {seen.time} {seen.period}
+            {lastSeenIsToday(data.lastSeenAt!, new Date()) ? "Last seen" : "Seen yesterday"} {seen.time} {seen.period}
           </span>
         )}
       </span>
