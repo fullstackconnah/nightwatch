@@ -531,7 +531,7 @@ await guarded("overlays extra alerts", async () => {
 // SHOTS-N4: the takeover at night. Pinned as the night stop is (wx=off, the night weather mock, a flowing clock) with ?period=day so the night overlay stays out of the way.
 // Keys: overlays.extra.alertTakeoverNight.{scrimAlpha,washColor,headline:{color,fontPx,contrast},caption:{color,fontPx,contrast}}; contrast is the worst over a black and a white backdrop, must be >= 4.5.
 const NIGHT_CONTRAST_AT = () => {
-  const rgba = (c) => { const n = c.match(/-?[d.]+/g).map(Number); return c.startsWith("color(") ? [n[0] * 255, n[1] * 255, n[2] * 255, n[3] ?? 1] : [n[0], n[1], n[2], n[3] ?? 1]; };
+  const rgba = (c) => { const n = c.match(/-?[\d.]+/g).map(Number); return c.startsWith("color(") ? [n[0] * 255, n[1] * 255, n[2] * 255, n[3] ?? 1] : [n[0], n[1], n[2], n[3] ?? 1]; };
   const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
   const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
   const wash = rgba(getComputedStyle(document.querySelector('[data-sr-overlay="takeover"]')).backgroundColor);
