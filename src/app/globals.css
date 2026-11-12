@@ -3168,6 +3168,61 @@ body {
   font-size: 0.75rem;
   color: var(--color-ink-dim);
 }
+/* Fix sheet: the row headline is the trigger. Its hit area is stretched over .hm-att-body so a closed row keeps its height. */
+.hm-att-body {
+  position: relative;
+}
+.hm-att-row .dk-disclose {
+  min-height: 0;
+}
+.hm-att-disclose::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.hm-fix {
+  grid-column: 2 / -1;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  animation: hm-fix-in 200ms var(--ease-calm);
+}
+.hm-fix-cause {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--color-ink);
+}
+.hm-fix-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.hm-fix .logbox {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.hm-fix-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+@keyframes hm-fix-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hm-fix {
+    animation: none;
+  }
+}
 @media (max-width: 767px) {
   .hm-att-row {
     grid-template-columns: 8px minmax(0, 1fr);

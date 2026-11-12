@@ -1,6 +1,7 @@
 /* Pure Home logic (the attention report's view). Type-only imports so node:test can load it (no "@/" alias).
  * Times come in pre-formatted, except `clock`. */
 import type { AttentionHit, AttentionReport, ProbeId } from "./attention-report.ts";
+import { ACTION_LINE, fixFor } from "./fix-sheet.ts";
 
 export type Tone = "ok" | "warn" | "bad" | "pending";
 const DAY = 86_400_000;
@@ -24,6 +25,7 @@ export function clock(t: number | string, offsetMin?: number): string {
 
 export interface HomeRow {
   id: string;
+  probe?: ProbeId; // set on hits; absent on failed:* rows
   subject: string;
   severity: "warn" | "bad";
   headline: string;
@@ -54,7 +56,10 @@ export function homeRows(r: AttentionReport): HomeRow[] {
     });
   }
   for (const h of r.hits as AttentionHit[]) {
-    rows.push({ ...h, since: h.since ?? h.firstSeen });
+    const fix = fixFor(h);
+    // Home-only action line for rows that open a fix sheet; attention-copy.ts (kiosk) is unchanged.
+    const action = fix ? (fix.action ? ACTION_LINE.fix : ACTION_LINE.logs) : h.action;
+    rows.push({ ...h, action, since: h.since ?? h.firstSeen });
   }
   for (const p of failed) {
     if (DOCKER_PROBES.includes(p.id)) continue;
