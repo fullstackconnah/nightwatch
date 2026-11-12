@@ -8,6 +8,7 @@ import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk/kiosk-d
 import { doorLinkDecision, hasDoorParam, withoutDoorParam } from "@/lib/kiosk-door-link";
 import { lockKiosk, refreshKioskElevation } from "@/lib/kiosk-client";
 import { useNow } from "@/lib/use-now";
+import { useKioskAutoUpdate } from "@/lib/use-kiosk-auto-update";
 
 // Interactions slide the elevation window, but there's no need to hit the
 // network on every single tap inside a fast run of clicks — this floor keeps
@@ -55,6 +56,7 @@ export default function KioskPage() {
 }
 
 function KioskPageInner() {
+  useKioskAutoUpdate();
   const [pinOpen, setPinOpen] = useState(false);
   // Captured at the moment whichever Admin button (night overlay, status
   // strip, or glance's floating one) was tapped — the PIN pad grows out of
