@@ -289,7 +289,7 @@ test("a container only in the log (now gone) and a stop while running get logged
   const ev = deriveChanges([], null, SINCE, [], tl);
   assert.deepEqual(ev.map((e) => e.text), ["old stopped", "old started"]);
   assert.deepEqual(ev[0].subjects, ["container:old"]);
-  assert.match(ev[0].id, /^change:log:stop:old:/);
+  assert.match(ev[0].id, /^change:stopped:old:/);
   assert.equal(ev[0].owner.label, "Open in Resources");
 });
 
@@ -298,4 +298,13 @@ test("a live stop and its logged twin are one row, at the later time", () => {
   const ev = deriveChanges([ctr({ name: "x", state: "exited", finishedAt: SINCE + 500, exitCode: 137 })], null, SINCE, [], tl);
   assert.deepEqual(ev.map((e) => e.text), ["x stopped 2 times (last exit 137)"]);
   assert.equal(Date.parse(ev[0].at), SINCE + 500);
+});
+
+test("the same stop has one id derived live-only and from the log", () => {
+  const at = SINCE + 9000;
+  const live = deriveChanges([ctr({ name: "x", state: "exited", finishedAt: at, exitCode: 137 })], null, SINCE, []);
+  const logged = deriveChanges([], null, SINCE, [], logTally([ln("x", "start", SINCE + 1000), ln("x", "stop", at, { code: 137 })]));
+  const stopId = (ev: typeof live) => ev.find((e) => e.text.includes("stopped"))?.id;
+  assert.equal(stopId(live), `change:stopped:x:${at}`);
+  assert.equal(stopId(logged), stopId(live));
 });

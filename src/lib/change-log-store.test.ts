@@ -147,3 +147,12 @@ test("a failed append keeps the baseline file and memory, and the next tick writ
   assert.deepEqual(lines, [{ at: NOW + 10_000, k: "start", name: "a", id: "a-id" }]);
   assert.equal(JSON.parse(fs.readFileSync(baselineFile, "utf8")).byName.a.startedAt, NOW + 10_000);
 });
+
+test("a day file cut off mid-line (no newline) does not swallow the next appended event", async () => {
+  await seed([live("a")]);
+  fs.mkdirSync(hist(), { recursive: true });
+  fs.writeFileSync(today(), '{"at":1,"k":"sta'); // a write cut off by a full disk
+  await recordChangeLogTick(NOW + 30_000, async () => [live("a", { startedAt: NOW + 10_000 })]);
+  const { lines } = await readChangeLog(NOW - DAY, NOW + 30_000);
+  assert.deepEqual(lines, [{ at: NOW + 10_000, k: "start", name: "a", id: "a-id" }]);
+});

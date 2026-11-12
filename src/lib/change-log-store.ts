@@ -107,7 +107,8 @@ async function appendLines(ts: number, lines: ChangeLine[]): Promise<void> {
     warnOnce("a day file reached 1 MiB; events past the cap are dropped, not replayed later");
     return;
   }
-  await fs.appendFile(file, lines.map((l) => `${JSON.stringify(l)}\n`).join(""));
+  // a leading newline ends any fragment a cut-off write left; the reader skips blank lines
+  await fs.appendFile(file, `\n${lines.map((l) => JSON.stringify(l)).join("\n")}\n`);
 }
 
 /**
@@ -115,6 +116,7 @@ async function appendLines(ts: number, lines: ChangeLine[]): Promise<void> {
  * file dated before `since` holds none) and the date the log covers from. A missing
  * baseline or any read failure gives no lines and `loggedFrom: null` (live-only rows).
  */
+// shortcut: reads and parses up to 30 day files per call, add an mtime cache like metrics-history when the attention route gets slow
 export async function readChangeLog(sinceMs: number, now: number): Promise<{ lines: ChangeLine[]; loggedFrom: number | null }> {
   try {
     const baseline = g.__changeLogBaseline ?? (await readBaseline());
