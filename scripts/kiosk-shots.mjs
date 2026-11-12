@@ -551,7 +551,7 @@ await guarded("overlays extra alert takeover night", async () => {
   Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), { chimeOscillators: await page.evaluate(() => window.__osc) }, await page.evaluate(SCRIM_AT), await page.evaluate(NIGHT_CONTRAST_AT));
   checkScrim("alertTakeoverNight", take);
   for (const k of ["headline", "caption"]) if (!(take[k].contrast >= 4.5)) results.errors.push(`alertTakeoverNight: ${k} contrast ${take[k].contrast} < 4.5`);
-  if (take.since && (take.since.fontPx < 18 || take.since.contrast < 4.5)) results.errors.push(`alertTakeoverNight: since line ${take.since.fontPx}px, contrast ${take.since.contrast} (needs >= 18px and >= 4.5)`);
+  if (take.since && (take.since.fontPx < 18 || take.since.contrast < 4.5)) results.errors.push(`alertTakeoverNight: since line ${take.since.fontPx}px, contrast ${take.since.contrast} (needs >= 18px and >= 4.5)`); else if (!take.since) results.errors.push("alertTakeoverNight: standing-for line missing");
   await context.close();
 });
 await guarded("overlays extra alert doorbell", async () => {
