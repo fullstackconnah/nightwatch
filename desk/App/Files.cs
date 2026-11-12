@@ -62,6 +62,21 @@ internal static class Poller
             return new Outcome.Failed();
         }
     }
+
+    /// <summary>The public doorbell read (no token is sent). Null on any failure, so a bad poll is silent.</summary>
+    public static async Task<DoorSnapshot?> FetchDoorAsync(HttpClient http, string baseUrl)
+    {
+        try
+        {
+            using var resp = await http.GetAsync(baseUrl + "/kiosk/api/doorbell").ConfigureAwait(false);
+            if ((int)resp.StatusCode != 200) return null;
+            return DoorParser.Parse(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>"Start with Windows" is a .lnk in the Startup folder: no admin, no registry.</summary>

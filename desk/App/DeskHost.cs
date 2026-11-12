@@ -11,6 +11,7 @@ namespace NightwatchDesk.App;
 internal sealed class DeskHost
 {
     static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(30);
+    static readonly TimeSpan DoorEvery = TimeSpan.FromSeconds(5), DoorBackoff = TimeSpan.FromSeconds(30);
 
     readonly TimeZoneInfo tz = TimeZoneInfo.Local;
     readonly DeskState state = new(() => DateTimeOffset.Now);
@@ -24,6 +25,9 @@ internal sealed class DeskHost
     View? prev;
     bool polling;
     Click? lastToast;
+    DoorState door = new();
+    DispatcherTimer doorTimer = null!;
+    bool doorPolling;
 
     // The camera and the weather (SHAPE 2, 3). The *Vis objects are fed once per poll outcome; what shows changes only at a gate commit.
     readonly WeatherVisibility weatherVis = new();
@@ -81,6 +85,9 @@ internal sealed class DeskHost
         camTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(feed.IntervalSeconds) };
         camTimer.Tick += (_, _) => _ = feed.TickAsync();
         camTimer.Start();
+        doorTimer = new DispatcherTimer { Interval = DoorEvery };
+        doorTimer.Tick += (_, _) => _ = DoorAsync();
+        doorTimer.Start();
         _ = PollAsync();
 
         Application.Current.DispatcherUnhandledException += (_, e) => e.Handled = true; // a stray UI exception must not end the widget; nothing is logged, so no token can leak
@@ -127,6 +134,23 @@ internal sealed class DeskHost
         }
         prev = next;
         Update();
+    }
+
+    /// <summary>The door toast (SHAPE: same rule as the kiosk). Polls only while a camera is configured and doorToasts is on; a failed poll is silent and backs off.</summary>
+    async Task DoorAsync()
+    {
+        if (doorPolling || cfg is not { DoorToasts: true } c || !camVis.Visible) return;
+        doorPolling = true;
+        DoorSnapshot? snap;
+        try { snap = await Poller.FetchDoorAsync(http, c.BaseUrl); }
+        finally { doorPolling = false; }
+        doorTimer.Interval = snap is null ? DoorBackoff : DoorEvery;
+        if (snap is null) return;
+        var (next, toast) = DoorRing.Next(door, snap, TimeSpan.FromTicks(DateTime.UtcNow.Ticks), c.BaseUrl);
+        door = next;
+        if (toast is null) return;
+        lastToast = toast.Click; // a click routes by this, so the door toast opens the kiosk
+        tray.Toast(toast);
     }
 
     /// <summary>Offers the newest view to the gate and draws; the tray follows the newest view and moves nothing.</summary>

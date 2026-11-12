@@ -60,4 +60,18 @@ public class CameraConfigTests : IDisposable
     [InlineData("\"cameraIntervalSeconds\":\"10\"", 30)]
     [InlineData("\"cameraIntervalSeconds\":null", 30)]
     public void Camera_interval_defaults_to_30_and_clamps_to_5_300(string? extra, int want) => Assert.Equal(want, Interval(extra));
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("\"doorToasts\":true", true)]
+    [InlineData("\"doorToasts\":false", false)]
+    [InlineData("\"doorToasts\":\"false\"", true)]
+    [InlineData("\"doorToasts\":0", true)]
+    [InlineData("\"doorToasts\":null", true)]
+    public void DoorToasts_defaults_to_true_and_only_a_real_false_turns_it_off(string? extra, bool want)
+    {
+        var p = Path.Combine(dir, "desk.json");
+        File.WriteAllText(p, "{\"baseUrl\":\"http://h:1\",\"token\":\"tok_AbCdEf0123456789AbCdEf0123456789\"" + (extra is null ? "" : "," + extra) + "}");
+        Assert.Equal(want, ((ConfigResult.Ok)DeskConfig.Load(p)).DoorToasts);
+    }
 }
