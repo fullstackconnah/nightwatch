@@ -57,7 +57,8 @@ function sleep(ms: number): Promise<void> {
       globalForTelemetry.__telemetryWake = undefined;
       resolve();
     }
-    globalForTelemetry.__telemetryWake = done;
+    // Only the idle sleep is wakeable: cutting a live 1 s sleep short would emit a rate over a few ms.
+    if (ms > TARGET_MS) globalForTelemetry.__telemetryWake = done;
   });
 }
 

@@ -30,6 +30,7 @@ test("decision 2 and 5: one running guard for boot and subscribe; the idle sleep
   assert.equal((t.match(/void loop\(\)/g) ?? []).length, 1, "a single place starts the loop");
   assert.match(t, /export function startTelemetryRecorder\(\): void \{\s*ensureLoop\(\);/);
   assert.match(t, /subs\.add\(cb\);\s*ensureLoop\(\);\s*wakeLoop\(\);/);
+  assert.ok(t.includes("if (ms > TARGET_MS) globalForTelemetry.__telemetryWake = done;"), "a live sleep is never cut short");
   assert.match(t, /function ensureLoop\(\)[\s\S]*if \(!globalForTelemetry\.__telemetryRunning\)/);
 });
 
