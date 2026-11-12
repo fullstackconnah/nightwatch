@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Pause, Play, RotateCw, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { postJson } from "@/lib/client";
+import { containerActionUrl } from "@/lib/container-id";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
@@ -104,7 +105,7 @@ export function useLifecycle(id: string, onDone?: () => void): Lifecycle {
       setPending(action);
       setError(null);
       try {
-        await postJson(`/api/docker/containers/${id.slice(0, 12)}/action`, { action });
+        await postJson(containerActionUrl(id), { action });
         doneRef.current?.();
       } catch (e) {
         if (mounted.current) {
