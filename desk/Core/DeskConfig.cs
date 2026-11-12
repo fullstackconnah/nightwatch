@@ -5,7 +5,7 @@ namespace NightwatchDesk.Core;
 public abstract record ConfigResult
 {
     // The token is never part of ToString, so a logged result cannot leak it.
-    public sealed record Ok(string BaseUrl, string Token, int CameraIntervalSeconds = DeskConfig.DefaultCameraInterval) : ConfigResult
+    public sealed record Ok(string BaseUrl, string Token, int CameraIntervalSeconds = DeskConfig.DefaultCameraInterval, bool DoorToasts = true) : ConfigResult
     {
         public override string ToString() => $"Ok {{ BaseUrl = {BaseUrl} }}";
     }
@@ -39,7 +39,7 @@ public static class DeskConfig
             var baseUrl = Str(root, "baseUrl")?.Trim().TrimEnd('/');
             if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
                 return new ConfigResult.BadAddress();
-            return new ConfigResult.Ok(baseUrl!, token, CameraInterval(root));
+            return new ConfigResult.Ok(baseUrl!, token, CameraInterval(root), DoorToasts(root));
         }
         catch (JsonException e)
         {
@@ -54,6 +54,9 @@ public static class DeskConfig
         o.TryGetProperty("cameraIntervalSeconds", out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDouble(out var d)
             ? (int)Math.Clamp(Math.Round(d), 5, 300)
             : DefaultCameraInterval;
+
+    /// <summary>doorToasts: false turns the door toast off; absent or not a bool gives true.</summary>
+    static bool DoorToasts(JsonElement o) => !(o.TryGetProperty("doorToasts", out var p) && p.ValueKind == JsonValueKind.False);
 
     static string? Str(JsonElement o, string name) =>
         o.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;

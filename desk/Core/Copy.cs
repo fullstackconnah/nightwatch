@@ -86,6 +86,14 @@ public static class Copy
     public const string CameraNoPicture = "No picture";
     public const string CameraFolded = "Hidden to fit the screen";
     public const string CameraFrameTip = "Open the kiosk to watch live";
+
+    /// <summary>The door toast: one title, the text by trigger kind (an unknown kind reads as movement), a click to the kiosk door view.</summary>
+    public static Toast DoorToast(string? kind, string baseUrl) => new("Front door", kind switch
+    {
+        "ding" => "Someone rang the doorbell.",
+        "person" => "Someone is at the front door.",
+        _ => "Movement at the front door.",
+    }, new Click.OpenUrl(baseUrl + "/kiosk?door=1"));
     public const string CameraHeaderName = "Front door camera";
     public const string NullFigure = "—";
 

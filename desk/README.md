@@ -7,6 +7,8 @@ A small Windows desktop widget that shows nightwatch's one-sentence answer and w
 
 Config is `%APPDATA%\NightwatchDesk\desk.json`, never committed; see `desk.example.json` for its shape (`homelab.local` is a placeholder). The desk never writes it. Window position and the "Always on top" choice live in `%APPDATA%\NightwatchDesk\state.json`.
 
+Optional `desk.json` keys: `cameraIntervalSeconds` (5-300, default 30) sets how often the door-camera picture refreshes. `doorToasts` (default `true`) raises a Windows toast when someone rings or is at the front door, read from the public `/kiosk/api/doorbell` every 5 s while a door camera is configured; `false` stops that poll. Clicking the toast opens the kiosk door view.
+
 ## Build and test
 
 Needs the .NET 9 SDK on Windows.
