@@ -7,6 +7,8 @@ import {
   changesFor,
   clock,
   dayClock,
+  rowClock,
+  weekHeading,
   dropListed,
   feedSlots,
   gate,
@@ -47,7 +49,7 @@ const report = (over: Partial<AttentionReport> = {}): AttentionReport => ({
   checkedAt: "2026-11-04T08:30:00.000Z",
   probes: probes(),
   hits: [],
-  changes: { since: "2026-11-03T08:30:00.000Z", status: "answered", events: [] },
+  changes: { since: "2026-11-03T08:30:00.000Z", status: "answered", events: [], loggedFrom: null },
   ...over,
 });
 const base = { running: 48, backupAgo: "9 h" as string | null, error: false };
@@ -306,4 +308,26 @@ test("changesFor leaves the Recent range as it is", () => {
 
 test("WEEK_MS is seven days", () => {
   assert.equal(WEEK_MS, 7 * 86_400_000);
+});
+
+const NOW16 = Date.UTC(2026, 10, 12, 10, 0); // a Thursday
+const SINCE16 = NOW16 - 7 * 86_400_000;
+
+test("T16 weekHeading: no log keeps the old heading", () => {
+  assert.equal(weekHeading(null, SINCE16, NOW16, 0), "Last 7 days · latest per app");
+});
+
+test("T16 weekHeading: a log that covers the whole week says nothing more", () => {
+  assert.equal(weekHeading(new Date(SINCE16 - 1000).toISOString(), SINCE16, NOW16, 0), "Last 7 days");
+  assert.equal(weekHeading(new Date(SINCE16).toISOString(), SINCE16, NOW16, 0), "Last 7 days");
+});
+
+test("T16 weekHeading: a partial log names the day it counts from", () => {
+  assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 10, 8, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since Tue");
+  assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 12, 6, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since today");
+});
+
+test("rowClock is the bare time on the local today and weekday plus time otherwise", () => {
+  assert.equal(rowClock(Date.UTC(2026, 10, 12, 9, 0), NOW16, 0), "09:00");
+  assert.equal(rowClock(Date.UTC(2026, 10, 9, 14, 2), NOW16, 0), "Mon 14:02");
 });

@@ -1,6 +1,7 @@
 /* The attention report: pure types and functions. Relative or type-only imports
  * so node:test can load it (no "@/" alias). attention.ts does the IO. */
 import type { RuntimeContainer } from "./docker.ts";
+import { countText, type Tally } from "./change-log.ts";
 import { BACKUP_KIND_LABEL, type BackupStatus } from "./backup-status.ts";
 
 export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
@@ -32,7 +33,7 @@ export interface AttentionReport {
   checkedAt: string; // when the memo computed, not the request time
   probes: ProbeStatus[]; // 9 in priority order, 10 when the outside check is on
   hits: AttentionHit[]; // sortHits: bad first, then oldest (since ?? firstSeen)
-  changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[] };
+  changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[]; loggedFrom: string | null }; // loggedFrom: ISO date the stored log covers from; null = no log (live state only)
 }
 
 /** What a probe finds, before the report adds id, firstSeen and owner. */
@@ -162,41 +163,67 @@ const containerOwner = (names: string[]) =>
  * What changed since `sinceMs`, newest first. Events whose subject is a
  * current hit are dropped (the feed never double-lists attention items).
  * Hidden tiles are filtered on the client.
+ * `logged` is the stored change log's tally (change-log.ts); a live row and its
+ * logged twin (same container, same verb) are one row. Without it, live state alone.
  */
 export function deriveChanges(
   containers: RuntimeContainer[],
   backup: BackupStatus | null,
   sinceMs: number,
   hitSubjects: Iterable<string>,
+  logged: Map<string, Tally> = new Map(),
 ): ChangeEvent[] {
   const events: ChangeEvent[] = [];
-  const groups = new Map<string, { handled: boolean; names: string[]; at: number }>();
+  const groups = new Map<string, { names: string[]; at: number; starts: number; byItself: number }>();
+  const addStart = (name: string, project: string | null, at: number, starts: number, byItself: number) => {
+    const solo = starts > 1 && byItself > 0; // the "by itself" copy is per container: never grouped
+    const key = `${solo ? name : (project ?? name)}|${Math.floor(at / 60_000)}|${byItself > 0}${starts > 1 ? `|${starts}` : ""}${solo ? `|${name}` : ""}`;
+    const g = groups.get(key) ?? { names: [], at: 0, starts, byItself };
+    g.names.push(name);
+    g.at = Math.max(g.at, at);
+    groups.set(key, g);
+  };
+  const addStop = (name: string, at: number, stops: number, code: number | null, liveOnly: boolean) =>
+    events.push({
+      id: liveOnly ? `change:stopped:${name}:${at}` : `change:log:stop:${name}:${at}`,
+      kind: "routine",
+      at: new Date(at).toISOString(),
+      subjects: [`container:${name}`],
+      text: countText(name, "stop", { stops, lastCode: code }),
+      owner: containerOwner([name]),
+    });
+  const liveNames = new Set<string>();
   for (const c of containers) {
-    if (c.state === "running" && c.startedAt != null && c.startedAt > sinceMs) {
-      const handled = c.restartCount > 0; // shortcut: restartCount is cumulative, not counted since `since`; upgrade when restart history is recorded
-      const key = `${c.composeProject ?? c.name}|${Math.floor(c.startedAt / 60_000)}|${handled}`;
-      const g = groups.get(key) ?? { handled, names: [], at: 0 };
-      g.names.push(c.name);
-      g.at = Math.max(g.at, c.startedAt);
-      groups.set(key, g);
-    } else if (c.state === "exited" && c.finishedAt != null && c.finishedAt > sinceMs) {
-      events.push({
-        id: `change:stopped:${c.name}:${c.finishedAt}`,
-        kind: "routine",
-        at: new Date(c.finishedAt).toISOString(),
-        subjects: [`container:${c.name}`],
-        text: `${c.name} stopped${c.exitCode != null ? ` (exit ${c.exitCode})` : ""}`,
-        owner: containerOwner([c.name]),
-      });
+    liveNames.add(c.name);
+    const t = logged.get(c.name);
+    const liveStart = c.state === "running" && c.startedAt != null && c.startedAt > sinceMs ? c.startedAt : null;
+    const liveStop = c.state === "exited" && c.finishedAt != null && c.finishedAt > sinceMs ? c.finishedAt : null;
+    if (t && t.starts > 0) {
+      // A live start newer than the last logged one is not logged yet (next tick): count it too.
+      const unlogged = liveStart !== null && liveStart > t.lastStartAt;
+      addStart(c.name, c.composeProject, Math.max(t.lastStartAt, liveStart ?? 0), t.starts + (unlogged ? 1 : 0), t.byItself);
+    } else if (liveStart !== null) {
+      addStart(c.name, c.composeProject, liveStart, 1, c.restartCount > 0 ? 1 : 0);
     }
+    if (t && t.stops > 0) {
+      const unlogged = liveStop !== null && liveStop > t.lastStopAt;
+      addStop(c.name, Math.max(t.lastStopAt, liveStop ?? 0), t.stops + (unlogged ? 1 : 0), unlogged ? c.exitCode : t.lastCode, false);
+    } else if (liveStop !== null) {
+      addStop(c.name, liveStop, 1, c.exitCode, true);
+    }
+  }
+  for (const [name, t] of logged) {
+    if (liveNames.has(name)) continue; // a container gone from Docker keeps its logged rows
+    if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself);
+    if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode, false);
   }
   for (const [key, g] of groups) {
     events.push({
       id: `change:${key}`,
-      kind: g.handled ? "handled" : "routine",
+      kind: g.byItself > 0 ? "handled" : "routine",
       at: new Date(g.at).toISOString(),
       subjects: g.names.map((n) => `container:${n}`),
-      text: `${list(g.names)} ${g.handled ? "restarted itself and is running again" : "started"}`,
+      text: countText(list(g.names), "start", g),
       owner: containerOwner(g.names),
     });
   }

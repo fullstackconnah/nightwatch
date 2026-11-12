@@ -545,7 +545,7 @@ for (const width of WIDTHS) {
     const x = Math.max(0, box.x - 8), y = Math.max(0, box.y - 8);
     await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(box.width + 16, vw - x), height: box.height + 16 } });
   };
-  const week = ["Today 08:00","Today 06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
+  const week = ["Today 08:00", "Today 06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
   const plan = [
     { n: "wk1-recent", widths: ["390", "1440"], week: null },
     { n: "wk2-week", widths: ["390", "1440"], week: "week" },
@@ -612,13 +612,87 @@ for (const width of WIDTHS) {
     await crop(page, "home-wk8-recent-failed-360.png", 360, '[data-feature="changes"] .hm-sec-head');
     await context.close();
   }
+
+  // ---- CL: the stored change log (nw-change-log). Numeric checks 1 to 5 and 7 of its shape brief; wk3/wk4 cover week-empty and loading. ----
+  const textFits = (page) =>
+    page.evaluate(() => {
+      const sec = document.querySelector('[data-feature="changes"]');
+      return [...sec.querySelectorAll(".hm-chg-text")].every((n) => n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight + 1);
+    });
+  const rectsOf = (page) => measure(page).then((m) => JSON.stringify([m.listRect, m.moreRect, m.rowH]));
+  const clPlan = [
+    // check 3, 4 (a "Wed 08:00" Recent time), 7 (count 4 -> 1 moves no rect), and the 52-char name at 390.
+    { n: "cl0-recent-normal", widths: ["390", "1440"], fixture: "changesCountsOne", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted itself and is running again" },
+    { n: "cl1-recent-count-and-day-prefix", widths: ["390", "1440"], fixture: "changesCounts", other: "changesCountsOne", heading: "Since you last looked · 01:00" },
+    { n: "cl2-week-covered-counts", widths: ["390", "1440"], week: "weekCovered", heading: "Last 7 days" },
+    { n: "cl3-week-partial-log", widths: ["390", "1440"], week: "weekPartial", heading: "Last 7 days · counted since Mon" },
+    { n: "cl4-week-no-log", widths: ["390"], week: "weekNoLog", heading: "Last 7 days · latest per app" },
+    { n: "cl4-week-earlier-stop", widths: ["390"], week: "weekEarlierStop", heading: "Last 7 days", times: ["Today 08:00", "Tue 08:40"] },
+    { n: "cl5-week-empty", widths: ["390"], week: "weekEmptyLogged", heading: "Last 7 days", empty: "Nothing changed in the last 7 days." },
+    { n: "cl6-count-long-name", widths: ["390", "1440"], fixture: "changesCounts", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted 12 times, 11 by itself", long: true },
+  ];
+  for (const p of clPlan) {
+    for (const width of WIDTHS.filter((w) => p.widths.includes(w.name))) {
+      const { context, page, state } = await open({ width, fixture: p.fixture ?? "quiet", pinned: true });
+      const tag = `${p.n}@${width.name}`;
+      const phone = width.name === "390";
+      if (p.week) {
+        state.week = p.week;
+        await page.getByRole("button", { name: "Last 7 days" }).click();
+        await page.waitForTimeout(500);
+      }
+      const m = await measure(page);
+      record("CL", m.heading === p.heading, `${tag} heading "${m.heading}"`); // check 5 copy
+      record("CL", Math.abs(m.headH - m.headMin) < 0.6 && m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped, `${tag} head ${m.headH}px (min ${m.headMin}px), h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}`); // 5
+      record("CL", m.rowH.every((h) => h === (phone ? 76 : 52)), `${tag} row heights ${m.rowH.join(",")}`); // 1
+      record("CL", m.listH === (phone ? 76 : 52) * Math.min(m.rowH.length, 4) + 2 || m.rowH.length < 4, `${tag} list ${Math.round(m.listH)}px`); // 2
+      record("CL", await textFits(page), `${tag} count text is not truncated`); // 3
+      record("CL", m.atFits, `${tag} time column fits, widest ${m.atMax}px`); // 4
+      if (p.times) record("CL", m.times.join() === p.times.join(), `${tag} times ${m.times}`);
+      if (p.empty) record("CL", m.empty === p.empty && m.times.length === 0, `${tag} empty "${m.empty}", rows ${m.times.length}`);
+      if (p.text0) {
+        // Defining text first, then (for the long row) the truncation and overlap checks.
+        const r = await page.evaluate(() => {
+          const t = document.querySelector('[data-feature="changes"] .hm-chg-text');
+          const o = t?.closest(".hm-chg-row")?.querySelector(".hm-chg-owner");
+          const a = t?.getBoundingClientRect(), b = o?.getBoundingClientRect();
+          return t && { text: t.textContent, sw: t.scrollWidth, cw: t.clientWidth, sh: t.scrollHeight, ch: t.clientHeight, overlap: !!(a && b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) };
+        });
+        record("CL", r?.text === p.text0, `${tag} first row text "${r?.text}"`);
+        if (p.long) record("CL", (phone ? r.sh <= r.ch : r.sw <= r.cw) && !r.overlap, `${tag} long name: scrollW ${r.sw}/${r.cw}, scrollH ${r.sh}/${r.ch}, overlap ${r.overlap}`); // 3
+      }
+      if (p.n === "cl1-recent-count-and-day-prefix") {
+        record("CL", /^(Mon|Tue|Wed) \d\d:\d\d$/.test(m.times[2] ?? "") && /^\d\d:\d\d$/.test(m.times[0]), `${tag} day prefix only on the older row: ${m.times}`);
+        const before = await rectsOf(page);
+        state.cur = p.other;
+        await page.reload();
+        await page.waitForTimeout(500);
+        record("CL", before === (await rectsOf(page)), `${tag} count 4 -> 1 moves no rect`); // 7
+      }
+      await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
+      await context.close();
+    }
+  }
+  // Check 5 at 360: the week-partial-log heading stays on the 2.75rem head and clear of the segment group.
+  {
+    const width = { name: "360", viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true };
+    const { context, page, state } = await open({ width, fixture: "quiet", pinned: true });
+    state.week = "weekPartial";
+    await page.getByRole("button", { name: "Last 7 days" }).click();
+    await page.waitForTimeout(500);
+    const m = await measure(page);
+    record("CL", m.heading === "Last 7 days · counted since Mon", `cl3-week-partial-log@360 heading "${m.heading}"`);
+    record("CL", m.headMin === 44 && Math.abs(m.headH - 44) < 0.6 && m.h2Right <= m.groupLeft - 8 + 0.5 && !m.h2Clipped, `cl3-week-partial-log@360 head ${m.headH}px (min ${m.headMin}px), h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}`); // 5
+    await crop(page, "home-cl3-week-partial-log-360.png", 360, '[data-feature="changes"] .hm-sec-head');
+    await context.close();
+  }
 }
 
 await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK", "CL"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

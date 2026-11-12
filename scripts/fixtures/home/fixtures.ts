@@ -82,7 +82,7 @@ function report(
     checkedAt: iso(now, 0),
     probes: probes(hits, over),
     hits,
-    changes: { since: iso(now, 8 * 60), status: "answered", events, ...changes },
+    changes: { since: iso(now, 8 * 60), status: "answered", events, loggedFrom: null, ...changes },
   };
 }
 
@@ -149,7 +149,20 @@ export function build(now: number) {
     ),
     // The app-changes lookup itself failed: the Changes heading gains " · app changes unknown" (wk8).
     changesFailed: report(now, [], [], {}, { status: "failed", error: "Cannot connect to the Docker daemon" }),
-    otherFailed: report(now, [], e, { smart: { state: "failed", error: "smartctl exited with status 2" } }),
+    // nw-change-log: Recent with a count row and a row from an earlier day (shown as "Wed 07:00"), then the same row at count 1 (check 7).
+    changesCounts: report(now, [], [
+      ev(now, "c:vpn", "handled", 20, ["container:transmission-openvpn"], "transmission-openvpn restarted 12 times, 11 by itself"),
+      ev(now, "c:sonarr", "routine", 90, ["container:sonarr"], "sonarr stopped 2 times (last exit 137)"),
+      ev(now, "c:grafana", "routine", 1500, ["container:grafana"], "grafana started"),
+      ...baseEvents(now).slice(0, 1),
+    ]),
+    changesCountsOne: report(now, [], [
+      ev(now, "c:vpn", "handled", 20, ["container:transmission-openvpn"], "transmission-openvpn restarted itself and is running again"),
+      ev(now, "c:sonarr", "routine", 90, ["container:sonarr"], "sonarr stopped (exit 137)"),
+      ev(now, "c:grafana", "routine", 1500, ["container:grafana"], "grafana started"),
+      ...baseEvents(now).slice(0, 1),
+    ]),
+    otherFailed: report(now, [], e,{ smart: { state: "failed", error: "smartctl exited with status 2" } }),
     // C1: the start (1 hit) and the arrival (a crash and a disk; the orchestra hit clears).
     c1Before: report(now, [lane(now, 40)], e),
     c1After: report(now, [crash(now, "radarr", 1), disk(now, 2)], e),
@@ -188,10 +201,34 @@ const weekEvents = (now: number) => [
   ev(now, "w:lidarr", "routine", 10000, ["container:lidarr"], "lidarr restarted once"),
 ];
 
+// Count rows; the first is the longest sentence of the copy table (numeric check 3 asserts it is not truncated).
+const logEvents = (now: number) => [
+  ev(now, "l:vpn", "handled", 60, ["container:transmission-openvpn"], "transmission-openvpn restarted 12 times, 11 by itself"),
+  ev(now, "l:sonarr", "routine", 150, ["container:sonarr"], "sonarr stopped 2 times (last exit 137)"),
+  ev(now, "l:grafana", "routine", 1560, ["container:grafana"], "grafana restarted 3 times"),
+  ev(now, "l:loki", "routine", 3000, ["container:loki"], "loki started"),
+];
+
 export function buildWeek(now: number) {
   return {
     week: weekReport(now, weekEvents(now)),
     weekEmpty: weekReport(now, []),
+    // nw-change-log: count rows, and each heading state (loggedFrom against since = now - 7 d; the pinned clock is a Thursday).
+    weekCovered: weekReport(now, logEvents(now), { loggedFrom: iso(now, 8 * 24 * 60) }),
+    weekPartial: weekReport(now, logEvents(now), { loggedFrom: iso(now, 3 * 24 * 60) }), // Monday: "counted since Mon"
+    // No log (loggedFrom null): rows from live state only, today's heading copy.
+    weekNoLog: weekReport(now, logEvents(now), { loggedFrom: null }),
+    // A log that covers the range but holds no events: today's empty copy.
+    weekEmptyLogged: weekReport(now, [], { loggedFrom: iso(now, 8 * 24 * 60) }),
+    // A stop at the earlier time beside the start now: both rows, newest first.
+    weekEarlierStop: weekReport(
+      now,
+      [
+        ev(now, "l:up", "routine", 60, ["container:sonarr"], "sonarr started"),
+        ev(now, "l:down", "routine", 2900, ["container:sonarr"], "sonarr stopped (exit 137)"),
+      ],
+      { loggedFrom: iso(now, 8 * 24 * 60) },
+    ),
     // 14 rows, opened with "Show fewer".
     weekMany: weekReport(
       now,

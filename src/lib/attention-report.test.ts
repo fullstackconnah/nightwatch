@@ -14,6 +14,7 @@ import {
   type RawHit,
 } from "./attention-report.ts";
 import type { RuntimeContainer } from "./docker.ts";
+import { tally, type ChangeLine } from "./change-log.ts";
 import type { BackupStatus } from "./backup-status.ts";
 
 const raw = (subject: string, severity: "warn" | "bad" = "bad", since?: string): RawHit => ({
@@ -246,4 +247,55 @@ test("a doorbell hit gets the stable id doorbell:doorbell and the Smart home own
   const [h] = toHits(out, () => "2026-11-04T00:00:00.000Z");
   assert.equal(h.id, "doorbell:doorbell");
   assert.deepEqual(h.owner, { href: "/smarthome", label: "Open Smart home" });
+});
+
+// --- deriveChanges with the stored log ---
+const logTally = (lines: ChangeLine[]) => tally(lines, SINCE);
+const ln = (name: string, k: ChangeLine["k"], at: number, extra: Partial<ChangeLine> = {}): ChangeLine => ({ at, k, name, id: "i", ...extra });
+
+test("T14 merge: a restarts itself twice (own row, handled), b starts; a as a hit leaves b; a logged stop reads with its start", () => {
+  const t = SINCE + 600_000;
+  const containers = [
+    ctr({ name: "a", composeProject: "app", startedAt: t, restartCount: 2 }),
+    ctr({ name: "b", composeProject: "app", startedAt: t + 5_000 }),
+    ctr({ name: "c", startedAt: t }),
+  ];
+  const tl = logTally([
+    ln("a", "start", SINCE - 1000),
+    ln("a", "restart", t - 100_000, { n: 1 }),
+    ln("a", "restart", t, { n: 1 }),
+    ln("c", "stop", t - 50_000, { code: 137 }),
+  ]);
+  const ev = deriveChanges(containers, null, SINCE, [], tl);
+  assert.deepEqual(ev.map((e) => e.text).sort(), ["a restarted itself 2 times", "b started", "c started", "c stopped (exit 137)"]);
+  const a = ev.find((e) => e.subjects[0] === "container:a")!;
+  assert.equal(a.kind, "handled");
+  assert.deepEqual(a.subjects, ["container:a"]);
+  const hit = deriveChanges(containers, null, SINCE, ["container:a"], tl);
+  assert.deepEqual(hit.map((e) => e.text).sort(), ["b started", "c started", "c stopped (exit 137)"]);
+});
+
+test("same-count restarts in one project and minute stay one grouped row", () => {
+  const t = SINCE + 600_000;
+  const cs = ["a", "b", "c"].map((n, i) => ctr({ name: n, composeProject: "app", startedAt: t + i * 1000 }));
+  const tl = logTally(["a", "b", "c"].flatMap((n, i) => [ln(n, "start", t - 200_000), ln(n, "start", t + i * 1000)]));
+  const ev = deriveChanges(cs, null, SINCE, [], tl);
+  assert.deepEqual(ev.map((e) => e.text), ["a, b and c restarted 2 times"]);
+  assert.equal(ev[0].kind, "routine");
+});
+
+test("a container only in the log (now gone) and a stop while running get logged rows", () => {
+  const tl = logTally([ln("old", "start", SINCE + 5000), ln("old", "stop", SINCE + 9000)]);
+  const ev = deriveChanges([], null, SINCE, [], tl);
+  assert.deepEqual(ev.map((e) => e.text), ["old stopped", "old started"]);
+  assert.deepEqual(ev[0].subjects, ["container:old"]);
+  assert.match(ev[0].id, /^change:log:stop:old:/);
+  assert.equal(ev[0].owner.label, "Open in Resources");
+});
+
+test("a live stop and its logged twin are one row, at the later time", () => {
+  const tl = logTally([ln("x", "stop", SINCE + 100, { code: 1 }), ln("x", "stop", SINCE + 500, { code: 137 })]);
+  const ev = deriveChanges([ctr({ name: "x", state: "exited", finishedAt: SINCE + 500, exitCode: 137 })], null, SINCE, [], tl);
+  assert.deepEqual(ev.map((e) => e.text), ["x stopped 2 times (last exit 137)"]);
+  assert.equal(Date.parse(ev[0].at), SINCE + 500);
 });

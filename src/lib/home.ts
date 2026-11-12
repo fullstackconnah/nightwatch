@@ -42,6 +42,19 @@ export function dayClock(t: number | string, now: number, offsetMin?: number): s
   return `${e.day === n.day ? "Today" : WEEKDAYS[e.wd]} ${clock(t, offsetMin)}`;
 }
 
+/** A row's time: the bare hh:mm on the local today, else "Mon 14:02". */
+export const rowClock = (t: number | string, now: number, offsetMin?: number): string =>
+  dayClock(t, now, offsetMin).replace(/^Today /, "");
+
+/** The 7-day heading. No log: the old "latest per app"; a log that starts inside the week names its first day. */
+export function weekHeading(loggedFrom: string | null, sinceMs: number, now: number, offsetMin?: number): string {
+  if (loggedFrom === null) return "Last 7 days · latest per app";
+  const from = Date.parse(loggedFrom);
+  if (from <= sinceMs) return "Last 7 days";
+  const day = dayClock(from, now, offsetMin).split(" ")[0];
+  return `Last 7 days · counted since ${day === "Today" ? "today" : day}`;
+}
+
 /** 7-day range: null until the report on screen is the one asked for (keepPreviousData shows the old one). */
 export function changesFor<C extends { since: string }>(
   changes: C | null,

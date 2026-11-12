@@ -46,7 +46,7 @@ function attention() {
     probes: PROBES.map((id) => ({ id, label: id, state: "answered", hits: id === "disks" ? 1 : 0 })),
     hits: [hit],
     changes: {
-      since: iso(8 * 60), status: "answered",
+      since: iso(8 * 60), status: "answered", loggedFrom: null,
       events: [{ id: "ev:1", kind: "handled", at: iso(30), subjects: ["container:web-1"], text: "web-1 restarted and is healthy", owner: { href: "/logs", label: "Open Logs" } }],
     },
   };
