@@ -858,7 +858,7 @@ export function KioskAlertTakeover({ alert, onDismiss, minimiseTargetRef }: Kios
         </p>
         {alert.detail && <p className="max-w-2xl text-2xl text-ink-dim">{alert.detail}</p>}
         {alert.action && <p className="max-w-2xl text-balance text-2xl font-medium text-ink">{alert.action}</p>}
-        {sinceLabel && <p className="microlabel">standing for {sinceLabel}</p>}
+        {sinceLabel && <p className="text-lg text-ink-dim">Standing for {sinceLabel}</p>}
         <p className="microlabel mt-4">tap, or wait — dismisses on its own</p>
       </div>
     </>
