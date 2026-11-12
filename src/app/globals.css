@@ -3369,6 +3369,7 @@ body {
 }
 .hm-app:has(.nw-confirm) .hm-app-acts {
   justify-content: flex-end;
+  align-items: flex-start; /* a wrapped confirm keeps the icons on its first row */
 }
 .hm-app-main {
   grid-area: main;

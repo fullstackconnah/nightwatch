@@ -26,5 +26,5 @@ test("home controls: the redundant Resources lifecycle link is gone", () => {
 test("home controls: an open stop confirm gives the actions a full-width row", () => {
   const css = src("app/globals.css");
   assert.match(css, /\.hm-app:has\(\.nw-confirm\)\s*\{\s*grid-template-areas:\s*"main main" "acts acts" "fields fields" "err err";?\s*\}/);
-  assert.match(css, /\.hm-app:has\(\.nw-confirm\) \.hm-app-acts\s*\{\s*justify-content:\s*flex-end;?\s*\}/);
+  assert.match(css, /\.hm-app:has\(\.nw-confirm\) \.hm-app-acts\s*\{\s*justify-content:\s*flex-end;\s*align-items:\s*flex-start;[^\n]*\s*\}/);
 });
