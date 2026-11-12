@@ -129,7 +129,7 @@ export function parseLines(text: string): ChangeLine[] {
       continue;
     }
     const { at, k, name, id, n, code } = o;
-    if (typeof at !== "number" || !Number.isFinite(at)) continue;
+    if (typeof at !== "number" || !Number.isFinite(at) || Math.abs(at) > 8.64e15) continue; // 8.64e15 is the largest valid Date
     if (typeof k !== "string" || !KINDS.includes(k as ChangeKind)) continue;
     if (typeof name !== "string" || name === "" || name.length > 255 || typeof id !== "string") continue;
     if (n !== undefined && !(isInt(n) && n >= 1 && n <= 10000)) continue;
