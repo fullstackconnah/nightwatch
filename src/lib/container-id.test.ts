@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { clampLogsTail, isContainerId, isImageId } from "./container-id.ts";
+import { clampLogsTail, containerActionUrl, isContainerId, isImageId } from "./container-id.ts";
 
 /* No docker route test exists and node tests cannot import "@/" modules, so the routes and disk-scan are checked by source scan. */
 const SRC = new URL("..", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
@@ -17,6 +17,16 @@ describe("isImageId", () => {
   for (const bad of ["../containers/x", "a/../b", "x?force=1", "", "%2e%2e", "sha256:abc", "nginx:latest", "sha256:" + "g".repeat(64)]) {
     it(`rejects ${JSON.stringify(bad)}`, () => assert.equal(isImageId(bad), false));
   }
+});
+
+describe("containerActionUrl", () => {
+  it("containerActionUrl keeps a long name whole", () => {
+    assert.equal(containerActionUrl("homeassistant-companion"), "/api/docker/containers/homeassistant-companion/action");
+  });
+  it("containerActionUrl keeps a 64-hex id whole", () => {
+    const id = "a1b2c3d4".repeat(8);
+    assert.equal(containerActionUrl(id), `/api/docker/containers/${id}/action`);
+  });
 });
 
 describe("docker route id guards", () => {
