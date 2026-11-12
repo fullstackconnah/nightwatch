@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
 import { SegmentButton } from "@/components/ui/segment-button";
-import { changesFor, clock, dropListed, feedSlots, rowClock, weekHeading, type ChangesRange } from "@/lib/home";
+import { changesFor, clock, dayClock, dropListed, feedSlots, rowClock, weekHeading, type ChangesRange } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
 
@@ -120,7 +120,7 @@ export function ChangesList({
             data-kind={e.kind}
             data-subject={e.subjects.join(" ")}
           >
-            <span className="hm-chg-at font-mono text-xs text-ink-dim">{rowClock(e.at, Date.now())}</span>
+            <span className="hm-chg-at font-mono text-xs text-ink-dim">{week ? dayClock(e.at, Date.now()) : rowClock(e.at, Date.now())}</span>
             <span className="hm-chg-text" title={e.text}>
               {e.text}
             </span>

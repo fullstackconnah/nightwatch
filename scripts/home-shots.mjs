@@ -545,7 +545,7 @@ for (const width of WIDTHS) {
     const x = Math.max(0, box.x - 8), y = Math.max(0, box.y - 8);
     await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(box.width + 16, vw - x), height: box.height + 16 } });
   };
-  const week = ["08:00", "06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
+  const week = ["Today 08:00", "Today 06:30", "Wed 07:00", "Tue 07:00", "Mon 21:40", "Thu 10:20"];
   const plan = [
     { n: "wk1-recent", widths: ["390", "1440"], week: null },
     { n: "wk2-week", widths: ["390", "1440"], week: "week" },
@@ -625,7 +625,7 @@ for (const width of WIDTHS) {
     { n: "cl1-recent-counts", widths: ["390", "1440"], fixture: "changesCounts", other: "changesCountsOne", heading: "Since you last looked · 01:00" },
     { n: "cl2-week-covered", widths: ["390", "1440"], week: "weekCovered", heading: "Last 7 days" },
     { n: "cl3-week-partial", widths: ["390", "1440"], week: "weekPartial", heading: "Last 7 days · counted since Mon" },
-    { n: "cl4-week-earlier-stop", widths: ["390"], week: "weekEarlierStop", heading: "Last 7 days", times: ["08:00", "Tue 08:40"] },
+    { n: "cl4-week-earlier-stop", widths: ["390"], week: "weekEarlierStop", heading: "Last 7 days", times: ["Today 08:00", "Tue 08:40"] },
   ];
   for (const p of clPlan) {
     for (const width of WIDTHS.filter((w) => p.widths.includes(w.name))) {
