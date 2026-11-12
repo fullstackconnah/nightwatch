@@ -1,6 +1,6 @@
 # homelab-dashboard · nightwatch
 
-Self-hosted single-pane-of-glass for the homelab (homelab.local). Replaces
+Self-hosted single-pane-of-glass for the homelab (homelab.local). Replaced
 gethomepage/homepage: host vitals + every Docker container auto-discovered,
 live per-service widget data, container start/stop/restart/create from the UI.
 
@@ -101,5 +101,5 @@ claude mcp add --transport http nightwatch http://homelab.local:3005/api/mcp \
 ## Deploy
 
 See [DEPLOY.md](DEPLOY.md) — Dockge stack at
-`/mnt/docker/stacks/homelab-dashboard`, port **3005** until Homepage (3001) is
-decommissioned.
+`/mnt/docker/stacks/homelab-dashboard`, port **3005**. It is the only dashboard: Homepage (3001) was
+retired on 2026-11-12.

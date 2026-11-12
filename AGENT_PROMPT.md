@@ -1,5 +1,7 @@
 # Agent Prompt: Homelab Dashboard
 
+> Note (2026-11-12): historical build prompt. Homepage (port 3001), mentioned below as still running, was retired on 2026-11-12; nightwatch on port 3005 is now the only dashboard.
+
 Paste everything below the line into a fresh Claude Code session (or any capable coding agent) to build this project from scratch.
 
 ---
