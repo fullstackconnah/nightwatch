@@ -45,6 +45,11 @@ export function FixSheet({
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const finished = done !== null && done.still === undefined;
+  // A later report still lists the hit: drop the sent-no-answer error, or it would outrank the status and hide the button for good.
+  const stillAt = done?.still;
+  useEffect(() => {
+    if (stillAt !== undefined) setErr(null);
+  }, [stillAt]);
   useEffect(() => {
     if (finished) statusRef.current?.focus();
   }, [finished]);

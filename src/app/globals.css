@@ -3177,6 +3177,9 @@ body {
   /* The chevron is a flex item too: centred, its bottom edge set the button's baseline and pushed the row 1.3 px taller than a plain title. */
   align-items: baseline;
 }
+.hm-att-row .dk-disclose .dk-chev {
+  align-self: center; /* opts out of baseline, so the title text alone sets the button baseline */
+}
 .hm-att-disclose::after {
   content: "";
   position: absolute;
