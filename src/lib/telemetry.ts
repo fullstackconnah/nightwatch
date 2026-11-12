@@ -2,7 +2,8 @@ import { allContainerStats, TELEMETRY_CALL_MS, type ContainerStatsRow } from "@/
 import { getGpuSnapshot } from "@/lib/gpu";
 import { getHostDiskIoCounters, getHostNetCounters, getHostVitals } from "@/lib/host-metrics";
 import { getInterfaceCounters } from "@/lib/network";
-import { recordMetricsHistoryTick } from "@/lib/metrics-history";
+import { recordMetricsHistoryTick, SAMPLE_INTERVAL_MS } from "@/lib/metrics-history";
+import { loopStep, nextDelayMs } from "@/lib/telemetry-loop";
 import { withTimeout } from "@/lib/single-flight";
 import { recovered, throttledError } from "@/lib/log-throttle";
 import { RING_CAPACITY, type TelemetryHost, type TelemetryRow, type TelemetrySample } from "@/lib/types/telemetry";
@@ -28,6 +29,7 @@ const globalForTelemetry = globalThis as unknown as {
   __telemetryPrevTs?: number; // performance.now() of the previous tick
   __telemetryPrevReadAt?: number; // performance.now() when the previous tick started reading host counters
   __telemetryRunning?: boolean;
+  __telemetryWake?: () => void; // cuts the current sleep short (idle sleep is 30 s)
   __telemetryPrevDiskRead?: number; // cumulative bytes-read sum, previous tick
   __telemetryPrevDiskWrite?: number; // cumulative bytes-written sum, previous tick
   __telemetryPrevNetRx?: number; // cumulative rx bytes, previous tick
@@ -45,10 +47,35 @@ function subscribers(): Set<Subscriber> {
   return globalForTelemetry.__telemetrySubscribers;
 }
 
-/** Plain timer sleep. Teardown may lag by up to one tick — much cheaper than the
+/** Plain timer sleep. Wakeable via __telemetryWake — much cheaper than the
  * abort/restart races an AbortController introduces here. */
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      globalForTelemetry.__telemetryWake = undefined;
+      resolve();
+    }
+    globalForTelemetry.__telemetryWake = done;
+  });
+}
+
+function wakeLoop(): void {
+  globalForTelemetry.__telemetryWake?.();
+}
+
+/** Single start point for the loop (boot and first subscriber), guarded by __telemetryRunning. */
+function ensureLoop(): void {
+  if (!globalForTelemetry.__telemetryRunning) {
+    globalForTelemetry.__telemetryRunning = true;
+    void loop();
+  }
+}
+
+/** Boot hook (instrumentation.ts): keeps the history sampler running with no page open. */
+export function startTelemetryRecorder(): void {
+  ensureLoop();
 }
 
 /** delta/elapsed, guarding every trap: no previous sample, zero/negative elapsed, counter reset, non-finite. */
@@ -60,7 +87,7 @@ function rate(curr: number, prev: number | undefined, elapsedSeconds: number): n
   return Number.isFinite(r) ? r : 0;
 }
 
-async function tick(): Promise<void> {
+async function tick(feedRing: boolean): Promise<void> {
   // force=true: the 5s allContainerStats cache would otherwise return an identical
   // sample ~4 ticks out of 5 and every rate would compute as 0.
   // Host vitals are fetched alongside, but non-fatally: a host-side failure (e.g. the
@@ -250,6 +277,7 @@ async function tick(): Promise<void> {
     throttledError("recordMetricsHistoryTick", err);
   }
 
+  if (!feedRing) return; // idle tick: history only, no ring, no subscribers
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);
@@ -266,57 +294,72 @@ async function tick(): Promise<void> {
   }
 }
 
+/** Drop every previous-tick counter so the next tick is a cold start (rates 0, never averaged over a gap). */
+function resetRateState(): void {
+  globalForTelemetry.__telemetryPrevious = undefined;
+  globalForTelemetry.__telemetryPrevTs = undefined;
+  globalForTelemetry.__telemetryPrevReadAt = undefined;
+  globalForTelemetry.__telemetryPrevDiskRead = undefined;
+  globalForTelemetry.__telemetryPrevDiskWrite = undefined;
+  globalForTelemetry.__telemetryPrevNetRx = undefined;
+  globalForTelemetry.__telemetryPrevNetTx = undefined;
+  globalForTelemetry.__telemetryPrevIfaces = undefined;
+}
+
+/**
+ * Runs for the life of the server (started at boot, or by the first subscriber in dev/tests).
+ * With subscribers it ticks at TARGET_MS and feeds the ring; with none it ticks at the
+ * history cadence so metrics history records with no page open. See telemetry-loop.ts.
+ */
 async function loop(): Promise<void> {
+  let wasLive = false;
   try {
-    // Subscriber count is the sole "should I still be running" signal. A subscriber
-    // arriving during the final sleep keeps the loop alive, so a brief navigation
-    // doesn't discard the warm ring.
-    while (subscribers().size > 0) {
+    for (;;) {
+      const step = loopStep({ subscribers: subscribers().size, wasLive });
+      if (step.resetRates) resetRateState();
+      if (step.clearRing) globalForTelemetry.__telemetryRing = [];
+      wasLive = step.feedRing;
       const start = performance.now();
       try {
-        await tick();
+        await tick(step.feedRing);
         recovered("tick");
       } catch (err) {
         // One failed tick (daemon hiccup, proxy restart) must never kill the loop.
         throttledError("tick", err);
       }
-      await sleep(Math.max(0, TARGET_MS - (performance.now() - start)));
+      await sleep(
+        nextDelayMs({
+          subscribers: subscribers().size,
+          elapsedMs: performance.now() - start,
+          liveMs: TARGET_MS,
+          idleMs: SAMPLE_INTERVAL_MS,
+        }),
+      );
     }
   } finally {
-    // A stopped loop leaves poisoned state: prevTs/previous would make the first tick
-    // after a restart emit a rate averaged over the whole idle gap, and the ring would
-    // hand a new tab a "60 second" history with a multi-minute hole in it.
+    // Only reached if the loop really exits (unexpected throw): leave no poisoned state for a restart.
     globalForTelemetry.__telemetryRunning = false;
-    globalForTelemetry.__telemetryPrevious = undefined;
-    globalForTelemetry.__telemetryPrevTs = undefined;
-    globalForTelemetry.__telemetryPrevReadAt = undefined;
-    globalForTelemetry.__telemetryPrevDiskRead = undefined;
-    globalForTelemetry.__telemetryPrevDiskWrite = undefined;
-    globalForTelemetry.__telemetryPrevNetRx = undefined;
-    globalForTelemetry.__telemetryPrevNetTx = undefined;
-    globalForTelemetry.__telemetryPrevIfaces = undefined;
+    resetRateState();
     globalForTelemetry.__telemetryRing = [];
   }
 }
 
 /**
- * Subscribe to the shared 1Hz telemetry stream. Starts the collector loop on the first
- * subscriber; the loop tears itself down once the last one unsubscribes.
+ * Subscribe to the shared 1Hz telemetry stream. Starts the collector loop if it is not
+ * already running (it normally runs since boot) and wakes it out of its idle sleep.
  */
 export function subscribeTelemetry(cb: Subscriber): () => void {
   const subs = subscribers();
   subs.add(cb);
-  if (!globalForTelemetry.__telemetryRunning) {
-    globalForTelemetry.__telemetryRunning = true;
-    void loop();
-  }
+  ensureLoop();
+  wakeLoop();
 
   let unsubscribed = false;
   return () => {
     if (unsubscribed) return;
     unsubscribed = true;
     subs.delete(cb);
-    // The loop notices the empty set on its next iteration and tears itself down.
+    // The loop notices the empty set on its next iteration and drops to the idle cadence.
   };
 }
 

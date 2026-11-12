@@ -17,7 +17,7 @@ import { attachSummary, type SummaryMetric, type SummaryResult } from "@/lib/his
  * resetting it.
  */
 
-const SAMPLE_INTERVAL_MS = 30_000;
+export const SAMPLE_INTERVAL_MS = 30_000;
 const RETENTION_DAYS = 14;
 const MAX_POINTS = 360;
 
