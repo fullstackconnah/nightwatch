@@ -55,6 +55,16 @@ describe("F2: no blur under Sunroom (rule 6, N19)", () => {
   });
 });
 
+describe("KIOSK-S1: the alert takeover blanks the room", () => {
+  const css = noComments(read("src/app/kiosk/sunroom/overlays.css"));
+  it("the takeover backdrop has its own rule and is not the thin --sr-scrim", () => {
+    const body = css.split('[data-kiosk-theme="sunroom"] [data-sr-overlay="takeover"] {')[1]?.split("}")[0];
+    assert.ok(body, "no takeover rule");
+    assert.ok(body.includes("background-color: color-mix(in srgb, var(--sr-bg) 90%, transparent)"));
+    assert.ok(!body.includes("--sr-scrim"));
+  });
+});
+
 describe("F5: overlay titles use the DS title style through the type tokens", () => {
   const css = noComments(read("src/app/kiosk/sunroom/overlays.css"));
   it("[data-sr-title] reads --sr-type-title; group headings read --sr-type-micro", () => {
