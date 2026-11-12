@@ -8,7 +8,7 @@ import { Launcher, isSortKey, type SortKey } from "@/components/home/launcher";
 import { SidePanel } from "@/components/home/side-panel";
 import { useAttentionReport, useBackupStatus, useContainers, useWidgets } from "@/lib/client";
 import { nightlyAt } from "@/lib/backup-status";
-import { LAST_LOOKED_KEY, WEEK_MS, ageText, answerFor, clock, parseLastLooked, probeLine } from "@/lib/home";
+import { LAST_LOOKED_KEY, WEEK_MS, ageText, answerFor, clock, parseLastLooked, probeLine, refreshedWeekSince } from "@/lib/home";
 
 /** When the last fetch succeeded. SWR keeps the same `data` object when a poll returns the same JSON, so watch `isValidating`. */
 function useFetchedAt(r: { data?: unknown; error?: unknown; isValidating: boolean }): number | null {
@@ -54,6 +54,12 @@ export default function HomePage() {
 
   // 7-day look: `since` is fixed at the tap so the request key stays stable; null = Recent (today's request).
   const [weekSince, setWeekSince] = useState<number | null>(null);
+  // A tab left open for days re-pins a drifted 7-day window when it is shown again.
+  useEffect(() => {
+    const onShow = () => document.visibilityState === "visible" && setWeekSince((p) => refreshedWeekSince(p, Date.now()));
+    document.addEventListener("visibilitychange", onShow);
+    return () => document.removeEventListener("visibilitychange", onShow);
+  }, []);
   const since = weekSince ?? looked?.since ?? null;
   const report = useAttentionReport(since);
   const reportAt = useFetchedAt(report);

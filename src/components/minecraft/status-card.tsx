@@ -9,6 +9,7 @@ import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { postJson, type MinecraftStatusResponse } from "@/lib/client";
+import { containerActionUrl } from "@/lib/container-id";
 import { leadFor, noPackNote, type Model } from "@/lib/minecraft/page-model";
 
 const SOURCE_VARIANT = { curseforge: "accent", modrinth: "blue", upload: "neutral" } as const;
@@ -19,7 +20,7 @@ interface Target {
 }
 
 const act = (c: Target, action: "stop" | "start" | "restart" | "pause" | "unpause", refresh?: () => Promise<unknown> | void) => async () => {
-  await postJson(`/api/docker/containers/${c.id.slice(0, 12)}/action`, { action });
+  await postJson(containerActionUrl(c.id), { action });
   await refresh?.();
 };
 

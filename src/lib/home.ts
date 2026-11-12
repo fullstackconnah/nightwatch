@@ -6,6 +6,10 @@ import { ACTION_LINE, fixFor } from "./fix-sheet.ts";
 export type Tone = "ok" | "warn" | "bad" | "pending";
 const DAY = 86_400_000;
 export const WEEK_MS = 7 * DAY;
+
+/** The pinned 7-day start, re-pinned to `now - 7d` once it has drifted over an hour; same value back means no re-render. */
+export const refreshedWeekSince = (prev: number | null, now: number): number | null =>
+  prev === null || now - WEEK_MS - prev <= 3_600_000 ? prev : now - WEEK_MS;
 export type ChangesRange = "recent" | "week";
 const DOCKER_PROBES: readonly ProbeId[] = ["crashes", "restarts", "health"];
 const FEED_CLOSED_SLOTS = 4;
