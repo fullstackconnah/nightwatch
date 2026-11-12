@@ -225,6 +225,21 @@ public class CameraTests
     }
 
     [Fact]
+    public void N31b_one_warn_voice_when_the_box_is_offline()
+    {
+        var off = Sta.Run(() => Fix.Compose("offline-last-frame"));
+        var stale = Sta.Run(() => Fix.Compose("camera-stale"));
+        Sta.Run(() =>
+        {
+            Color AgeInk(Snapshot.Composed c) =>
+                ((SolidColorBrush)Fix.Walk<TextBlock>(Ids(c.View, "camera-header").Single()).First(t => t.Text.StartsWith("as of")).Foreground).Color;
+            Assert.Equal(Brush("ink-dim"), AgeInk(off)); // the box line already says it in warn
+            Near("N31b offline frame opacity", Theme.D("frame-dim"), Fix.Walk<Image>(Ids(off.View, "camera-frame").Single()).Single().Opacity);
+            Assert.Equal(Brush("warn"), AgeInk(stale)); // a healthy box keeps the warn age
+        });
+    }
+
+    [Fact]
     public void N31_stale_frame_is_dimmed_and_its_age_is_warn()
     {
         var c = Sta.Run(() => Fix.Compose("camera-stale"));

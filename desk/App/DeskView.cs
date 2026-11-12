@@ -207,7 +207,7 @@ internal sealed class DeskView : Border
 
         RenderWeather(m.Weather);
         CameraFolded = m.Camera is { Collapsed: false } c && FitFolds(c.WorkHeight);
-        FillCamera(m.Camera);
+        FillCamera(m.Camera, m.Latest is View.Stale or View.Offline);
     }
 
     // --- weather strip (SHAPE 2): two lines in the row shape, not interactive, not a tab stop ---
@@ -325,7 +325,7 @@ internal sealed class DeskView : Border
         for (var i = 0; o is Visual && i < VisualTreeHelper.GetChildrenCount(o); i++) Stale(VisualTreeHelper.GetChild(o, i));
     }
 
-    void FillCamera(Cam? c)
+    void FillCamera(Cam? c, bool boxDown)
     {
         if (c is null) { camBox.Visibility = Visibility.Collapsed; return; }
         var folded = CameraFolded;
@@ -344,7 +344,7 @@ internal sealed class DeskView : Border
         var at = c.FrameAt is { } t ? TimeZoneInfo.ConvertTime(t, tz).DateTime : (DateTime?)null;
         camAge.Text = folded ? Copy.CameraFolded : open && shown ? Copy.FrameAge(at!.Value) : "";
         camAge.FontFamily = Theme.F(folded ? "font-sans" : "font-mono");
-        camAge.Foreground = Theme.B(folded ? "ink-faint" : c.State == FrameState.Stale ? "warn" : "ink-dim");
+        camAge.Foreground = Theme.B(folded ? "ink-faint" : c.State == FrameState.Stale && !boxDown ? "warn" : "ink-dim"); // the box line already speaks in warn when the box is down
 
         camFrame.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
         Snap.SetForceHover(camFrame, c.HoverFrame);
