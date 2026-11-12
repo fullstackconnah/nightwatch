@@ -26,7 +26,7 @@
       "id": "backup:backup",
       "severity": "warn",
       "headline": "Backup is late",
-      "href": "/"
+      "href": "/#backup"
     }
   ],
   "probes": {

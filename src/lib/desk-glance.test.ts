@@ -69,12 +69,19 @@ test("probe counts; a failed probe's error never appears", () => {
   assert.equal(JSON.stringify(g).includes("docker.sock"), false);
 });
 
-test("hrefs: the #backup anchor becomes /; paths stay", () => {
+test("hrefs: the #backup anchor becomes /#backup; paths stay", () => {
   const g = buildGlance(
     report([hit("backup", "backup", { owner: { href: "#backup", label: "Backup detail" } }), hit("disks", "disk:/a")]),
     vit,
   );
-  assert.deepEqual(g.items.map((i) => i.href), ["/", "/resources?metric=disk"]);
+  assert.deepEqual(g.items.map((i) => i.href), ["/#backup", "/resources?metric=disk"]);
+});
+
+test("hrefs: anything but a lowercase #anchor or a path falls back to /", () => {
+  for (const href of ["", "#", "#a b", '#x"y', "#Backup", "http://x.example", "javascript:alert(1)"]) {
+    const g = buildGlance(report([hit("backup", "backup", { owner: { href, label: "x" } })]), vit);
+    assert.equal(g.items[0].href, "/", JSON.stringify(href));
+  }
 });
 
 test("tone and answer come from answerFor", () => {

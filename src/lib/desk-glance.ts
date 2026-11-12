@@ -43,13 +43,19 @@ export interface Glance {
   camera: boolean;
 }
 
+// A path stays; a plain in-page anchor ("#backup") is made absolute so the widget opens Home at it; all else is Home.
+function hrefFor(href: string): string {
+  if (href.startsWith("/")) return href;
+  return /^#[a-z][a-z0-9-]*$/.test(href) ? `/${href}` : "/";
+}
+
 // Copy field by field: a hit may carry more than it declares, and none of it may leave the box.
 function toItem(h: AttentionHit): GlanceItem {
   const item: GlanceItem = {
     id: h.id,
     severity: h.severity,
     headline: h.headline,
-    href: h.owner.href.startsWith("/") ? h.owner.href : "/", // "#backup" is an in-page anchor
+    href: hrefFor(h.owner.href),
   };
   if (h.detail !== undefined) item.detail = h.detail;
   if (h.action !== undefined) item.action = h.action;
