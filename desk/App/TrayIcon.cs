@@ -14,7 +14,7 @@ internal static class TrayIcon
     const string Flat = "M2 12H22";
     static readonly Dictionary<(TrayKind, int), System.Drawing.Icon> Cache = new();
 
-    public static void Draw(DrawingContext dc, TrayKind kind, double px)
+    public static void Draw(DrawingContext dc, TrayKind kind, double px, bool withBadge = true)
     {
         var r = px / 2;
         dc.DrawEllipse(Theme.B("bg"), new Pen(Theme.B("line-bright"), 1), new Point(r, r), r - .5, r - .5);
@@ -26,16 +26,24 @@ internal static class TrayIcon
             TrayKind.NoAnswer or TrayKind.FixDesk => Theme.B("ink-faint"),
             _ => Theme.B("accent"),
         };
-        var s = px * .66 / 20; // the glyph spans 20 of the 24 units; it fills 66% of the disc
+        var badge = kind switch { TrayKind.NeedsWarn or TrayKind.FixDesk => "warn", TrayKind.NeedsBad => "bad", _ => null };
+        var nudge = badge is null ? 0 : px * 0.1; // a badged glyph steps up and left so its trough clears the badge ring
+        var s = px * (badge is null ? .66 : 0.5) / 20; // the glyph spans 20 of the 24 units: 66% of the disc, 50% when a badge shares it
         var pen = new Pen(glyphBrush, 1.5 * px / 16 / s) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round, LineJoin = PenLineJoin.Round };
-        dc.PushTransform(new TransformGroup { Children = { new TranslateTransform(-12, -12), new ScaleTransform(s, s), new TranslateTransform(r, r) } });
+        dc.PushTransform(new TransformGroup { Children = { new TranslateTransform(-12, -12), new ScaleTransform(s, s), new TranslateTransform(r - nudge, r - nudge * 1.5) } });
         dc.DrawGeometry(null, pen, Geometry.Parse(flat ? Flat : Activity));
         dc.Pop();
 
-        var badge = kind switch { TrayKind.NeedsWarn or TrayKind.FixDesk => "warn", TrayKind.NeedsBad => "bad", _ => null };
-        if (badge is null) return;
-        var d = px * (px < 24 ? .35 : .4); // below 24 px the badge shrinks so it clears the glyph
-        dc.DrawEllipse(Theme.B(badge), new Pen(Theme.B("bg"), 1), new Point(px - d / 2 - .5, px - d / 2 - .5), d / 2, d / 2);
+        if (badge is null || !withBadge) return;
+        var (c, d) = BadgeAt(px);
+        dc.DrawEllipse(Theme.B(badge), new Pen(Theme.B("bg"), 1), new Point(c, c), d / 2, d / 2);
+    }
+
+    /// <summary>The badge's centre (x and y alike, it sits bottom-right) and diameter.</summary>
+    internal static (double Centre, double Diameter) BadgeAt(double px)
+    {
+        var d = px * .35; // the least that still reads (35% of the icon); the glyph gives way, not the badge
+        return (px - d / 2 - .5, d);
     }
 
     public static BitmapSource Bitmap(TrayKind kind, int px)
