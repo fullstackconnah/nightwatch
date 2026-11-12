@@ -62,6 +62,10 @@
 [data-kiosk-theme="sunroom"] [data-sr-overlay] {
   background-color: var(--sr-scrim);
 }
+/* KIOSK-S1: the alert takeover blanks the room (the product's 90% wash), not the thin scrim the dialogs and sheets use. */
+[data-kiosk-theme="sunroom"] [data-sr-overlay="takeover"] {
+  background-color: color-mix(in srgb, var(--sr-bg) 90%, transparent);
+}
 /* Sheet, Dialog, Toast and the trays: bevel plus the twin at 1.5x (rule 3). */
 [data-kiosk-theme="sunroom"] [data-sr-face="float"] {
   border-radius: var(--sr-radius-lg);

@@ -468,8 +468,18 @@ const extraVisit = (routes, viewport = SIZES[0].viewport) => visit(EXTRA_URL, { 
 const raiseAlert = async (routes, page, alert) => {
   await page.waitForTimeout(5500); // past SWR's 5 s focus throttle, first poll landed
   routes["/kiosk/api/attention"] = alert;
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  const focus = () => page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await focus();
+  // SHOTS-N3: a slow first poll can swallow the focus; one retry past the throttle if the takeover has not shown.
+  if (!(await seen(page, '[data-sr-overlay="takeover"]', 6000))) await focus();
 };
+// KIOSK-S1: the takeover wash must cover the room (alpha >= 0.88). Computed color-mix serialises as rgba(...) or color(srgb r g b / a).
+const SCRIM_AT = () => {
+  const cs = getComputedStyle(document.querySelector('[data-sr-overlay="takeover"]'));
+  const bg = cs.backgroundColor;
+  return { scrimAlpha: bg.includes("/") ? parseFloat(bg.split("/")[1]) : bg.startsWith("rgba") ? parseFloat(bg.split(",")[3]) : 1, backdropFilter: cs.backdropFilter };
+};
+const checkScrim = (name, take) => { if (!(take.scrimAlpha >= 0.88)) results.errors.push(`${name}: takeover scrim alpha ${take.scrimAlpha} < 0.88`); };
 results.overlays.extra = {};
 await guarded("overlays extra doorbell", async () => {
   const { context, page } = await extraVisit({ "/kiosk/api/doorbell": DOORBELL_OK });
@@ -504,7 +514,8 @@ await guarded("overlays extra alerts", async () => {
   if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for one raised alert");
   await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
   await page.screenshot({ path: join(OUT_DIR, "overlay-alert-takeover-1180x820.png") });
-  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), { chimeOscillators: await page.evaluate(() => window.__osc) });
+  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), { chimeOscillators: await page.evaluate(() => window.__osc) }, await page.evaluate(SCRIM_AT));
+  checkScrim("alertTakeover", take);
   await page.getByRole("status").filter({ hasText: "A container stopped" }).first().click(); // a tap dismisses
   await page.waitForSelector('[data-sr-overlay="takeover"]', { state: "detached", timeout: 8000 }).catch(() => (take.stuckOpen = true));
   const tray = (results.overlays.extra.alertTray = {});
@@ -525,7 +536,8 @@ await guarded("overlays extra alert doorbell", async () => {
   if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for the doorbell alert");
   await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
   await page.screenshot({ path: join(OUT_DIR, "kiosk-alert-doorbell-1180x820.png") }); // state kiosk-alert-doorbell
-  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'));
+  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), await page.evaluate(SCRIM_AT));
+  checkScrim("alertDoorbell", take);
   await context.close();
 });
 // overlays.extra.stale.{alerts,downloads}: a failed re-poll after a good one keeps the data and adds ONE Stale tag (alerts: on the button; downloads: in the open tray).
