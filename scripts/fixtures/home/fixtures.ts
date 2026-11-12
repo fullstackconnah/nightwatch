@@ -147,6 +147,8 @@ export function build(now: number) {
         health: { state: "failed", error: "Cannot connect to the Docker daemon" },
       },
     ),
+    // The app-changes lookup itself failed: the Changes heading gains " · app changes unknown" (wk8).
+    changesFailed: report(now, [], [], {}, { status: "failed", error: "Cannot connect to the Docker daemon" }),
     otherFailed: report(now, [], e, { smart: { state: "failed", error: "smartctl exited with status 2" } }),
     // C1: the start (1 hit) and the arrival (a crash and a disk; the orchestra hit clears).
     c1Before: report(now, [lane(now, 40)], e),

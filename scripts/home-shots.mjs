@@ -162,9 +162,10 @@ const readState = () => {
   // C5: interactive targets visible in .hm
   const small = [...hm.querySelectorAll("a, button, input, [role=menuitem]")]
     .filter(visible)
-    .map((el) => ({ el, r: rect(el) }))
+    // .hm-att-disclose stretches its tap area over the positioned ancestor (::after, inset 0), so that box is the target.
+    .map((el) => ({ el, r: rect(el.classList.contains("hm-att-disclose") && el.offsetParent ? el.offsetParent : el) }))
     .filter(({ r }) => r.width < 44 || r.height < 44)
-    .map(({ el, r }) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} ${Math.round(r.width)}x${Math.round(r.height)}`);
+    .map(({ el, r }) => `${el.tagName.toLowerCase()}.${String(el.className).split(" ")[0]} ${Math.round(r.width)}x${Math.round(r.height)}${el.classList.contains("hm-att-disclose") ? " (tap area)" : ""}`);
   // C6: computed-style contrast of every leaf text element (WCAG ratio against the composited background)
   let minRatio = 99;
   let worst = "";
@@ -536,8 +537,11 @@ for (const width of WIDTHS) {
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     });
-  const crop = async (page, file, vw) => {
-    const box = await page.locator('[data-feature="changes"]').boundingBox();
+  // sel: the element to crop; it is scrolled into the upper part of the viewport first so no fixed chrome covers it.
+  const crop = async (page, file, vw, sel = '[data-feature="changes"]') => {
+    await page.locator(sel).evaluate((n) => { window.scrollTo(0, Math.max(0, n.getBoundingClientRect().top + scrollY - 120)); });
+    await page.waitForTimeout(200);
+    const box = await page.locator(sel).boundingBox();
     const x = Math.max(0, box.x - 8), y = Math.max(0, box.y - 8);
     await page.screenshot({ path: join(OUT_DIR, file), clip: { x, y, width: Math.min(box.width + 16, vw - x), height: box.height + 16 } });
   };
@@ -553,7 +557,7 @@ for (const width of WIDTHS) {
   ];
   for (const p of plan) {
     for (const width of WIDTHS.filter((w) => p.widths.includes(w.name))) {
-      const { context, page, state } = await open({ width, pinned: true });
+      const { context, page, state } = await open({ width: p.open ? { ...width, viewport: { ...width.viewport, height: 1400 } } : width, pinned: true });
       const tag = `${p.n}@${width.name}`;
       if (p.week) {
         state.week = p.week;
@@ -583,6 +587,15 @@ for (const width of WIDTHS) {
       if (p.n === "wk4-loading") record("WK", m.empty === "Looking for changes…" && m.times.length === 0, `${tag} loading "${m.empty}", stale rows ${m.times.length}`);
       if (p.n === "wk5-error") record("WK", m.empty === "Unknown.", `${tag} error "${m.empty}"`);
       if (p.n === "wk1-recent") console.log(`WK parity rects ${tag} list ${m.listRect} more ${m.moreRect}`);
+      if (p.open) {
+        // The whole opened section is in the crop: its last row and "Show fewer" end inside the box the crop takes.
+        const c = await page.evaluate(() => {
+          const sec = document.querySelector('[data-feature="changes"]');
+          const b = sec.querySelector(".hm-more").getBoundingClientRect();
+          return { rows: sec.querySelectorAll(".hm-chg-row").length, btnBottom: b.bottom, secBottom: sec.getBoundingClientRect().bottom, vh: innerHeight, text: sec.querySelector(".hm-more").textContent };
+        });
+        record("WK", c.rows === 14 && /fewer/i.test(c.text) && c.btnBottom <= c.secBottom + 0.5 && c.secBottom + 8 <= c.vh, `${tag} opened: ${c.rows} rows, "${c.text}" bottom ${Math.round(c.btnBottom)} within section bottom ${Math.round(c.secBottom)} (viewport ${c.vh})`);
+      }
       await crop(page, `home-${p.n}-${width.name}.png`, width.viewport.width);
       if (p.n === "wk2-week") await page.screenshot({ path: join(OUT_DIR, `home-wk2-week-full-${width.name}.png`), fullPage: true });
       await context.close();
@@ -591,10 +604,12 @@ for (const width of WIDTHS) {
   // wk8: Recent at 360 with "· app changes unknown" (the heading wrap, check 3).
   {
     const width = { name: "360", viewport: { width: 360, height: 800 }, hasTouch: true, isMobile: true };
-    const { context, page } = await open({ width, fixture: "dockerFailed", pinned: true });
+    const { context, page } = await open({ width, fixture: "changesFailed", pinned: true });
     const m = await measure(page);
-    record("WK", m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped && Math.abs(m.headH - m.headMin) < 0.6, `wk8@360 h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, head ${m.headH}px (min ${m.headMin}px), heading "${m.heading}"`);
-    await crop(page, "home-wk8-recent-failed-360.png", 360);
+    const h2Lines = await page.locator('[data-feature="changes"] .hm-sec-head h2').evaluate((n) => Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)));
+    record("WK", m.heading.includes("app changes unknown"), `wk8@360 heading names the failed state: "${m.heading}"`);
+    record("WK", m.h2Right <= m.groupLeft - m.gap + 0.5 && !m.h2Clipped && Math.abs(m.headH - m.headMin) < 0.6, `wk8@360 h2 lines ${h2Lines}, h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, head ${m.headH}px (min ${m.headMin}px), heading "${m.heading}"`);
+    await crop(page, "home-wk8-recent-failed-360.png", 360, '[data-feature="changes"] .hm-sec-head');
     await context.close();
   }
 }
