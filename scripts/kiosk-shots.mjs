@@ -528,6 +528,31 @@ await guarded("overlays extra alerts", async () => {
   Object.assign(tray, await page.evaluate(SCAN_AT, '[role=dialog][aria-label="Alerts"]'));
   await context.close();
 });
+// SHOTS-N4: the takeover at night. Pinned as the night stop is (wx=off, the night weather mock, a flowing clock) with ?period=day so the night overlay stays out of the way.
+// Keys: overlays.extra.alertTakeoverNight.{scrimAlpha,washColor,headline:{color,fontPx,contrast},caption:{color,fontPx,contrast}}; contrast is the worst over a black and a white backdrop, must be >= 4.5.
+const NIGHT_CONTRAST_AT = () => {
+  const rgba = (c) => { const n = c.match(/-?[d.]+/g).map(Number); return c.startsWith("color(") ? [n[0] * 255, n[1] * 255, n[2] * 255, n[3] ?? 1] : [n[0], n[1], n[2], n[3] ?? 1]; };
+  const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  const wash = rgba(getComputedStyle(document.querySelector('[data-sr-overlay="takeover"]')).backgroundColor);
+  const over = (bd) => wash.slice(0, 3).map((v, i) => v * wash[3] + bd * (1 - wash[3]));
+  const text = (el) => { const cs = getComputedStyle(el); const fg = rgba(cs.color).slice(0, 3); return { color: cs.color, fontPx: parseFloat(cs.fontSize), contrast: Math.round(Math.min(ratio(fg, over(0)), ratio(fg, over(255))) * 100) / 100 }; };
+  const status = document.querySelector('[role="status"][aria-live="assertive"]');
+  return { washColor: getComputedStyle(document.querySelector('[data-sr-overlay="takeover"]')).backgroundColor, headline: text(status.querySelector("p")), caption: text(status.querySelectorAll("p")[1]) };
+};
+await guarded("overlays extra alert takeover night", async () => {
+  const routes = { "/kiosk/api/attention": { status: "quiet" } };
+  const { context, page } = await visit(`${STOP_URL}&layout=standard&period=day`, { viewport: SIZES[0].viewport, weather: weatherFor("night"), fixedTime: "flow", ha: true, routes, initScript: AUDIO_STUB });
+  const take = (results.overlays.extra.alertTakeoverNight = {});
+  await raiseAlert(routes, page, ATTENTION_WARN);
+  if (!(await seen(page, '[data-sr-overlay="takeover"]', 8000))) return void (take.missing = "takeover did not open for one raised alert at night");
+  await settle(page, '[data-sr-overlay="takeover"] [data-sr-face], [data-sr-overlay="takeover"]');
+  await page.screenshot({ path: join(OUT_DIR, "overlay-alert-takeover-night-1180x820.png") }); // plain screenshot, as the day state: this script has no cropElement helper
+  Object.assign(take, await page.evaluate(SCAN_AT, '[data-sr-overlay="takeover"]'), { chimeOscillators: await page.evaluate(() => window.__osc) }, await page.evaluate(SCRIM_AT), await page.evaluate(NIGHT_CONTRAST_AT));
+  checkScrim("alertTakeoverNight", take);
+  for (const k of ["headline", "caption"]) if (!(take[k].contrast >= 4.5)) results.errors.push(`alertTakeoverNight: ${k} contrast ${take[k].contrast} < 4.5`);
+  await context.close();
+});
 await guarded("overlays extra alert doorbell", async () => {
   const routes = { "/kiosk/api/attention": { status: "quiet" } };
   const { context, page } = await extraVisit(routes);
