@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
-import { clock, dropListed, feedSlots } from "@/lib/home";
+import { SegmentButton } from "@/components/ui/segment-button";
+import { changesFor, clock, dayClock, dropListed, feedSlots, type ChangesRange } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
 
@@ -13,14 +14,18 @@ import { cn } from "@/lib/utils";
  * New events fill slots in place, newest first, through the Ranker (one commit per 4 s, none while held).
  */
 export function ChangesList({
-  changes,
+  changes: reported,
   hiddenNames,
   listed,
   sinceMs,
   fallbackLabel,
   error,
+  range,
+  onRange,
 }: {
   changes: AttentionReport["changes"] | null;
+  range: ChangesRange;
+  onRange: (r: ChangesRange) => void;
   /** Containers the owner hid from the launcher: their events are dropped here, where `tile.hidden` is known. */
   hiddenNames: ReadonlySet<string>;
   /** Subjects already listed in Needs you (R3). */
@@ -30,6 +35,8 @@ export function ChangesList({
   /** The attention report fetch failed: never show a loading sentence after that. */
   error: boolean;
 }) {
+  const week = range === "week";
+  const changes = changesFor(reported, sinceMs, range);
   const events = useMemo(
     () =>
       dropListed(changes?.events ?? [], listed).filter(
@@ -48,7 +55,17 @@ export function ChangesList({
   useEffect(() => {
     if (rankerRef.current.offer(slots.ids, Date.now(), held, true)) setCommitted(rankerRef.current.order!.slice());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey, held]);
+  }, [idsKey, held, range]);
+
+  // A range change collapses the list and starts a fresh ranker, so the new range's rows commit on their first offer.
+  function pick(r: ChangesRange) {
+    if (r === range) return;
+    rankerRef.current = createRanker();
+    setCommitted([]);
+    setOpenS(0);
+    setOpen(false);
+    onRange(r);
+  }
 
   function toggle() {
     const nextOpen = !open;
@@ -68,12 +85,20 @@ export function ChangesList({
   const when = sinceMs === null ? "" : clock(sinceMs);
 
   return (
-    <section className="hm-chg" data-feature="changes" aria-label="Since you last looked">
+    <section className="hm-chg" data-feature="changes" aria-label={week ? "Last 7 days" : "Since you last looked"}>
       <div className="hm-sec-head">
-        <h2 className="microlabel">
-          {fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}
+        <h2 className="microlabel min-w-0">
+          {week ? "Last 7 days · latest per app" : fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}
           {changes?.status === "failed" ? " · app changes unknown" : ""}
         </h2>
+        <div className="flex gap-1 ml-auto shrink-0" role="group" aria-label="Changes range">
+          <SegmentButton active={!week} onClick={() => pick("recent")} label={fallbackLabel ? "Last 24 h" : "Since you last looked"}>
+            Recent
+          </SegmentButton>
+          <SegmentButton active={week} onClick={() => pick("week")} label="Last 7 days">
+            7 days
+          </SegmentButton>
+        </div>
       </div>
       <ul
         className="hm-chg-list"
@@ -95,7 +120,7 @@ export function ChangesList({
             data-kind={e.kind}
             data-subject={e.subjects.join(" ")}
           >
-            <span className="hm-chg-at font-mono text-xs text-ink-dim">{clock(e.at)}</span>
+            <span className="hm-chg-at font-mono text-xs text-ink-dim">{week ? dayClock(e.at, Date.now()) : clock(e.at)}</span>
             <span className="hm-chg-text" title={e.text}>
               {e.text}
             </span>
@@ -110,7 +135,13 @@ export function ChangesList({
         ))}
         {events.length === 0 && (
           <li className="hm-chg-empty text-xs text-ink-dim">
-            {changes ? `Nothing changed since ${when || "the last look"}.` : error ? "Unknown." : "Looking for changes…"}
+            {changes
+              ? week
+                ? "Nothing changed in the last 7 days."
+                : `Nothing changed since ${when || "the last look"}.`
+              : error
+                ? "Unknown."
+                : "Looking for changes…"}
           </li>
         )}
       </ul>

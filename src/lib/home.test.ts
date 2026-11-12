@@ -4,7 +4,9 @@ import {
   answerFor,
   calmLine,
   ageText,
+  changesFor,
   clock,
+  dayClock,
   dropListed,
   feedSlots,
   gate,
@@ -14,6 +16,7 @@ import {
   probeLine,
   reveal,
   slotOrder,
+  WEEK_MS,
 } from "./home.ts";
 import { createRanker } from "./watchlist.ts";
 import { nightlyAt } from "./backup-status.ts";
@@ -267,4 +270,40 @@ test("diskLine labels each percent with the mount's short name", async () => {
   assert.equal(diskLine([d("/mnt/a-very-long-disk-name", 5)]), "a-very-long-…\u00a05%");
   assert.equal(diskLine([d("", 7)]), "7%");
   assert.equal(diskLine([d("/", 41)]), "root\u00a041%");
+});
+
+test("dayClock says Today for the local today", () => {
+  assert.equal(dayClock(Date.UTC(2026, 10, 11, 22, 5), Date.UTC(2026, 10, 11, 23, 0), 660), "Today 09:05");
+});
+
+test("dayClock takes the weekday from the shifted time, across UTC midnight", () => {
+  assert.equal(dayClock(Date.UTC(2026, 10, 10, 14, 0), Date.UTC(2026, 10, 11, 22, 0), 660), "Wed 01:00");
+});
+
+test("dayClock does not call the same weekday a week ago Today", () => {
+  assert.equal(dayClock(Date.UTC(2026, 10, 5, 0, 0), Date.UTC(2026, 10, 11, 23, 0), 660), "Thu 11:00");
+});
+
+test("changesFor hides a report that is not the one asked for in the 7-day range", () => {
+  const W = Date.UTC(2026, 10, 5);
+  const c = { since: new Date(W + 6 * 3_600_000).toISOString() };
+  assert.equal(changesFor(c, W, "week"), null);
+});
+
+test("changesFor passes the report that matches the 7-day since", () => {
+  const W = Date.UTC(2026, 10, 5);
+  const c = { since: new Date(W).toISOString() };
+  assert.equal(changesFor(c, W, "week"), c);
+  const near = { since: new Date(W + 30_000).toISOString() };
+  assert.equal(changesFor(near, W, "week"), near);
+});
+
+test("changesFor leaves the Recent range as it is", () => {
+  const c = { since: "2020-01-01T00:00:00.000Z" };
+  assert.equal(changesFor(c, 123, "recent"), c);
+  assert.equal(changesFor(null, 123, "recent"), null);
+});
+
+test("WEEK_MS is seven days", () => {
+  assert.equal(WEEK_MS, 7 * 86_400_000);
 });
