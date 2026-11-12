@@ -44,6 +44,8 @@ internal static class Poller
     public const long MaxGlanceBytes = 256 * 1024;
 
     internal static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    /// <summary>The door fetch keeps its own, shorter timeout so a slow poll cannot push two stamps past DoorRing.Gap.</summary>
+    internal static readonly TimeSpan DoorTimeout = TimeSpan.FromSeconds(5);
 
     /// <summary>The glance is buffered, so the cap makes an oversize body throw (mapped to Failed). The camera reads headers-first and streams under its own cap.</summary>
     public static HttpClient NewClient(HttpMessageHandler? handler = null) =>
@@ -70,9 +72,10 @@ internal static class Poller
     {
         try
         {
-            using var resp = await http.GetAsync(baseUrl + "/kiosk/api/doorbell").ConfigureAwait(false);
+            using var cts = new CancellationTokenSource(DoorTimeout);
+            using var resp = await http.GetAsync(baseUrl + "/kiosk/api/doorbell", cts.Token).ConfigureAwait(false);
             if ((int)resp.StatusCode != 200) return null;
-            return DoorParser.Parse(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+            return DoorParser.Parse(await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false));
         }
         catch (Exception)
         {
