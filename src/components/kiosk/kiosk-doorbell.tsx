@@ -278,7 +278,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
       <span className="flex min-w-0 flex-col items-start">
         <span>Front door</span>
         {seen && (
-          <span className="max-w-32 truncate text-[10px] leading-tight text-ink-faint">
+          <span className="max-w-32 truncate text-2xs leading-tight text-ink-faint">
             Last seen {seen.time} {seen.period}
           </span>
         )}

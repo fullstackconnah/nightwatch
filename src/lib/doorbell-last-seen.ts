@@ -15,9 +15,13 @@ export function lastSeenFromHistory(reply: unknown, ids: readonly string[], nowM
     if (typeof id !== "string" || !ids.includes(id)) continue;
     for (const entry of series) {
       const { state, last_changed } = (entry ?? {}) as { state?: unknown; last_changed?: unknown };
-      if (state !== "on" || typeof last_changed !== "string") continue;
-      const t = Date.parse(last_changed);
-      if (Number.isFinite(t) && t <= nowMs && nowMs - t <= DAY_MS && !(t <= best)) best = t;
+      // event.* state IS the press instant; binary_sensor counts when it turned on.
+      // shortcut: sensor.* timestamp triggers are out of scope, add them when one is configured.
+      const src = id.startsWith("event.") ? state : state === "on" ? last_changed : null;
+      if (typeof src !== "string") continue;
+      const t = Date.parse(src);
+      // strictly after the window start: an entry dated exactly there is a sensor already on, not a new event
+      if (Number.isFinite(t) && t <= nowMs && t > nowMs - DAY_MS && !(t <= best)) best = t;
     }
   }
   return Number.isFinite(best) ? new Date(best).toISOString() : null;

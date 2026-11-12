@@ -35,3 +35,27 @@ test("minimal_response: first entry carries entity_id, later ones only state", (
   const reply = [[e(IDS[0], "off", at(9 * H)), { state: "on", last_changed: at(4 * H) }]];
   assert.equal(lastSeenFromHistory(reply, IDS, NOW), at(4 * H));
 });
+const EV = "event.front_door_ding";
+const ev = (state: string, last_changed = at(H)) => ({ entity_id: EV, state, last_changed });
+const IDS2 = [...IDS, EV];
+
+test("an on entry exactly at the window start gives null; a later on entry wins", () => {
+  const start = at(24 * H);
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", start)]], IDS, NOW), null);
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", start), e(IDS[0], "off", at(10 * H)), { state: "on", last_changed: at(3 * H) }]], IDS, NOW), at(3 * H));
+});
+test("a future-dated on entry is ignored; an older valid one wins", () => {
+  const future = new Date(NOW + H).toISOString();
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", at(4 * H)), { state: "on", last_changed: future }]], IDS, NOW), at(4 * H));
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", future)]], IDS, NOW), null);
+});
+test("an event entry counts by its ISO state", () => {
+  assert.equal(lastSeenFromHistory([[ev(at(2 * H))]], IDS2, NOW), at(2 * H));
+});
+test("event states unknown, unavailable and empty do not count", () => {
+  for (const s of ["unknown", "unavailable", ""]) assert.equal(lastSeenFromHistory([[ev(s)]], IDS2, NOW), null);
+});
+test("newest across an event series and a binary_sensor series wins", () => {
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", at(5 * H))], [ev(at(2 * H))]], IDS2, NOW), at(2 * H));
+  assert.equal(lastSeenFromHistory([[e(IDS[0], "on", at(1 * H))], [ev(at(2 * H))]], IDS2, NOW), at(1 * H));
+});

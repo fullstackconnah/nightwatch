@@ -102,7 +102,7 @@ const lastSeenMemo = new Memo<{ key: string; at: string | null }>({
     const start = new Date(now - 86_400_000).toISOString();
     try {
       // History, not last_changed: an HA restart or unavailable-to-off resets last_changed.
-      const q = `filter_entity_id=${ids.join(",")}&end_time=${encodeURIComponent(new Date(now).toISOString())}&minimal_response&no_attributes`;
+      const q = `filter_entity_id=${ids.map(encodeURIComponent).join(",")}&end_time=${encodeURIComponent(new Date(now).toISOString())}&minimal_response&no_attributes`;
       const probe = await ha.getJson<unknown>(`/api/history/period/${encodeURIComponent(start)}?${q}`);
       return { key: ids.join(","), at: probe.status === "ok" ? lastSeenFromHistory(probe.data, ids, now) : null };
     } catch {
@@ -112,7 +112,7 @@ const lastSeenMemo = new Memo<{ key: string; at: string | null }>({
 });
 
 async function lastSeenAt(triggers: HaDoorbellTrigger[]): Promise<string | null> {
-  const ids = triggers.filter((t) => domainOf(t.entityId) === "binary_sensor").map((t) => t.entityId);
+  const ids = triggers.filter((t) => ["binary_sensor", "event"].includes(domainOf(t.entityId))).map((t) => t.entityId);
   if (ids.length === 0) return null;
   lastSeenIds = ids;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -362,7 +362,7 @@ function resolve(raw: RawEntity[], serverNow: number): { cameras: HaDoorbellCame
 
 /** The kiosk's poll target: small enough to hit every few seconds, and it
  *  answers both "is anyone at the door" and "which cameras may I ask for". */
-export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
+export async function getDoorbellSnapshot(opts: { lastSeen?: boolean } = {}): Promise<HaDoorbellSnapshot> {
   const creds = haCredentials();
   const cfg = configuredDoorbell();
   const autoOpen = cfg.autoOpen !== false;
@@ -392,7 +392,7 @@ export async function getDoorbellSnapshot(): Promise<HaDoorbellSnapshot> {
   const pinned = cfg.viewCamera?.trim();
   const viewCamera = pinned && cameras.some((c) => c.entityId === pinned) ? pinned : null;
 
-  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen, viewCamera, lastSeenAt: await lastSeenAt(triggers) };
+  return { status: "ok", cameras, triggers, latest: pickLatest(triggers), autoOpen, viewCamera, lastSeenAt: opts.lastSeen ? await lastSeenAt(triggers) : null };
 }
 
 /** True only for a camera THIS resolver named — the allowlist described in the
