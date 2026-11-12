@@ -260,7 +260,7 @@ test("auto-open per row: a strip id only for the rows that name one", () => {
     ["save failed", input({ forms: { "hermes-daemon": { dirty: true, error: "x" } } }), "hermes"],
   ];
   for (const [name, i, want] of rows) assert.equal(settingsModel(i).autoTarget, want, name);
-  const forms: FormId[] = ["password", "system", "sso", "orchestra"];
+  const forms: FormId[] = ["password", "system", "sso", "orchestra", "outside"];
   for (const f of forms) assert.equal(model({ forms: { [f]: { dirty: true, error: "x" } } }).autoTarget, "access", f);
   assert.equal(model({ forms: { widgets: { dirty: true, error: "x" } } }).autoTarget, "dashboard");
 });

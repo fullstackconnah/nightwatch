@@ -7,6 +7,8 @@
  * Headlines are at most 48 chars (fixed text <= 24 plus ids clipped to 24),
  * details at most 100, actions at most 70.
  */
+import type { DownWhy, UncheckedWhy } from "./outside-check.ts";
+
 export type AlertCopy = { headline: string; detail?: string; action?: string };
 
 const ID_MAX = 24;
@@ -205,3 +207,34 @@ export function doorbellQuietCopy(days: number | null): AlertCopy {
     action: "Reload its integration in Home Assistant; it may need signing in.",
   };
 }
+
+// --- outside access (type-only import, erased at run time) ---------------------------------------
+
+const OUTSIDE_DOWN: Record<DownWhy, string> = {
+  "no-dns": "Public DNS has no address for it, so nobody outside the house can find it.",
+  "private-address": "Public DNS points it at a private address, so nobody outside the house can reach it.",
+  "edge-cant-reach-box": "Cloudflare answered, but the tunnel or proxy behind it didn't, so visitors get an error page.",
+  timeout: "Requests from outside time out before anything answers.",
+  "bad-certificate": "Its certificate isn't valid, so browsers outside refuse to open it.",
+  "not-found": "Cloudflare reached the box, but nothing answers at that name, so visitors get a not-found page.",
+};
+
+export function outsideDown(why: DownWhy): AlertCopy {
+  return {
+    headline: "The site can't be reached from outside",
+    detail: OUTSIDE_DOWN[why],
+    action: "Check the tunnel and proxy containers in Resources.",
+  };
+}
+
+const OUTSIDE_UNCHECKED: Record<UncheckedWhy, string> = {
+  "no-internet": "The box couldn't reach the internet to look. If the internet is down here, the site is down from outside too.",
+  "not-via-cloudflare": "It answered without going through Cloudflare, so outside access wasn't proved.",
+  "edge-only": "Cloudflare answered from its cache or a challenge page, so the tunnel wasn't tested.",
+  "redirects-away": "It sends visitors to another site, likely a login page, so outside access wasn't proved.",
+  "bad-host": "The saved public address isn't a valid name. Fix it in Settings, under Access.",
+  refused: "It answered but turned the check away, so outside access wasn't proved.",
+};
+
+/** Thrown as the probe's Error message, so it becomes the grey failed row's detail. */
+export const outsideUnchecked = (why: UncheckedWhy): string => OUTSIDE_UNCHECKED[why];

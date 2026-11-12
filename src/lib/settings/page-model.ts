@@ -7,7 +7,7 @@ import type { SettingsFullResponse } from "../../components/settings/settings-in
 
 export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "hermes" | "dashboard";
 export type FormId =
-  | "password" | "system" | "sso" | "orchestra"
+  | "password" | "system" | "sso" | "orchestra" | "outside"
   | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice"
   | "hermes-model" | "hermes-daemon" | "widgets" | "tiles";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
@@ -55,12 +55,12 @@ const TITLES: Record<StripId, string> = {
 const ORDER = Object.keys(TITLES) as StripId[];
 /** Each form's strip, in the order a save failure is looked for. */
 const FORMS: Record<FormId, StripId> = {
-  password: "access", system: "access", sso: "access", orchestra: "access",
+  password: "access", system: "access", sso: "access", orchestra: "access", outside: "access",
   homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice",
   "hermes-model": "hermes", "hermes-daemon": "hermes", widgets: "dashboard", tiles: "dashboard",
 };
 const FORM_TITLE: Record<FormId, string> = {
-  password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra",
+  password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra", outside: "the outside check",
   homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice",
   "hermes-model": "the Hermes model", "hermes-daemon": "the Hermes daemon", widgets: "the widgets", tiles: "the tiles",
 };

@@ -10,9 +10,9 @@ const walk = (d: string): string[] =>
 const files = DIRS.flatMap((d) => walk(join(SRC, d)));
 const text = files.map((f) => readFileSync(f, "utf8")).join("\n");
 
-test("C2s: the page keeps its 12 write call sites and 6 URLs", () => {
+test("C2s: the page keeps its 13 write call sites and 6 URLs", () => {
   const calls = [...text.matchAll(/\b(?:postJson|putJson)\(\s*(["`])([^"`]+)\1/g)];
-  assert.equal(calls.length, 12);
+  assert.equal(calls.length, 13);
   assert.deepEqual([...new Set(calls.map((c) => c[2]))].sort(), [
     "/api/hermes/model",
     "/api/settings",
@@ -37,7 +37,7 @@ test("S1/S2: a save or clear reloads the fields from the stored values", () => {
   assert.equal([...integ.matchAll(/useIntegrationWrite\(mutate, \(\) => setSeeded\(false\)\)/g)].length, 4);
   assert.match(integ, /await mutate\(\);\s*reseed\?\.\(\);[\s\S]*await mutate\(\);\s*reseed\?\.\(\);/);
   const access = readFileSync(join(SRC, "components/settings/settings-access.tsx"), "utf8");
-  assert.equal([...access.matchAll(/await mutate\(\);\s*setSeeded\(false\);/g)].length, 2);
+  assert.equal([...access.matchAll(/await mutate\(\);\s*setSeeded\(false\);/g)].length, 3);
 });
 
 test("N3: the confirm sentences are the spec's words", () => {

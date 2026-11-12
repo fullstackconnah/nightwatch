@@ -199,6 +199,8 @@ export interface AppConfig {
     hermesApiToken?: string;
     orchestraUrl?: string;
     orchestraToken?: string;
+    /** Public hostname the outside check opens through Cloudflare; blank = off; hostname only. */
+    outsideCheckHost?: string;
     voiceServerUrl?: string;
     voiceTtsUrl?: string;
     voiceSttModel?: string;

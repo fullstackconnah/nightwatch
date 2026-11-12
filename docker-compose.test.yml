@@ -107,6 +107,8 @@ services:
       - HOST_NAME=homelab
       - DATA_DIR=/app/data
       - NODE_ENV=development
+      # Test hook for the outside check (readings like "down:timeout,up"); production compose never carries it.
+      - NW_OUTSIDE_FAKE=${NW_OUTSIDE_FAKE:-}
     # Deliberately no .env and no ADMIN_PASSWORD_HASH — the bypass requires
     # the hash to be absent as well as NODE_ENV=development. The OPTIONAL
     # .env.test (gitignored, server-side only) exists so non-auth integration

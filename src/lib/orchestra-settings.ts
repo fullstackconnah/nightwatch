@@ -29,6 +29,7 @@ export function publicSystem(system: SystemSettings | undefined): SystemSettings
     ? {
         hermesApiUrl: system.hermesApiUrl,
         orchestraUrl: system.orchestraUrl,
+        outsideCheckHost: system.outsideCheckHost,
         voiceServerUrl: system.voiceServerUrl,
         voiceTtsUrl: system.voiceTtsUrl,
         voiceSttModel: system.voiceSttModel,

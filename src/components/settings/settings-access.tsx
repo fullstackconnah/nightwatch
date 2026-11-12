@@ -5,7 +5,7 @@
    invisible from the UI (MCP, kiosk, SSO, Dockge). It is one strip's detail on
    the Strips pattern, so the page owns the frame and these are subheads, not
    cards: Login password, Change password, System (MCP token + kiosk PIN), SSO,
-   Orchestra, then System access (what is actually in effect right now, config
+   Orchestra, Outside check, then System access (what is actually in effect right now, config
    OR env, never which) and the API key scopes. Each form POSTs to
    /api/settings/system (or /api/settings/password), which persists into
    config.json's `system` block and wins over the matching env var on the next
@@ -382,6 +382,64 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
   );
 }
 
+function OutsideCheckCard({ data, mutate }: { data: Data; mutate: Mutate }) {
+  const stored = data?.config.system?.outsideCheckHost ?? "";
+  const [host, setHost] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hostError, setHostError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setHost(stored);
+      setSeeded(true);
+    }
+  }, [data, seeded, stored]);
+
+  const envOnly = !stored && Boolean(data?.meta.outsideCheckConfigured);
+  const changed = host.trim() !== stored;
+  useFormReport("outside", { dirty: seeded && changed, error });
+
+  async function handleSave() {
+    setError(null);
+    setHostError(null);
+    setSaving(true);
+    try {
+      await postJson("/api/settings/system", { outsideCheckHost: host });
+      await mutate();
+      setSeeded(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400) setHostError(e.message); // the route's one fixed sentence
+      else setError(`Couldn't save${e instanceof Error && e.message ? `: ${plainReason(e.message)}` : "."}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Field
+        label="Public address"
+        hint={`The name people open from outside the house. The box checks it through public DNS and Cloudflare every 30 s. Leave it blank to turn the check off.${envOnly ? " Set by OUTSIDE_CHECK_HOST on the server." : ""}`}
+        error={hostError}
+      >
+        <Input placeholder="status.example.com" value={host} onChange={(e) => { setHost(e.target.value); setHostError(null); }} />
+      </Field>
+      <div className="flex items-center justify-end gap-2 flex-wrap pt-1">
+        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+        <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
+          <Save size={13} /> Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const secretConfigured = data?.system.oidcClientSecretConfigured ?? false;
   const [issuer, setIssuer] = useState("");
@@ -577,6 +635,9 @@ export function AccessBody({ data, mutate }: { data: Data; mutate: Mutate }) {
       </Sub>
       <Sub title="Orchestra" badge={data?.meta.orchestraConfigured ? <Badge variant="ok">configured</Badge> : <Badge variant="neutral">not configured</Badge>}>
         <OrchestraSettingsCard data={data} mutate={mutate} />
+      </Sub>
+      <Sub title="Outside check" badge={data?.meta.outsideCheckConfigured || data?.config.system?.outsideCheckHost ? <Badge variant="ok">on</Badge> : <Badge variant="neutral">off</Badge>}>
+        <OutsideCheckCard data={data} mutate={mutate} />
       </Sub>
       <Sub title="System access">
         <SystemAccessPanel data={data} />
