@@ -183,9 +183,9 @@ export function deriveChanges(
     g.at = Math.max(g.at, at);
     groups.set(key, g);
   };
-  const addStop = (name: string, at: number, stops: number, code: number | null, liveOnly: boolean) =>
+  const addStop = (name: string, at: number, stops: number, code: number | null) =>
     events.push({
-      id: liveOnly ? `change:stopped:${name}:${at}` : `change:log:stop:${name}:${at}`,
+      id: `change:stopped:${name}:${at}`,
       kind: "routine",
       at: new Date(at).toISOString(),
       subjects: [`container:${name}`],
@@ -207,15 +207,15 @@ export function deriveChanges(
     }
     if (t && t.stops > 0) {
       const unlogged = liveStop !== null && liveStop > t.lastStopAt;
-      addStop(c.name, Math.max(t.lastStopAt, liveStop ?? 0), t.stops + (unlogged ? 1 : 0), unlogged ? c.exitCode : t.lastCode, false);
+      addStop(c.name, Math.max(t.lastStopAt, liveStop ?? 0), t.stops + (unlogged ? 1 : 0), unlogged ? c.exitCode : t.lastCode);
     } else if (liveStop !== null) {
-      addStop(c.name, liveStop, 1, c.exitCode, true);
+      addStop(c.name, liveStop, 1, c.exitCode);
     }
   }
   for (const [name, t] of logged) {
     if (liveNames.has(name)) continue; // a container gone from Docker keeps its logged rows
     if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself);
-    if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode, false);
+    if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode);
   }
   for (const [key, g] of groups) {
     events.push({
