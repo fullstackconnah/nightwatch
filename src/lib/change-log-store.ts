@@ -30,6 +30,8 @@ export function resetChangeLogState(): void {
 // The two outage warnings re-arm after a good tick, so a second outage is not silent.
 const WARN_TICK_FAILED = "tick failed";
 const WARN_APPEND_FAILED = "append failed; will retry next tick";
+const WARN_READ_FILE = "a day file could not be read; its events are missing from the counts";
+const WARN_READ_FAILED = "read failed";
 
 function warnOnce(reason: string, err?: unknown): void {
   const seen = (g.__changeLogWarned ??= new Set());
@@ -139,13 +141,21 @@ export async function readChangeLog(sinceMs: number, now: number): Promise<{ lin
     }
     const results = await Promise.allSettled(names.map((n) => fs.readFile(path.join(historyDir(), n), "utf8")));
     const lines: ChangeLine[] = [];
+    let rejected = false;
     for (const r of results) {
       if (r.status === "fulfilled") lines.push(...parseLines(r.value));
-      else if (!isMissing(r.reason)) warnOnce("a day file could not be read; its events are missing from the counts", r.reason);
+      else if (!isMissing(r.reason)) {
+        rejected = true;
+        warnOnce(WARN_READ_FILE, r.reason);
+      }
+    }
+    if (!rejected) {
+      g.__changeLogWarned?.delete(WARN_READ_FILE); // a clean read re-arms both, so a later outage warns again
+      g.__changeLogWarned?.delete(WARN_READ_FAILED);
     }
     return { lines, loggedFrom: Math.max(baseline.seededAt, now - RETENTION_DAYS * DAY_MS) };
   } catch (err) {
-    warnOnce("read failed", err);
+    warnOnce(WARN_READ_FAILED, err);
     return { lines: [], loggedFrom: null };
   }
 }

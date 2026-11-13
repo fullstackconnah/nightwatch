@@ -213,3 +213,20 @@ test("a good tick re-arms the append-failed warning, so a later outage warns aga
     w.restore();
   }
 });
+
+test("a clean read re-arms the unreadable-day-file warning, so a later outage warns again", async () => {
+  await seed([live("a")]);
+  const bad = file(`changes-${dateOf(NOW - DAY)}.jsonl`);
+  const w = spyWarn();
+  try {
+    fs.mkdirSync(bad); // readFile fails with EISDIR
+    await readChangeLog(NOW - 2 * DAY, NOW);
+    fs.rmdirSync(bad);
+    await readChangeLog(NOW - 2 * DAY, NOW); // clean
+    fs.mkdirSync(bad);
+    await readChangeLog(NOW - 2 * DAY, NOW);
+    assert.equal(w.calls.filter((c) => c.includes("could not be read")).length, 2);
+  } finally {
+    w.restore();
+  }
+});
