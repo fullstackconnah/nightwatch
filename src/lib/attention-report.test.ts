@@ -308,3 +308,52 @@ test("the same stop has one id derived live-only and from the log", () => {
   assert.equal(stopId(live), `change:stopped:x:${at}`);
   assert.equal(stopId(logged), stopId(live));
 });
+
+// --- H46-1: "is running again" only while the container runs ---
+const selfRestart = (name: string, at: number) => ln(name, "restart", at, { n: 1 });
+
+test("A4 a running container with one logged self-restart keeps its old row id", () => {
+  const t = SINCE + 600_000;
+  const ev = deriveChanges([ctr({ name: "run", startedAt: t })], null, SINCE, [], logTally([selfRestart("run", t)]));
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0].id, "change:run|29896510|true");
+  assert.equal(ev[0].text, "run restarted itself and is running again");
+});
+
+test("A1 a live exited container with one logged self-restart reads 'restarted itself', routine; its stop row is as before", () => {
+  const t = SINCE + 600_000;
+  const ev = deriveChanges(
+    [ctr({ name: "tx", state: "exited", startedAt: t - 1000, finishedAt: t + 1000, exitCode: 1 })],
+    null,
+    SINCE,
+    [],
+    logTally([selfRestart("tx", t)]),
+  );
+  const start = ev.find((e) => e.text.includes("restarted"))!;
+  assert.equal(start.text, "tx restarted itself");
+  assert.equal(start.kind, "routine");
+  assert.equal(ev.find((e) => e.text.includes("stopped"))!.text, "tx stopped (exit 1)");
+});
+
+test("A2 a logged-only container with one self-restart reads 'restarted itself', routine", () => {
+  const ev = deriveChanges([], null, SINCE, [], logTally([selfRestart("gone", SINCE + 5000)]));
+  assert.deepEqual(ev.map((e) => e.text), ["gone restarted itself"]);
+  assert.equal(ev[0].kind, "routine");
+});
+
+test("A3 one running and one exited self-restarted container of a project split into two rows", () => {
+  const t = SINCE + 600_000;
+  const ev = deriveChanges(
+    [ctr({ name: "up", composeProject: "app", startedAt: t }), ctr({ name: "down", composeProject: "app", state: "exited", startedAt: t })],
+    null,
+    SINCE,
+    [],
+    logTally([selfRestart("up", t), selfRestart("down", t)]),
+  );
+  const starts = ev.filter((e) => e.text.includes("restarted"));
+  assert.equal(starts.length, 2);
+  assert.equal(starts.find((e) => e.subjects[0] === "container:up")!.text, "up restarted itself and is running again");
+  assert.equal(starts.find((e) => e.subjects[0] === "container:up")!.kind, "handled");
+  assert.equal(starts.find((e) => e.subjects[0] === "container:down")!.text, "down restarted itself");
+  assert.equal(starts.find((e) => e.subjects[0] === "container:down")!.kind, "routine");
+});

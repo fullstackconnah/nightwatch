@@ -174,11 +174,12 @@ export function deriveChanges(
   logged: Map<string, Tally> = new Map(),
 ): ChangeEvent[] {
   const events: ChangeEvent[] = [];
-  const groups = new Map<string, { names: string[]; at: number; starts: number; byItself: number }>();
-  const addStart = (name: string, project: string | null, at: number, starts: number, byItself: number) => {
+  const groups = new Map<string, { names: string[]; at: number; starts: number; byItself: number; running: boolean }>();
+  const addStart = (name: string, project: string | null, at: number, starts: number, byItself: number, running: boolean) => {
     const solo = starts > 1 && byItself > 0; // the "by itself" copy is per container: never grouped
-    const key = `${solo ? name : (project ?? name)}|${Math.floor(at / 60_000)}|${byItself > 0}${starts > 1 ? `|${starts}` : ""}${solo ? `|${name}` : ""}`;
-    const g = groups.get(key) ?? { names: [], at: 0, starts, byItself };
+    const down = byItself > 0 && !running; // a self-restarted container that is not running splits off its own row
+    const key = `${solo ? name : (project ?? name)}|${Math.floor(at / 60_000)}|${byItself > 0}${starts > 1 ? `|${starts}` : ""}${solo ? `|${name}` : ""}${down ? "|down" : ""}`;
+    const g = groups.get(key) ?? { names: [], at: 0, starts, byItself, running: !down };
     g.names.push(name);
     g.at = Math.max(g.at, at);
     groups.set(key, g);
@@ -201,9 +202,9 @@ export function deriveChanges(
     if (t && t.starts > 0) {
       // A live start newer than the last logged one is not logged yet (next tick): count it too.
       const unlogged = liveStart !== null && liveStart > t.lastStartAt;
-      addStart(c.name, c.composeProject, Math.max(t.lastStartAt, liveStart ?? 0), t.starts + (unlogged ? 1 : 0), t.byItself);
+      addStart(c.name, c.composeProject, Math.max(t.lastStartAt, liveStart ?? 0), t.starts + (unlogged ? 1 : 0), t.byItself, c.state === "running");
     } else if (liveStart !== null) {
-      addStart(c.name, c.composeProject, liveStart, 1, c.restartCount > 0 ? 1 : 0);
+      addStart(c.name, c.composeProject, liveStart, 1, c.restartCount > 0 ? 1 : 0, true); // liveStart implies running
     }
     if (t && t.stops > 0) {
       const unlogged = liveStop !== null && liveStop > t.lastStopAt;
@@ -214,13 +215,13 @@ export function deriveChanges(
   }
   for (const [name, t] of logged) {
     if (liveNames.has(name)) continue; // a container gone from Docker keeps its logged rows
-    if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself);
+    if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself, false);
     if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode);
   }
   for (const [key, g] of groups) {
     events.push({
       id: `change:${key}`,
-      kind: g.byItself > 0 ? "handled" : "routine",
+      kind: g.byItself > 0 && g.running ? "handled" : "routine",
       at: new Date(g.at).toISOString(),
       subjects: g.names.map((n) => `container:${n}`),
       text: countText(list(g.names), "start", g),

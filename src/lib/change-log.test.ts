@@ -171,6 +171,7 @@ test("T15 countText rows 1-6", () => {
   assert.equal(countText("x", "start", t(1, 0)), "x started");
   assert.equal(countText("x", "start", t(4, 0)), "x restarted 4 times");
   assert.equal(countText("x", "start", t(1, 1)), "x restarted itself and is running again");
+  assert.equal(countText("x", "start", { ...t(1, 1), running: false }), "x restarted itself");
   assert.equal(countText("x", "start", t(4, 4)), "x restarted itself 4 times");
   assert.equal(countText("x", "start", t(4, 3)), "x restarted 4 times, 3 by itself");
   assert.equal(countText("x", "stop", { stops: 1, lastCode: 137 }), "x stopped (exit 137)");
