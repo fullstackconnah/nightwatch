@@ -55,7 +55,7 @@ test("settings/system POST keeps an unknown existing field (so deskToken) and ne
 });
 
 test("no console. in the new files, the middleware or mcp auth", () => {
-  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
+  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "./now-playing.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
     assert.doesNotMatch(read(p), /console\./, p);
   }
 });
@@ -71,4 +71,9 @@ test("glance route races its weather and camera extras and reads the flag as a s
   assert.match(route, /within\(cameraAvailable\(\), EXTRA_MS, false\)/);
   assert.match(route, /loadConfig\(\)\.system\?\.deskCamera === true/);
   assert.match(route, /^const EXTRA_MS = 1500;/m);
+});
+
+test("glance route races its media extras before the attention report", () => {
+  assert.match(route, /glanceMediaExtras\(\(\) => pickNowPlaying\(getHaStates, getJellyfinNowPlaying\), getKioskDownloads, EXTRA_MS\)/);
+  assert.ok(route.indexOf("glanceMediaExtras(") < route.indexOf("getAttentionReport(null)"));
 });

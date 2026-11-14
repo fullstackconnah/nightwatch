@@ -4,6 +4,8 @@ import type { AttentionHit, AttentionReport } from "./attention-report.ts";
 import { answerFor, type Tone } from "./home.ts";
 import type { KioskVitalsData } from "./kiosk-vitals-view.ts";
 import type { WeatherResponse } from "./weather.ts";
+import type { KioskDownloadsResult } from "./types/downloads.ts";
+import type { NowPlayingSnapshot } from "./types/nowplaying.ts";
 
 export interface GlanceItem {
   id: string;
@@ -33,10 +35,31 @@ export interface GlanceForecastDay {
   lowC: number | null;
   rainPct: number | null;
 }
+/** The one session the kiosk pill shows. Built key by key: no source, status, entity id or picture leaves the box. */
+export interface GlanceNowPlaying {
+  title: string;
+  subtitle?: string;
+  appName?: string;
+  state: "playing" | "paused";
+  progress01?: number;
+}
+export interface GlanceDownload {
+  name: string;
+  progress: number;
+  speedBps: number;
+  etaS: number | null;
+}
+/** `count` is every downloading item; `items` the first 3. No hash, size or path. */
+export interface GlanceDownloads {
+  count: number;
+  items: GlanceDownload[];
+}
 export interface GlanceExtras {
   weather: GlanceWeather | null;
   forecast: GlanceForecastDay[] | null;
   camera: boolean;
+  nowPlaying?: GlanceNowPlaying | null;
+  downloads?: GlanceDownloads | null;
 }
 export interface Glance {
   v: 1;
@@ -53,6 +76,10 @@ export interface Glance {
   forecast: GlanceForecastDay[] | null;
   /** True when the desk camera is switched on AND a door camera resolves; the widget hides its block otherwise. */
   camera: boolean;
+  /** Null when nothing plays or the source is slow or down. */
+  nowPlaying: GlanceNowPlaying | null;
+  /** Null when qBittorrent is unconfigured, unreachable or slow. */
+  downloads: GlanceDownloads | null;
 }
 
 // A path stays; a plain in-page anchor ("#backup") is made absolute so the widget opens Home at it; all else is Home.
@@ -96,6 +123,8 @@ export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | n
     weather: extras.weather,
     forecast: extras.forecast,
     camera: extras.camera,
+    nowPlaying: extras.nowPlaying ?? null,
+    downloads: extras.downloads ?? null,
   };
 }
 
@@ -123,6 +152,56 @@ export function glanceForecast(w: WeatherResponse): GlanceForecastDay[] | null {
 /** The route's one weather fetch feeds both fields; null for both when it is slow, down or unconfigured. */
 export function glanceWeatherExtras(get: () => Promise<WeatherResponse>, ms: number): Promise<Pick<GlanceExtras, "weather" | "forecast">> {
   return within(get().then((w) => ({ weather: glanceWeather(w), forecast: glanceForecast(w) })), ms, { weather: null, forecast: null });
+}
+
+// Mirrors the widget's Copy.Trim: UTF-16 length, `n-1` units plus an ellipsis, never splitting a surrogate pair.
+function cap(s: string, n: number): string {
+  if (s.length <= n) return s;
+  let end = n - 1;
+  const last = s.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end--;
+  return `${s.slice(0, end)}…`;
+}
+const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/** Allowlist: title, subtitle, app name, state and progress. Idle, an empty title or an unknown state is null. */
+export function glanceNowPlaying(s: NowPlayingSnapshot): GlanceNowPlaying | null {
+  if (s.status !== "ok" || !s.title || (s.state !== "playing" && s.state !== "paused")) return null;
+  const out: GlanceNowPlaying = { title: cap(s.title, 80), state: s.state };
+  const subtitle = s.subtitle ? cap(s.subtitle, 80) : "";
+  const appName = s.appName ? cap(s.appName, 24) : "";
+  if (subtitle) out.subtitle = subtitle;
+  if (appName) out.appName = appName;
+  if (finite(s.progress01)) out.progress01 = clamp01(s.progress01);
+  return out;
+}
+
+/** Allowlist: `count` of every downloading item, then the first 3 as name, progress, speed and ETA. No hash, size or path. */
+export function glanceDownloads(r: KioskDownloadsResult): GlanceDownloads | null {
+  if (r.status !== "ok") return null;
+  return {
+    count: r.items.length,
+    items: r.items.slice(0, 3).map((d) => ({
+      name: cap(d.name, 60),
+      progress: finite(d.progress) ? clamp01(d.progress) : 0,
+      speedBps: finite(d.dlspeed) && d.dlspeed > 0 ? d.dlspeed : 0,
+      etaS: finite(d.eta) && d.eta >= 0 ? Math.round(d.eta) : null,
+    })),
+  };
+}
+
+/** Each source races its own `ms` timer; a throw (even a synchronous one), a rejection or a hang gives null for it alone. */
+export async function glanceMediaExtras(
+  np: () => Promise<NowPlayingSnapshot>,
+  dl: () => Promise<KioskDownloadsResult>,
+  ms: number,
+): Promise<{ nowPlaying: GlanceNowPlaying | null; downloads: GlanceDownloads | null }> {
+  const [nowPlaying, downloads] = await Promise.all([
+    within(Promise.resolve().then(np).then(glanceNowPlaying), ms, null),
+    within(Promise.resolve().then(dl).then(glanceDownloads), ms, null),
+  ]);
+  return { nowPlaying, downloads };
 }
 
 /** Resolves to `fallback` on a throw or when `p` takes longer than `ms`, so a slow upstream cannot slow the poll. */
