@@ -59,5 +59,5 @@ const weather = { tempC: 21.4, feelsC: 19.9, label: "Partly cloudy", highC: 25, 
 
 test("the committed golden fixture equals buildGlance of the pinned input", () => {
   const file = JSON.parse(readFileSync(new URL("../../desk/Core.Tests/fixtures/glance.v1.json", import.meta.url), "utf8"));
-  assert.deepEqual(file, JSON.parse(JSON.stringify(buildGlance(report, vitals, { weather, camera: true }))));
+  assert.deepEqual(file, JSON.parse(JSON.stringify(buildGlance(report, vitals, { weather, forecast: null, camera: true }))));
 });

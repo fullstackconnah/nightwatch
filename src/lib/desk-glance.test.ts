@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildGlance, glanceWeather, within } from "./desk-glance.ts";
+import { buildGlance, glanceForecast, glanceWeather, glanceWeatherExtras, within } from "./desk-glance.ts";
 import type { WeatherResponse } from "./weather.ts";
 import { answerFor } from "./home.ts";
 import type { AttentionHit, AttentionReport, ProbeStatus } from "./attention-report.ts";
@@ -46,8 +46,9 @@ test("orchestra hits go to lanes only, even with a bad disk hit; items keep orde
 test("exact key sets; extra fields on hits do not leak", () => {
   const leaky = { ...hit("disks", "disk:/a", { detail: "d", action: "a", since: "s" }), error: "sock", logs: "secret" } as AttentionHit;
   const g = buildGlance(report([leaky]), vit);
-  assert.deepEqual(keys(g), ["answer", "camera", "checkedAt", "items", "lanes", "probes", "tone", "v", "vitals", "weather"]);
+  assert.deepEqual(keys(g), ["answer", "camera", "checkedAt", "forecast", "items", "lanes", "probes", "tone", "v", "vitals", "weather"]);
   assert.equal(g.weather, null);
+  assert.equal(g.forecast, null);
   assert.equal(g.camera, false);
   assert.deepEqual(keys(g.items[0]), ["action", "detail", "headline", "href", "id", "severity", "since"]);
   assert.deepEqual(keys(g.probes), ["answered", "failed", "pending"]);
@@ -129,7 +130,7 @@ const wx = (over: object = {}) =>
 test("weather is an allowlist: no lat, lon, humidity, wind, place or sun", () => {
   const w = glanceWeather(wx());
   assert.deepEqual(w, { tempC: 21.4, feelsC: 19.9, label: "Clear", highC: 25, lowC: 14, rainPct: 60, icon: "clear" });
-  const text = JSON.stringify(buildGlance(report(), vit, { weather: w, camera: true }));
+  const text = JSON.stringify(buildGlance(report(), vit, { weather: w, forecast: null, camera: true }));
   for (const banned of ["lat", "lon", "humidity", "wind", "Somewhere", "sun"]) assert.equal(text.includes(banned), false, banned);
 });
 
@@ -151,5 +152,42 @@ test("the new output's keys are a strict superset of the legacy fixture's, and v
   const legacy = JSON.parse(readFileSync(new URL("../../desk/Core.Tests/fixtures/glance.v1-legacy.json", import.meta.url), "utf8"));
   const now = JSON.parse(JSON.stringify(buildGlance(report(), vit)));
   for (const k of Object.keys(legacy)) assert.ok(k in now, k);
-  assert.deepEqual(Object.keys(now).filter((k) => !(k in legacy)).sort(), ["camera", "weather"]);
+  assert.deepEqual(Object.keys(now).filter((k) => !(k in legacy)).sort(), ["camera", "forecast", "weather"]);
+});
+
+const day = (date: string, over: object = {}) => ({ date, code: "rain", label: "Rain", maxC: 25, minC: 14, rainPct: 60, sunrise: "x", sunset: "y", ...over });
+const days6 = ["2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"].map((d) => day(d));
+
+test("forecast caps at 4 days from days[1..4]", () => {
+  const f = glanceForecast(wx({ days: days6 }))!;
+  assert.equal(f.length, 4);
+  assert.deepEqual(f.map((d) => d.day), days6.slice(1, 5).map((d) => d.date));
+});
+
+test("forecast passes null highs, lows and rain through as null", () => {
+  const f = glanceForecast(wx({ days: [day("2026-01-01"), day("2026-01-02", { code: "snow", maxC: null, minC: null, rainPct: null })] }))!;
+  assert.deepEqual(f[0], { day: "2026-01-02", icon: "snow", highC: null, lowC: null, rainPct: null });
+});
+
+test("forecast is null when weather is unconfigured or unreachable, and empty with only today", () => {
+  assert.equal(glanceForecast({ status: "unconfigured", detail: "x" }), null);
+  assert.equal(glanceForecast({ status: "unreachable", detail: "x" }), null);
+  assert.deepEqual(glanceForecast(wx()), []);
+});
+
+test("forecast day has the exact key set and leaks nothing else", () => {
+  const f = glanceForecast(wx({ days: [day("2026-01-01"), day("2026-01-02", { junk: "leak-me", label: "Secret label" })] }))!;
+  assert.deepEqual(keys(f[0]), ["day", "highC", "icon", "lowC", "rainPct"]);
+  const text = JSON.stringify(f);
+  for (const banned of ["sunrise", "sunset", "leak-me", "Secret label"]) assert.equal(text.includes(banned), false, banned);
+});
+
+test("glanceWeatherExtras calls weather once and fills both fields", { timeout: 5000 }, async () => {
+  let calls = 0;
+  const r = await glanceWeatherExtras(async () => (calls++, wx({ days: days6 })), 50);
+  assert.equal(calls, 1);
+  assert.equal(r.weather?.label, "Clear");
+  assert.equal(r.forecast?.length, 4);
+  assert.deepEqual(await glanceWeatherExtras(() => new Promise<WeatherResponse>(() => {}), 50), { weather: null, forecast: null });
+  assert.deepEqual(await glanceWeatherExtras(() => Promise.reject(new Error("x")), 50), { weather: null, forecast: null });
 });
