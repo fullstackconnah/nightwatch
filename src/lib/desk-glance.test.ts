@@ -46,7 +46,9 @@ test("orchestra hits go to lanes only, even with a bad disk hit; items keep orde
 test("exact key sets; extra fields on hits do not leak", () => {
   const leaky = { ...hit("disks", "disk:/a", { detail: "d", action: "a", since: "s" }), error: "sock", logs: "secret" } as AttentionHit;
   const g = buildGlance(report([leaky]), vit);
-  assert.deepEqual(keys(g), ["answer", "camera", "checkedAt", "downloads", "forecast", "items", "lanes", "nowPlaying", "probes", "tone", "v", "vitals", "weather"]);
+  assert.deepEqual(keys(g), ["answer", "camera", "checkedAt", "containers", "downloads", "forecast", "home", "items", "lanes", "nowPlaying", "probes", "tone", "v", "vitals", "weather"]);
+  assert.equal(g.home, null);
+  assert.equal(g.containers, null);
   assert.equal(g.nowPlaying, null);
   assert.equal(g.downloads, null);
   assert.equal(g.weather, null);
@@ -154,7 +156,7 @@ test("the new output's keys are a strict superset of the legacy fixture's, and v
   const legacy = JSON.parse(readFileSync(new URL("../../desk/Core.Tests/fixtures/glance.v1-legacy.json", import.meta.url), "utf8"));
   const now = JSON.parse(JSON.stringify(buildGlance(report(), vit)));
   for (const k of Object.keys(legacy)) assert.ok(k in now, k);
-  assert.deepEqual(Object.keys(now).filter((k) => !(k in legacy)).sort(), ["camera", "downloads", "forecast", "nowPlaying", "weather"]);
+  assert.deepEqual(Object.keys(now).filter((k) => !(k in legacy)).sort(), ["camera", "containers", "downloads", "forecast", "home", "nowPlaying", "weather"]);
 });
 
 const day = (date: string, over: object = {}) => ({ date, code: "rain", label: "Rain", maxC: 25, minC: 14, rainPct: 60, sunrise: "x", sunset: "y", ...over });
