@@ -5,7 +5,7 @@ import { bearerMatches } from "./bearer.ts";
 import { deskAccess } from "./desk-auth.ts";
 
 export const FRAME_CAP = 1.5 * 1024 * 1024;
-const FRAME_TTL_MS = 5_000;
+const FRAME_TTL_MS = 1_000; // the widget's Live view polls once a second; single-flight still shares a burst
 const FETCH_TIMEOUT_MS = 10_000;
 const TYPES = new Set(["image/jpeg", "image/png"]);
 
@@ -40,7 +40,7 @@ async function readFrame(res: Response): Promise<Frame | null> {
 }
 
 /**
- * One answer per camera for 5 s, failures included, with one shared in-flight fetch. The fetch has its
+ * One answer per camera for 1 s, failures included, with one shared in-flight fetch. The fetch has its
  * own timeout and never a caller's signal, so one client going away cannot fail the others.
  */
 export function createFrameCache(upstream: UpstreamFetch, now: () => number = Date.now, timeoutMs: number = FETCH_TIMEOUT_MS) {

@@ -21,6 +21,7 @@ internal static class Snapshot
         "wrong-token-401", "desk-off-503", "server-too-new", "hover-row-1", "focus-row-1", "update-held",
         "weather-on", "weather-long", "weather-null", "weather-dim", "camera-loading", "camera-live", "camera-letterbox", "camera-stale",
         "camera-no-picture", "offline-last-frame", "camera-collapsed", "camera-folded", "camera-hidden", "camera-hover-frame", "camera-focus-header",
+        "camera-watch-waking", "camera-watch-on", "camera-watch-stale", "camera-watch-no-picture", "camera-watch-letterbox", "camera-watch-folded", "camera-watch-focus",
     };
 
     const int CameraInterval = 30; // the default I; frame ages below are multiples of it
@@ -51,13 +52,23 @@ internal static class Snapshot
     static Cam FrameCam(string state, double dpi)
     {
         Theme.EnsureLoaded(); // the CLI builds the model before it composes
-        var aspect43 = state == "camera-letterbox";
-        var age = state is "camera-stale" or "offline-last-frame" ? 2 * CameraInterval + 5 : state == "camera-no-picture" ? 301 : 10; // Snap.FrameAge
+        // Watch live states: Live on with a frame 2 s, 20 s or 61 s old (fresh, stale, no picture); camera-watch-folded is a still that a fold left behind (Live ended).
+        var live = state.StartsWith("camera-watch-") && state != "camera-watch-folded";
+        var aspect43 = state is "camera-letterbox" or "camera-watch-letterbox";
+        var age = state switch
+        {
+            "camera-stale" or "offline-last-frame" => 2 * CameraInterval + 5,
+            "camera-no-picture" => 301,
+            "camera-watch-on" or "camera-watch-letterbox" or "camera-watch-focus" => 2,
+            "camera-watch-stale" => 20,
+            "camera-watch-no-picture" => 61,
+            _ => 10, // Snap.FrameAge
+        };
         var at = At.AddSeconds(-age);
-        var s = FrameClock.Compute(At, at, CameraInterval, false, false);
-        var img = s == FrameState.NoPicture ? null : CameraFeed.Decode(aspect43 ? TestFrame(480, 360, "4:3") : TestFrame(640, 360, "16:9"), dpi / 96);
-        return new Cam(state == "camera-collapsed", state == "camera-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
-            HoverFrame: state == "camera-hover-frame", FocusHeader: state == "camera-focus-header");
+        var s = live ? FrameClock.ComputeLive(At, at, false) : FrameClock.Compute(At, at, CameraInterval, false, false);
+        var img = s == FrameState.NoPicture ? null : CameraFeed.Decode(aspect43 ? TestFrame(480, 360, "4:3") : TestFrame(640, 360, "16:9"), dpi / 96, live);
+        return new Cam(state == "camera-collapsed", state is "camera-folded" or "camera-watch-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
+            HoverFrame: state == "camera-hover-frame", FocusHeader: state == "camera-focus-header", Live: live, FocusLive: state == "camera-watch-focus");
     }
 
     public static Model ModelFor(string state, Glance g, double dpi = 96)
@@ -80,8 +91,11 @@ internal static class Snapshot
         Cam? cam = state switch
         {
             "camera-loading" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null),
+            "camera-watch-waking" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null, Live: true),
             "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
-                or "camera-folded" or "camera-hover-frame" or "camera-focus-header" => FrameCam(state, dpi),
+                or "camera-folded" or "camera-hover-frame" or "camera-focus-header"
+                or "camera-watch-on" or "camera-watch-stale" or "camera-watch-no-picture" or "camera-watch-letterbox"
+                or "camera-watch-folded" or "camera-watch-focus" => FrameCam(state, dpi),
             _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
         };
         return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam);

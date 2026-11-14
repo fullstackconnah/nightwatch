@@ -104,6 +104,13 @@ public static class Copy
 
     public static string CameraLastFrame(DateTime? t) => t is { } x ? $"Last frame at {AgeClock(x)}" : "No frame from the camera yet";
 
+    // Watch live: the second header button. The automation name is fixed; the toggle state says on or off.
+    public const string CameraWatchLive = "Watch live";
+    public const string CameraLiveOn = "Live";
+    public const string CameraLiveName = "Watch the front door live";
+    public const string CameraLiveFrameTip = "Open the kiosk for the full stream";
+    public static string CameraLiveTip(bool on) => on ? "Stop the live view" : "Watch the front door, updated every second";
+
     public static string CameraHeaderTip(bool collapsed, bool folded) =>
         folded ? "There is no room for the picture on this screen right now. It comes back when there is." : collapsed ? "Show the camera" : "Hide the camera";
 

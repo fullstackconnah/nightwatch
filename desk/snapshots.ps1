@@ -1,4 +1,4 @@
-# Renders the 35 widget states at 96 and 144 dpi plus the tray sheet (71 PNGs) offscreen.
+# Renders the 42 widget states at 96 and 144 dpi plus the tray sheet (85 PNGs) offscreen.
 # Usage: powershell -File desk\snapshots.ps1 <outdir> [-NoBuild]
 param([Parameter(Mandatory)][string]$OutDir, [switch]$NoBuild)
 $ErrorActionPreference = 'Stop'
@@ -16,13 +16,16 @@ $fixture = @{
   'weather-on' = 'healthy-weather'; 'weather-dim' = 'healthy-weather'; 'weather-long' = 'weather-long'; 'weather-null' = 'healthy'
   'camera-folded' = 'camera-3-items'
   'camera-loading' = 'camera'; 'camera-live' = 'camera'; 'camera-letterbox' = 'camera'; 'camera-stale' = 'camera'; 'camera-no-picture' = 'camera'
+  'camera-watch-waking' = 'camera'; 'camera-watch-on' = 'camera'; 'camera-watch-stale' = 'camera'; 'camera-watch-no-picture' = 'camera'; 'camera-watch-letterbox' = 'camera'
+  'camera-watch-focus' = 'camera'; 'camera-watch-folded' = 'camera-3-items'
   'offline-last-frame' = 'camera'; 'camera-collapsed' = 'camera'; 'camera-hidden' = 'camera'; 'camera-hover-frame' = 'camera'; 'camera-focus-header' = 'camera'
 }
 $states = 'healthy','first-launch','pending','one-lane','lanes-and-items','overflow','long-copy','vitals-null','stale',
   'offline-with-last-known','offline-never-answered','config-missing','config-invalid-json','token-missing',
   'wrong-token-401','desk-off-503','server-too-new','hover-row-1','focus-row-1','update-held',
   'weather-on','weather-long','weather-null','weather-dim','camera-loading','camera-live','camera-letterbox','camera-stale',
-  'camera-no-picture','offline-last-frame','camera-collapsed','camera-folded','camera-hidden','camera-hover-frame','camera-focus-header'
+  'camera-no-picture','offline-last-frame','camera-collapsed','camera-folded','camera-hidden','camera-hover-frame','camera-focus-header',
+  'camera-watch-waking','camera-watch-on','camera-watch-stale','camera-watch-no-picture','camera-watch-letterbox','camera-watch-folded','camera-watch-focus'
 
 function Snap($fixtureFile, $state, $out, $dpi) {
   # Start-Process -Wait: a WinExe is not waited on by the call operator

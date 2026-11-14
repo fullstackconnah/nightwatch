@@ -21,7 +21,7 @@ internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool 
 internal sealed record Strip(WeatherNow Weather, bool Dim);
 
 /// <summary>The camera block; null on the model means hidden. WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold).</summary>
-internal sealed record Cam(bool Collapsed, double WorkHeight, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false);
+internal sealed record Cam(bool Collapsed, double WorkHeight, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false, bool Live = false, bool FocusLive = false);
 
 /// <summary>The camera header is a button that also reports ExpandCollapse to screen readers.</summary>
 internal sealed class CameraHeader : Button
@@ -37,6 +37,21 @@ internal sealed class CameraHeader : Button
             h.Expanded ? System.Windows.Automation.ExpandCollapseState.Expanded : System.Windows.Automation.ExpandCollapseState.Collapsed;
         public void Expand() { if (!h.Expanded) h.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
         public void Collapse() { if (h.Expanded) h.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
+    }
+}
+
+/// <summary>The Watch live button: a button that reports Toggle (on or off) to screen readers.</summary>
+internal sealed class LiveButton : Button
+{
+    public bool On { get; set; }
+    protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new Peer(this);
+
+    sealed class Peer(LiveButton b) : System.Windows.Automation.Peers.ButtonAutomationPeer(b), System.Windows.Automation.Provider.IToggleProvider
+    {
+        public override object? GetPattern(System.Windows.Automation.Peers.PatternInterface p) =>
+            p == System.Windows.Automation.Peers.PatternInterface.Toggle ? this : base.GetPattern(p);
+        public System.Windows.Automation.ToggleState ToggleState => b.On ? System.Windows.Automation.ToggleState.On : System.Windows.Automation.ToggleState.Off;
+        public void Toggle() => b.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
     }
 }
 
@@ -65,17 +80,24 @@ internal sealed class DeskView : Border
     readonly Button camFrame = new();
     readonly Image frameImage = new();
     // Built in BuildCamera: they read tokens, which load in the constructor.
-    TextBlock camAge = null!, frameMsg1 = null!, frameMsg2 = null!;
+    TextBlock camAge = null!, frameMsg1 = null!, frameMsg2 = null!, camLiveText = null!;
     FrameworkElement camChev = null!;
+    readonly LiveButton camLive = new();
+    Ellipse camDot = null!;
+    Grid camContent = null!;
+    bool frameIsLive;
 
     /// <summary>Called with a relative href ("/..."); the host prefixes the base address.</summary>
     public Action<string>? Open;
     /// <summary>The camera header was clicked; the host flips and saves the collapsed flag.</summary>
     public Action? CameraToggled;
+    /// <summary>The Watch live button was clicked; the host starts or ends Live.</summary>
+    public Action? CameraLiveToggled;
     /// <summary>True while the camera block is showing only its header because the screen is too short (a view state, never saved).</summary>
     public bool CameraFolded { get; private set; }
 
     public Button CameraHeaderButton => camHeader;
+    public Button CameraLiveButton => camLive;
     public Button CameraFrameButton => camFrame;
 
     public DeskView(TimeZoneInfo tz)
@@ -206,7 +228,7 @@ internal sealed class DeskView : Border
         held.Visibility = m.UpdateHeld ? Visibility.Visible : Visibility.Hidden;
 
         RenderWeather(m.Weather);
-        CameraFolded = m.Camera is { Collapsed: false } c && FitFolds(c.WorkHeight);
+        CameraFolded = m.Camera is { Collapsed: false } c && FitFolds(c.WorkHeight, c.Live);
         FillCamera(m.Camera, m.Latest is View.Stale or View.Offline);
     }
 
@@ -264,7 +286,10 @@ internal sealed class DeskView : Border
         title.VerticalAlignment = VerticalAlignment.Center;
         var right = new StackPanel { Orientation = Orientation.Horizontal, Children = { camAge, camChev } };
         Grid.SetColumn(right, 1);
-        var head = new Grid { Margin = new Thickness(side, 0, side, 0) };
+        AutomationProperties.SetAutomationId(camAge, "camera-meta");
+        AutomationProperties.SetAutomationId(camChev, "camera-chevron");
+        // The live button sits to the right of the toggle, so the toggle's right edge is sp-base from the chevron, not the panel side.
+        var head = new Grid { Margin = new Thickness(side, 0, Theme.D("sp-base"), 0) };
         head.ColumnDefinitions.Add(new ColumnDefinition());
         head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         head.Children.Add(title);
@@ -276,6 +301,27 @@ internal sealed class DeskView : Border
         AutomationProperties.SetName(camHeader, Copy.CameraHeaderName);
         camHeader.Click += (_, _) => CameraToggled?.Invoke();
 
+        // Watch live: its own button, never nested in the toggle. Off: "Watch live" (ink-dim). On: an accent dot and "Live" (ink).
+        camDot = new Ellipse { Width = Theme.D("dot"), Height = Theme.D("dot"), Fill = Theme.B("accent"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, Theme.D("sp-xs"), 0), Visibility = Visibility.Collapsed };
+        camLiveText = Theme.Text(Copy.CameraWatchLive, "fs-note", "lh-note", "ink-dim");
+        camLiveText.VerticalAlignment = VerticalAlignment.Center;
+        camLiveText.TextTrimming = TextTrimming.CharacterEllipsis;
+        var liveContent = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Theme.D("sp-base"), 0, Theme.D("sp-base"), 0), Children = { camDot, camLiveText } };
+        camLive.Style = (Style)Application.Current.Resources["RowButton"];
+        camLive.Height = Theme.D("more-height");
+        camLive.Content = liveContent;
+        camLive.ToolTip = Copy.CameraLiveTip(false);
+        AutomationProperties.SetAutomationId(camLive, "camera-live-button");
+        AutomationProperties.SetName(camLive, Copy.CameraLiveName);
+        camLive.Click += (_, _) => CameraLiveToggled?.Invoke();
+        Grid.SetColumn(camLive, 1);
+        var camRow = new Grid();
+        camRow.ColumnDefinitions.Add(new ColumnDefinition());
+        camRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        camRow.Children.Add(camHeader);
+        camRow.Children.Add(camLive);
+        AutomationProperties.SetAutomationId(camBox, "camera-block");
+
         var w = Theme.D("frame-w"); var h = Theme.D("frame-h");
         frameImage.Stretch = Stretch.Uniform;
         RenderOptions.SetBitmapScalingMode(frameImage, BitmapScalingMode.HighQuality);
@@ -285,7 +331,7 @@ internal sealed class DeskView : Border
         frameMsg2.TextAlignment = TextAlignment.Center;
         frameMsg2.Margin = new Thickness(0, Theme.D("sp-xs"), 0, 0);
         var msg = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Children = { frameMsg1, frameMsg2 } };
-        var content = new Grid
+        var content = camContent = new Grid
         {
             Width = w, Height = h, Background = Theme.B("bg"), Children = { frameImage, msg },
             Clip = new RectangleGeometry(new Rect(0, 0, w, h), Theme.D("r-md"), Theme.D("r-md")),
@@ -300,23 +346,41 @@ internal sealed class DeskView : Border
         camFrame.Click += (_, _) => Open?.Invoke("/kiosk?door=1");
 
         camBox.Children.Add(Hairline());
-        camBox.Children.Add(camHeader);
+        camBox.Children.Add(camRow);
         camBox.Children.Add(camFrame);
     }
 
-    static double OpenCameraHeight => Theme.D("hairline") + Theme.D("more-height") + Theme.D("frame-h") + Theme.D("sp-md");
+    /// <summary>The open block: the still (207) or Live, full bleed with no bottom margin (212).</summary>
+    static double OpenCameraHeight(bool live) => live
+        ? Theme.D("hairline") + Theme.D("more-height") + Theme.D("frame-live-h")
+        : Theme.D("hairline") + Theme.D("more-height") + Theme.D("frame-h") + Theme.D("sp-md");
 
-    /// <summary>True when the window with the camera open would be taller than the work area less sp-lg (SHAPE 1, fit-fold). Measured without the block, so it never depends on the block's own state.</summary>
-    bool FitFolds(double workHeight)
+    /// <summary>The still frame (288 x 162, rounded, inset by the panel side) or the Live frame (318 x 179, full bleed, square). The picture and the line over it are sized together.</summary>
+    void SizeFrame(bool live)
     {
-        var key = $"{bodyKey}|{weatherKey}|{vitalsBox.Visibility}|{workHeight}";
+        if (live == frameIsLive) return;
+        frameIsLive = live;
+        var w = Theme.D(live ? "frame-live-w" : "frame-w"); var h = Theme.D(live ? "frame-live-h" : "frame-h");
+        var side = Theme.D("sp-lg") - Theme.D("hairline");
+        camContent.Width = w; camContent.Height = h;
+        camContent.Clip = live ? null : new RectangleGeometry(new Rect(0, 0, w, h), Theme.D("r-md"), Theme.D("r-md"));
+        camFrame.Style = (Style)Application.Current.Resources[live ? "FrameButtonLive" : "FrameButton"];
+        camFrame.Width = w; camFrame.Height = h;
+        camFrame.Margin = live ? new Thickness(0) : new Thickness(side, 0, side, Theme.D("sp-md"));
+        camFrame.ToolTip = live ? Copy.CameraLiveFrameTip : Copy.CameraFrameTip;
+    }
+
+    /// <summary>True when the window with the camera open (the still, or Live) would be taller than the work area less sp-lg (SHAPE 1, fit-fold). Measured without the block, so it never depends on the block's own state.</summary>
+    bool FitFolds(double workHeight, bool live)
+    {
+        var key = $"{bodyKey}|{weatherKey}|{vitalsBox.Visibility}|{workHeight}|{live}";
         if (key == foldKey) return foldValue;
         foldKey = key;
         camBox.Visibility = Visibility.Collapsed;
         Measure(new Size(Width, double.PositiveInfinity));
         var h = DesiredSize.Height;
         Stale(this); // the probe left every cached size short of the block; the next layout pass measures it all again
-        return foldValue = h + OpenCameraHeight > workHeight - Theme.D("sp-lg");
+        return foldValue = h + OpenCameraHeight(live) > workHeight - Theme.D("sp-lg");
     }
 
     static void Stale(DependencyObject o)
@@ -340,13 +404,27 @@ internal sealed class DeskView : Border
         camChev.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
         Snap.SetForceFocus(camHeader, c.FocusHeader);
 
+        var live = open && c.Live;
+        camLive.On = live;
+        camLive.IsEnabled = !folded;
+        camLive.Cursor = folded ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        camLive.ToolTip = Copy.CameraLiveTip(live);
+        camDot.Visibility = live ? Visibility.Visible : Visibility.Collapsed;
+        camLiveText.Text = live ? Copy.CameraLiveOn : Copy.CameraWatchLive;
+        camLiveText.Foreground = Theme.B(folded ? "ink-faint" : live ? "ink" : "ink-dim");
+        Snap.SetForceFocus(camLive, c.FocusLive);
+        SizeFrame(live);
+
         var shown = open && c.State is FrameState.Live or FrameState.Stale && c.FrameAt is not null;
         var at = c.FrameAt is { } t ? TimeZoneInfo.ConvertTime(t, tz).DateTime : (DateTime?)null;
-        camAge.Text = folded ? Copy.CameraFolded : open && shown ? Copy.FrameAge(at!.Value) : "";
+        // Live and fresh: the dot already says so, so the meta is empty; stale: the age, as in the still.
+        camAge.Text = folded ? Copy.CameraFolded : open && shown && !(live && c.State == FrameState.Live) ? Copy.FrameAge(at!.Value) : "";
         camAge.FontFamily = Theme.F(folded ? "font-sans" : "font-mono");
         camAge.Foreground = Theme.B(folded ? "ink-faint" : c.State == FrameState.Stale && !boxDown ? "warn" : "ink-dim"); // the box line already speaks in warn when the box is down
 
+        var frameHadFocus = camFrame.IsKeyboardFocusWithin;
         camFrame.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        if (frameHadFocus && !open && camLive.IsEnabled) camLive.Focus(); // a hidden frame must not strand the keyboard focus
         Snap.SetForceHover(camFrame, c.HoverFrame);
         AutomationProperties.SetName(camFrame, Copy.CameraFrameName(c.State, at));
         frameImage.Source = open && c.State is FrameState.Live or FrameState.Stale ? c.Image : null;

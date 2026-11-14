@@ -62,6 +62,9 @@
   <sys:Double x:Key="frame-w">288</sys:Double>
   <sys:Double x:Key="frame-h">162</sys:Double>
   <sys:Double x:Key="frame-dim">0.5</sys:Double>
+  <!-- Watch live: full bleed between the panel hairlines (win-width less 2 x hairline), 16:9 rounded -->
+  <sys:Double x:Key="frame-live-w">318</sys:Double>
+  <sys:Double x:Key="frame-live-h">179</sys:Double>
 
   <!-- ease-calm: the one fade -->
   <KeySpline x:Key="ease-calm">0.2,0.8 0.2,1</KeySpline>
@@ -130,6 +133,37 @@
           <Grid>
             <ContentPresenter />
             <Border x:Name="Edge" BorderBrush="{StaticResource line}" BorderThickness="1" CornerRadius="6" IsHitTestVisible="False" />
+            <Border x:Name="Ring" Visibility="Collapsed" BorderBrush="{StaticResource accent}" BorderThickness="1" CornerRadius="6" Margin="2" IsHitTestVisible="False" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Edge" Property="BorderBrush" Value="{StaticResource line-bright}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceHover" Value="True">
+              <Setter TargetName="Edge" Property="BorderBrush" Value="{StaticResource line-bright}" />
+            </Trigger>
+            <Trigger Property="local:Snap.ForceFocus" Value="True">
+              <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- the Live frame: full bleed, square corners; only a top line (the panel border already frames the sides, the next block has its own hairline) -->
+  <Style x:Key="FrameButtonLive" TargetType="Button">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusVisualStyle" Value="{StaticResource RowFocus}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Grid>
+            <ContentPresenter />
+            <Border x:Name="Edge" BorderBrush="{StaticResource line}" BorderThickness="0,1,0,0" IsHitTestVisible="False" />
             <Border x:Name="Ring" Visibility="Collapsed" BorderBrush="{StaticResource accent}" BorderThickness="1" CornerRadius="6" Margin="2" IsHitTestVisible="False" />
           </Grid>
           <ControlTemplate.Triggers>
