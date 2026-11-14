@@ -47,6 +47,7 @@
   <sys:Double x:Key="sp-md">12</sys:Double>
   <sys:Double x:Key="sp-lg">16</sys:Double>
   <sys:Double x:Key="sp-xl">20</sys:Double>
+  <sys:Double x:Key="spark-h">20</sys:Double><!-- the VITALS spark's height = sp-xl -->
   <sys:Double x:Key="gap-answer">10</sys:Double>
   <sys:Double x:Key="r-panel">10</sys:Double>
   <sys:Double x:Key="r-md">6</sys:Double>
