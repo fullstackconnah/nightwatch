@@ -18,7 +18,7 @@ Needs the .NET 9 SDK on Windows.
 ```powershell
 dotnet test desk/Core.Tests     # any OS, runs on CI
 dotnet test desk/App.Tests      # Windows only; runs on CI in the desk-app job
-powershell -File desk\snapshots.ps1 out   # 42 states at 100% and 150% plus the tray sheet (85 PNGs), offscreen
+powershell -File desk\snapshots.ps1 out   # 49 states at 100% and 150% plus the tray sheet (99 PNGs), offscreen
 ```
 
 ## Install
