@@ -118,7 +118,7 @@ test("a 2 MiB upstream with no content-length is 502 and nothing is cached", asy
   const r = await call();
   assert.equal(r.status, 502);
   assert.equal(bodyText(r), "");
-  // the failure is cached for 5 s but is never a success
+  // the failure is cached for 1 s but is never a success
   assert.equal((await call()).status, 502);
   assert.equal(calls, 1);
 });
@@ -155,14 +155,14 @@ test("concurrent callers share one fetch, and its signal is its own and still li
   assert.equal(calls, 1);
 });
 
-test("a frame is served from cache for 5 s, then refetched", async () => {
+test("a frame is served from cache for 1 s, then refetched (the widget's Live poll gets a new picture each second)", async () => {
   let calls = 0;
   const { call, clock } = setup(async () => (calls++, jpeg(10)));
   await call();
-  clock.advance(4_000);
+  clock.advance(900);
   await call();
   assert.equal(calls, 1);
-  clock.advance(1_500);
+  clock.advance(200); // 1.1 s after the fetch
   await call();
   assert.equal(calls, 2);
 });
