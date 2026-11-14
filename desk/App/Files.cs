@@ -15,8 +15,14 @@ internal static class DeskFiles
     public static readonly string State = Path.Combine(Dir, "state.json");
 }
 
-internal sealed record WinState(double Left, double Top, string Anchor, bool AlwaysOnTop, Box? WorkArea, bool CameraCollapsed = false)
+internal sealed record WinState(double Left, double Top, string Anchor, bool AlwaysOnTop, Box? WorkArea, bool CameraCollapsed = false, string[]? Closed = null)
 {
+    public bool IsClosed(string id) => Closed?.Contains(id) == true;
+
+    /// <summary>Unknown ids stay (a newer widget's section survives a round trip) and are never acted on.</summary>
+    public WinState WithClosed(string id, bool closed) =>
+        this with { Closed = (Closed ?? []).Where(c => c != id).Concat(closed ? [id] : []).ToArray() };
+
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     public static WinState? Load(string path)
