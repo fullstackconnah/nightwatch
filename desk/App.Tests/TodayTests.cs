@@ -107,7 +107,7 @@ public class TodayTests
         Assert.DoesNotContain(typeof(WinState).GetProperties(), p => p.Name.Contains("Fold"));
         var calls = new List<string>();
         var m = Snapshot.ModelFor("today-folded", Fix.Load("camera-3-items"));
-        var c = Sta.Run(() => { var v = new DeskView(TimeZoneInfo.Utc) { SectionToggled = calls.Add }; v.Render(m with { Camera = m.Camera! with { WorkHeight = Snapshot.FoldedWorkHeight } }); return v; });
+        var c = Sta.Run(() => { var v = new DeskView(TimeZoneInfo.Utc) { SectionToggled = calls.Add }; v.Render(m with { WorkHeight = Snapshot.FoldedWorkHeight }); return v; });
         Sta.Run(() => { Assert.True(c.TodayFolded); Assert.False(((Button)Ids(c, "today-header").Single()).IsEnabled); });
         Assert.Empty(calls);
     }
@@ -277,7 +277,7 @@ public class TodayTests
     public void Today_folds_when_the_camera_is_collapsed_on_a_short_work_area()
     {
         var m = Snapshot.ModelFor("today-folded", Fix.Load("camera-3-items"));
-        var v = Sta.Run(() => { var d = new DeskView(TimeZoneInfo.Utc); d.Render(m with { Camera = m.Camera! with { Collapsed = true, WorkHeight = Snapshot.FoldedWorkHeight } }); return d; });
+        var v = Sta.Run(() => { var d = new DeskView(TimeZoneInfo.Utc); d.Render(m with { Camera = m.Camera! with { Collapsed = true }, WorkHeight = Snapshot.FoldedWorkHeight }); return d; });
         Sta.Run(() => { Assert.True(v.TodayFolded); Assert.True(v.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg")); });
     }
 

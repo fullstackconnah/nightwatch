@@ -23,7 +23,7 @@ public class CameraTests
     {
         var g = Fix.Load(fixture);
         var m = Snapshot.ModelFor(frame, g, dpi);
-        m = m with { Camera = m.Camera! with { Collapsed = collapsed, WorkHeight = work } };
+        m = m with { Camera = m.Camera! with { Collapsed = collapsed }, WorkHeight = work };
         return Sta.Run(() => Snapshot.Compose(m, dpi));
     }
 
@@ -199,7 +199,7 @@ public class CameraTests
 
         var one = Fix.Load("one-lane") with { Weather = Fix.Load("camera").Weather, Camera = true };
         var m = Snapshot.ModelFor("camera-live", one) with { };
-        m = m with { Camera = m.Camera! with { WorkHeight = Work } };
+        m = m with { WorkHeight = Work };
         var c1 = Sta.Run(() => Snapshot.Compose(m, 96));
         Sta.Run(() => Assert.True(c1.View.CameraFolded));
         Sta.Run(() => Assert.False(c1.View.TodayFolded));

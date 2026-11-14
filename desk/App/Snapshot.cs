@@ -69,7 +69,7 @@ internal static class Snapshot
         var at = At.AddSeconds(-age);
         var s = live ? FrameClock.ComputeLive(At, at, false) : FrameClock.Compute(At, at, CameraInterval, false, false);
         var img = s == FrameState.NoPicture ? null : CameraFeed.Decode(aspect43 ? TestFrame(480, 360, "4:3") : TestFrame(640, 360, "16:9"), dpi / 96, live);
-        return new Cam(state == "camera-collapsed", state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state == "today-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
+        return new Cam(state == "camera-collapsed", s, img, at,
             HoverFrame: state == "camera-hover-frame", FocusHeader: state == "camera-focus-header", Live: live, FocusLive: state == "camera-watch-focus");
     }
 
@@ -92,15 +92,16 @@ internal static class Snapshot
         var strip = g.Weather is { } w ? new Strip(w, v is View.Stale or View.Offline, g.Forecast) : null; // fixtures without weather draw no strip
         Cam? cam = state switch
         {
-            "camera-loading" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null),
-            "camera-watch-waking" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null, Live: true),
+            "camera-loading" => new Cam(false, FrameState.Loading, null, null),
+            "camera-watch-waking" => new Cam(false, FrameState.Loading, null, null, Live: true),
             "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
                 or "camera-folded" or "camera-hover-frame" or "camera-focus-header"
                 or "camera-watch-on" or "camera-watch-stale" or "camera-watch-no-picture" or "camera-watch-letterbox"
                 or "camera-watch-folded" or "camera-watch-focus" or "today-folded" => FrameCam(state, dpi),
             _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
         };
-        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, state == "today-closed" ? ["today"] : null);
+        var work = state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state == "today-folded" ? FoldedWorkHeight : double.PositiveInfinity;
+        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, state == "today-closed" ? ["today"] : null, work);
     }
 
     public sealed record Composed(Border Host, DeskView View, RenderTargetBitmap Bitmap, double Dpi);

@@ -15,14 +15,15 @@ namespace NightwatchDesk.App;
 internal enum Mark { None, Ring, Amber, Red, Off }
 
 /// <summary>What to draw: the committed body, the newest view (footer, vitals and the dim restyle read it), and the gate's flag.</summary>
-/// <remarks>Now is the clock the TODAY header shows (null: the real time), so a capture is fixed. Closed holds the section ids the user closed; an unknown id is ignored.</remarks>
-internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null);
+/// <remarks>Now is the clock the TODAY header shows (null: the real time), so a capture is fixed. Closed holds the section ids the user closed; an unknown id is ignored.
+/// WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold); every section folds against it, with or without the camera.</remarks>
+internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null, double WorkHeight = double.PositiveInfinity);
 
 /// <summary>The weather strip and the forecast under it; null on the model means TODAY shows its header only. Dim: the last values, temperature and glyph quieter.</summary>
 internal sealed record Strip(WeatherNow Weather, bool Dim, ForecastDay[]? Forecast = null);
 
-/// <summary>The camera block; null on the model means hidden. WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold).</summary>
-internal sealed record Cam(bool Collapsed, double WorkHeight, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false, bool Live = false, bool FocusLive = false);
+/// <summary>The camera block; null on the model means hidden.</summary>
+internal sealed record Cam(bool Collapsed, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false, bool Live = false, bool FocusLive = false);
 
 /// <summary>One header for every section (SHAPE "Sections"): a RowButton of more-height, the label on the left, the meta and the chevron on the right.
 /// It also reports ExpandCollapse to screen readers. Collapsible false (TODAY with no weather): a plain Text element, no button, no tab stop, same height.</summary>
@@ -116,7 +117,7 @@ internal sealed class DeskView : Border
     readonly TextBlock footer;
     readonly TextBlock held;
     string? bodyKey, vitalsKey, footerKey, weatherKey, todayKey, foldKey;
-    (bool Cam, bool Today) foldValue;
+    (bool Cam, bool Media, bool Today) foldValue;
     Mark? lastMark;
     HashSet<string> shown = new();
 
@@ -124,6 +125,7 @@ internal sealed class DeskView : Border
     readonly StackPanel todayBox = new();
     readonly StackPanel todayBody = new() { Visibility = Visibility.Collapsed };
     readonly StackPanel camBox = new() { Visibility = Visibility.Collapsed };
+    readonly StackPanel mediaBox = new() { Visibility = Visibility.Collapsed };
     readonly Button camFrame = new();
     readonly Image frameImage = new();
     // Built in the constructor and BuildCamera: they read tokens, which load first.
@@ -217,6 +219,7 @@ internal sealed class DeskView : Border
         stack.Children.Add(todayBox);
         BuildCamera(side);
         stack.Children.Add(camBox);
+        stack.Children.Add(mediaBox);
         stack.Children.Add(vitalsBox);
         stack.Children.Add(foot);
 
@@ -288,7 +291,7 @@ internal sealed class DeskView : Border
         var closed = m.Closed?.Contains("today") == true;
         var forecast = ForecastDay.Usable(m.Weather?.Forecast);
         var rows = m.Weather is null || closed ? 0 : forecast.Length > 0 ? 2 : 1; // strip, then forecast row
-        (CameraFolded, TodayFolded) = m.Camera is { } c ? Folds(c, rows) : (false, false);
+        (CameraFolded, _, TodayFolded) = Folds(m.WorkHeight, m.Camera, 0, rows);
         RenderToday(m.Weather, forecast, now, asOf, closed);
         FillCamera(m.Camera, m.Latest is View.Stale or View.Offline);
     }
@@ -474,31 +477,38 @@ internal sealed class DeskView : Border
         camFrame.ToolTip = live ? Copy.CameraLiveFrameTip : Copy.CameraFrameTip;
     }
 
-    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then TODAY. While Live is on the camera
-    /// goes last, so TODAY folds first and Live ends only if it still does not fit. Measured without the camera block and the TODAY body, so it never depends on their own state.
-    /// shortcut: the work height rides on Cam, so with no camera nothing folds (it is under 612 DIP then); move it to Model when MEDIA and HOME make that window tall.</summary>
-    (bool Cam, bool Today) Folds(Cam c, int todayRows)
+    /// <summary>How many times Folds measured the tree. A cached answer or an early return never counts (a clock-only render must not probe).</summary>
+    public int FoldProbes { get; private set; }
+
+    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then MEDIA, then TODAY. While Live is on the camera
+    /// goes last, so MEDIA and TODAY fold first and Live ends only if it still does not fit. Measured without the camera block and the MEDIA and TODAY bodies, so it never depends on their own state.
+    /// No work height (infinity) or nothing foldable answers all false without measuring; the key still records it so a later finite height never reuses a stale answer.</summary>
+    (bool Cam, bool Media, bool Today) Folds(double work, Cam? c, double mediaH, int todayRows)
     {
-        var key = $"{bodyKey}|{vitalsBox.Visibility}|{c.WorkHeight}|{c.Live}|{c.Collapsed}|{todayRows}";
+        var key = $"{bodyKey}|{vitalsBox.Visibility}|{work}|{c is null}|{c?.Live}|{c?.Collapsed}|{todayRows}|{mediaBox.Visibility}|{mediaH}";
         if (key == foldKey) return foldValue;
         foldKey = key;
+        if (double.IsPositiveInfinity(work) || (c is null && mediaH == 0 && todayRows == 0)) return foldValue = (false, false, false);
+        FoldProbes++;
         camBox.Visibility = Visibility.Collapsed;
         todayBody.Visibility = Visibility.Collapsed;
         Stale(this); // a laid-out tree would answer from its cache and still count the blocks just collapsed
         Measure(new Size(Width, double.PositiveInfinity));
         var baseHeight = DesiredSize.Height;
         Stale(this); // the probe left every cached size short of the blocks; the next layout pass measures it all again
-        var limit = c.WorkHeight - Theme.D("sp-lg");
+        var limit = work - Theme.D("sp-lg");
         var head = Theme.D("hairline") + Theme.D("more-height");
-        bool cam = false, today = false;
-        double Total() => baseHeight + (c.Collapsed || cam ? head : OpenCameraHeight(c.Live)) + (today ? 0 : todayRows * Theme.D("row-height"));
-        foreach (var part in c.Live ? new[] { "today", "cam" } : new[] { "cam", "today" })
+        var live = c?.Live == true;
+        bool cam = false, media = false, today = false;
+        double Total() => baseHeight + (c is null ? 0 : c.Collapsed || cam ? head : OpenCameraHeight(live)) + (media ? 0 : mediaH) + (today ? 0 : todayRows * Theme.D("row-height"));
+        foreach (var part in live ? new[] { "media", "today", "cam" } : new[] { "cam", "media", "today" })
         {
             if (Total() <= limit) break;
-            if (part == "cam" && !c.Collapsed) cam = true;
+            if (part == "cam" && c is { Collapsed: false }) cam = true;
+            else if (part == "media" && mediaH > 0) media = true;
             else if (part == "today" && todayRows > 0) today = true;
         }
-        return foldValue = (cam, today);
+        return foldValue = (cam, media, today);
     }
 
     static void Stale(DependencyObject o)

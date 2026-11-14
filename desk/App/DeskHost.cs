@@ -180,12 +180,12 @@ internal sealed class DeskHost
             shownWeather = weatherVis.Visible && !err;
             shownForecast = lastForecast;
             shownCam = camVis.Visible && !err;
-            if (shownCam) workHeight = widget.WorkHeight();
+            workHeight = widget.WorkHeight(); // every section can fold now, not only the camera; never read outside this block
         }
         var dim = latest is View.Stale or View.Offline;
         var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim, shownForecast) : null;
-        var cam = shownCam ? new Cam(collapsed, workHeight, feed.State, feed.Image, feed.FrameAt, Live: feed.Live) : null;
-        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam, Now: DateTimeOffset.Now, Closed: todayClosed ? ["today"] : null), committed || changed);
+        var cam = shownCam ? new Cam(collapsed, feed.State, feed.Image, feed.FrameAt, Live: feed.Live) : null;
+        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam, Now: DateTimeOffset.Now, Closed: todayClosed ? ["today"] : null, WorkHeight: workHeight), committed || changed);
         feed.ClientError = err;
         feed.BlockHidden = !shownCam || collapsed || view.CameraFolded;
         tray.Set(TrayState.Of(latest), Copy.Tooltip(latest, tz));
