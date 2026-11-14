@@ -144,6 +144,32 @@ public static class Copy
         return string.Join(" ", new[] { now, day }.Where(s => s.Length > 0).Select(s => s + "."));
     }
 
+    // --- TODAY (slice 2): date and clock are invariant, in the widget zone; no culture-dependent format. ---
+    public const string SectionFolded = "Hidden to fit the screen. Close another section to make room.";
+
+    /// <summary>"THU 1 JAN".</summary>
+    public static string TodayDate(DateTimeOffset t, TimeZoneInfo tz) =>
+        TimeZoneInfo.ConvertTime(t, tz).ToString("ddd d MMM", CultureInfo.InvariantCulture).ToUpperInvariant();
+
+    /// <summary>The header's automation name, "Today, Thursday 1 January, 14:05".</summary>
+    public static string TodayName(DateTimeOffset t, TimeZoneInfo tz) =>
+        $"Today, {TimeZoneInfo.ConvertTime(t, tz).ToString("dddd d MMMM", CultureInfo.InvariantCulture)}, {Clock(t, tz)}";
+
+    public static string TodayHeaderTip(bool closed, bool folded) => folded ? SectionFolded : closed ? "Show the weather" : "Hide the weather";
+
+    /// <summary>A forecast day is already a local calendar date (yyyy-MM-dd): no zone conversion. Null when it does not parse.</summary>
+    public static DateOnly? ForecastDate(string? day) =>
+        DateOnly.TryParseExact(day, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
+
+    /// <summary>"FRI", or null when the day does not parse.</summary>
+    public static string? ForecastDayName(string? day) => ForecastDate(day)?.ToString("ddd", CultureInfo.InvariantCulture).ToUpperInvariant();
+
+    /// <summary>"Friday: high 24°, low 15°, rain 60%" with null clauses dropped; null when the day does not parse.</summary>
+    public static string? ForecastTooltip(ForecastDay d) =>
+        ForecastDate(d.Day) is not { } date ? null
+        : date.ToString("dddd", CultureInfo.InvariantCulture) + (Clauses(d.HighC is { } h ? $"high {Deg(h)}" : null, d.LowC is { } l ? $"low {Deg(l)}" : null,
+            d.RainPct is { } r ? $"rain {Round(r).ToString(CultureInfo.InvariantCulture)}%" : null).ToArray() is { Length: > 0 } c ? ": " + string.Join(", ", c) : "");
+
     static IEnumerable<string> Clauses(params string?[] parts) => parts.Where(p => p is not null)!;
 
     /// <summary>The lucide icon name for a glance weather icon key; an unknown or missing key is a cloud (as weather.ts does).</summary>

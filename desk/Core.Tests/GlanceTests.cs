@@ -34,6 +34,36 @@ public class GlanceTests
     }
 
     [Fact]
+    public void Old_bodies_without_a_forecast_still_parse_with_Forecast_null()
+    {
+        Assert.Null(Golden().Forecast);
+        var legacy = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "glance.v1-legacy.json"));
+        Assert.Null(((Outcome.Ok)GlanceParser.Parse(legacy)).Glance.Forecast);
+    }
+
+    [Fact]
+    public void A_forecast_parses_and_null_highs_stay_null()
+    {
+        var json = Fixture().Replace("\"forecast\": null", "\"forecast\": [{\"day\":\"2026-01-02\",\"icon\":\"rain\",\"highC\":null,\"lowC\":15,\"rainPct\":60}]");
+        var f = Assert.Single(Assert.IsType<Outcome.Ok>(GlanceParser.Parse(json)).Glance.Forecast!);
+        Assert.Equal(new ForecastDay("2026-01-02", "rain", null, 15, 60), f);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[{}]")]
+    [InlineData("[{\"day\":5,\"highC\":\"hot\"}]")]
+    [InlineData("\"nope\"")]
+    [InlineData("{\"a\":1}")]
+    public void A_bad_forecast_never_fails_the_whole_glance(string forecast)
+    {
+        var json = Fixture().Replace("\"forecast\": null", "\"forecast\": " + forecast);
+        var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(json)).Glance;
+        Assert.Equal("bad", g.Tone);
+        Assert.Empty(ForecastDay.Usable(g.Forecast));
+    }
+
+    [Fact]
     public void Newer_version_is_TooNew_not_a_parse()
         => Assert.Equal(new Outcome.TooNew(2), GlanceParser.Parse("{\"v\":2,\"somethingNew\":[1]}"));
 
