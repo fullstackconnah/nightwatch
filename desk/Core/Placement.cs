@@ -21,15 +21,21 @@ public static class Placement
     public static Box Clamp(Box win, IReadOnlyList<Box> workAreas, Box primary, double inset)
     {
         if (workAreas.Any(w => w.Contains(win))) return win;
-        var target = workAreas.Where(w => w.Overlaps(win))
-            .OrderByDescending(w => Math.Max(0, Math.Min(w.Right, win.Right) - Math.Max(w.Left, win.Left)) * Math.Max(0, Math.Min(w.Bottom, win.Bottom) - Math.Max(w.Top, win.Top)))
-            .Select(w => (Box?)w).FirstOrDefault();
-        if (target is not { } t) return Default(primary, win.Width, win.Height, inset);
+        if (WorkAreaOf(win, workAreas) is not { } t) return Default(primary, win.Width, win.Height, inset);
         return win with
         {
             Left = Math.Max(t.Left, Math.Min(win.Left, t.Right - win.Width)),
             Top = Math.Max(t.Top, Math.Min(win.Top, t.Bottom - win.Height)),
         };
+    }
+
+    /// <summary>The work area that contains the window, else the one it overlaps most, else null.</summary>
+    public static Box? WorkAreaOf(Box win, IReadOnlyList<Box> workAreas)
+    {
+        if (workAreas.Any(w => w.Contains(win))) return workAreas.First(w => w.Contains(win));
+        return workAreas.Where(w => w.Overlaps(win))
+            .OrderByDescending(w => Math.Max(0, Math.Min(w.Right, win.Right) - Math.Max(w.Left, win.Left)) * Math.Max(0, Math.Min(w.Bottom, win.Bottom) - Math.Max(w.Top, win.Top)))
+            .Select(w => (Box?)w).FirstOrDefault();
     }
 
     /// <summary>True when the window's top sits in the upper half of its work area, so it keeps its top edge and grows down.</summary>
