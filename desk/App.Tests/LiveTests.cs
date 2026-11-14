@@ -248,7 +248,7 @@ public class LiveTests
                 var textRight = Bounds(c, lt).Right;
                 Fix.Rec($"live text right edge ({state} {dpi})", $"text {textRight:0.##}, chevron {Bounds(c, chev).Right:0.##}, hit {live.Width:0.##} x {live.Height:0.##}");
                 Assert.Equal(Bounds(c, chev).Right, textRight, dpi == 96 ? 0.5 : 0.7); // 0.5 DIP, or one device pixel (0.67) at 150% where the label width rounds up to a pixel
-                var before = 2 * Theme.D("sp-base") + Natural(lt) + (Fix.Walk<Ellipse>(c.View.CameraLiveButton).Single().Visibility == Visibility.Visible ? Theme.D("dot") + Theme.D("sp-xs") : 0);
+                var before = Theme.D("sp-base") + (Theme.D("sp-lg") - Theme.D("hairline")) + Natural(lt) + (Fix.Walk<Ellipse>(c.View.CameraLiveButton).Single().Visibility == Visibility.Visible ? Theme.D("dot") + Theme.D("sp-xs") : 0);
                 Assert.True(live.Width >= before - (dpi == 96 ? 0.01 : 0.7), $"hit width {live.Width} shrank below {before}");
                 Assert.True(live.Height >= Theme.D("more-height") - 0.01);
             });
@@ -464,7 +464,7 @@ public class LiveTests
                 if (chev.Visibility == Visibility.Visible) Assert.True(Bounds(c, chev).Right <= toggle.Right - gap + px);
                 var lt = Fix.Walk<TextBlock>(c.View.CameraLiveButton).Single();
                 Assert.True(lt.ActualWidth >= Natural(lt) - 0.5, "the live label is trimmed");
-                Assert.True(Bounds(c, lt).Left >= live.Left + 2 * gap - (Theme.D("sp-lg") - Theme.D("hairline")) - px && Bounds(c, lt).Right <= live.Right - gap + px);
+                Assert.True(Bounds(c, lt).Left >= live.Left + gap - px && Bounds(c, lt).Right <= live.Right - gap + px);
                 Fix.Rec($"N8 title/meta/live ({state} {dpi})", $"title right {titleRight:0.#}, meta left {(meta.Text.Length > 0 ? Bounds(c, meta).Left : double.NaN):0.#}, toggle right {toggle.Right:0.#}, live {live.Left:0.#}-{live.Right:0.#}");
             });
         }
