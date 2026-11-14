@@ -173,6 +173,25 @@ public class GlanceTests
         Assert.NotNull(NowPlaying.Usable(new NowPlaying("T", null, null, "paused", null)));
     }
 
+    [Theory]
+    [InlineData("[null]")]
+    [InlineData("[{\"day\":\"2026-01-02\",\"icon\":\"rain\",\"highC\":1,\"lowC\":0,\"rainPct\":1},null]")]
+    public void A_null_forecast_entry_makes_the_forecast_null_and_the_glance_still_parses(string forecast)
+    {
+        var json = Fixture().Replace("\"forecast\": null", "\"forecast\": " + forecast);
+        Assert.Null(Assert.IsType<Outcome.Ok>(GlanceParser.Parse(json)).Glance.Forecast);
+    }
+
+    [Theory]
+    [InlineData("{\"title\":\"\",\"state\":\"playing\"}")]
+    [InlineData("{\"title\":\"   \",\"state\":\"playing\"}")]
+    [InlineData("{\"state\":\"playing\"}")]
+    public void A_blank_or_missing_now_playing_title_reads_null(string nowPlaying)
+    {
+        var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(WithMedia(nowPlaying, "null"))).Glance;
+        Assert.Null(g.NowPlaying);
+    }
+
     [Fact]
     public void Forecast_reads_at_most_four_entries()
     {

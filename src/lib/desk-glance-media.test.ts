@@ -26,6 +26,14 @@ test("nowPlaying keeps only the allowlist", () => {
   for (const banned of ["source", "status", "entityId", "entity_picture", "sessionId", "media_player", "s-1"]) assert.equal(text.includes(banned), false, banned);
 });
 
+test("nowPlaying: an entity-id-shaped title is null; a title with a dot is kept; subtitle and app unchanged", () => {
+  assert.equal(glanceNowPlaying(np({ title: "media_player.spare_room" })), null);
+  assert.equal(glanceNowPlaying(np({ title: "  media_player.spare_room " })), null);
+  for (const t of ["Vol. 2", "Mr. Nobody"]) assert.equal(glanceNowPlaying(np({ title: t }))!.title, t);
+  const out = glanceNowPlaying(np({ subtitle: "Harbour Lights", appName: "Jellyfin" }))!;
+  assert.deepEqual([out.subtitle, out.appName], ["Harbour Lights", "Jellyfin"]);
+});
+
 test("nowPlaying drops empty clauses; idle and an empty title give null", () => {
   assert.deepEqual(keys(glanceNowPlaying(np({ appName: "" }))!), ["state", "title"]);
   assert.equal(glanceNowPlaying({ status: "idle" }), null);

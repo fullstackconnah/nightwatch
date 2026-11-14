@@ -206,7 +206,7 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 export function glanceNowPlaying(s: NowPlayingSnapshot): GlanceNowPlaying | null {
   if (s.status !== "ok" || !s.title || (s.state !== "playing" && s.state !== "paused")) return null;
   const title = cap(s.title, 80);
-  if (!title) return null;
+  if (!title || /^[a-z_]+\.[a-z0-9_]+$/.test(title)) return null; // HA's friendlyName falls back to the entity id: never send that as a title
   const out: GlanceNowPlaying = { title, state: s.state };
   const subtitle = s.subtitle ? cap(s.subtitle, 80) : "";
   const appName = s.appName ? cap(s.appName, 24) : "";
