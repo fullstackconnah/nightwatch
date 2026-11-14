@@ -98,7 +98,8 @@ public class LayoutTests
         Sta.Run(() =>
         {
             var dim = ((SolidColorBrush)Theme.B("ink-dim")).Color;
-            var runs = Ids(c.View, "vitals")[0] is TextBlock tb ? tb.Inlines.OfType<System.Windows.Documents.Run>().Where(r => r.Text.Trim() is not ("" or "·")).ToArray() : [];
+            // slice 5: one caption per column (vitals-cpu, -mem, -disk), two runs each
+            var runs = new[] { "vitals-cpu", "vitals-mem", "vitals-disk" }.SelectMany(id => ((TextBlock)Ids(c.View, id)[0]).Inlines.OfType<System.Windows.Documents.Run>().Where(r => r.Text.Trim() is not ("" or "·"))).ToArray();
             Assert.True(runs.Length >= 6);
             Assert.All(runs, r => Assert.Equal(dim, ((SolidColorBrush)r.Foreground).Color));
         });
@@ -141,7 +142,7 @@ public class LayoutTests
             var lab = Ids(c.View, "label")[0];
             Near("N7 label band", 26, Outer(lab), 0.1);
             Near("N8 more row", 32, Ids(c.View, "more")[0].ActualHeight);
-            Near("N9 vitals line", 42, Outer(Ids(c.View, "vitals")[0]), 0.1);
+            Near("N9 VITALS block", 87, Outer(Ids(c.View, "vitals-block")[0]), 0.1); // slice 5: hairline + more-height + the 54 body (was the 42 line)
             var foot = Ids(c.View, "footer")[0];
             Near("N10 footer", 36.8, Outer(foot), 0.5);
             var held = Fix.Walk<TextBlock>(foot).First(t => t.Text == "UPDATE HELD");
@@ -154,9 +155,9 @@ public class LayoutTests
     {
         var h = Sta.Run(() => Fix.Compose("healthy").View.ActualHeight);
         var max = Sta.Run(() => Fix.Compose("overflow").View.ActualHeight);
-        Near("N11 healthy window height", 190, h, 1); // slice 2: +33 for the TODAY header (no weather, so no body)
+        Near("N11 healthy window height", 234, h, 1); // slice 2: +33 for the TODAY header (no weather, so no body); slice 5: +44 for the VITALS block (87, was the 43 line)
         Fix.Rec("N12 max height (overflow)", max.ToString("0.##"));
-        Assert.True(max <= 584 + 33, $"max {max}"); // slice 2: +33 for the TODAY header (the overflow fixture has no weather)
+        Assert.True(max <= 584 + 33 + 44, $"max {max}"); // slice 5: +44 for the VITALS block (the same slack as before; measured 661) // slice 2: +33 for the TODAY header (the overflow fixture has no weather)
     }
 
     static readonly double[] Sizes = { 10, 11.2, 12, 14, 18 };

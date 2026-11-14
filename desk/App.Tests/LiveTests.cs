@@ -420,17 +420,27 @@ public class LiveTests
         var c = Sta.Run(() => Snapshot.Compose(live, 96));
         var without = Sta.Run(() => c.View.ActualHeight) - 212; // the window with no camera block
         // the still (207) fits with sp-lg to spare at this work height, Live (212) does not: while Live is on the camera folds last,
-        // so TODAY (56) folds first and Live fits; only when it still does not fit is Live ended (slice 2: PLAN-AMEND D10)
+        // so the other sections fold first and Live fits; only when it still does not fit is Live ended (slice 2: PLAN-AMEND D10)
+        // slice 5: VITALS (54) now folds before TODAY (56), so the story changes: VITALS folds first and TODAY stays open (158 fits 209);
+        // TODAY folds only when VITALS alone is not enough (work + 170: limit 154, 102 fits); the old "not even Live fits" case (work + 165) now fits,
+        // so it moves to work + 110 (limit 94, 102 > 94): the still folds and Live ends
         var work = without + 225;
         Sta.Run(() =>
         {
             c.View.Render(live with { WorkHeight = work });
+            Assert.True(c.View.VitalsFolded);
+            Assert.False(c.View.TodayFolded);
+            Assert.False(c.View.CameraFolded);
+            c.Host.UpdateLayout();
+            Near("N10 Live kept, VITALS folded", without + 158, c.View.ActualHeight, 0.5);
+            c.View.Render(live with { WorkHeight = without + 170 });
+            Assert.True(c.View.VitalsFolded);
             Assert.True(c.View.TodayFolded);
             Assert.False(c.View.CameraFolded);
             c.Host.UpdateLayout();
-            Near("N10 Live kept, TODAY folded", without + 156, c.View.ActualHeight, 0.5);
-            c.View.Render(live with { WorkHeight = without + 165 });
-            Assert.True(c.View.CameraFolded); // not even Live with TODAY folded fits (156 > 149): the still folds and Live ends
+            Near("N10 Live kept, VITALS and TODAY folded", without + 102, c.View.ActualHeight, 0.5);
+            c.View.Render(live with { WorkHeight = without + 110 });
+            Assert.True(c.View.CameraFolded); // not even Live with VITALS and TODAY folded fits (102 > 94): the still folds and Live ends
             var still = Snapshot.ModelFor("camera-live", g);
             c.View.Render(still with { WorkHeight = work });
             Assert.False(c.View.CameraFolded);

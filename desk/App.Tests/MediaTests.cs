@@ -41,9 +41,10 @@ public class MediaTests
         Sta.Run(() =>
         {
             Assert.True(c.View.TodayFolded);
+            Assert.True(c.View.VitalsFolded); // slice 5: 498.6 + 44 = 542.6; VITALS -54 = 488.6 is still over 448: TODAY -112 folds too
             Assert.False(c.View.CameraFolded);
             Assert.True(c.View.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg"));
-            Near("T4 no-camera fold height", 386.6, c.View.ActualHeight, 1);
+            Near("T4 no-camera fold height", 376.6, c.View.ActualHeight, 1);
         });
         var open = Sta.Run(() => Snapshot.Compose(m with { WorkHeight = double.PositiveInfinity }, 96));
         Sta.Run(() => Assert.False(open.View.TodayFolded));
@@ -74,10 +75,15 @@ public class MediaTests
             v.Render(short1 with { WorkHeight = Snapshot.FoldedWorkHeight + 100 }); // a new work height is a new key
             Assert.Equal(2, v.FoldProbes);
 
-            var nothing = new DeskView(TimeZoneInfo.Utc); // no camera, TODAY header only (no weather): nothing is foldable
-            nothing.Render(Snapshot.ModelFor("today-no-weather", Fix.Load("healthy")) with { WorkHeight = Snapshot.FoldedWorkHeight });
+            var nothing = new DeskView(TimeZoneInfo.Utc); // no camera, TODAY header only (no weather), VITALS closed (slice 5: its open body is foldable): nothing is foldable
+            nothing.Render(Snapshot.ModelFor("today-no-weather", Fix.Load("healthy")) with { Closed = ["vitals"], WorkHeight = Snapshot.FoldedWorkHeight });
             Assert.Equal(0, nothing.FoldProbes);
             Assert.False(nothing.TodayFolded);
+
+            var vitalsOnly = new DeskView(TimeZoneInfo.Utc); // VITALS open is foldable: one probe, and 233.6 fits 448 so nothing folds
+            vitalsOnly.Render(Snapshot.ModelFor("today-no-weather", Fix.Load("healthy")) with { WorkHeight = Snapshot.FoldedWorkHeight });
+            Assert.Equal(1, vitalsOnly.FoldProbes);
+            Assert.False(vitalsOnly.VitalsFolded);
         });
     }
 
@@ -245,10 +251,13 @@ public class MediaTests
             Assert.Equal("Playing · 2 downloading", h.Meta.Text);
             Assert.Equal(Ink("ink-faint"), BrushOf(h.Meta.Foreground));
             Assert.True(folded.View.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg"));
-            Near("fold height media-folded", 367.6, folded.View.ActualHeight, 1);
+            // slice 5: 705.6 - 174 = 531.6; VITALS -54 = 477.6 is over 448: MEDIA -120 = 357.6
+            Assert.True(folded.View.VitalsFolded);
+            Near("fold height media-folded", 357.6, folded.View.ActualHeight, 1);
         });
         var cameraOnly = Of(Snapshot.ModelFor("media-folded", Fix.Load("media")) with { WorkHeight = Snapshot.CameraFoldWorkHeight });
-        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.False(cameraOnly.View.MediaFolded); Assert.False(cameraOnly.View.TodayFolded); });
+        // slice 5: 531.6 is over 496, so VITALS folds with the camera (477.6); MEDIA and TODAY stay open
+        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.True(cameraOnly.View.VitalsFolded); Assert.False(cameraOnly.View.MediaFolded); Assert.False(cameraOnly.View.TodayFolded); });
     }
 
     [Fact]
@@ -261,7 +270,8 @@ public class MediaTests
             Assert.True(c.View.MediaFolded);
             Assert.True(c.View.TodayFolded);
             Assert.False(c.View.CameraFolded);
-            Near("fold height Live media", 434.6, c.View.ActualHeight, 1);
+            Assert.True(c.View.VitalsFolded); // slice 5: 710.6 - 54 = 656.6; MEDIA -120 = 536.6; TODAY -112 = 424.6
+            Near("fold height Live media", 424.6, c.View.ActualHeight, 1);
         });
     }
 

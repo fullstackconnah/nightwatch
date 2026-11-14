@@ -1,4 +1,4 @@
-# Renders the 66 widget states at 96 and 144 dpi plus the tray sheet (133 PNGs) offscreen.
+# Renders the 73 widget states at 96 and 144 dpi plus the tray sheet (147 PNGs) offscreen.
 # Usage: powershell -File desk\snapshots.ps1 <outdir> [-NoBuild]
 param([Parameter(Mandatory)][string]$OutDir, [switch]$NoBuild)
 $ErrorActionPreference = 'Stop'
@@ -24,6 +24,8 @@ $fixture = @{
   'media-downloads-only' = 'media-downloads'; 'media-more' = 'media-more'; 'media-long' = 'media-long'; 'media-hidden' = 'today'
   'home-on' = 'home'; 'home-closed' = 'home'; 'home-stale' = 'home'; 'home-folded' = 'home'; 'home-issues' = 'home-issues'
   'home-all-off' = 'home-all-off'; 'home-containers-only' = 'home-containers-only'; 'home-hidden' = 'today'
+  'vitals-sparks' = 'healthy'; 'vitals-collecting' = 'healthy'; 'vitals-flat' = 'healthy'; 'vitals-closed' = 'healthy'; 'vitals-stale' = 'healthy'
+  'everything-open' = 'everything'; 'fold-order' = 'everything'
 }
 $states = 'healthy','first-launch','pending','one-lane','lanes-and-items','overflow','long-copy','vitals-null','stale',
   'offline-with-last-known','offline-never-answered','config-missing','config-invalid-json','token-missing',
@@ -33,7 +35,8 @@ $states = 'healthy','first-launch','pending','one-lane','lanes-and-items','overf
   'camera-watch-waking','camera-watch-on','camera-watch-stale','camera-watch-no-picture','camera-watch-letterbox','camera-watch-folded','camera-watch-focus',
   'today-open','today-closed','today-no-weather','today-no-forecast','today-stale','forecast-long','today-folded',
   'media-playing','media-paused','media-downloads-only','media-more','media-long','media-hidden','media-stale','media-closed','media-folded',
-  'home-on','home-all-off','home-issues','home-containers-only','home-hidden','home-closed','home-stale','home-folded'
+  'home-on','home-all-off','home-issues','home-containers-only','home-hidden','home-closed','home-stale','home-folded',
+  'vitals-sparks','vitals-collecting','vitals-flat','vitals-closed','vitals-stale','everything-open','fold-order'
 
 function Snap($fixtureFile, $state, $out, $dpi) {
   # Start-Process -Wait: a WinExe is not waited on by the call operator

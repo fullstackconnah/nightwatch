@@ -13,6 +13,13 @@ public class VitalsCopyTests
     }
 
     [Fact]
+    public void Vitals_meta_can_drop_the_disk_clause()
+    {
+        Assert.Equal("CPU 12% · MEM 34%", Copy.VitalsMeta(new Vitals(12, 34, 71), withDisk: false));
+        Assert.Equal("Host vitals unavailable", Copy.VitalsMeta(null, withDisk: false));
+    }
+
+    [Fact]
     public void Vitals_meta_rounds_like_the_caption()
     {
         Assert.Equal("CPU 100% · MEM 0% · DISK 100%", Copy.VitalsMeta(new Vitals(99.6, 0.4, 99.5)));
