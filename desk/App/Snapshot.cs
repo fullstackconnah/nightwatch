@@ -22,10 +22,12 @@ internal static class Snapshot
         "weather-on", "weather-long", "weather-null", "weather-dim", "camera-loading", "camera-live", "camera-letterbox", "camera-stale",
         "camera-no-picture", "offline-last-frame", "camera-collapsed", "camera-folded", "camera-hidden", "camera-hover-frame", "camera-focus-header",
         "camera-watch-waking", "camera-watch-on", "camera-watch-stale", "camera-watch-no-picture", "camera-watch-letterbox", "camera-watch-folded", "camera-watch-focus",
+        "today-open", "today-closed", "today-no-weather", "today-no-forecast", "today-stale", "forecast-long", "today-folded",
     };
 
     const int CameraInterval = 30; // the default I; frame ages below are multiples of it
-    public const double FoldedWorkHeight = 464; // 768 px at 150%: 512 DIP less the 48 DIP taskbar
+    public const double FoldedWorkHeight = 464; // 768 px at 150%: 512 DIP less the 48 DIP taskbar; the camera and then TODAY fold
+    public const double CameraFoldWorkHeight = 512; // 768 px at 150% with the taskbar hidden: only the camera folds
 
     /// <summary>A generated test picture (never a real camera frame): a greyscale diagonal gradient, a grid every 1/8 of the width and the aspect in white. JPEG, in memory.</summary>
     public static byte[] TestFrame(int w, int h, string label)
@@ -67,7 +69,7 @@ internal static class Snapshot
         var at = At.AddSeconds(-age);
         var s = live ? FrameClock.ComputeLive(At, at, false) : FrameClock.Compute(At, at, CameraInterval, false, false);
         var img = s == FrameState.NoPicture ? null : CameraFeed.Decode(aspect43 ? TestFrame(480, 360, "4:3") : TestFrame(640, 360, "16:9"), dpi / 96, live);
-        return new Cam(state == "camera-collapsed", state is "camera-folded" or "camera-watch-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
+        return new Cam(state == "camera-collapsed", state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state == "today-folded" ? FoldedWorkHeight : double.PositiveInfinity, s, img, at,
             HoverFrame: state == "camera-hover-frame", FocusHeader: state == "camera-focus-header", Live: live, FocusLive: state == "camera-watch-focus");
     }
 
@@ -76,7 +78,7 @@ internal static class Snapshot
         View v = state switch
         {
             "first-launch" => new View.FirstLaunch(),
-            "stale" or "weather-dim" => new View.Stale(g, At),
+            "stale" or "weather-dim" or "today-stale" => new View.Stale(g, At),
             "offline-with-last-known" or "offline-last-frame" => new View.Offline(g, At),
             "offline-never-answered" => new View.Offline(null, null),
             "config-missing" => new View.Config(new ConfigResult.Missing()),
@@ -87,7 +89,7 @@ internal static class Snapshot
             "server-too-new" => new View.ServerTooNew(2),
             _ => new View.Live(g),
         };
-        var strip = g.Weather is { } w ? new Strip(w, v is View.Stale or View.Offline) : null; // fixtures without weather draw no strip
+        var strip = g.Weather is { } w ? new Strip(w, v is View.Stale or View.Offline, g.Forecast) : null; // fixtures without weather draw no strip
         Cam? cam = state switch
         {
             "camera-loading" => new Cam(false, double.PositiveInfinity, FrameState.Loading, null, null),
@@ -95,10 +97,10 @@ internal static class Snapshot
             "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
                 or "camera-folded" or "camera-hover-frame" or "camera-focus-header"
                 or "camera-watch-on" or "camera-watch-stale" or "camera-watch-no-picture" or "camera-watch-letterbox"
-                or "camera-watch-folded" or "camera-watch-focus" => FrameCam(state, dpi),
+                or "camera-watch-folded" or "camera-watch-focus" or "today-folded" => FrameCam(state, dpi),
             _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
         };
-        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam);
+        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, state == "today-closed" ? ["today"] : null);
     }
 
     public sealed record Composed(Border Host, DeskView View, RenderTargetBitmap Bitmap, double Dpi);

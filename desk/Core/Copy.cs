@@ -127,6 +127,9 @@ public static class Copy
 
     public static string WeatherTemp(WeatherNow w) => Deg(w.TempC);
 
+    /// <summary>"24°", or the null figure.</summary>
+    public static string Degrees(double? x) => Deg(x);
+
     public static string WeatherLabel(WeatherNow w) => w.Label ?? "";
 
     public static string WeatherLine2(WeatherNow w) => string.Join(" · ", Clauses(

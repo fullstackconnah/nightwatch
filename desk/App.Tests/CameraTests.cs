@@ -40,7 +40,8 @@ public class CameraTests
         Sta.Run(() =>
         {
             var strip = Ids(c.View, "weather").Single();
-            Near($"N21 strip block ({state})", 57, ((FrameworkElement)strip.Parent).ActualHeight);
+            // slice 2: the strip is the TODAY body, so the block is the header (hairline + more-height = 33) plus the strip
+            Near($"N21 strip block ({state})", 89, Ids(c.View, "today-block").Single().ActualHeight);
             Near($"N21 strip row ({state})", 56, strip.ActualHeight);
             var cols = ((Grid)strip).ColumnDefinitions.Select(d => Math.Round(d.ActualWidth, 2)).ToArray();
             Fix.Rec($"N22 strip columns ({state})", string.Join("/", cols));
@@ -178,30 +179,36 @@ public class CameraTests
             .Select(s => Sta.Run(() => Fix.Compose(s).View.ActualHeight)).ToArray();
         Fix.Rec("N28 heights loading/live/swap/stale/none", string.Join("/", heights.Select(h => h.ToString("0.###"))));
         Assert.All(heights, h => Assert.Equal(heights[0], h));
-        Near("N29 all clear, open", 420.6, heights[1], 1);
-        Near("N29 all clear, collapsed", 246.6, Sta.Run(() => Fix.Compose("camera-collapsed").View.ActualHeight), 1);
-        Near("N29 weather and camera hidden = N11", 156.6, Sta.Run(() => Fix.Compose("weather-null").View.ActualHeight), 1);
+        // slice 2: TODAY (89 with the strip) replaces the strip alone (57): +32 on every total
+        Near("N29 all clear, open", 452.6, heights[1], 1);
+        Near("N29 all clear, collapsed", 278.6, Sta.Run(() => Fix.Compose("camera-collapsed").View.ActualHeight), 1);
+        Near("N29 weather and camera hidden = N11", 189.6, Sta.Run(() => Fix.Compose("weather-null").View.ActualHeight), 1);
         Near("N29 camera hidden = weather-on", Sta.Run(() => Fix.Compose("weather-on").View.ActualHeight), Sta.Run(() => Fix.Compose("camera-hidden").View.ActualHeight), 0.01);
     }
 
     [Fact]
-    public void N30_fit_fold_at_a_464_work_area()
+    public void N30_fit_fold_order_camera_then_today_at_a_480_work_area()
     {
-        const double Work = 464;
+        // slice 2: the TODAY header and forecast made every window 32 taller, so the old 464 work area now folds the all-clear camera;
+        // 480 (limit 464) keeps the old story: all clear fits, one lane folds the camera, three items fold the camera and then TODAY
+        const double Work = 480;
         var clear = Open("camera", work: Work);
         Sta.Run(() => Assert.False(clear.View.CameraFolded));
-        Near("N30 all clear stays open", 420.6, clear.View.ActualHeight, 1);
+        Sta.Run(() => Assert.False(clear.View.TodayFolded));
+        Near("N30 all clear stays open", 452.6, clear.View.ActualHeight, 1);
 
         var one = Fix.Load("one-lane") with { Weather = Fix.Load("camera").Weather, Camera = true };
         var m = Snapshot.ModelFor("camera-live", one) with { };
         m = m with { Camera = m.Camera! with { WorkHeight = Work } };
         var c1 = Sta.Run(() => Snapshot.Compose(m, 96));
         Sta.Run(() => Assert.True(c1.View.CameraFolded));
-        Near("N30 one lane folds", 329.6, c1.View.ActualHeight, 1);
+        Sta.Run(() => Assert.False(c1.View.TodayFolded));
+        Near("N30 one lane folds the camera only", 361.6, c1.View.ActualHeight, 1);
 
         var three = Open("camera-3-items", work: Work);
         Sta.Run(() => Assert.True(three.View.CameraFolded));
-        Near("N30 3 items fold", 443.6, three.View.ActualHeight, 1);
+        Sta.Run(() => Assert.True(three.View.TodayFolded)); // 475.6 with the camera folded is still over 464: TODAY folds next
+        Near("N30 3 items fold the camera, then TODAY", 419.6, three.View.ActualHeight, 1);
         Assert.True(three.View.ActualHeight <= Work - 16);
 
         // a view state only: unfolds on the first render that fits, and WinState has nothing to save it in
@@ -314,8 +321,10 @@ public class CameraTests
         var open = Open("camera-3-items");
         var s = Stops(open);
         Fix.Rec("N36 tab stops", string.Join(" > ", s));
-        Assert.Equal(new[] { "camera-header", "camera-live-button", "camera-frame" }, s.TakeLast(3));
-        Assert.All(s.SkipLast(3), id => Assert.True(id is "row" or "more"));
+        // slice 2: the TODAY header (camera-3-items has weather, so it is a button) comes right before the camera's
+        Assert.Equal(new[] { "today-header", "camera-header", "camera-live-button", "camera-frame" }, s.TakeLast(4));
+        Assert.All(s.SkipLast(4), id => Assert.True(id is "row" or "more"));
+        Assert.DoesNotContain("today-header", Stops(Open("camera-3-items", work: 464))); // TODAY folds too, and a folded header is not a stop
         Assert.DoesNotContain("camera-header", Stops(Open("camera-3-items", work: 464)));
         Assert.DoesNotContain("camera-live-button", Stops(Open("camera-3-items", work: 464)));
         Assert.DoesNotContain("camera-frame", Stops(Open("camera-3-items", collapsed: true)));

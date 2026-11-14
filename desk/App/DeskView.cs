@@ -15,24 +15,70 @@ namespace NightwatchDesk.App;
 internal enum Mark { None, Ring, Amber, Red, Off }
 
 /// <summary>What to draw: the committed body, the newest view (footer, vitals and the dim restyle read it), and the gate's flag.</summary>
-internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null);
+/// <remarks>Now is the clock the TODAY header shows (null: the real time), so a capture is fixed. Closed holds the section ids the user closed; an unknown id is ignored.</remarks>
+internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null);
 
-/// <summary>The weather strip; null on the model means hidden. Dim: the last values, temperature and glyph quieter.</summary>
-internal sealed record Strip(WeatherNow Weather, bool Dim);
+/// <summary>The weather strip and the forecast under it; null on the model means TODAY shows its header only. Dim: the last values, temperature and glyph quieter.</summary>
+internal sealed record Strip(WeatherNow Weather, bool Dim, ForecastDay[]? Forecast = null);
 
 /// <summary>The camera block; null on the model means hidden. WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold).</summary>
 internal sealed record Cam(bool Collapsed, double WorkHeight, FrameState State, System.Windows.Media.ImageSource? Image, DateTimeOffset? FrameAt, bool HoverFrame = false, bool FocusHeader = false, bool Live = false, bool FocusLive = false);
 
-/// <summary>The camera header is a button that also reports ExpandCollapse to screen readers.</summary>
-internal sealed class CameraHeader : Button
+/// <summary>One header for every section (SHAPE "Sections"): a RowButton of more-height, the label on the left, the meta and the chevron on the right.
+/// It also reports ExpandCollapse to screen readers. Collapsible false (TODAY with no weather): a plain Text element, no button, no tab stop, same height.</summary>
+internal sealed class SectionHeader : Button
 {
     public bool Expanded { get; set; }
+    public TextBlock Label { get; }
+    public TextBlock Meta { get; }
+    public FrameworkElement Chevron { get; }
+
+    bool collapsible = true;
+    public bool Collapsible
+    {
+        get => collapsible;
+        set { collapsible = value; Focusable = IsTabStop = IsHitTestVisible = value; }
+    }
+
+    /// <param name="id">Gives the automation ids {id}-header, {id}-label, {id}-meta and {id}-chevron.</param>
+    /// <param name="rightMargin">The camera leaves sp-base for the Watch live button; the other sections use the panel side.</param>
+    public SectionHeader(string id, string label, double rightMargin)
+    {
+        Label = Theme.Text(label, "fs-label", "lh-label", "ink-faint", semibold: true);
+        Label.VerticalAlignment = VerticalAlignment.Center;
+        Label.Margin = new Thickness(0, 0, Theme.D("sp-base"), 0); // the label trims before it reaches the meta
+        Meta = Theme.Text("", "fs-note", "lh-note", "ink-dim", mono: true);
+        Meta.VerticalAlignment = VerticalAlignment.Center;
+        Chevron = DeskView.NewChevron();
+        Chevron.VerticalAlignment = VerticalAlignment.Center;
+        Chevron.RenderTransformOrigin = new Point(.5, .5);
+        Chevron.Margin = new Thickness(Theme.D("sp-base"), 0, 0, 0);
+        var right = new StackPanel { Orientation = Orientation.Horizontal, Children = { Meta, Chevron } };
+        Grid.SetColumn(right, 1);
+        var side = Theme.D("sp-lg") - Theme.D("hairline");
+        var grid = new Grid { Margin = new Thickness(side, 0, rightMargin, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition());
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.Children.Add(Label);
+        grid.Children.Add(right);
+        Style = (Style)Application.Current.Resources["RowButton"];
+        Height = Theme.D("more-height");
+        Content = grid;
+        AutomationProperties.SetAutomationId(this, id + "-header");
+        AutomationProperties.SetAutomationId(Label, id + "-label");
+        AutomationProperties.SetAutomationId(Meta, id + "-meta");
+        AutomationProperties.SetAutomationId(Chevron, id + "-chevron");
+    }
+
     protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() => new Peer(this);
 
-    sealed class Peer(CameraHeader h) : System.Windows.Automation.Peers.ButtonAutomationPeer(h), System.Windows.Automation.Provider.IExpandCollapseProvider
+    sealed class Peer(SectionHeader h) : System.Windows.Automation.Peers.ButtonAutomationPeer(h), System.Windows.Automation.Provider.IExpandCollapseProvider
     {
         public override object? GetPattern(System.Windows.Automation.Peers.PatternInterface p) =>
-            p == System.Windows.Automation.Peers.PatternInterface.ExpandCollapse ? this : base.GetPattern(p);
+            !h.Collapsible ? (p is System.Windows.Automation.Peers.PatternInterface.ExpandCollapse or System.Windows.Automation.Peers.PatternInterface.Invoke ? null : base.GetPattern(p))
+            : p == System.Windows.Automation.Peers.PatternInterface.ExpandCollapse ? this : base.GetPattern(p);
+        protected override System.Windows.Automation.Peers.AutomationControlType GetAutomationControlTypeCore() =>
+            h.Collapsible ? System.Windows.Automation.Peers.AutomationControlType.Button : System.Windows.Automation.Peers.AutomationControlType.Text;
         public System.Windows.Automation.ExpandCollapseState ExpandCollapseState =>
             h.Expanded ? System.Windows.Automation.ExpandCollapseState.Expanded : System.Windows.Automation.ExpandCollapseState.Collapsed;
         public void Expand() { if (!h.Expanded) h.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); }
@@ -69,19 +115,20 @@ internal sealed class DeskView : Border
     readonly TextBlock vitals;
     readonly TextBlock footer;
     readonly TextBlock held;
-    string? bodyKey, vitalsKey, footerKey, weatherKey, foldKey;
-    bool foldValue;
+    string? bodyKey, vitalsKey, footerKey, weatherKey, todayKey, foldKey;
+    (bool Cam, bool Today) foldValue;
     Mark? lastMark;
     HashSet<string> shown = new();
 
-    readonly StackPanel weatherBox = new() { Visibility = Visibility.Collapsed };
+    // TODAY: hairline, the header (always shown, the clock lives in it), then the body (the weather strip and the forecast row).
+    readonly StackPanel todayBox = new();
+    readonly StackPanel todayBody = new() { Visibility = Visibility.Collapsed };
     readonly StackPanel camBox = new() { Visibility = Visibility.Collapsed };
-    readonly CameraHeader camHeader = new();
     readonly Button camFrame = new();
     readonly Image frameImage = new();
-    // Built in BuildCamera: they read tokens, which load in the constructor.
-    TextBlock camAge = null!, frameMsg1 = null!, frameMsg2 = null!, camLiveText = null!;
-    FrameworkElement camChev = null!;
+    // Built in the constructor and BuildCamera: they read tokens, which load first.
+    SectionHeader todayHeader = null!, camHeader = null!;
+    TextBlock frameMsg1 = null!, frameMsg2 = null!, camLiveText = null!;
     readonly LiveButton camLive = new();
     Ellipse camDot = null!;
     Grid camContent = null!;
@@ -93,8 +140,12 @@ internal sealed class DeskView : Border
     public Action? CameraToggled;
     /// <summary>The Watch live button was clicked; the host starts or ends Live.</summary>
     public Action? CameraLiveToggled;
+    /// <summary>A section header was clicked (today raises "today"); the host flips and saves it. The camera keeps CameraToggled.</summary>
+    public Action<string>? SectionToggled;
     /// <summary>True while the camera block is showing only its header because the screen is too short (a view state, never saved).</summary>
     public bool CameraFolded { get; private set; }
+    /// <summary>The same for the TODAY body.</summary>
+    public bool TodayFolded { get; private set; }
 
     public Button CameraHeaderButton => camHeader;
     public Button CameraLiveButton => camLive;
@@ -157,7 +208,13 @@ internal sealed class DeskView : Border
         var stack = new StackPanel();
         stack.Children.Add(head);
         stack.Children.Add(body);
-        stack.Children.Add(weatherBox);
+        todayHeader = new SectionHeader("today", "", side);
+        todayHeader.Click += (_, _) => SectionToggled?.Invoke("today");
+        todayBox.Children.Add(Hairline());
+        todayBox.Children.Add(todayHeader);
+        todayBox.Children.Add(todayBody);
+        AutomationProperties.SetAutomationId(todayBox, "today-block");
+        stack.Children.Add(todayBox);
         BuildCamera(side);
         stack.Children.Add(camBox);
         stack.Children.Add(vitalsBox);
@@ -227,21 +284,58 @@ internal sealed class DeskView : Border
         footer.Foreground = Theme.B(m.Latest is View.Stale or View.Offline or View.WrongToken or View.DeskOff ? "warn" : "ink-dim");
         held.Visibility = m.UpdateHeld ? Visibility.Visible : Visibility.Hidden;
 
-        RenderWeather(m.Weather);
-        CameraFolded = m.Camera is { Collapsed: false } c && FitFolds(c.WorkHeight, c.Live);
+        var now = m.Now ?? DateTimeOffset.Now;
+        var closed = m.Closed?.Contains("today") == true;
+        var forecast = ForecastDay.Usable(m.Weather?.Forecast);
+        var rows = m.Weather is null || closed ? 0 : forecast.Length > 0 ? 2 : 1; // strip, then forecast row
+        (CameraFolded, TodayFolded) = m.Camera is { } c ? Folds(c, rows) : (false, false);
+        RenderToday(m.Weather, forecast, now, asOf, closed);
         FillCamera(m.Camera, m.Latest is View.Stale or View.Offline);
     }
 
-    // --- weather strip (SHAPE 2): two lines in the row shape, not interactive, not a tab stop ---
-    void RenderWeather(Strip? s)
+    // --- TODAY (SHAPE "TODAY"): the header IS the clock row; the body is the weather strip and the forecast row ---
+    void RenderToday(Strip? s, ForecastDay[] forecast, DateTimeOffset now, string? asOf, bool closed)
     {
-        var key = s?.ToString() ?? "";
-        if (key == weatherKey) return;
-        weatherKey = key;
-        weatherBox.Children.Clear();
-        weatherBox.Visibility = s is null ? Visibility.Collapsed : Visibility.Visible;
-        if (s is null) return;
+        var folded = TodayFolded;
+        var open = s is not null && !closed && !folded;
+        var hkey = $"{Copy.TodayDate(now, tz)}|{Copy.Clock(now, tz)}|{closed}|{folded}|{asOf}|{s?.Dim}|{(s is null ? "" : Copy.WeatherTemp(s.Weather))}";
+        if (hkey != todayKey)
+        {
+            todayKey = hkey;
+            todayHeader.Label.Text = Copy.TodayDate(now, tz) + (asOf is null ? "" : " · " + asOf.ToUpperInvariant());
+            AutomationProperties.SetName(todayHeader, Copy.TodayName(now, tz));
+            todayHeader.Meta.Inlines.Clear();
+            // The clock never dims; the temperature after it shows only while the body is not.
+            todayHeader.Meta.Inlines.Add(new Run(Copy.Clock(now, tz)) { FontSize = Theme.D("fs-title"), Foreground = Theme.B("ink") });
+            if (s is not null && (closed || folded))
+                todayHeader.Meta.Inlines.Add(new Run(" · " + Copy.WeatherTemp(s.Weather)) { Foreground = Theme.B(folded ? "ink-faint" : s.Dim ? "ink-dim" : "ink") });
+        }
+        todayHeader.Collapsible = s is not null;
+        todayHeader.Expanded = open;
+        todayHeader.IsEnabled = !folded;
+        todayHeader.Cursor = folded || s is null ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        todayHeader.ToolTip = s is null ? null : Copy.TodayHeaderTip(closed, folded);
+        todayHeader.Chevron.Visibility = s is null || folded ? Visibility.Collapsed : Visibility.Visible;
+        todayHeader.Chevron.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
 
+        // A changed forecast must repaint: a record prints an array as its type name, so the key joins the days.
+        var key = s is null ? "" : s + "|" + string.Join("|", forecast.Select(d => d.ToString()));
+        if (key != weatherKey)
+        {
+            weatherKey = key;
+            todayBody.Children.Clear();
+            if (s is not null)
+            {
+                todayBody.Children.Add(StripRow(s));
+                if (forecast.Length > 0) todayBody.Children.Add(ForecastRow(forecast, s.Dim));
+            }
+        }
+        todayBody.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // --- weather strip (SHAPE 2): two lines in the row shape, not interactive, not a tab stop ---
+    FrameworkElement StripRow(Strip s)
+    {
         var w = s.Weather;
         var side = Theme.D("sp-lg") - Theme.D("hairline");
         var l1 = Theme.Text("", "fs-title", "lh-title", "ink-dim");
@@ -269,35 +363,45 @@ internal sealed class DeskView : Border
         strip.ToolTip = tip;
         AutomationProperties.SetName(strip, tip);
         AutomationProperties.SetAutomationId(strip, "weather");
-        weatherBox.Children.Add(Hairline());
-        weatherBox.Children.Add(strip);
+        return strip;
+    }
+
+    /// <summary>The next days (at most 4) in columns of frame-w / 4, left-aligned; fewer days leave blank slots. Day name over glyph, high and low; the low drops when it does not fit its column.</summary>
+    FrameworkElement ForecastRow(ForecastDay[] days, bool dim)
+    {
+        var side = Theme.D("sp-lg") - Theme.D("hairline");
+        var col = Theme.D("frame-w") / 4;
+        var row = new Grid { Height = Theme.D("row-height"), Width = Theme.D("frame-w"), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(side, 0, side, 0) };
+        for (var i = 0; i < 4; i++) row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(col) });
+        for (var i = 0; i < days.Length; i++)
+        {
+            var d = days[i];
+            var name = Theme.Text(Copy.ForecastDayName(d.Day)!, "fs-label", "lh-label", "ink-faint", semibold: true);
+            var high = Theme.Text(Copy.Degrees(d.HighC), "fs-note", "lh-note", dim ? "ink-dim" : "ink", mono: true);
+            var low = Theme.Text(" " + Copy.Degrees(d.LowC), "fs-note", "lh-note", "ink-dim", mono: true);
+            var glyph = WeatherGlyph.Build(d.Icon, dim ? "ink-faint" : "ink-dim");
+            glyph.VerticalAlignment = VerticalAlignment.Center;
+            glyph.Margin = new Thickness(0, 0, Theme.D("sp-xs"), 0);
+            var line2 = new StackPanel { Orientation = Orientation.Horizontal, Children = { glyph, high, low } };
+            line2.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            if (line2.DesiredSize.Width > col) low.Visibility = Visibility.Collapsed; // shortcut: measured once when built, not on a later DPI change; a clipped low would ellipsise, never overlap
+            var cell = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Background = Brushes.Transparent, Children = { name, line2 } };
+            var tip = Copy.ForecastTooltip(d)!;
+            cell.ToolTip = tip;
+            AutomationProperties.SetName(cell, tip);
+            AutomationProperties.SetAutomationId(cell, "forecast-day");
+            Grid.SetColumn(cell, i);
+            row.Children.Add(cell);
+        }
+        AutomationProperties.SetAutomationId(row, "forecast");
+        return row;
     }
 
     // --- camera block (SHAPE 3) ---
     void BuildCamera(double side)
     {
-        camAge = Theme.Text("", "fs-note", "lh-note", "ink-dim", mono: true);
-        camAge.VerticalAlignment = VerticalAlignment.Center;
-        camChev = Chevron();
-        camChev.VerticalAlignment = VerticalAlignment.Center;
-        camChev.RenderTransformOrigin = new Point(.5, .5);
-        camChev.Margin = new Thickness(Theme.D("sp-base"), 0, 0, 0);
-        var title = Theme.Text(Copy.CameraTitle.ToUpperInvariant(), "fs-label", "lh-label", "ink-faint", semibold: true);
-        title.VerticalAlignment = VerticalAlignment.Center;
-        var right = new StackPanel { Orientation = Orientation.Horizontal, Children = { camAge, camChev } };
-        Grid.SetColumn(right, 1);
-        AutomationProperties.SetAutomationId(camAge, "camera-meta");
-        AutomationProperties.SetAutomationId(camChev, "camera-chevron");
         // The live button sits to the right of the toggle, so the toggle's right edge is sp-base from the chevron, not the panel side.
-        var head = new Grid { Margin = new Thickness(side, 0, Theme.D("sp-base"), 0) };
-        head.ColumnDefinitions.Add(new ColumnDefinition());
-        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        head.Children.Add(title);
-        head.Children.Add(right);
-        camHeader.Style = (Style)Application.Current.Resources["RowButton"];
-        camHeader.Height = Theme.D("more-height");
-        camHeader.Content = head;
-        AutomationProperties.SetAutomationId(camHeader, "camera-header");
+        camHeader = new SectionHeader("camera", Copy.CameraTitle.ToUpperInvariant(), Theme.D("sp-base"));
         AutomationProperties.SetName(camHeader, Copy.CameraHeaderName);
         camHeader.Click += (_, _) => CameraToggled?.Invoke();
 
@@ -370,17 +474,31 @@ internal sealed class DeskView : Border
         camFrame.ToolTip = live ? Copy.CameraLiveFrameTip : Copy.CameraFrameTip;
     }
 
-    /// <summary>True when the window with the camera open (the still, or Live) would be taller than the work area less sp-lg (SHAPE 1, fit-fold). Measured without the block, so it never depends on the block's own state.</summary>
-    bool FitFolds(double workHeight, bool live)
+    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then TODAY. While Live is on the camera
+    /// goes last, so TODAY folds first and Live ends only if it still does not fit. Measured without the camera block and the TODAY body, so it never depends on their own state.
+    /// shortcut: the work height rides on Cam, so with no camera nothing folds (it is under 612 DIP then); move it to Model when MEDIA and HOME make that window tall.</summary>
+    (bool Cam, bool Today) Folds(Cam c, int todayRows)
     {
-        var key = $"{bodyKey}|{weatherKey}|{vitalsBox.Visibility}|{workHeight}|{live}";
+        var key = $"{bodyKey}|{vitalsBox.Visibility}|{c.WorkHeight}|{c.Live}|{c.Collapsed}|{todayRows}";
         if (key == foldKey) return foldValue;
         foldKey = key;
         camBox.Visibility = Visibility.Collapsed;
+        todayBody.Visibility = Visibility.Collapsed;
+        Stale(this); // a laid-out tree would answer from its cache and still count the blocks just collapsed
         Measure(new Size(Width, double.PositiveInfinity));
-        var h = DesiredSize.Height;
-        Stale(this); // the probe left every cached size short of the block; the next layout pass measures it all again
-        return foldValue = h + OpenCameraHeight(live) > workHeight - Theme.D("sp-lg");
+        var baseHeight = DesiredSize.Height;
+        Stale(this); // the probe left every cached size short of the blocks; the next layout pass measures it all again
+        var limit = c.WorkHeight - Theme.D("sp-lg");
+        var head = Theme.D("hairline") + Theme.D("more-height");
+        bool cam = false, today = false;
+        double Total() => baseHeight + (c.Collapsed || cam ? head : OpenCameraHeight(c.Live)) + (today ? 0 : todayRows * Theme.D("row-height"));
+        foreach (var part in c.Live ? new[] { "today", "cam" } : new[] { "cam", "today" })
+        {
+            if (Total() <= limit) break;
+            if (part == "cam" && !c.Collapsed) cam = true;
+            else if (part == "today" && todayRows > 0) today = true;
+        }
+        return foldValue = (cam, today);
     }
 
     static void Stale(DependencyObject o)
@@ -400,8 +518,8 @@ internal sealed class DeskView : Border
         camHeader.IsEnabled = !folded;
         camHeader.Cursor = folded ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
         camHeader.ToolTip = Copy.CameraHeaderTip(c.Collapsed, folded);
-        camChev.Visibility = folded ? Visibility.Collapsed : Visibility.Visible;
-        camChev.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
+        camHeader.Chevron.Visibility = folded ? Visibility.Collapsed : Visibility.Visible;
+        camHeader.Chevron.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
         Snap.SetForceFocus(camHeader, c.FocusHeader);
 
         var live = open && c.Live;
@@ -418,6 +536,7 @@ internal sealed class DeskView : Border
         var shown = open && c.State is FrameState.Live or FrameState.Stale && c.FrameAt is not null;
         var at = c.FrameAt is { } t ? TimeZoneInfo.ConvertTime(t, tz).DateTime : (DateTime?)null;
         // Live and fresh: the dot already says so, so the meta is empty; stale: the age, as in the still.
+        var camAge = camHeader.Meta;
         camAge.Text = folded ? Copy.CameraFolded : open && shown && !(live && c.State == FrameState.Live) ? Copy.FrameAge(at!.Value) : "";
         camAge.FontFamily = Theme.F(folded ? "font-sans" : "font-mono");
         camAge.Foreground = Theme.B(folded ? "ink-faint" : c.State == FrameState.Stale && !boxDown ? "warn" : "ink-dim"); // the box line already speaks in warn when the box is down
@@ -524,7 +643,7 @@ internal sealed class DeskView : Border
         var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Children = { l1, l2 } };
         Grid.SetColumn(text, 2);
         content.Children.Add(text);
-        var chev = Chevron();
+        var chev = NewChevron();
         Grid.SetColumn(chev, 4);
         chev.VerticalAlignment = VerticalAlignment.Center;
         content.Children.Add(chev);
@@ -547,7 +666,7 @@ internal sealed class DeskView : Border
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var t = Theme.Text($"+{hidden} more", "fs-body", "lh-body", "ink-dim");
         t.VerticalAlignment = VerticalAlignment.Center;
-        var c = Chevron();
+        var c = NewChevron();
         c.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(c, 1);
         g.Children.Add(t);
@@ -603,7 +722,7 @@ internal sealed class DeskView : Border
         return h;
     }
 
-    static System.Windows.Shapes.Path Chevron() => new()
+    internal static System.Windows.Shapes.Path NewChevron() => new()
     {
         Width = Theme.D("chevron"),
         Height = Theme.D("chevron"),
