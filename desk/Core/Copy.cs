@@ -221,6 +221,63 @@ public static class Copy
         return string.Join(", ", Clauses(d.Name, $"{Percent(d).ToString(CultureInfo.InvariantCulture)}%", tail));
     }
 
+    // --- HOME (slice 4): invariant culture, no apostrophes. ---
+    public const string HomeTitle = "Home";
+
+    public static string HomeHeaderTip(bool closed, bool folded) => folded ? SectionFolded : closed ? "Show home" : "Hide home";
+
+    /// <summary>"21.5°" or "22°": half up to a tenth, a trailing .0 dropped, never "-0°". Null or not finite is the null figure.</summary>
+    public static string ClimateDeg(double? x)
+    {
+        if (x is not { } v || !double.IsFinite(v)) return NullFigure;
+        var r = Math.Floor(v * 10 + 0.5) / 10;
+        return (r == 0 ? 0 : r).ToString("0.#", CultureInfo.InvariantCulture) + "°";
+    }
+
+    static string Int(int n) => n.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>"3 of 12 on", or "All off" when none is.</summary>
+    public static string LightsValue(HomeLights l) => l.LightsOn == 0 ? "All off" : $"{Int(l.LightsOn)} of {Int(l.LightsTotal)} on";
+
+    /// <summary>"21.5° → 22°"; mode off "21.5° · off"; no target "21.5°"; no current reading the null figure.</summary>
+    public static string ClimateValue(HomeClimate c) =>
+        c.CurrentC is null ? NullFigure
+        : c.Mode == "off" ? $"{ClimateDeg(c.CurrentC)} · off"
+        : c.TargetC is null ? ClimateDeg(c.CurrentC)
+        : $"{ClimateDeg(c.CurrentC)} → {ClimateDeg(c.TargetC)}";
+
+    /// <summary>"Den heat pump: heat, now 21.5°, set 22°"; no name says Climate; a mode's underscore reads as a space; null clauses are dropped.</summary>
+    public static string ClimateTip(HomeClimate c)
+    {
+        var name = Blank(c.Name) ?? "Climate";
+        var clauses = Clauses(Blank(c.Mode)?.Replace('_', ' '), c.CurrentC is { } n ? $"now {ClimateDeg(n)}" : null, c.TargetC is { } t ? $"set {ClimateDeg(t)}" : null).ToArray();
+        return clauses.Length > 0 ? $"{name}: {string.Join(", ", clauses)}" : name;
+    }
+
+    /// <summary>"31 of 33 up".</summary>
+    public static string ContainersValue(Containers c) => $"{Int(c.Running)} of {Int(c.Total)} up";
+
+    /// <summary>The single worst issue, "1 dead", else "2 unhealthy", else "1 restarting"; null when there is none.</summary>
+    public static string? ContainersIssue(Containers c) =>
+        c.Dead > 0 ? $"{Int(c.Dead)} dead" : c.Unhealthy > 0 ? $"{Int(c.Unhealthy)} unhealthy" : c.Restarting > 0 ? $"{Int(c.Restarting)} restarting" : null;
+
+    /// <summary>"33 containers: 31 up, 1 dead, 2 unhealthy"; zero clauses are dropped and one is "1 container".</summary>
+    public static string ContainersTip(Containers c) =>
+        $"{Int(c.Total)} {(c.Total == 1 ? "container" : "containers")}: " + string.Join(", ", new (int N, string Word)[] { (c.Running, "up"), (c.Dead, "dead"), (c.Unhealthy, "unhealthy"), (c.Restarting, "restarting") }
+            .Where(p => p.N > 0).Select(p => $"{Int(p.N)} {p.Word}"));
+
+    /// <summary>The closed header's line, "3 on · 21.5° · 31 up" (worst container issue appended); parts that are hidden or null are dropped, "" when nothing is usable.</summary>
+    public static string HomeMeta(Home? home, Containers? containers)
+    {
+        var h = Home.Usable(home);
+        var c = Containers.Usable(containers);
+        return string.Join(" · ", Clauses(
+            h?.Lights is { } l ? (l.LightsOn == 0 ? "All off" : $"{Int(l.LightsOn)} on") : null,
+            h?.Climate?.CurrentC is not null ? ClimateDeg(h.Climate.CurrentC) : null,
+            c is not null ? $"{Int(c.Running)} up" : null,
+            c is not null ? ContainersIssue(c) : null));
+    }
+
     /// <summary>The lucide icon name for a glance weather icon key; an unknown or missing key is a cloud (as weather.ts does).</summary>
     public static string GlyphKey(string? icon) => icon switch
     {

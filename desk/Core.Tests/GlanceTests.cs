@@ -24,6 +24,8 @@ public class GlanceTests
         Assert.Equal(new Vitals(12, 34, 71), g.Vitals);
         Assert.Null(g.NowPlaying);
         Assert.Null(g.Downloads);
+        Assert.Null(g.Home);
+        Assert.Null(g.Containers);
     }
 
     [Fact]
@@ -196,4 +198,116 @@ public class GlanceTests
 
     [Fact]
     public void Null_input_is_Failed() => Assert.IsType<Outcome.Failed>(GlanceParser.Parse(null!));
+
+    // --- HOME (slice 4): home and containers are read apart; a bad one is null and never fails the glance. ---
+    const string GoodHome = "{\"lights\":{\"lightsOn\":3,\"lightsTotal\":12},\"climate\":{\"name\":\"Den heat pump\",\"mode\":\"heat\",\"currentC\":21.5,\"targetC\":22}}";
+    const string GoodContainers = "{\"total\":33,\"running\":31,\"restarting\":0,\"unhealthy\":0,\"dead\":0}";
+
+    static Glance WithHome(string home, string containers) =>
+        Assert.IsType<Outcome.Ok>(GlanceParser.Parse(Fixture().Replace("\"home\": null", "\"home\": " + home).Replace("\"containers\": null", "\"containers\": " + containers))).Glance;
+
+    [Fact]
+    public void Home_and_containers_are_read()
+    {
+        var g = WithHome(GoodHome, GoodContainers);
+        Assert.Equal(new Home(new HomeLights(3, 12), new HomeClimate("Den heat pump", "heat", 21.5, 22)), g.Home);
+        Assert.Equal(new Containers(33, 31, 0, 0, 0), g.Containers);
+    }
+
+    [Fact]
+    public void Absent_keys_are_null_and_the_rest_still_reads()
+    {
+        var absent = Fixture().Replace("\"home\": null,", "").Replace("\"containers\": null,", "");
+        Assert.DoesNotContain("\"home\"", absent);
+        Assert.DoesNotContain("\"containers\"", absent);
+        var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(absent)).Glance;
+        Assert.Null(g.Home);
+        Assert.Null(g.Containers);
+        Assert.Equal(2, g.Items.Length);
+    }
+
+    [Theory]
+    [InlineData("[1,2]")]
+    [InlineData("\"3 on\"")]
+    [InlineData("7")]
+    [InlineData("true")]
+    public void A_non_object_is_null_and_never_fails_the_glance(string bad)
+    {
+        var g = WithHome(bad, bad);
+        Assert.Null(g.Home);
+        Assert.Null(g.Containers);
+        Assert.Equal(2, g.Items.Length);
+        Assert.Equal(new Vitals(12, 34, 71), g.Vitals);
+    }
+
+    [Theory]
+    [InlineData("{\"lights\":{\"lightsOn\":\"3\",\"lightsTotal\":12}}")]
+    [InlineData("{\"lights\":{\"lightsOn\":3.5,\"lightsTotal\":12}}")]
+    [InlineData("{\"climate\":{\"mode\":\"heat\",\"currentC\":{\"v\":1}}}")]
+    public void A_wrongly_typed_member_makes_the_whole_home_null(string bad)
+    {
+        var g = WithHome(bad, GoodContainers);
+        Assert.Null(g.Home);
+        Assert.NotNull(g.Containers);
+    }
+
+    [Fact]
+    public void A_wrongly_typed_container_count_makes_containers_null_and_home_survives()
+    {
+        var g = WithHome(GoodHome, "{\"total\":33,\"running\":31,\"restarting\":0,\"unhealthy\":0,\"dead\":\"1\"}");
+        Assert.Null(g.Containers);
+        Assert.NotNull(g.Home);
+    }
+
+    [Fact]
+    public void Unknown_keys_are_ignored()
+    {
+        var g = WithHome("{\"lights\":{\"lightsOn\":1,\"lightsTotal\":2,\"x\":1},\"extra\":[1]}", "{\"total\":3,\"running\":3,\"restarting\":0,\"unhealthy\":0,\"dead\":0,\"paused\":9}");
+        Assert.Equal(new HomeLights(1, 2), g.Home!.Lights);
+        Assert.Equal(new Containers(3, 3, 0, 0, 0), g.Containers);
+    }
+
+    [Fact]
+    public void Lights_are_usable_only_when_the_counts_make_sense()
+    {
+        Assert.NotNull(HomeLights.Usable(new HomeLights(12, 12)));
+        Assert.NotNull(HomeLights.Usable(new HomeLights(0, 1)));
+        Assert.Null(HomeLights.Usable(new HomeLights(13, 12)));
+        Assert.Null(HomeLights.Usable(new HomeLights(0, 0)));
+        Assert.Null(HomeLights.Usable(new HomeLights(-1, 12)));
+        Assert.Null(HomeLights.Usable(null));
+    }
+
+    [Fact]
+    public void Containers_are_usable_only_when_the_counts_make_sense()
+    {
+        Assert.NotNull(Containers.Usable(new Containers(33, 31, 0, 0, 0)));
+        Assert.Null(Containers.Usable(new Containers(33, 34, 0, 0, 0)));
+        Assert.Null(Containers.Usable(new Containers(0, 0, 0, 0, 0)));
+        Assert.Null(Containers.Usable(new Containers(33, 31, -1, 0, 0)));
+        Assert.Null(Containers.Usable(new Containers(33, 31, 0, 0, -1)));
+        Assert.Null(Containers.Usable(null));
+    }
+
+    [Fact]
+    public void Climate_is_clamped_and_trimmed_again()
+    {
+        var c = HomeClimate.Usable(new HomeClimate(new string('n', 40), "heat", 75, -60))!;
+        Assert.Null(c.CurrentC);
+        Assert.Null(c.TargetC);
+        Assert.Equal(24, c.Name!.Length);
+        Assert.Equal(21.5, HomeClimate.Usable(new HomeClimate(null, "heat", 21.5, 22))!.CurrentC);
+        Assert.Null(HomeClimate.Usable(new HomeClimate("x", " ", 21, 22)));
+        Assert.Equal(12, HomeClimate.Usable(new HomeClimate(null, new string('m', 30), 21, 22))!.Mode!.Length);
+    }
+
+    [Fact]
+    public void Home_is_usable_when_either_part_is()
+    {
+        Assert.Null(Home.Usable(new Home(new HomeLights(0, 0), null)));
+        Assert.Null(Home.Usable(null));
+        var h = Home.Usable(new Home(new HomeLights(0, 0), new HomeClimate(null, "off", 19, null)))!;
+        Assert.Null(h.Lights);
+        Assert.NotNull(h.Climate);
+    }
 }
