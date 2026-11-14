@@ -66,6 +66,14 @@ public class CameraTests
     public async Task Fetch_of_an_error_status_is_a_Failure(HttpStatusCode s)
         => Assert.IsType<FrameOutcome.Failure>(await Fetch(new Stub(() => Resp(s, []))));
 
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized, true)]
+    [InlineData(HttpStatusCode.NotFound, false)]
+    [InlineData(HttpStatusCode.BadGateway, false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, false)]
+    public async Task Only_a_401_marks_the_Failure_unauthorized(HttpStatusCode s, bool unauthorized)
+        => Assert.Equal(unauthorized, Assert.IsType<FrameOutcome.Failure>(await Fetch(new Stub(() => Resp(s, [])))).Unauthorized);
+
     [Fact]
     public async Task Fetch_of_a_network_error_is_a_Failure_never_an_exception()
         => Assert.IsType<FrameOutcome.Failure>(await Fetch(new Boom()));

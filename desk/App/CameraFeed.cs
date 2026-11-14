@@ -111,7 +111,8 @@ internal sealed class CameraFeed
         }
         else if (FrameAt is null) everFailed = true; // a failure keeps the last frame; with none, the block says so
         DropStale();
-        Changed?.Invoke();
+        if (Live && o is FrameOutcome.Failure { Unauthorized: true }) EndLive(); // the token is refused: no more Live frames; EndLive tells the view
+        else Changed?.Invoke();
     }
 
     /// <summary>MemoryStream, decoded at the frame's pixel width, loaded now and frozen. Null when the bytes are not a picture.</summary>

@@ -20,11 +20,12 @@ public class LiveTests
         public int Fetches;
         public DateTimeOffset Now = new(2026, 1, 1, 14, 0, 0, TimeSpan.Zero);
         public bool Fail;
+        public FrameOutcome? Reply; // when set, every fetch gets this
         public readonly CameraFeed Feed;
         public Rig()
         {
             var jpeg = Snapshot.TestFrame(640, 360, "16:9");
-            Feed = new CameraFeed(_ => { Fetches++; return Task.FromResult<FrameOutcome>(Fail ? new FrameOutcome.Failure() : new FrameOutcome.Frame(jpeg)); }, () => Now, () => 1)
+            Feed = new CameraFeed(_ => { Fetches++; return Task.FromResult(Reply ?? (Fail ? new FrameOutcome.Failure() : new FrameOutcome.Frame(jpeg))); }, () => Now, () => 1)
             { IntervalSeconds = 30 };
         }
         public void LiveTick() => Feed.LiveTickAsync().GetAwaiter().GetResult();
@@ -79,6 +80,39 @@ public class LiveTests
             for (var i = 0; i < 3; i++) r.LiveTick();
             Assert.Equal(resumed, r.Fetches);
             Fix.Rec($"LIVE stop cause {cause}", $"ended, polls after stop 0, resume fetches {resumed - before}");
+        });
+    }
+
+    [Fact]
+    public void A_401_on_a_Live_frame_ends_Live_at_once_and_asks_for_no_more_frames()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig { Reply = new FrameOutcome.Failure(Unauthorized: true) };
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive(); // fetches at once and gets the 401
+            Assert.False(r.Feed.Live);
+            var before = r.Fetches;
+            for (var i = 0; i < 3; i++) r.LiveTick();
+            Assert.Equal(before, r.Fetches);
+        });
+    }
+
+    [Fact]
+    public void A_503_on_a_Live_frame_keeps_Live_on_and_polling()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig { Reply = new FrameOutcome.Failure() };
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive();
+            Assert.True(r.Feed.Live);
+            var before = r.Fetches;
+            for (var i = 0; i < 3; i++) r.LiveTick();
+            Assert.Equal(before + 3, r.Fetches);
+            Assert.True(r.Feed.Live);
         });
     }
 
