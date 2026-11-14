@@ -90,7 +90,7 @@ public static class GlanceParser
                 return new Outcome.Failed();
             if (n > 1) return new Outcome.TooNew(n);
             var g = root.Deserialize<Glance>(Options);
-            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root), NowPlaying = ReadNowPlaying(root), Downloads = ReadDownloads(root), Home = ReadObject<Home>(root, "home"), Containers = ReadObject<Containers>(root, "containers") }) : new Outcome.Failed();
+            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root), NowPlaying = ReadNowPlaying(root), Downloads = ReadDownloads(root), Home = ReadHome(root), Containers = ReadObject<Containers>(root, "containers") }) : new Outcome.Failed();
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
@@ -119,6 +119,15 @@ public static class GlanceParser
     {
         try { return root.TryGetProperty(key, out var e) && e.ValueKind == JsonValueKind.Object ? e.Deserialize<T>(Strict) : null; }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or NotSupportedException) { return null; }
+    }
+
+    // Lights and climate are read apart, so a wrongly typed one is null and the other survives; null when neither reads.
+    static Home? ReadHome(JsonElement root)
+    {
+        if (!root.TryGetProperty("home", out var h) || h.ValueKind != JsonValueKind.Object) return null;
+        var lights = ReadObject<HomeLights>(h, "lights");
+        var climate = ReadObject<HomeClimate>(h, "climate");
+        return lights is null && climate is null ? null : new Home(lights, climate);
     }
 
     // Any wrongly typed item makes the whole field null; a non-array "items" is empty; a bad "count" reads 0.
