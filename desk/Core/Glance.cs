@@ -17,8 +17,20 @@ public sealed record ForecastDay(string? Day, string? Icon, double? HighC, doubl
     public static ForecastDay[] Usable(ForecastDay[]? f) =>
         (f ?? []).Where(d => d is not null && Copy.ForecastDate(d.Day) is not null).Take(4).ToArray();
 }
-// Forecast is read apart from the rest (see GlanceParser): a bad forecast must never fail the whole glance.
-public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false, [property: JsonIgnore] ForecastDay[]? Forecast = null);
+/// <summary>State is "playing" or "paused" on the wire; anything else is not shown.</summary>
+public sealed record NowPlaying(string? Title, string? Subtitle, string? AppName, string? State, double? Progress01)
+{
+    /// <summary>What the row may show: null for a blank title or a state other than playing or paused; strings cut to the server's caps again (80, 80, 24). Never throws.</summary>
+    public static NowPlaying? Usable(NowPlaying? n) =>
+        n is { Title: { } t, State: "playing" or "paused" } && !string.IsNullOrWhiteSpace(t)
+            ? n with { Title = Copy.Trim(t, 80), Subtitle = n.Subtitle is { } s ? Copy.Trim(s, 80) : null, AppName = n.AppName is { } a ? Copy.Trim(a, 24) : null }
+            : null;
+}
+public sealed record DownloadItem(string? Name, double? Progress, double? SpeedBps, double? EtaS);
+/// <summary>Count is every downloading item; Items the first 3 at most.</summary>
+public sealed record Downloads(int Count, DownloadItem[] Items);
+// Forecast, NowPlaying and Downloads are read apart from the rest (see GlanceParser): a bad one must never fail the whole glance.
+public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false, [property: JsonIgnore] ForecastDay[]? Forecast = null, [property: JsonIgnore] NowPlaying? NowPlaying = null, [property: JsonIgnore] Downloads? Downloads = null);
 
 /// <summary>What one poll came back with. The HTTP layer maps its result onto these.</summary>
 public abstract record Outcome
@@ -48,7 +60,7 @@ public static class GlanceParser
                 return new Outcome.Failed();
             if (n > 1) return new Outcome.TooNew(n);
             var g = root.Deserialize<Glance>(Options);
-            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root) }) : new Outcome.Failed();
+            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root), NowPlaying = ReadNowPlaying(root), Downloads = ReadDownloads(root) }) : new Outcome.Failed();
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
@@ -58,7 +70,30 @@ public static class GlanceParser
 
     static ForecastDay[]? ReadForecast(JsonElement root)
     {
-        try { return root.TryGetProperty("forecast", out var f) ? f.Deserialize<ForecastDay[]>(Options) : null; }
+        // At most 4 entries are read, never the whole array (the server sends 4).
+        try { return root.TryGetProperty("forecast", out var f) && f.ValueKind == JsonValueKind.Array ? f.EnumerateArray().Take(4).Select(e => e.Deserialize<ForecastDay>(Options)!).ToArray() : null; }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
+    }
+
+    static NowPlaying? ReadNowPlaying(JsonElement root)
+    {
+        try { return root.TryGetProperty("nowPlaying", out var n) && n.ValueKind == JsonValueKind.Object ? n.Deserialize<NowPlaying>(Options) : null; }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
+    }
+
+    // Any wrongly typed item makes the whole field null; a non-array "items" is empty; a bad "count" reads 0.
+    static Downloads? ReadDownloads(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("downloads", out var d) || d.ValueKind != JsonValueKind.Object) return null;
+            var count = d.TryGetProperty("count", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out var n) && n >= 0 ? n : 0;
+            var items = d.TryGetProperty("items", out var i) && i.ValueKind == JsonValueKind.Array
+                ? i.EnumerateArray().Take(3).Select(e => e.Deserialize<DownloadItem>(Options) ?? throw new JsonException())
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Name)).Select(x => x with { Name = Copy.Trim(x.Name!, 60) }).ToArray()
+                : [];
+            return new Downloads(Math.Max(count, items.Length), items);
+        }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
     }
 

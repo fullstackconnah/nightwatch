@@ -1,0 +1,33 @@
+{
+  "v": 1,
+  "checkedAt": "2026-01-01T14:05:00.000Z",
+  "probes": { "answered": 7, "failed": 0, "pending": 0 },
+  "vitals": { "cpu": 12, "mem": 34, "diskMax": 71 },
+  "tone": "ok",
+  "answer": "All quiet. Nothing needs you.",
+  "lanes": [],
+  "items": [],
+  "weather": { "tempC": 22.4, "feelsC": 19, "label": "Partly cloudy", "highC": 24, "lowC": 15, "rainPct": 30, "icon": "partly-cloudy" },
+  "forecast": [
+    { "day": "2026-01-02", "icon": "rain", "highC": 24, "lowC": 15, "rainPct": 60 },
+    { "day": "2026-01-03", "icon": "partly-cloudy", "highC": null, "lowC": 14, "rainPct": 20 },
+    { "day": "2026-01-04", "icon": "clear", "highC": 27, "lowC": 16, "rainPct": 0 },
+    { "day": "2026-01-05", "icon": "thunderstorm", "highC": 22, "lowC": 17, "rainPct": 90 }
+  ],
+  "nowPlaying": {
+    "title": "The Lighthouse Keeper and the Long Winter Voyage Home The Lighthouse Keeper and…",
+    "subtitle": "Harbour Lights Season Two Episode Eleven Extended Cut Harbour Lights Season Two…",
+    "appName": "Jellyfin Living Room St…",
+    "state": "playing",
+    "progress01": 0.4
+  },
+  "downloads": {
+    "count": 3,
+    "items": [
+      { "name": "Field Recordings Volume Three Complete Collection Field Rec…", "progress": 0.995, "speedBps": 125000000, "etaS": 4 },
+      { "name": "Open Lecture Series Twelve Full Course Archive Edition Open…", "progress": 0.08, "speedBps": 640000, "etaS": null },
+      { "name": "Garden Almanac Twenty Twenty Five Annual Planting Guide Gar…", "progress": 0.5, "speedBps": 900000, "etaS": 3000 }
+    ]
+  },
+  "camera": false
+}

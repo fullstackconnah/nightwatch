@@ -175,6 +175,52 @@ public static class Copy
 
     static IEnumerable<string> Clauses(params string?[] parts) => parts.Where(p => p is not null)!;
 
+    // --- MEDIA (slice 3): invariant culture, no apostrophes. ---
+    public const string MediaTitle = "Media";
+
+    public static string MediaHeaderTip(bool closed, bool folded) => folded ? SectionFolded : closed ? "Show media" : "Hide media";
+
+    /// <summary>"Playing · 2 downloading", "Paused", "2 downloading", or "" when there is neither.</summary>
+    public static string MediaMeta(NowPlaying? np, int count) => string.Join(" · ", Clauses(
+        NowPlaying.Usable(np) is { } u ? (u.State == "paused" ? "Paused" : "Playing") : null,
+        count > 0 ? $"{count.ToString(CultureInfo.InvariantCulture)} downloading" : null));
+
+    /// <summary>"Series · App" with missing clauses dropped; paused prefixes "Paused · "; with neither it reads Playing or Paused.</summary>
+    public static string NowPlayingLine2(NowPlaying np)
+    {
+        var paused = np.State == "paused";
+        var line = string.Join(" · ", Clauses(paused ? "Paused" : null, Blank(np.Subtitle), Blank(np.AppName)));
+        return line.Length > 0 ? line : "Playing";
+    }
+
+    static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+    public static string NowPlayingTip(NowPlaying np) => $"{np.Title}\n{NowPlayingLine2(np)}";
+
+    static bool Stalled(DownloadItem d) => d.SpeedBps is not { } s || !double.IsFinite(s) || s <= 0;
+
+    // Floor, not round, so 100% only when done; the epsilon keeps 0.29 (28.999999999999996) at 29.
+    static int Percent(DownloadItem d) => d.Progress is { } p && double.IsFinite(p) ? (int)Math.Floor(Math.Min(1, Math.Max(0, p)) * 100 + 1e-9) : 0;
+
+    static string Rate(double bps)
+    {
+        if (bps < 1000) return $"{Round(bps).ToString(CultureInfo.InvariantCulture)} B/s";
+        var kb = Round(bps / 1000);
+        return kb < 1000 ? $"{kb.ToString(CultureInfo.InvariantCulture)} KB/s" : $"{(bps / 1e6).ToString("0.0", CultureInfo.InvariantCulture)} MB/s";
+    }
+
+    /// <summary>"43% · 2.1 MB/s"; no or zero speed reads "43% · stalled".</summary>
+    public static string DownloadRight(DownloadItem d) => $"{Percent(d).ToString(CultureInfo.InvariantCulture)}% · {(Stalled(d) ? "stalled" : Rate(d.SpeedBps!.Value))}";
+
+    /// <summary>"Name, 43%, about 12 min left"; no estimate drops the clause, no speed says stalled.</summary>
+    public static string DownloadTip(DownloadItem d)
+    {
+        string? tail = Stalled(d) ? "stalled" : d.EtaS is { } s && double.IsFinite(s) && s > 0
+            ? s < 60 ? "less than a minute left" : s < 3600 ? $"about {Math.Ceiling(s / 60).ToString(CultureInfo.InvariantCulture)} min left" : $"about {Round(s / 3600).ToString(CultureInfo.InvariantCulture)} h left"
+            : null;
+        return string.Join(", ", Clauses(d.Name, $"{Percent(d).ToString(CultureInfo.InvariantCulture)}%", tail));
+    }
+
     /// <summary>The lucide icon name for a glance weather icon key; an unknown or missing key is a cloud (as weather.ts does).</summary>
     public static string GlyphKey(string? icon) => icon switch
     {

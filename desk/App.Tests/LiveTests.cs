@@ -424,18 +424,18 @@ public class LiveTests
         var work = without + 225;
         Sta.Run(() =>
         {
-            c.View.Render(live with { Camera = live.Camera! with { WorkHeight = work } });
+            c.View.Render(live with { WorkHeight = work });
             Assert.True(c.View.TodayFolded);
             Assert.False(c.View.CameraFolded);
             c.Host.UpdateLayout();
             Near("N10 Live kept, TODAY folded", without + 156, c.View.ActualHeight, 0.5);
-            c.View.Render(live with { Camera = live.Camera! with { WorkHeight = without + 165 } });
+            c.View.Render(live with { WorkHeight = without + 165 });
             Assert.True(c.View.CameraFolded); // not even Live with TODAY folded fits (156 > 149): the still folds and Live ends
             var still = Snapshot.ModelFor("camera-live", g);
-            c.View.Render(still with { Camera = still.Camera! with { WorkHeight = work } });
+            c.View.Render(still with { WorkHeight = work });
             Assert.False(c.View.CameraFolded);
         });
-        var fits = Sta.Run(() => { var s = Snapshot.ModelFor("camera-live", g); return Snapshot.Compose(s with { Camera = s.Camera! with { WorkHeight = work } }, 96); });
+        var fits = Sta.Run(() => { var s = Snapshot.ModelFor("camera-live", g); return Snapshot.Compose(s with { WorkHeight = work }, 96); });
         Sta.Run(() => Near("N10 still after the fold ended Live", without + 207, fits.View.ActualHeight, 0.5));
         Assert.True(Sta.Run(() => fits.View.ActualHeight) <= work - 16);
         Fix.Rec("N10 live fold", $"work {work:0.#}: Live folds, still fits at {without + 207:0.#}");

@@ -49,5 +49,7 @@
     "icon": "partly-cloudy"
   },
   "forecast": null,
+  "nowPlaying": null,
+  "downloads": null,
   "camera": true
 }

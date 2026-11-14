@@ -3,11 +3,15 @@ import { getAttentionReport } from "@/lib/attention";
 import { loadConfig, systemSetting } from "@/lib/config";
 import { doorCameraEntity } from "@/lib/desk-camera";
 import { deskGlanceResponse } from "@/lib/desk-glance-response";
-import { buildGlance, glanceWeatherExtras, within } from "@/lib/desk-glance";
+import { buildGlance, glanceMediaExtras, glanceWeatherExtras, within } from "@/lib/desk-glance";
+import { getHaStates } from "@/lib/ha";
 import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
 import { getHostVitals } from "@/lib/host-metrics";
+import { getJellyfinNowPlaying } from "@/lib/jellyfin";
 import { kioskVitals } from "@/lib/kiosk-vitals-view";
+import { pickNowPlaying } from "@/lib/now-playing";
 import { getWeather } from "@/lib/weather";
+import { getKioskDownloads } from "@/lib/widgets/builtins";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,7 @@ async function buildReport() {
   // Each extra degrades to null/false: a slow or down upstream must not slow or fail the poll.
   const wx = glanceWeatherExtras(getWeather, EXTRA_MS);
   const camera = within(cameraAvailable(), EXTRA_MS, false);
+  const media = glanceMediaExtras(() => pickNowPlaying(getHaStates, getJellyfinNowPlaying), getKioskDownloads, EXTRA_MS);
   const report = await getAttentionReport(null);
   let vitals = null;
   try {
@@ -46,5 +51,6 @@ async function buildReport() {
     // vitals stay null: the widget shows no vitals line rather than zeros
   }
   const { weather, forecast } = await wx;
-  return buildGlance(report, vitals, { weather, forecast, camera: await camera });
+  const { nowPlaying, downloads } = await media;
+  return buildGlance(report, vitals, { weather, forecast, camera: await camera, nowPlaying, downloads });
 }

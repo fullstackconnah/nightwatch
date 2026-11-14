@@ -23,7 +23,7 @@ public class CameraTests
     {
         var g = Fix.Load(fixture);
         var m = Snapshot.ModelFor(frame, g, dpi);
-        m = m with { Camera = m.Camera! with { Collapsed = collapsed, WorkHeight = work } };
+        m = m with { Camera = m.Camera! with { Collapsed = collapsed }, WorkHeight = work };
         return Sta.Run(() => Snapshot.Compose(m, dpi));
     }
 
@@ -199,7 +199,7 @@ public class CameraTests
 
         var one = Fix.Load("one-lane") with { Weather = Fix.Load("camera").Weather, Camera = true };
         var m = Snapshot.ModelFor("camera-live", one) with { };
-        m = m with { Camera = m.Camera! with { WorkHeight = Work } };
+        m = m with { WorkHeight = Work };
         var c1 = Sta.Run(() => Snapshot.Compose(m, 96));
         Sta.Run(() => Assert.True(c1.View.CameraFolded));
         Sta.Run(() => Assert.False(c1.View.TodayFolded));
@@ -380,7 +380,7 @@ public class CameraTests
             var fr = f.TransformToAncestor(c.Host).TransformBounds(new Rect(0, 0, f.ActualWidth, f.ActualHeight));
             foreach (var v in new[] { fr.Left * 1.5, fr.Top * 1.5, fr.Width * 1.5, fr.Height * 1.5 })
                 if (Math.Abs(v - Math.Round(v)) > 0.01) bad.Add("frame " + v);
-            Assert.Equal(3, Ids(c.View, "hairline").Length); // vitals, weather, camera
+            Assert.Equal(3, Ids(c.View, "hairline").Where(Fix.Shown).Count()); // vitals, weather, camera (the collapsed MEDIA block holds a fourth, hidden one)
         });
         Fix.Rec("N40 misses at 144 dpi", bad.Count.ToString());
         Assert.Empty(bad);
