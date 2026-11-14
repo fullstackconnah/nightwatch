@@ -16,8 +16,9 @@ internal enum Mark { None, Ring, Amber, Red, Off }
 
 /// <summary>What to draw: the committed body, the newest view (footer, vitals and the dim restyle read it), and the gate's flag.</summary>
 /// <remarks>Now is the clock the TODAY header shows (null: the real time), so a capture is fixed. Closed holds the section ids the user closed; an unknown id is ignored.
-/// WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold); every section folds against it, with or without the camera.</remarks>
-internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null, MediaNow? Media = null, double WorkHeight = double.PositiveInfinity, HomeNow? Home = null);
+/// WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold); every section folds against it, with or without the camera.
+/// History is the VITALS sparks' samples (null or under 2: "Collecting history"); the view redraws the sparks only when the array instance changes.</remarks>
+internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null, MediaNow? Media = null, double WorkHeight = double.PositiveInfinity, HomeNow? Home = null, VitalsSample[]? History = null);
 
 /// <summary>The MEDIA block's content; null on the model means hidden. Dim: stale or offline, the last values quieter.</summary>
 internal sealed record MediaNow(NowPlaying? NowPlaying, Downloads? Downloads, bool Dim);
@@ -112,6 +113,9 @@ internal sealed class LiveButton : Button
 internal sealed class DeskView : Border
 {
     public const int MaxRows = 3;
+    static double VitalsColumn => (Theme.D("frame-w") - 2 * Theme.D("sp-md")) / 3;
+    /// <summary>The VITALS body, open: the caption row, sp-xs, the spark and sp-md (54). The fold measures with it.</summary>
+    static double VitalsBodyHeight => Theme.D("lh-data") + Theme.D("sp-xs") + Theme.D("spark-h") + Theme.D("sp-md");
     static readonly Regex Clock = new(@"\d{2}:\d{2}", RegexOptions.Compiled);
 
     readonly TimeZoneInfo tz;
@@ -119,11 +123,14 @@ internal sealed class DeskView : Border
     readonly TextBlock answer;
     readonly StackPanel body = new();
     readonly StackPanel vitalsBox = new();
-    readonly TextBlock vitals;
+    // VITALS: hairline, the header, then a fixed body (three captions, sparks under CPU and MEM). Read-only.
+    SectionHeader vitalsHeader = null!;
+    Grid vitalsBody = null!;
+    VitalsSample[]? vitalsHistory;
     readonly TextBlock footer;
     readonly TextBlock held;
     string? bodyKey, vitalsKey, footerKey, weatherKey, todayKey, foldKey, mediaKey, homeKey;
-    (bool Cam, bool Media, bool Home, bool Today) foldValue;
+    (bool Cam, bool Vitals, bool Media, bool Home, bool Today) foldValue;
     Mark? lastMark;
     HashSet<string> shown = new();
 
@@ -165,6 +172,8 @@ internal sealed class DeskView : Border
     public bool MediaFolded { get; private set; }
     /// <summary>The same for the HOME body.</summary>
     public bool HomeFolded { get; private set; }
+    /// <summary>The same for the VITALS body.</summary>
+    public bool VitalsFolded { get; private set; }
 
     public Button CameraHeaderButton => camHeader;
     public Button CameraLiveButton => camLive;
@@ -204,12 +213,20 @@ internal sealed class DeskView : Border
         head.Children.Add(answerBox);
         AutomationProperties.SetAutomationId(head, "head");
 
-        // Vitals: a hairline, then one mono line.
-        vitals = Theme.Text("", "fs-data", "lh-data", "ink-dim");
-        vitals.Margin = new Thickness(side, Theme.D("sp-md"), side, Theme.D("sp-md"));
-        AutomationProperties.SetAutomationId(vitals, "vitals");
+        // Vitals: a hairline, the header, then the body: three columns of (frame-w - 2 x sp-md) / 3 (88), the caption row and the spark row.
+        vitalsHeader = new SectionHeader("vitals", Copy.VitalsTitle.ToUpperInvariant(), side);
+        AutomationProperties.SetName(vitalsHeader, Copy.VitalsTitle);
+        vitalsHeader.Click += (_, _) => SectionToggled?.Invoke("vitals");
+        vitalsBody = new Grid { Margin = new Thickness(side, 0, side, 0), Height = VitalsBodyHeight, Background = Brushes.Transparent, Visibility = Visibility.Collapsed };
+        foreach (var w in new[] { VitalsColumn, Theme.D("sp-md"), VitalsColumn, Theme.D("sp-md"), VitalsColumn })
+            vitalsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(w) });
+        vitalsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Theme.D("lh-data")) });
+        vitalsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(Theme.D("sp-xs") + Theme.D("spark-h") + Theme.D("sp-md")) });
         vitalsBox.Children.Add(Hairline());
-        vitalsBox.Children.Add(vitals);
+        vitalsBox.Children.Add(vitalsHeader);
+        vitalsBox.Children.Add(vitalsBody);
+        AutomationProperties.SetAutomationId(vitalsBox, "vitals-block");
+        AutomationProperties.SetAutomationId(vitalsBody, "vitals-body");
 
         // Footer: the freshness line, and a reserved slot for "update held".
         footer = Theme.Text("", "fs-note", "lh-note", "ink-dim");
@@ -303,12 +320,6 @@ internal sealed class DeskView : Border
             RebuildBody(v, g, dim, asOf, m, animate);
         }
 
-        var vg = GlanceOf(m.Latest) ?? g;
-        vitalsBox.Visibility = g is null ? Visibility.Collapsed : Visibility.Visible;
-        var vk = vg?.Vitals?.ToString() ?? "none";
-        vk += "|" + dim;
-        if (vk != vitalsKey) { vitalsKey = vk; FillVitals(vg?.Vitals, dim); }
-
         var f = Copy.Footer(m.Latest, tz) ?? "";
         if (f != footerKey)
         {
@@ -339,7 +350,11 @@ internal sealed class DeskView : Border
         var homeClosed = m.Closed?.Contains("home") == true;
         homeBox.Visibility = homeLines > 0 ? Visibility.Visible : Visibility.Collapsed;
         var homeH = homeLines > 0 && !homeClosed ? homeLines * Theme.D("more-height") : 0;
-        (CameraFolded, MediaFolded, HomeFolded, TodayFolded) = Folds(m.WorkHeight, m.Camera, mediaH, homeH, rows);
+        // VITALS: a glance always has the block (its body folds like the others); an error view shows the header only. The open body is the fold's vitals height.
+        var vitalsClosed = m.Closed?.Contains("vitals") == true;
+        var vitalsH = g is not null && !vitalsClosed ? VitalsBodyHeight : 0;
+        (CameraFolded, VitalsFolded, MediaFolded, HomeFolded, TodayFolded) = Folds(m.WorkHeight, m.Camera, vitalsH, mediaH, homeH, rows);
+        RenderVitals((GlanceOf(m.Latest) ?? g)?.Vitals, g is null, vitalsClosed, dim, asOf, m.History);
         RenderToday(m.Weather, forecast, now, asOf, closed);
         RenderMedia(m.Media, np, dls, dlCount, mediaShown, mediaClosed, asOf);
         RenderHome(hn, hh, hc, homeLines, homeClosed, asOf);
@@ -662,17 +677,19 @@ internal sealed class DeskView : Border
     /// <summary>How many times Folds measured the tree. A cached answer or an early return never counts (a clock-only render must not probe).</summary>
     public int FoldProbes { get; private set; }
 
-    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then MEDIA, then HOME, then TODAY. While Live is on the camera
-    /// goes last, so MEDIA, HOME and TODAY fold first and Live ends only if it still does not fit. Measured without the camera block and the MEDIA, HOME and TODAY bodies, so it never depends on their own state.
+    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then VITALS, MEDIA, HOME, then TODAY. While Live is on the camera
+    /// goes last, so VITALS, MEDIA, HOME and TODAY fold first and Live ends only if it still does not fit. Measured without the camera block and the VITALS, MEDIA, HOME and TODAY bodies, so it never depends on their own state.
     /// No work height (infinity) or nothing foldable answers all false without measuring; the key still records it so a later finite height never reuses a stale answer.</summary>
-    (bool Cam, bool Media, bool Home, bool Today) Folds(double work, Cam? c, double mediaH, double homeH, int todayRows)
+    (bool Cam, bool Vitals, bool Media, bool Home, bool Today) Folds(double work, Cam? c, double vitalsH, double mediaH, double homeH, int todayRows)
     {
-        var key = $"{bodyKey}|{vitalsBox.Visibility}|{work}|{c is null}|{c?.Live}|{c?.Collapsed}|{todayRows}|{mediaBox.Visibility}|{mediaH}|{homeBox.Visibility}|{homeH}";
+        // The key holds the VITALS body height, never the sample count: a new sample must not re-run the probe.
+        var key = $"{bodyKey}|{work}|{c is null}|{c?.Live}|{c?.Collapsed}|{todayRows}|{vitalsH}|{mediaBox.Visibility}|{mediaH}|{homeBox.Visibility}|{homeH}";
         if (key == foldKey) return foldValue;
         foldKey = key;
-        if (double.IsPositiveInfinity(work) || (c is null && mediaH == 0 && homeH == 0 && todayRows == 0)) return foldValue = (false, false, false, false);
+        if (double.IsPositiveInfinity(work) || (c is null && vitalsH == 0 && mediaH == 0 && homeH == 0 && todayRows == 0)) return foldValue = (false, false, false, false, false);
         FoldProbes++;
         camBox.Visibility = Visibility.Collapsed;
+        vitalsBody.Visibility = Visibility.Collapsed;
         todayBody.Visibility = Visibility.Collapsed;
         mediaBody.Visibility = Visibility.Collapsed;
         homeBody.Visibility = Visibility.Collapsed;
@@ -683,17 +700,18 @@ internal sealed class DeskView : Border
         var limit = work - Theme.D("sp-lg");
         var head = Theme.D("hairline") + Theme.D("more-height");
         var live = c?.Live == true;
-        bool cam = false, media = false, home = false, today = false;
-        double Total() => baseHeight + (c is null ? 0 : c.Collapsed || cam ? head : OpenCameraHeight(live)) + (media ? 0 : mediaH) + (home ? 0 : homeH) + (today ? 0 : todayRows * Theme.D("row-height"));
-        foreach (var part in live ? new[] { "media", "home", "today", "cam" } : new[] { "cam", "media", "home", "today" })
+        bool cam = false, vitals = false, media = false, home = false, today = false;
+        double Total() => baseHeight + (c is null ? 0 : c.Collapsed || cam ? head : OpenCameraHeight(live)) + (vitals ? 0 : vitalsH) + (media ? 0 : mediaH) + (home ? 0 : homeH) + (today ? 0 : todayRows * Theme.D("row-height"));
+        foreach (var part in live ? new[] { "vitals", "media", "home", "today", "cam" } : new[] { "cam", "vitals", "media", "home", "today" })
         {
             if (Total() <= limit) break;
             if (part == "cam" && c is { Collapsed: false }) cam = true;
+            else if (part == "vitals" && vitalsH > 0) vitals = true;
             else if (part == "media" && mediaH > 0) media = true;
             else if (part == "home" && homeH > 0) home = true;
             else if (part == "today" && todayRows > 0) today = true;
         }
-        return foldValue = (cam, media, home, today);
+        return foldValue = (cam, vitals, media, home, today);
     }
 
     static void Stale(DependencyObject o)
@@ -879,23 +897,85 @@ internal sealed class DeskView : Border
     string? SinceClock(GlanceItem it) =>
         it.Since is { } s && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var t) ? Copy.Clock(t, tz) : null;
 
-    void FillVitals(Vitals? v, bool dim)
+    // --- VITALS (SHAPE "VITALS"): the header, then the three captions with the CPU and MEM sparks under them; nothing in the body is a button ---
+    void RenderVitals(Vitals? v, bool noGlance, bool closed, bool dim, string? asOf, VitalsSample[]? history)
     {
-        vitals.Inlines.Clear();
-        if (v is null)
+        if (noGlance) v = null; // an error view has no glance: the header alone says so
+        var folded = VitalsFolded;
+        var open = !noGlance && !closed && !folded;
+        vitalsHeader.Label.Text = Copy.VitalsTitle.ToUpperInvariant() + (noGlance || asOf is null ? "" : " · " + asOf.ToUpperInvariant());
+        // open, the captions say it all; stale, the label carries "AS OF hh:mm", so the summary drops DISK to keep the header from overlapping (SHAPE check 8)
+        vitalsHeader.Meta.Text = noGlance || closed || folded ? Copy.VitalsMeta(v, withDisk: !dim) : "";
+        vitalsHeader.Meta.Foreground = Theme.B(noGlance || folded ? "ink-faint" : "ink-dim");
+        vitalsHeader.Collapsible = !noGlance;
+        vitalsHeader.Expanded = open;
+        vitalsHeader.IsEnabled = !folded;
+        vitalsHeader.Cursor = folded || noGlance ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        vitalsHeader.ToolTip = noGlance ? null : Copy.VitalsHeaderTip(closed, folded);
+        vitalsHeader.Chevron.Visibility = noGlance || folded ? Visibility.Collapsed : Visibility.Visible;
+        vitalsHeader.Chevron.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
+
+        // The body is redrawn when the values or the stale look change, or when the history is a new array (a poll added a sample): never on a clock tick.
+        var key = $"{v}|{dim}";
+        if (key != vitalsKey || !ReferenceEquals(history, vitalsHistory))
         {
-            vitals.Inlines.Add(new Run("Host vitals unavailable") { Foreground = Theme.B("ink-faint"), FontSize = Theme.D("fs-note") });
-            return;
+            vitalsKey = key;
+            vitalsHistory = history;
+            vitalsBody.Children.Clear();
+            vitalsBody.ToolTip = null;
+            if (v is null)
+            {
+                var none = Theme.Text(Copy.VitalsUnavailable, "fs-note", "lh-note", "ink-faint");
+                none.VerticalAlignment = VerticalAlignment.Center;
+                Grid.SetColumnSpan(none, 5);
+                Grid.SetRowSpan(none, 2);
+                AutomationProperties.SetAutomationId(none, "vitals-null");
+                vitalsBody.Children.Add(none);
+            }
+            else
+            {
+                Cap(0, "vitals-cpu", "CPU", Copy.VitalsPct(v.Cpu), dim);
+                Cap(2, "vitals-mem", "MEM", Copy.VitalsPct(v.Mem), dim);
+                Cap(4, "vitals-disk", "DISK", v.DiskMax is { } d ? Copy.VitalsPct(d) : Copy.NullFigure, dim);
+                var enough = history is { Length: >= 2 };
+                Spark(0, "vitals-spark-cpu", "CPU history", enough ? history!.Select(s => s.Cpu).ToArray() : null, dim);
+                Spark(2, "vitals-spark-mem", "MEM history", enough ? history!.Select(s => s.Mem).ToArray() : null, dim);
+                if (!enough) vitalsBody.ToolTip = Copy.VitalsCollecting; // the slots stay empty at full height
+            }
         }
-        void Cap(string caption, string value, bool first)
-        {
-            if (!first) vitals.Inlines.Add(new Run(" · ") { Foreground = Theme.B("ink-faint") });
-            vitals.Inlines.Add(new Run(caption + " ") { Foreground = Theme.B(dim ? "ink-dim" : "ink-faint"), FontSize = Theme.D("fs-label"), FontWeight = FontWeights.SemiBold });
-            vitals.Inlines.Add(new Run(value) { Foreground = Theme.B(dim ? "ink-dim" : "ink"), FontFamily = Theme.F("font-mono"), FontSize = Theme.D("fs-data") });
-        }
-        Cap("CPU", $"{Math.Round(v.Cpu)}%", true);
-        Cap("MEM", $"{Math.Round(v.Mem)}%", false);
-        Cap("DISK", v.DiskMax is { } d ? $"{Math.Round(d)}%" : "—", false);
+        vitalsBody.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>One column's caption: the label (fs-label semibold) and the value (fs-data mono), the runs the single vitals line used.</summary>
+    void Cap(int column, string id, string caption, string value, bool dim)
+    {
+        var t = Theme.Text("", "fs-data", "lh-data", "ink-dim");
+        t.Inlines.Add(new Run(caption + " ") { Foreground = Theme.B(dim ? "ink-dim" : "ink-faint"), FontSize = Theme.D("fs-label"), FontWeight = FontWeights.SemiBold });
+        t.Inlines.Add(new Run(value) { Foreground = Theme.B(dim ? "ink-dim" : "ink"), FontFamily = Theme.F("font-mono"), FontSize = Theme.D("fs-data") });
+        Grid.SetColumn(t, column);
+        AutomationProperties.SetAutomationId(t, id);
+        vitalsBody.Children.Add(t);
+    }
+
+    /// <summary>A hairline polyline in accent (ink-faint when stale): the samples spread over the column, y on a fixed 0-100% scale so a line never rescales between polls. The stroke is inset by half its width so 0% and 100% are not clipped.</summary>
+    void Spark(int column, string id, string name, double[]? values, bool dim)
+    {
+        double w = VitalsColumn, h = Theme.D("spark-h"), sw = Theme.D("hairline");
+        var slot = new Canvas { Width = w, Height = h, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, Theme.D("sp-xs"), 0, 0) };
+        if (values is not null)
+            slot.Children.Add(new Polyline
+            {
+                Points = new PointCollection(values.Select((x, i) => new Point(i * w / (values.Length - 1), sw / 2 + (1 - Math.Clamp(x, 0, 100) / 100) * (h - sw)))),
+                Stroke = Theme.B(dim ? "ink-faint" : "accent"),
+                StrokeThickness = sw,
+                StrokeLineJoin = PenLineJoin.Round,
+                SnapsToDevicePixels = false,
+            });
+        Grid.SetColumn(slot, column);
+        Grid.SetRow(slot, 1);
+        AutomationProperties.SetAutomationId(slot, id);
+        AutomationProperties.SetName(slot, name);
+        vitalsBody.Children.Add(slot);
     }
 
     static void AddClockRuns(TextBlock tb, string text)

@@ -17,6 +17,7 @@ internal sealed class DeskHost
     readonly DeskState state = new(() => DateTimeOffset.Now);
     readonly Gate gate = new(() => DateTimeOffset.Now);
     readonly HttpClient http = Poller.NewClient();
+    readonly VitalsHistory history = new(PollEvery); // in memory only: a restart starts with "Collecting history"
     readonly bool firstRun = !File.Exists(DeskFiles.State);
     DeskView view = null!;
     Widget widget = null!;
@@ -56,7 +57,7 @@ internal sealed class DeskHost
         collapsed = widget.CameraCollapsed;
         view.SectionToggled = id =>
         {
-            if (id is not ("today" or "media" or "home")) return; // an id this build does not know is never acted on
+            if (id is not ("today" or "media" or "home" or "vitals")) return; // an id this build does not know is never acted on
             widget.SetClosed(id, !widget.IsClosed(id));
             Update();
         };
@@ -147,7 +148,11 @@ internal sealed class DeskHost
         weatherVis.OnPoll(o);
         camVis.OnPoll(o);
         if (o is Outcome.Ok { Glance: { Weather: { } w } glance }) { lastWeather = w; lastForecast = glance.Forecast; }
-        if (o is Outcome.Ok ok) { lastNowPlaying = ok.Glance.NowPlaying; lastDownloads = ok.Glance.Downloads; lastHome = ok.Glance.Home; lastContainers = ok.Glance.Containers; }
+        if (o is Outcome.Ok ok)
+        {
+            lastNowPlaying = ok.Glance.NowPlaying; lastDownloads = ok.Glance.Downloads; lastHome = ok.Glance.Home; lastContainers = ok.Glance.Containers;
+            history.Add(ok.Glance.CheckedAt, ok.Glance.Vitals); // the only place a sample is added: one per answered poll, never from Update, the clock or a fold
+        }
         if (ToastDiff.Compute(prev, next, c.BaseUrl, tz, firstRun && prev is null) is { } toast)
         {
             lastToast = toast.Click;
@@ -192,7 +197,7 @@ internal sealed class DeskHost
         var dim = latest is View.Stale or View.Offline;
         var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim, shownForecast) : null;
         var cam = shownCam ? new Cam(collapsed, feed.State, feed.Image, feed.FrameAt, Live: feed.Live) : null;
-        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam, Now: DateTimeOffset.Now, Closed: new[] { "today", "media", "home" }.Where(widget.IsClosed).ToArray(), Media: shownMedia is { } sm ? sm with { Dim = dim } : null, WorkHeight: workHeight, Home: shownHome is { } sh ? sh with { Dim = dim } : null), committed || changed);
+        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam, Now: DateTimeOffset.Now, Closed: new[] { "today", "media", "home", "vitals" }.Where(widget.IsClosed).ToArray(), Media: shownMedia is { } sm ? sm with { Dim = dim } : null, WorkHeight: workHeight, Home: shownHome is { } sh ? sh with { Dim = dim } : null, History: history.Samples), committed || changed);
         feed.ClientError = err;
         feed.BlockHidden = !shownCam || collapsed || view.CameraFolded;
         tray.Set(TrayState.Of(latest), Copy.Tooltip(latest, tz));

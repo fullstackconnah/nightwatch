@@ -25,11 +25,13 @@ internal static class Snapshot
         "today-open", "today-closed", "today-no-weather", "today-no-forecast", "today-stale", "forecast-long", "today-folded",
         "media-playing", "media-paused", "media-downloads-only", "media-more", "media-long", "media-hidden", "media-stale", "media-closed", "media-folded",
         "home-on", "home-all-off", "home-issues", "home-containers-only", "home-hidden", "home-closed", "home-stale", "home-folded",
+        "vitals-sparks", "vitals-collecting", "vitals-flat", "vitals-closed", "vitals-stale", "everything-open", "fold-order",
     };
 
     const int CameraInterval = 30; // the default I; frame ages below are multiples of it
-    public const double FoldedWorkHeight = 464; // 768 px at 150%: 512 DIP less the 48 DIP taskbar; the camera and then TODAY fold
-    public const double CameraFoldWorkHeight = 512; // 768 px at 150% with the taskbar hidden: only the camera folds
+    public const double FoldedWorkHeight = 464; // 768 px at 150%: 512 DIP less the 48 DIP taskbar; the camera, then VITALS, then TODAY fold
+    public const double CameraFoldWorkHeight = 512; // 768 px at 150% with the taskbar hidden: the camera folds, then VITALS (the 3-item fixture)
+    public const double FullHdWorkHeight = 1080; // 1080 DIP: everything open still needs the camera folded (fold-order)
 
     /// <summary>A generated test picture (never a real camera frame): a greyscale diagonal gradient, a grid every 1/8 of the width and the aspect in white. JPEG, in memory.</summary>
     public static byte[] TestFrame(int w, int h, string label)
@@ -80,7 +82,7 @@ internal static class Snapshot
         View v = state switch
         {
             "first-launch" => new View.FirstLaunch(),
-            "stale" or "weather-dim" or "today-stale" or "media-stale" or "home-stale" => new View.Stale(g, At),
+            "stale" or "weather-dim" or "today-stale" or "media-stale" or "home-stale" or "vitals-stale" => new View.Stale(g, At),
             "offline-with-last-known" or "offline-last-frame" => new View.Offline(g, At),
             "offline-never-answered" => new View.Offline(null, null),
             "config-missing" => new View.Config(new ConfigResult.Missing()),
@@ -99,14 +101,33 @@ internal static class Snapshot
             "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
                 or "camera-folded" or "camera-hover-frame" or "camera-focus-header"
                 or "camera-watch-on" or "camera-watch-stale" or "camera-watch-no-picture" or "camera-watch-letterbox"
-                or "camera-watch-folded" or "camera-watch-focus" or "today-folded" or "media-folded" or "home-folded" => FrameCam(state, dpi),
+                or "camera-watch-folded" or "camera-watch-focus" or "today-folded" or "media-folded" or "home-folded" or "everything-open" or "fold-order" => FrameCam(state, dpi),
             _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
         };
-        var work = state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state is "today-folded" or "media-folded" or "home-folded" ? FoldedWorkHeight : double.PositiveInfinity;
+        var work = state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state is "today-folded" or "media-folded" or "home-folded" ? FoldedWorkHeight : state == "fold-order" ? FullHdWorkHeight : double.PositiveInfinity;
         var media = g.NowPlaying is not null || g.Downloads is not null ? new MediaNow(g.NowPlaying, g.Downloads, v is View.Stale or View.Offline) : null;
         var home = g.Home is not null || g.Containers is not null ? new HomeNow(g.Home, g.Containers, v is View.Stale or View.Offline) : null;
-        var closed = state switch { "today-closed" => new[] { "today" }, "media-closed" => new[] { "media" }, "home-closed" => new[] { "home" }, _ => null };
-        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, closed, media, work, home);
+        var closed = state switch { "today-closed" => new[] { "today" }, "media-closed" => new[] { "media" }, "home-closed" => new[] { "home" }, "vitals-closed" => new[] { "vitals" }, _ => null };
+        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, closed, media, work, home, HistoryFor(state, g));
+    }
+
+    // Invented, deterministic 24-sample series (30 s apart, ending at the fixtures' 12 and 34): every glance state draws a real spark.
+    static readonly (double Cpu, double Mem)[] Seed =
+    {
+        (8, 31), (14, 31), (22, 32), (35, 33), (41, 35), (30, 38), (18, 41), (12, 44), (9, 43), (15, 40), (28, 38), (44, 37),
+        (52, 39), (38, 42), (25, 46), (17, 52), (11, 55), (9, 58), (13, 60), (21, 57), (33, 50), (27, 44), (16, 38), (12, 34),
+    };
+
+    /// <summary>The sparks' samples for a state: none when the glance has no vitals; one sample for vitals-collecting; 24 equal ones for vitals-flat; otherwise the seed. Real histories come from VitalsHistory, which Core tests cover.</summary>
+    public static VitalsSample[]? HistoryFor(string state, Glance g)
+    {
+        if (g.Vitals is not { } v) return null;
+        return state switch
+        {
+            "vitals-collecting" => [new VitalsSample(At, v.Cpu, v.Mem)],
+            "vitals-flat" => Enumerable.Range(0, 24).Select(i => new VitalsSample(At.AddSeconds(-30 * (23 - i)), v.Cpu, v.Mem)).ToArray(),
+            _ => Seed.Select((s, i) => new VitalsSample(At.AddSeconds(-30 * (23 - i)), s.Cpu, s.Mem)).ToArray(),
+        };
     }
 
     public sealed record Composed(Border Host, DeskView View, RenderTargetBitmap Bitmap, double Dpi);
