@@ -20,11 +20,12 @@ public class LiveTests
         public int Fetches;
         public DateTimeOffset Now = new(2026, 1, 1, 14, 0, 0, TimeSpan.Zero);
         public bool Fail;
+        public FrameOutcome? Reply; // when set, every fetch gets this
         public readonly CameraFeed Feed;
         public Rig()
         {
             var jpeg = Snapshot.TestFrame(640, 360, "16:9");
-            Feed = new CameraFeed(_ => { Fetches++; return Task.FromResult<FrameOutcome>(Fail ? new FrameOutcome.Failure() : new FrameOutcome.Frame(jpeg)); }, () => Now, () => 1)
+            Feed = new CameraFeed(_ => { Fetches++; return Task.FromResult(Reply ?? (Fail ? new FrameOutcome.Failure() : new FrameOutcome.Frame(jpeg))); }, () => Now, () => 1)
             { IntervalSeconds = 30 };
         }
         public void LiveTick() => Feed.LiveTickAsync().GetAwaiter().GetResult();
@@ -79,6 +80,39 @@ public class LiveTests
             for (var i = 0; i < 3; i++) r.LiveTick();
             Assert.Equal(resumed, r.Fetches);
             Fix.Rec($"LIVE stop cause {cause}", $"ended, polls after stop 0, resume fetches {resumed - before}");
+        });
+    }
+
+    [Fact]
+    public void A_401_on_a_Live_frame_ends_Live_at_once_and_asks_for_no_more_frames()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig { Reply = new FrameOutcome.Failure(Unauthorized: true) };
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive(); // fetches at once and gets the 401
+            Assert.False(r.Feed.Live);
+            var before = r.Fetches;
+            for (var i = 0; i < 3; i++) r.LiveTick();
+            Assert.Equal(before, r.Fetches);
+        });
+    }
+
+    [Fact]
+    public void A_503_on_a_Live_frame_keeps_Live_on_and_polling()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig { Reply = new FrameOutcome.Failure() };
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive();
+            Assert.True(r.Feed.Live);
+            var before = r.Fetches;
+            for (var i = 0; i < 3; i++) r.LiveTick();
+            Assert.Equal(before + 3, r.Fetches);
+            Assert.True(r.Feed.Live);
         });
     }
 
@@ -196,6 +230,30 @@ public class LiveTests
     static void Near(string n, double want, double got, double tol = 0.05) { Fix.Rec(n, got.ToString("0.###")); Assert.InRange(got, want - tol, want + tol); }
 
     static Color Brush(string key) => ((SolidColorBrush)Theme.B(key)).Color;
+
+    [Theory]
+    [InlineData("camera-watch-stale")]
+    [InlineData("camera-watch-on")]
+    public void The_live_label_ends_on_the_same_edge_as_every_other_header_chevron_and_the_hit_area_keeps_its_size(string state)
+    {
+        foreach (var dpi in new[] { 96, 144 })
+        {
+            var c = Sta.Run(() => Fix.Compose(state, dpi));
+            Sta.Run(() =>
+            {
+                var chev = One(c.View, "vitals-chevron");
+                Assert.Equal(Visibility.Visible, chev.Visibility);
+                var live = Bounds(c, c.View.CameraLiveButton);
+                var lt = Fix.Walk<TextBlock>(c.View.CameraLiveButton).Single();
+                var textRight = Bounds(c, lt).Right;
+                Fix.Rec($"live text right edge ({state} {dpi})", $"text {textRight:0.##}, chevron {Bounds(c, chev).Right:0.##}, hit {live.Width:0.##} x {live.Height:0.##}");
+                Assert.Equal(Bounds(c, chev).Right, textRight, dpi == 96 ? 0.5 : 0.7); // 0.5 DIP, or one device pixel (0.67) at 150% where the label width rounds up to a pixel
+                var before = Theme.D("sp-base") + (Theme.D("sp-lg") - Theme.D("hairline")) + Natural(lt) + (Fix.Walk<Ellipse>(c.View.CameraLiveButton).Single().Visibility == Visibility.Visible ? Theme.D("dot") + Theme.D("sp-xs") : 0);
+                Assert.True(live.Width >= before - (dpi == 96 ? 0.01 : 0.7), $"hit width {live.Width} shrank below {before}");
+                Assert.True(live.Height >= Theme.D("more-height") - 0.01);
+            });
+        }
+    }
 
     [Theory]
     [InlineData("camera-collapsed")]

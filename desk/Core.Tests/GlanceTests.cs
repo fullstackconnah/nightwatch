@@ -240,6 +240,30 @@ public class GlanceTests
         Assert.Equal(new Vitals(12, 34, 71), g.Vitals);
     }
 
+    const string GoodLights = "\"lights\":{\"lightsOn\":3,\"lightsTotal\":12}";
+    const string GoodClimate = "\"climate\":{\"name\":\"Den heat pump\",\"mode\":\"heat\",\"currentC\":21.5,\"targetC\":22}";
+
+    [Fact]
+    public void A_wrongly_typed_climate_keeps_the_lights()
+    {
+        var g = WithHome("{" + GoodLights + ",\"climate\":{\"mode\":\"heat\",\"currentC\":\"warm\"}}", GoodContainers);
+        Assert.Equal(new Home(new HomeLights(3, 12), null), g.Home);
+    }
+
+    [Fact]
+    public void Wrongly_typed_lights_keep_the_climate()
+    {
+        var g = WithHome("{\"lights\":{\"lightsOn\":\"3\",\"lightsTotal\":12}," + GoodClimate + "}", GoodContainers);
+        Assert.Equal(new Home(null, new HomeClimate("Den heat pump", "heat", 21.5, 22)), g.Home);
+    }
+
+    [Fact]
+    public void Both_parts_wrongly_typed_make_the_home_null()
+    {
+        var g = WithHome("{\"lights\":{\"lightsOn\":\"3\",\"lightsTotal\":12},\"climate\":{\"mode\":\"heat\",\"currentC\":\"warm\"}}", GoodContainers);
+        Assert.Null(g.Home);
+    }
+
     [Theory]
     [InlineData("{\"lights\":{\"lightsOn\":\"3\",\"lightsTotal\":12}}")]
     [InlineData("{\"lights\":{\"lightsOn\":3.5,\"lightsTotal\":12}}")]

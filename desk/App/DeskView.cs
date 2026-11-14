@@ -610,7 +610,7 @@ internal sealed class DeskView : Border
         camLiveText = Theme.Text(Copy.CameraWatchLive, "fs-note", "lh-note", "ink-dim");
         camLiveText.VerticalAlignment = VerticalAlignment.Center;
         camLiveText.TextTrimming = TextTrimming.CharacterEllipsis;
-        var liveContent = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Theme.D("sp-base"), 0, Theme.D("sp-base"), 0), Children = { camDot, camLiveText } };
+        var liveContent = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(Theme.D("sp-base"), 0, side, 0), Children = { camDot, camLiveText } }; // text ends on the panel side like every header chevron; left inset sp-base keeps the dot clear of the focus ring
         camLive.Style = (Style)Application.Current.Resources["RowButton"];
         camLive.Height = Theme.D("more-height");
         camLive.Content = liveContent;

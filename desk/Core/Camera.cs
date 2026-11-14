@@ -9,7 +9,7 @@ public abstract record FrameOutcome
     public sealed record Image : FrameOutcome;
     public sealed record Frame(byte[] Bytes) : FrameOutcome;
     /// <summary>401, 404, 502, 503, a timeout, a network error, over the cap or not an image.</summary>
-    public sealed record Failure : FrameOutcome;
+    public sealed record Failure(bool Unauthorized = false) : FrameOutcome; // Unauthorized: the 401, so Live can end at once
 }
 
 public static class CameraFrame
@@ -36,7 +36,7 @@ public static class CameraFrame
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
             if (Map((int)resp.StatusCode, resp.Content.Headers.ContentType?.ToString(), resp.Content.Headers.ContentLength) is not FrameOutcome.Image)
-                return new FrameOutcome.Failure();
+                return new FrameOutcome.Failure((int)resp.StatusCode == 401);
             await using var body = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
             var buf = new MemoryStream();
             var chunk = new byte[16 * 1024];

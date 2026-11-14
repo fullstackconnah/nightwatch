@@ -33,16 +33,29 @@ public class VitalsHistoryTests
     }
 
     [Fact]
-    public void The_same_or_an_older_glance_adds_nothing()
+    public void The_same_glance_twice_adds_nothing()
     {
         var h = New();
         h.Add(T0, V(10));
         var before = h.Samples;
         h.Add(T0, V(99));
-        h.Add(T0.AddSeconds(-30), V(99));
         Assert.Same(before, h.Samples);
         Assert.Single(h.Samples);
         Assert.Equal(10, h.Samples[0].Cpu);
+    }
+
+    [Fact]
+    public void An_older_glance_after_a_backwards_clock_step_clears_the_history_and_becomes_the_only_sample()
+    {
+        var h = New();
+        h.Add(T0, V(10));
+        h.Add(T0.AddSeconds(30), V(20));
+        h.Add(T0.AddSeconds(-30), V(99));
+        Assert.Single(h.Samples);
+        Assert.Equal(99, h.Samples[0].Cpu);
+        Assert.Equal(T0.AddSeconds(-30), h.Samples[0].At);
+        h.Add(T0, V(5)); // and the line grows again from there
+        Assert.Equal(2, h.Samples.Length);
     }
 
     [Fact]
