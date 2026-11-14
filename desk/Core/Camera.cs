@@ -73,6 +73,16 @@ public static class FrameClock
         return a <= 2.0 * i ? FrameState.Live : a < NoPictureAfter(i) ? FrameState.Stale : FrameState.NoPicture;
     }
 
+    /// <summary>Watch live (SHAPE "Camera live view"): fresh to 5 s, Stale to 60 s, then NoPicture, whatever the still's interval is.</summary>
+    public const double LiveFreshSeconds = 5, LiveNoPictureAfterSeconds = 60;
+
+    public static FrameState ComputeLive(DateTimeOffset now, DateTimeOffset? lastFrameAt, bool everFailedWithoutFrame)
+    {
+        if (lastFrameAt is not { } last) return everFailedWithoutFrame ? FrameState.NoPicture : FrameState.Loading;
+        var a = (now - last).TotalSeconds;
+        return a <= LiveFreshSeconds ? FrameState.Live : a < LiveNoPictureAfterSeconds ? FrameState.Stale : FrameState.NoPicture;
+    }
+
     /// <summary>On resume a kept frame at or past the NoPicture threshold is dropped, so no hours-old picture shows.</summary>
     public static bool DropOnResume(DateTimeOffset now, DateTimeOffset lastFrameAt, int i) =>
         (now - lastFrameAt).TotalSeconds >= NoPictureAfter(i);

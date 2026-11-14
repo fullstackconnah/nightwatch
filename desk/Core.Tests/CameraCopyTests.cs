@@ -101,5 +101,12 @@ public class CameraCopyTests
         Assert.Equal("Front door camera, as of 14:05:32. Opens the kiosk.", Copy.CameraFrameName(FrameState.Stale, t));
         Assert.Equal("Front door camera, waking. Opens the kiosk.", Copy.CameraFrameName(FrameState.Loading, null));
         Assert.Equal("Front door camera, no picture. Opens the kiosk.", Copy.CameraFrameName(FrameState.NoPicture, t));
+        // Watch live
+        Assert.Equal("Watch live", Copy.CameraWatchLive);
+        Assert.Equal("Live", Copy.CameraLiveOn);
+        Assert.Equal("Watch the front door live", Copy.CameraLiveName);
+        Assert.Equal("Watch the front door, updated every second", Copy.CameraLiveTip(false));
+        Assert.Equal("Stop the live view", Copy.CameraLiveTip(true));
+        Assert.Equal("Open the kiosk for the full stream", Copy.CameraLiveFrameTip);
     }
 }

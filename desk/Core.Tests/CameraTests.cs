@@ -91,6 +91,33 @@ public class CameraTests
         Assert.Equal(FrameState.NoPicture, At(none + 5000));
     }
 
+    // Watch live (SHAPE "Camera live view"): fresh to 5 s, Stale to 60 s, then No picture, whatever the still's interval is.
+    [Theory]
+    [InlineData(5)]
+    [InlineData(30)]
+    [InlineData(300)]
+    public void Live_view_state_boundaries_are_5_and_60_seconds_and_ignore_the_interval(int i)
+    {
+        FrameState At(double sec) => FrameClock.ComputeLive(T0.AddSeconds(sec), T0, false);
+        Assert.Equal(FrameState.Live, At(0));
+        Assert.Equal(FrameState.Live, At(5));
+        Assert.Equal(FrameState.Stale, At(5.001));
+        Assert.Equal(FrameState.Stale, At(59.999));
+        Assert.Equal(FrameState.NoPicture, At(60));
+        Assert.Equal(FrameState.NoPicture, At(61));
+        // the still's own formula is unchanged for the same interval
+        Assert.Equal(FrameState.Live, FrameClock.Compute(T0.AddSeconds(2.0 * i), T0, i, false, false));
+        Assert.Equal(FrameState.Stale, FrameClock.Compute(T0.AddSeconds(2.0 * i + 0.001), T0, i, false, false));
+        Assert.Equal(FrameState.NoPicture, FrameClock.Compute(T0.AddSeconds(Math.Max(300, 3.0 * i)), T0, i, false, false));
+    }
+
+    [Fact]
+    public void Live_view_with_no_frame_is_Loading_until_a_fetch_fails()
+    {
+        Assert.Equal(FrameState.Loading, FrameClock.ComputeLive(T0, null, false));
+        Assert.Equal(FrameState.NoPicture, FrameClock.ComputeLive(T0, null, true));
+    }
+
     [Fact]
     public void Frame_state_with_no_frame_is_Loading_until_a_fetch_fails()
     {
