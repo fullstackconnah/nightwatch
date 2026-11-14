@@ -67,7 +67,7 @@ test("mcp auth delegates to bearerMatches", () => {
 });
 
 test("glance route races its weather and camera extras and reads the flag as a strict boolean", () => {
-  assert.match(route, /within\(getWeather\(\)\.then\(glanceWeather\), EXTRA_MS, null\)/);
+  assert.match(route, /glanceWeatherExtras\(getWeather, EXTRA_MS\)/);
   assert.match(route, /within\(cameraAvailable\(\), EXTRA_MS, false\)/);
   assert.match(route, /loadConfig\(\)\.system\?\.deskCamera === true/);
   assert.match(route, /^const EXTRA_MS = 1500;/m);

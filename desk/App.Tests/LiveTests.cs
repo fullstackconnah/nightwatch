@@ -419,12 +419,18 @@ public class LiveTests
         var live = Snapshot.ModelFor("camera-watch-on", g);
         var c = Sta.Run(() => Snapshot.Compose(live, 96));
         var without = Sta.Run(() => c.View.ActualHeight) - 212; // the window with no camera block
-        // the still (207) fits with sp-lg to spare at this work height, Live (212) does not
+        // the still (207) fits with sp-lg to spare at this work height, Live (212) does not: while Live is on the camera folds last,
+        // so TODAY (56) folds first and Live fits; only when it still does not fit is Live ended (slice 2: PLAN-AMEND D10)
         var work = without + 225;
         Sta.Run(() =>
         {
             c.View.Render(live with { Camera = live.Camera! with { WorkHeight = work } });
-            Assert.True(c.View.CameraFolded);
+            Assert.True(c.View.TodayFolded);
+            Assert.False(c.View.CameraFolded);
+            c.Host.UpdateLayout();
+            Near("N10 Live kept, TODAY folded", without + 156, c.View.ActualHeight, 0.5);
+            c.View.Render(live with { Camera = live.Camera! with { WorkHeight = without + 165 } });
+            Assert.True(c.View.CameraFolded); // not even Live with TODAY folded fits (156 > 149): the still folds and Live ends
             var still = Snapshot.ModelFor("camera-live", g);
             c.View.Render(still with { Camera = still.Camera! with { WorkHeight = work } });
             Assert.False(c.View.CameraFolded);

@@ -24,8 +24,18 @@ export interface GlanceWeather {
   /** A WeatherIconKey; the desk maps an unknown value or null to a cloud. */
   icon: string | null;
 }
+/** One of the days after today. Built field by field: nothing else from the weather day leaves the box. */
+export interface GlanceForecastDay {
+  /** A local calendar date, yyyy-MM-dd. May be "" when the upstream gave none; the desk skips it. */
+  day: string;
+  icon: string | null;
+  highC: number | null;
+  lowC: number | null;
+  rainPct: number | null;
+}
 export interface GlanceExtras {
   weather: GlanceWeather | null;
+  forecast: GlanceForecastDay[] | null;
   camera: boolean;
 }
 export interface Glance {
@@ -39,6 +49,8 @@ export interface Glance {
   probes: { answered: number; failed: number; pending: number };
   vitals: { cpu: number; mem: number; diskMax: number | null } | null;
   weather: GlanceWeather | null;
+  /** The next 4 days at most (days[1..4] of the same weather fetch); null when weather is. */
+  forecast: GlanceForecastDay[] | null;
   /** True when the desk camera is switched on AND a door camera resolves; the widget hides its block otherwise. */
   camera: boolean;
 }
@@ -63,7 +75,7 @@ function toItem(h: AttentionHit): GlanceItem {
   return item;
 }
 
-export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | null, extras: GlanceExtras = { weather: null, camera: false }): Glance {
+export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | null, extras: GlanceExtras = { weather: null, forecast: null, camera: false }): Glance {
   const { tone, text } = answerFor({ report, error: false, running: null, backupAgo: null });
   const count = (state: string) => report.probes.filter((p) => p.state === state).length;
   return {
@@ -82,6 +94,7 @@ export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | n
         }
       : null,
     weather: extras.weather,
+    forecast: extras.forecast,
     camera: extras.camera,
   };
 }
@@ -99,6 +112,17 @@ export function glanceWeather(w: WeatherResponse): GlanceWeather | null {
     rainPct: day?.rainPct ?? null,
     icon: w.current.code ?? null,
   };
+}
+
+/** Allowlist: the 4 days after today, each copied field by field. `[]` when only today came back. */
+export function glanceForecast(w: WeatherResponse): GlanceForecastDay[] | null {
+  if (w.status !== "ok") return null;
+  return w.days.slice(1, 5).map((d) => ({ day: d.date, icon: d.code ?? null, highC: d.maxC ?? null, lowC: d.minC ?? null, rainPct: d.rainPct ?? null }));
+}
+
+/** The route's one weather fetch feeds both fields; null for both when it is slow, down or unconfigured. */
+export function glanceWeatherExtras(get: () => Promise<WeatherResponse>, ms: number): Promise<Pick<GlanceExtras, "weather" | "forecast">> {
+  return within(get().then((w) => ({ weather: glanceWeather(w), forecast: glanceForecast(w) })), ms, { weather: null, forecast: null });
 }
 
 /** Resolves to `fallback` on a throw or when `p` takes longer than `ms`, so a slow upstream cannot slow the poll. */

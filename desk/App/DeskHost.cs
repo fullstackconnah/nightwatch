@@ -35,7 +35,8 @@ internal sealed class DeskHost
     CameraFeed feed = null!;
     DispatcherTimer camTimer = null!;
     WeatherNow? lastWeather;
-    bool shownWeather, shownCam, collapsed;
+    ForecastDay[]? lastForecast, shownForecast; // the forecast travels with the weather: same poll, same gate commit
+    bool shownWeather, shownCam, collapsed, todayClosed;
     double workHeight = double.PositiveInfinity;
 
     public int Run()
@@ -47,6 +48,14 @@ internal sealed class DeskHost
         tray = new Tray(widget.AlwaysOnTop);
 
         collapsed = widget.CameraCollapsed;
+        todayClosed = widget.IsClosed("today");
+        view.SectionToggled = id =>
+        {
+            if (id != "today") return; // an id this build does not know is never acted on
+            todayClosed = !todayClosed;
+            widget.SetClosed("today", todayClosed);
+            Update();
+        };
         feed = new CameraFeed(
             ct => cfg is { } c ? CameraFrame.FetchAsync(http, c.BaseUrl, c.Token, ct) : Task.FromResult<FrameOutcome>(new FrameOutcome.Failure()),
             () => DateTimeOffset.Now, () => widget.DpiScale);
@@ -133,7 +142,7 @@ internal sealed class DeskHost
         var next = state.Apply(o);
         weatherVis.OnPoll(o);
         camVis.OnPoll(o);
-        if (o is Outcome.Ok { Glance.Weather: { } w }) lastWeather = w;
+        if (o is Outcome.Ok { Glance: { Weather: { } w } glance }) { lastWeather = w; lastForecast = glance.Forecast; }
         if (ToastDiff.Compute(prev, next, c.BaseUrl, tz, firstRun && prev is null) is { } toast)
         {
             lastToast = toast.Click;
@@ -169,13 +178,14 @@ internal sealed class DeskHost
         if (!gate.Held) // showing or hiding either block changes the height, so it waits for a commit
         {
             shownWeather = weatherVis.Visible && !err;
+            shownForecast = lastForecast;
             shownCam = camVis.Visible && !err;
-            if (shownCam && !collapsed) workHeight = widget.WorkHeight();
+            if (shownCam) workHeight = widget.WorkHeight();
         }
         var dim = latest is View.Stale or View.Offline;
-        var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim) : null;
+        var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim, shownForecast) : null;
         var cam = shownCam ? new Cam(collapsed, workHeight, feed.State, feed.Image, feed.FrameAt, Live: feed.Live) : null;
-        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam), committed || changed);
+        view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam, Now: DateTimeOffset.Now, Closed: todayClosed ? ["today"] : null), committed || changed);
         feed.ClientError = err;
         feed.BlockHidden = !shownCam || collapsed || view.CameraFolded;
         tray.Set(TrayState.Of(latest), Copy.Tooltip(latest, tz));

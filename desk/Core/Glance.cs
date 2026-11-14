@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace NightwatchDesk.Core;
 
@@ -10,7 +11,14 @@ public sealed record Probes(int Answered, int Failed, int Pending)
 }
 public sealed record Vitals(double Cpu, double Mem, double? DiskMax);
 public sealed record WeatherNow(double? TempC, double? FeelsC, string? Label, double? HighC, double? LowC, double? RainPct, string? Icon);
-public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false);
+public sealed record ForecastDay(string? Day, string? Icon, double? HighC, double? LowC, double? RainPct)
+{
+    /// <summary>What the strip may show: entries whose day parses, at most 4. Null reads as empty. Never throws.</summary>
+    public static ForecastDay[] Usable(ForecastDay[]? f) =>
+        (f ?? []).Where(d => d is not null && Copy.ForecastDate(d.Day) is not null).Take(4).ToArray();
+}
+// Forecast is read apart from the rest (see GlanceParser): a bad forecast must never fail the whole glance.
+public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false, [property: JsonIgnore] ForecastDay[]? Forecast = null);
 
 /// <summary>What one poll came back with. The HTTP layer maps its result onto these.</summary>
 public abstract record Outcome
@@ -40,12 +48,18 @@ public static class GlanceParser
                 return new Outcome.Failed();
             if (n > 1) return new Outcome.TooNew(n);
             var g = root.Deserialize<Glance>(Options);
-            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g) : new Outcome.Failed();
+            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root) }) : new Outcome.Failed();
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException or ArgumentException)
         {
             return new Outcome.Failed();
         }
+    }
+
+    static ForecastDay[]? ReadForecast(JsonElement root)
+    {
+        try { return root.TryGetProperty("forecast", out var f) ? f.Deserialize<ForecastDay[]>(Options) : null; }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
     }
 
     // A missing required key deserializes to null; treat that as a bad body rather than crash later.

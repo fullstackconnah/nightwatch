@@ -80,6 +80,15 @@ internal sealed class Widget : Window
         Save();
     }
 
+    public bool IsClosed(string id) => state.IsClosed(id);
+
+    /// <summary>A section the user closed or opened; saved through the same Save path. A fold never comes here.</summary>
+    public void SetClosed(string id, bool closed)
+    {
+        state = state.WithClosed(id, closed);
+        Save();
+    }
+
     /// <summary>Height of the work area of the monitor the window is on, in DIP. Falls back to the primary one.</summary>
     public double WorkHeight()
     {

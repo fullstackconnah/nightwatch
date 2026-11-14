@@ -154,9 +154,9 @@ public class LayoutTests
     {
         var h = Sta.Run(() => Fix.Compose("healthy").View.ActualHeight);
         var max = Sta.Run(() => Fix.Compose("overflow").View.ActualHeight);
-        Near("N11 healthy window height", 157, h, 1);
+        Near("N11 healthy window height", 190, h, 1); // slice 2: +33 for the TODAY header (no weather, so no body)
         Fix.Rec("N12 max height (overflow)", max.ToString("0.##"));
-        Assert.True(max <= 584, $"max {max}");
+        Assert.True(max <= 584 + 33, $"max {max}"); // slice 2: +33 for the TODAY header (the overflow fixture has no weather)
     }
 
     static readonly double[] Sizes = { 10, 11.2, 12, 14, 18 };
