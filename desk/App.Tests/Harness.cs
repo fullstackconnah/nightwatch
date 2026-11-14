@@ -34,13 +34,18 @@ internal static class Fix
         return ((Outcome.Ok)GlanceParser.Parse(File.ReadAllText(p))).Glance;
     }
 
-    /// <summary>The fixture each of the 58 states renders from (see snapshots.ps1, which uses the same table).</summary>
+    /// <summary>The fixture each of the 66 states renders from (see snapshots.ps1, which uses the same table).</summary>
     public static string For(string state) => state switch
     {
         "healthy" or "first-launch" or "weather-null" or "today-no-weather" => "healthy",
         "weather-on" or "weather-dim" or "today-no-forecast" => "healthy-weather",
         "weather-long" => "weather-long",
         "today-open" or "today-closed" or "today-stale" or "media-hidden" => "today",
+        "home-on" or "home-closed" or "home-stale" or "home-folded" => "home",
+        "home-issues" => "home-issues",
+        "home-all-off" => "home-all-off",
+        "home-containers-only" => "home-containers-only",
+        "home-hidden" => "today",
         "media-playing" or "media-stale" or "media-closed" or "media-folded" => "media",
         "media-paused" => "media-paused",
         "media-downloads-only" => "media-downloads",

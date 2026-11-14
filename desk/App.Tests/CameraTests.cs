@@ -380,7 +380,7 @@ public class CameraTests
             var fr = f.TransformToAncestor(c.Host).TransformBounds(new Rect(0, 0, f.ActualWidth, f.ActualHeight));
             foreach (var v in new[] { fr.Left * 1.5, fr.Top * 1.5, fr.Width * 1.5, fr.Height * 1.5 })
                 if (Math.Abs(v - Math.Round(v)) > 0.01) bad.Add("frame " + v);
-            Assert.Equal(3, Ids(c.View, "hairline").Where(Fix.Shown).Count()); // vitals, weather, camera (the collapsed MEDIA block holds a fourth, hidden one)
+            Assert.Equal(3, Ids(c.View, "hairline").Where(Fix.Shown).Count()); // vitals, weather, camera (the collapsed MEDIA and HOME blocks hold a fourth and fifth, hidden one)
         });
         Fix.Rec("N40 misses at 144 dpi", bad.Count.ToString());
         Assert.Empty(bad);

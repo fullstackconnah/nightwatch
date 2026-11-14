@@ -2,6 +2,9 @@
  * Pure; relative or type-only imports so node:test can load it. */
 import type { AttentionHit, AttentionReport } from "./attention-report.ts";
 import { answerFor, type Tone } from "./home.ts";
+import type { ContainerCounts } from "./container-counts.ts";
+import { kioskVoiceEntities } from "./ha-settings-entities.ts";
+import type { HaStatesResponse } from "./types/ha.ts";
 import type { KioskVitalsData } from "./kiosk-vitals-view.ts";
 import type { WeatherResponse } from "./weather.ts";
 import type { KioskDownloadsResult } from "./types/downloads.ts";
@@ -54,12 +57,38 @@ export interface GlanceDownloads {
   count: number;
   items: GlanceDownload[];
 }
+/** Counts of the kiosk-visible lights only. No light name, id or brightness leaves the box. */
+export interface GlanceHomeLights {
+  lightsOn: number;
+  lightsTotal: number;
+}
+/** The first available climate. `name` is the only name that leaves (cleaned, at most 24); absent when empty. Temps in °C. */
+export interface GlanceHomeClimate {
+  name?: string;
+  mode: string;
+  currentC: number | null;
+  targetC: number | null;
+}
+export interface GlanceHome {
+  lights: GlanceHomeLights | null;
+  climate: GlanceHomeClimate | null;
+}
+/** Counts only: no container name, id or image. */
+export interface GlanceContainers {
+  total: number;
+  running: number;
+  restarting: number;
+  unhealthy: number;
+  dead: number;
+}
 export interface GlanceExtras {
   weather: GlanceWeather | null;
   forecast: GlanceForecastDay[] | null;
   camera: boolean;
   nowPlaying?: GlanceNowPlaying | null;
   downloads?: GlanceDownloads | null;
+  home?: GlanceHome | null;
+  containers?: GlanceContainers | null;
 }
 export interface Glance {
   v: 1;
@@ -80,6 +109,10 @@ export interface Glance {
   nowPlaying: GlanceNowPlaying | null;
   /** Null when qBittorrent is unconfigured, unreachable or slow. */
   downloads: GlanceDownloads | null;
+  /** Null when HA is slow, down or has nothing to show; its lights part is also null when the hidden list cannot be read. */
+  home: GlanceHome | null;
+  /** Null when docker is unreachable or slow. */
+  containers: GlanceContainers | null;
 }
 
 // A path stays; a plain in-page anchor ("#backup") is made absolute so the widget opens Home at it; all else is Home.
@@ -125,6 +158,8 @@ export function buildGlance(report: AttentionReport, vitals: KioskVitalsData | n
     camera: extras.camera,
     nowPlaying: extras.nowPlaying ?? null,
     downloads: extras.downloads ?? null,
+    home: extras.home ?? null,
+    containers: extras.containers ?? null,
   };
 }
 
@@ -209,6 +244,60 @@ export async function glanceMediaExtras(
     within(Promise.resolve().then(dl).then(glanceDownloads), ms, null),
   ]);
   return { nowPlaying, downloads };
+}
+
+const KNOWN_HVAC = new Set(["off", "heat", "cool", "heat_cool", "auto", "dry", "fan_only"]);
+
+// °F converts; anything else is taken as °C. A non-finite or implausible reading is null, never a made-up number.
+function celsius(v: unknown, unit: string | null): number | null {
+  if (!finite(v)) return null;
+  const c = Math.round((unit === "°F" ? ((v - 32) * 5) / 9 : v) * 10) / 10;
+  return c >= -50 && c <= 60 ? c : null;
+}
+
+/**
+ * Allowlist from the kiosk-visible entities: light counts, and the first available climate with a known mode.
+ * `hidden` null (the registry read failed) fails closed: no lights, so a hidden light is never counted. Climates are never hideable.
+ */
+export function glanceHome(r: HaStatesResponse, hidden: ReadonlySet<string> | null): GlanceHome | null {
+  if (r.status !== "ok" || !r.entities) return null;
+  const visible = kioskVoiceEntities(r.entities, hidden);
+  const lightsTotal = visible.lights.length;
+  const lights = lightsTotal > 0 ? { lightsOn: visible.lights.filter((l) => l.on === true && l.available !== false).length, lightsTotal } : null;
+  const c = visible.climates.find((x) => x.available !== false && KNOWN_HVAC.has(x.hvacMode));
+  let climate: GlanceHomeClimate | null = null;
+  if (c) {
+    // friendlyName() falls back to the entity id; an id must never leave the box
+    const name = c.name === c.entityId ? "" : cap(c.name ?? "", 24);
+    climate = { ...(name ? { name } : {}), mode: c.hvacMode, currentC: celsius(c.currentTemp, c.unit), targetC: celsius(c.targetTemp, c.unit) };
+  }
+  return lights || climate ? { lights, climate } : null;
+}
+
+/** Copied field by field: `paused` and `stopped` stay on the kiosk route. */
+export function glanceContainers(c: ContainerCounts): GlanceContainers {
+  return { total: c.total, running: c.running, restarting: c.restarting, unhealthy: c.unhealthy, dead: c.dead };
+}
+
+/**
+ * HOME's two sources, each in its own `ms` race, so a throw (even a synchronous one), a rejection or a hang gives null for it alone.
+ * The hidden-list race ends 100 ms early on purpose: when the registry is slow, the lights go null while the climate still shows.
+ */
+export async function glanceHomeExtras(
+  ha: () => Promise<HaStatesResponse>,
+  hidden: () => Promise<ReadonlySet<string>>,
+  counts: () => Promise<ContainerCounts>,
+  ms: number,
+): Promise<{ home: GlanceHome | null; containers: GlanceContainers | null }> {
+  const [home, containers] = await Promise.all([
+    within(
+      Promise.all([Promise.resolve().then(ha), within<ReadonlySet<string> | null>(Promise.resolve().then(hidden), ms - 100, null)]).then(([r, h]) => glanceHome(r, h)),
+      ms,
+      null,
+    ),
+    within(Promise.resolve().then(counts).then(glanceContainers), ms, null),
+  ]);
+  return { home, containers };
 }
 
 /** Resolves to `fallback` on a throw or when `p` takes longer than `ms`, so a slow upstream cannot slow the poll. */

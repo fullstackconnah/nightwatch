@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { getAttentionReport } from "@/lib/attention";
 import { loadConfig, systemSetting } from "@/lib/config";
+import { collectCounts } from "@/lib/container-counts";
 import { doorCameraEntity } from "@/lib/desk-camera";
 import { deskGlanceResponse } from "@/lib/desk-glance-response";
-import { buildGlance, glanceMediaExtras, glanceWeatherExtras, within } from "@/lib/desk-glance";
-import { getHaStates } from "@/lib/ha";
+import { buildGlance, glanceHomeExtras, glanceMediaExtras, glanceWeatherExtras, within } from "@/lib/desk-glance";
+import { listContainers } from "@/lib/docker";
+import { getHaStates, getHiddenSettingsIds } from "@/lib/ha";
 import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
 import { getHostVitals } from "@/lib/host-metrics";
 import { getJellyfinNowPlaying } from "@/lib/jellyfin";
 import { kioskVitals } from "@/lib/kiosk-vitals-view";
 import { pickNowPlaying } from "@/lib/now-playing";
+import type { HaStatesResponse } from "@/lib/types/ha";
 import { getWeather } from "@/lib/weather";
 import { getKioskDownloads } from "@/lib/widgets/builtins";
 
@@ -42,7 +45,11 @@ async function buildReport() {
   // Each extra degrades to null/false: a slow or down upstream must not slow or fail the poll.
   const wx = glanceWeatherExtras(getWeather, EXTRA_MS);
   const camera = within(cameraAvailable(), EXTRA_MS, false);
-  const media = glanceMediaExtras(() => pickNowPlaying(getHaStates, getJellyfinNowPlaying), getKioskDownloads, EXTRA_MS);
+  // One HA states call per request, shared by now playing and HOME; lazy, and never kept across requests.
+  let haP: Promise<HaStatesResponse> | undefined;
+  const ha = () => (haP ??= getHaStates());
+  const media = glanceMediaExtras(() => pickNowPlaying(ha, getJellyfinNowPlaying), getKioskDownloads, EXTRA_MS);
+  const home = glanceHomeExtras(ha, getHiddenSettingsIds, () => collectCounts(listContainers), EXTRA_MS);
   const report = await getAttentionReport(null);
   let vitals = null;
   try {
@@ -52,5 +59,6 @@ async function buildReport() {
   }
   const { weather, forecast } = await wx;
   const { nowPlaying, downloads } = await media;
-  return buildGlance(report, vitals, { weather, forecast, camera: await camera, nowPlaying, downloads });
+  const h = await home;
+  return buildGlance(report, vitals, { weather, forecast, camera: await camera, nowPlaying, downloads, home: h.home, containers: h.containers });
 }

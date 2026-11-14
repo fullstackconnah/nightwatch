@@ -51,5 +51,7 @@
   "forecast": null,
   "nowPlaying": null,
   "downloads": null,
+  "home": null,
+  "containers": null,
   "camera": true
 }

@@ -55,7 +55,7 @@ test("settings/system POST keeps an unknown existing field (so deskToken) and ne
 });
 
 test("no console. in the new files, the middleware or mcp auth", () => {
-  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "./now-playing.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
+  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "./now-playing.ts", "./container-counts.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
     assert.doesNotMatch(read(p), /console\./, p);
   }
 });
@@ -74,6 +74,15 @@ test("glance route races its weather and camera extras and reads the flag as a s
 });
 
 test("glance route races its media extras before the attention report", () => {
-  assert.match(route, /glanceMediaExtras\(\(\) => pickNowPlaying\(getHaStates, getJellyfinNowPlaying\), getKioskDownloads, EXTRA_MS\)/);
+  assert.match(route, /glanceMediaExtras\(\(\) => pickNowPlaying\(ha, getJellyfinNowPlaying\), getKioskDownloads, EXTRA_MS\)/);
   assert.ok(route.indexOf("glanceMediaExtras(") < route.indexOf("getAttentionReport(null)"));
+});
+
+test("glance route shares one lazy HA call per request and races the home extras before the attention report", () => {
+  assert.match(route, /let haP: Promise<HaStatesResponse> \| undefined;/);
+  assert.match(route, /const ha = \(\) => \(haP \?\?= getHaStates\(\)\);/);
+  assert.equal(route.match(/getHaStates\(\)/g)?.length, 1);
+  assert.match(route, /glanceHomeExtras\(ha, getHiddenSettingsIds, \(\) => collectCounts\(listContainers\), EXTRA_MS\)/);
+  assert.ok(route.indexOf("glanceHomeExtras(") < route.indexOf("getAttentionReport(null)"));
+  assert.ok(route.indexOf("const ha =") > route.indexOf("async function buildReport"), "the shared call lives inside the request, never at module level");
 });
