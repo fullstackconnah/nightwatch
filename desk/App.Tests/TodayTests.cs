@@ -49,12 +49,17 @@ public class TodayTests
         try
         {
             Directory.CreateDirectory(dir);
-            File.WriteAllText(path, "{\"Left\":10,\"Top\":20,\"Anchor\":\"top\",\"AlwaysOnTop\":false,\"WorkArea\":null}");
+            File.WriteAllText(path, "{\"Left\":10,\"Top\":20,\"Anchor\":\"top\",\"AlwaysOnTop\":false,\"WorkArea\":null,\"CameraCollapsed\":true}");
             var s = WinState.Load(path)!;
             Assert.Null(s.Closed);
-            Assert.False(s.CameraCollapsed);
+            Assert.True(s.CameraCollapsed);
+            Assert.Equal((10d, 20d, "top"), (s.Left, s.Top, s.Anchor));
             Assert.False(s.IsClosed("today"));
             Assert.Equal(["today"], s.WithClosed("today", true).Closed);
+            s.WithClosed("today", true).Save(path);
+            var back = WinState.Load(path)!;
+            Assert.True(back.CameraCollapsed);
+            Assert.Equal((10d, 20d, "top"), (back.Left, back.Top, back.Anchor));
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
@@ -266,6 +271,14 @@ public class TodayTests
             Assert.Contains("SAT", names);
             Assert.DoesNotContain("MON", names);
         });
+    }
+
+    [Fact]
+    public void Today_folds_when_the_camera_is_collapsed_on_a_short_work_area()
+    {
+        var m = Snapshot.ModelFor("today-folded", Fix.Load("camera-3-items"));
+        var v = Sta.Run(() => { var d = new DeskView(TimeZoneInfo.Utc); d.Render(m with { Camera = m.Camera! with { Collapsed = true, WorkHeight = Snapshot.FoldedWorkHeight } }); return d; });
+        Sta.Run(() => { Assert.True(v.TodayFolded); Assert.True(v.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg")); });
     }
 
     [Fact]

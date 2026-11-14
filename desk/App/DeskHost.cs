@@ -180,7 +180,7 @@ internal sealed class DeskHost
             shownWeather = weatherVis.Visible && !err;
             shownForecast = lastForecast;
             shownCam = camVis.Visible && !err;
-            if (shownCam && !collapsed) workHeight = widget.WorkHeight();
+            if (shownCam) workHeight = widget.WorkHeight();
         }
         var dim = latest is View.Stale or View.Offline;
         var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim, shownForecast) : null;
