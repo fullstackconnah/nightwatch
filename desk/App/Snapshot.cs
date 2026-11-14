@@ -24,6 +24,7 @@ internal static class Snapshot
         "camera-watch-waking", "camera-watch-on", "camera-watch-stale", "camera-watch-no-picture", "camera-watch-letterbox", "camera-watch-folded", "camera-watch-focus",
         "today-open", "today-closed", "today-no-weather", "today-no-forecast", "today-stale", "forecast-long", "today-folded",
         "media-playing", "media-paused", "media-downloads-only", "media-more", "media-long", "media-hidden", "media-stale", "media-closed", "media-folded",
+        "home-on", "home-all-off", "home-issues", "home-containers-only", "home-hidden", "home-closed", "home-stale", "home-folded",
     };
 
     const int CameraInterval = 30; // the default I; frame ages below are multiples of it
@@ -79,7 +80,7 @@ internal static class Snapshot
         View v = state switch
         {
             "first-launch" => new View.FirstLaunch(),
-            "stale" or "weather-dim" or "today-stale" or "media-stale" => new View.Stale(g, At),
+            "stale" or "weather-dim" or "today-stale" or "media-stale" or "home-stale" => new View.Stale(g, At),
             "offline-with-last-known" or "offline-last-frame" => new View.Offline(g, At),
             "offline-never-answered" => new View.Offline(null, null),
             "config-missing" => new View.Config(new ConfigResult.Missing()),
@@ -98,13 +99,14 @@ internal static class Snapshot
             "camera-live" or "camera-letterbox" or "camera-stale" or "camera-no-picture" or "offline-last-frame" or "camera-collapsed"
                 or "camera-folded" or "camera-hover-frame" or "camera-focus-header"
                 or "camera-watch-on" or "camera-watch-stale" or "camera-watch-no-picture" or "camera-watch-letterbox"
-                or "camera-watch-folded" or "camera-watch-focus" or "today-folded" or "media-folded" => FrameCam(state, dpi),
+                or "camera-watch-folded" or "camera-watch-focus" or "today-folded" or "media-folded" or "home-folded" => FrameCam(state, dpi),
             _ => null, // camera-hidden: the fixture says camera, three false polls took the block away
         };
-        var work = state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state is "today-folded" or "media-folded" ? FoldedWorkHeight : double.PositiveInfinity;
+        var work = state is "camera-folded" or "camera-watch-folded" ? CameraFoldWorkHeight : state is "today-folded" or "media-folded" or "home-folded" ? FoldedWorkHeight : double.PositiveInfinity;
         var media = g.NowPlaying is not null || g.Downloads is not null ? new MediaNow(g.NowPlaying, g.Downloads, v is View.Stale or View.Offline) : null;
-        var closed = state switch { "today-closed" => new[] { "today" }, "media-closed" => new[] { "media" }, _ => null };
-        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, closed, media, work);
+        var home = g.Home is not null || g.Containers is not null ? new HomeNow(g.Home, g.Containers, v is View.Stale or View.Offline) : null;
+        var closed = state switch { "today-closed" => new[] { "today" }, "media-closed" => new[] { "media" }, "home-closed" => new[] { "home" }, _ => null };
+        return new Model(v, v, state == "update-held", state == "hover-row-1", state == "focus-row-1", strip, cam, At, closed, media, work, home);
     }
 
     public sealed record Composed(Border Host, DeskView View, RenderTargetBitmap Bitmap, double Dpi);

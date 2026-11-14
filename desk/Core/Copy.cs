@@ -223,6 +223,12 @@ public static class Copy
 
     // --- HOME (slice 4): invariant culture, no apostrophes. ---
     public const string HomeTitle = "Home";
+    public const string LightsCaption = "LIGHTS";
+    public const string ClimateCaption = "CLIMATE";
+    public const string ContainersCaption = "CONTAINERS";
+
+    /// <summary>"Lights: 3 of 12 on", the line's tooltip and automation name.</summary>
+    public static string LightsTip(HomeLights l) => $"Lights: {LightsValue(l)}";
 
     public static string HomeHeaderTip(bool closed, bool folded) => folded ? SectionFolded : closed ? "Show home" : "Hide home";
 

@@ -17,10 +17,13 @@ internal enum Mark { None, Ring, Amber, Red, Off }
 /// <summary>What to draw: the committed body, the newest view (footer, vitals and the dim restyle read it), and the gate's flag.</summary>
 /// <remarks>Now is the clock the TODAY header shows (null: the real time), so a capture is fixed. Closed holds the section ids the user closed; an unknown id is ignored.
 /// WorkHeight is the monitor's work-area height in DIP (infinity: no fit-fold); every section folds against it, with or without the camera.</remarks>
-internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null, MediaNow? Media = null, double WorkHeight = double.PositiveInfinity);
+internal sealed record Model(View Committed, View Latest, bool UpdateHeld, bool Hover1 = false, bool Focus1 = false, Strip? Weather = null, Cam? Camera = null, DateTimeOffset? Now = null, string[]? Closed = null, MediaNow? Media = null, double WorkHeight = double.PositiveInfinity, HomeNow? Home = null);
 
 /// <summary>The MEDIA block's content; null on the model means hidden. Dim: stale or offline, the last values quieter.</summary>
 internal sealed record MediaNow(NowPlaying? NowPlaying, Downloads? Downloads, bool Dim);
+
+/// <summary>The HOME block's content; null on the model means hidden. Whatever is not usable is dropped when drawing. Dim: stale or offline, the last values quieter.</summary>
+internal sealed record HomeNow(Home? Home, Containers? Containers, bool Dim);
 
 /// <summary>The weather strip and the forecast under it; null on the model means TODAY shows its header only. Dim: the last values, temperature and glyph quieter.</summary>
 internal sealed record Strip(WeatherNow Weather, bool Dim, ForecastDay[]? Forecast = null);
@@ -119,8 +122,8 @@ internal sealed class DeskView : Border
     readonly TextBlock vitals;
     readonly TextBlock footer;
     readonly TextBlock held;
-    string? bodyKey, vitalsKey, footerKey, weatherKey, todayKey, foldKey, mediaKey;
-    (bool Cam, bool Media, bool Today) foldValue;
+    string? bodyKey, vitalsKey, footerKey, weatherKey, todayKey, foldKey, mediaKey, homeKey;
+    (bool Cam, bool Media, bool Home, bool Today) foldValue;
     Mark? lastMark;
     HashSet<string> shown = new();
 
@@ -132,6 +135,10 @@ internal sealed class DeskView : Border
     readonly StackPanel mediaBox = new() { Visibility = Visibility.Collapsed };
     readonly StackPanel mediaBody = new() { Visibility = Visibility.Collapsed };
     SectionHeader mediaHeader = null!;
+    // HOME: hairline, the header, then up to 3 lines (lights, climate, containers). Read-only.
+    readonly StackPanel homeBox = new() { Visibility = Visibility.Collapsed };
+    readonly StackPanel homeBody = new() { Visibility = Visibility.Collapsed };
+    SectionHeader homeHeader = null!;
     readonly Button camFrame = new();
     readonly Image frameImage = new();
     // Built in the constructor and BuildCamera: they read tokens, which load first.
@@ -156,6 +163,8 @@ internal sealed class DeskView : Border
     public bool TodayFolded { get; private set; }
     /// <summary>The same for the MEDIA body.</summary>
     public bool MediaFolded { get; private set; }
+    /// <summary>The same for the HOME body.</summary>
+    public bool HomeFolded { get; private set; }
 
     public Button CameraHeaderButton => camHeader;
     public Button CameraLiveButton => camLive;
@@ -235,6 +244,14 @@ internal sealed class DeskView : Border
         mediaBox.Children.Add(mediaBody);
         AutomationProperties.SetAutomationId(mediaBox, "media-block");
         stack.Children.Add(mediaBox);
+        homeHeader = new SectionHeader("home", Copy.HomeTitle.ToUpperInvariant(), side);
+        AutomationProperties.SetName(homeHeader, Copy.HomeTitle);
+        homeHeader.Click += (_, _) => SectionToggled?.Invoke("home");
+        homeBox.Children.Add(Hairline());
+        homeBox.Children.Add(homeHeader);
+        homeBox.Children.Add(homeBody);
+        AutomationProperties.SetAutomationId(homeBox, "home-block");
+        stack.Children.Add(homeBox);
         stack.Children.Add(vitalsBox);
         stack.Children.Add(foot);
 
@@ -314,9 +331,18 @@ internal sealed class DeskView : Border
         var mediaClosed = m.Closed?.Contains("media") == true;
         mediaBox.Visibility = mediaShown ? Visibility.Visible : Visibility.Collapsed;
         var mediaH = mediaShown && !mediaClosed ? (np is null ? 0 : Theme.D("row-height")) + dls.Length * Theme.D("more-height") : 0;
-        (CameraFolded, MediaFolded, TodayFolded) = Folds(m.WorkHeight, m.Camera, mediaH, rows);
+        // HOME shows when at least one of its three lines is usable; an error view (no glance) shows none. Its open body is the fold's home height.
+        var hn = g is null ? null : m.Home;
+        var hh = Home.Usable(hn?.Home);
+        var hc = Containers.Usable(hn?.Containers);
+        var homeLines = (hh?.Lights is null ? 0 : 1) + (hh?.Climate is null ? 0 : 1) + (hc is null ? 0 : 1);
+        var homeClosed = m.Closed?.Contains("home") == true;
+        homeBox.Visibility = homeLines > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var homeH = homeLines > 0 && !homeClosed ? homeLines * Theme.D("more-height") : 0;
+        (CameraFolded, MediaFolded, HomeFolded, TodayFolded) = Folds(m.WorkHeight, m.Camera, mediaH, homeH, rows);
         RenderToday(m.Weather, forecast, now, asOf, closed);
         RenderMedia(m.Media, np, dls, dlCount, mediaShown, mediaClosed, asOf);
+        RenderHome(hn, hh, hc, homeLines, homeClosed, asOf);
         FillCamera(m.Camera, m.Latest is View.Stale or View.Offline);
     }
 
@@ -388,6 +414,58 @@ internal sealed class DeskView : Border
             foreach (var d in dls) mediaBody.Children.Add(DownloadRow(d, dim));
         }
         mediaBody.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // --- HOME (SHAPE "HOME"): the lights, climate and containers lines; nothing here is a button ---
+    void RenderHome(HomeNow? hn, Home? h, Containers? c, int lines, bool closed, string? asOf)
+    {
+        if (lines == 0) { homeBody.Visibility = Visibility.Collapsed; return; }
+        var folded = HomeFolded;
+        var open = !closed && !folded;
+        var dim = hn!.Dim;
+        homeHeader.Label.Text = Copy.HomeTitle.ToUpperInvariant() + (asOf is null ? "" : " · " + asOf.ToUpperInvariant());
+        homeHeader.Meta.Text = closed || folded ? Copy.HomeMeta(h, c) : ""; // open, the lines say it all
+        homeHeader.Meta.Foreground = Theme.B(folded ? "ink-faint" : "ink-dim");
+        homeHeader.Expanded = open;
+        homeHeader.IsEnabled = !folded;
+        homeHeader.Cursor = folded ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        homeHeader.ToolTip = Copy.HomeHeaderTip(closed, folded);
+        homeHeader.Chevron.Visibility = folded ? Visibility.Collapsed : Visibility.Visible;
+        homeHeader.Chevron.RenderTransform = new RotateTransform(open ? 90 : 0); // points right when closed, down when open; snaps
+
+        var key = $"{dim}|{h}|{c}";
+        if (key != homeKey)
+        {
+            homeKey = key;
+            homeBody.Children.Clear();
+            var ink = dim ? "ink-dim" : "ink";
+            if (h?.Lights is { } l) homeBody.Children.Add(HomeLine(Copy.LightsCaption, Copy.LightsValue(l), l.LightsOn == 0 ? "ink-dim" : ink, null, ink, Copy.LightsTip(l), "home-lights"));
+            if (h?.Climate is { } cl) homeBody.Children.Add(HomeLine(Copy.ClimateCaption, Copy.ClimateValue(cl), ink, null, ink, Copy.ClimateTip(cl), "home-climate"));
+            if (c is not null) homeBody.Children.Add(HomeLine(Copy.ContainersCaption, Copy.ContainersValue(c), ink, Copy.ContainersIssue(c), dim ? "ink-dim" : c.Dead > 0 ? "bad" : "warn", Copy.ContainersTip(c), "home-containers"));
+        }
+        homeBody.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Caption left (trims), value right in mono (the issue, if any, a second run in its own colour). Same shape as a download row; not a button, not a tab stop.</summary>
+    FrameworkElement HomeLine(string caption, string value, string valueBrush, string? issue, string issueBrush, string tip, string id)
+    {
+        var side = Theme.D("sp-lg") - Theme.D("hairline");
+        var cap = Theme.Text(caption, "fs-label", "lh-label", "ink-faint", semibold: true);
+        cap.VerticalAlignment = VerticalAlignment.Center;
+        var val = Theme.Text(value, "fs-data", "lh-data", valueBrush, mono: true);
+        if (issue is not null) val.Inlines.Add(new Run(" · " + issue) { Foreground = Theme.B(issueBrush) });
+        val.VerticalAlignment = VerticalAlignment.Center;
+        val.Margin = new Thickness(Theme.D("sp-base"), 0, 0, 0);
+        Grid.SetColumn(val, 1);
+        var row = new Grid { Height = Theme.D("more-height"), Margin = new Thickness(side, 0, side, 0), Background = Brushes.Transparent };
+        row.ColumnDefinitions.Add(new ColumnDefinition());
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.Children.Add(cap);
+        row.Children.Add(val);
+        row.ToolTip = tip;
+        AutomationProperties.SetName(row, tip);
+        AutomationProperties.SetAutomationId(row, id);
+        return row;
     }
 
     /// <summary>Title over "Series · App" in the item-row typography; a sp-hair progress bar on the row bottom (accent, ink-faint when paused or stale). No progress, no bar.</summary>
@@ -584,19 +662,20 @@ internal sealed class DeskView : Border
     /// <summary>How many times Folds measured the tree. A cached answer or an early return never counts (a clock-only render must not probe).</summary>
     public int FoldProbes { get; private set; }
 
-    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then MEDIA, then TODAY. While Live is on the camera
-    /// goes last, so MEDIA and TODAY fold first and Live ends only if it still does not fit. Measured without the camera block and the MEDIA and TODAY bodies, so it never depends on their own state.
+    /// <summary>Which open parts do not fit the work area less sp-lg (SHAPE "Fold rule"), folding one at a time: the camera first, then MEDIA, then HOME, then TODAY. While Live is on the camera
+    /// goes last, so MEDIA, HOME and TODAY fold first and Live ends only if it still does not fit. Measured without the camera block and the MEDIA, HOME and TODAY bodies, so it never depends on their own state.
     /// No work height (infinity) or nothing foldable answers all false without measuring; the key still records it so a later finite height never reuses a stale answer.</summary>
-    (bool Cam, bool Media, bool Today) Folds(double work, Cam? c, double mediaH, int todayRows)
+    (bool Cam, bool Media, bool Home, bool Today) Folds(double work, Cam? c, double mediaH, double homeH, int todayRows)
     {
-        var key = $"{bodyKey}|{vitalsBox.Visibility}|{work}|{c is null}|{c?.Live}|{c?.Collapsed}|{todayRows}|{mediaBox.Visibility}|{mediaH}";
+        var key = $"{bodyKey}|{vitalsBox.Visibility}|{work}|{c is null}|{c?.Live}|{c?.Collapsed}|{todayRows}|{mediaBox.Visibility}|{mediaH}|{homeBox.Visibility}|{homeH}";
         if (key == foldKey) return foldValue;
         foldKey = key;
-        if (double.IsPositiveInfinity(work) || (c is null && mediaH == 0 && todayRows == 0)) return foldValue = (false, false, false);
+        if (double.IsPositiveInfinity(work) || (c is null && mediaH == 0 && homeH == 0 && todayRows == 0)) return foldValue = (false, false, false, false);
         FoldProbes++;
         camBox.Visibility = Visibility.Collapsed;
         todayBody.Visibility = Visibility.Collapsed;
         mediaBody.Visibility = Visibility.Collapsed;
+        homeBody.Visibility = Visibility.Collapsed;
         Stale(this); // a laid-out tree would answer from its cache and still count the blocks just collapsed
         Measure(new Size(Width, double.PositiveInfinity));
         var baseHeight = DesiredSize.Height;
@@ -604,16 +683,17 @@ internal sealed class DeskView : Border
         var limit = work - Theme.D("sp-lg");
         var head = Theme.D("hairline") + Theme.D("more-height");
         var live = c?.Live == true;
-        bool cam = false, media = false, today = false;
-        double Total() => baseHeight + (c is null ? 0 : c.Collapsed || cam ? head : OpenCameraHeight(live)) + (media ? 0 : mediaH) + (today ? 0 : todayRows * Theme.D("row-height"));
-        foreach (var part in live ? new[] { "media", "today", "cam" } : new[] { "cam", "media", "today" })
+        bool cam = false, media = false, home = false, today = false;
+        double Total() => baseHeight + (c is null ? 0 : c.Collapsed || cam ? head : OpenCameraHeight(live)) + (media ? 0 : mediaH) + (home ? 0 : homeH) + (today ? 0 : todayRows * Theme.D("row-height"));
+        foreach (var part in live ? new[] { "media", "home", "today", "cam" } : new[] { "cam", "media", "home", "today" })
         {
             if (Total() <= limit) break;
             if (part == "cam" && c is { Collapsed: false }) cam = true;
             else if (part == "media" && mediaH > 0) media = true;
+            else if (part == "home" && homeH > 0) home = true;
             else if (part == "today" && todayRows > 0) today = true;
         }
-        return foldValue = (cam, media, today);
+        return foldValue = (cam, media, home, today);
     }
 
     static void Stale(DependencyObject o)
