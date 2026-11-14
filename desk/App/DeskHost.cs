@@ -144,6 +144,7 @@ internal sealed class DeskHost
         Outcome o;
         try { o = await Poller.FetchAsync(http, c); }
         finally { polling = false; }
+        if (!ReferenceEquals(c, cfg)) { _ = PollAsync(); return; } // the config was swapped mid-poll: drop this outcome, poll once with the new one
         var next = state.Apply(o);
         weatherVis.OnPoll(o);
         camVis.OnPoll(o);

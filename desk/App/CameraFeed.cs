@@ -14,6 +14,7 @@ internal sealed class CameraFeed
     readonly Func<DateTimeOffset> clock;
     readonly Func<double> dpiScale;
     bool windowHidden, blockHidden = true, clientError, locked, suspended, fetching, everFailed;
+    int liveFailures; // consecutive Live fetches that gave no frame; three end Live
 
     public CameraFeed(Func<CancellationToken, Task<FrameOutcome>> fetch, Func<DateTimeOffset> clock, Func<double> dpiScale)
     {
@@ -74,7 +75,7 @@ internal sealed class CameraFeed
     {
         if (Live) return;
         Live = true;
-        Image = null; FrameAt = null; everFailed = false;
+        Image = null; FrameAt = null; everFailed = false; liveFailures = 0;
         if (Active) _ = TickAsync();
     }
 
@@ -105,13 +106,15 @@ internal sealed class CameraFeed
         FrameOutcome o;
         try { o = await fetch(CancellationToken.None).ConfigureAwait(true); }
         finally { fetching = false; }
+        var good = false;
         if (o is FrameOutcome.Frame f && Decode(f.Bytes, dpiScale(), Live) is { } img)
         {
-            Image = img; FrameAt = clock(); everFailed = false;
+            Image = img; FrameAt = clock(); everFailed = false; good = true;
         }
         else if (FrameAt is null) everFailed = true; // a failure keeps the last frame; with none, the block says so
         DropStale();
-        if (Live && o is FrameOutcome.Failure { Unauthorized: true }) EndLive(); // the token is refused: no more Live frames; EndLive tells the view
+        if (good || !Live) liveFailures = 0; else liveFailures++;
+        if (Live && (o is FrameOutcome.Failure { Unauthorized: true } || liveFailures >= 3)) EndLive(); // a refused token ends Live at once, three failures in a row end it too; EndLive tells the view
         else Changed?.Invoke();
     }
 

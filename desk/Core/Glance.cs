@@ -101,13 +101,14 @@ public static class GlanceParser
     static ForecastDay[]? ReadForecast(JsonElement root)
     {
         // At most 4 entries are read, never the whole array (the server sends 4).
-        try { return root.TryGetProperty("forecast", out var f) && f.ValueKind == JsonValueKind.Array ? f.EnumerateArray().Take(4).Select(e => e.Deserialize<ForecastDay>(Options)!).ToArray() : null; }
+        try { return root.TryGetProperty("forecast", out var f) && f.ValueKind == JsonValueKind.Array ? f.EnumerateArray().Take(4).Select(e => e.Deserialize<ForecastDay>(Options) ?? throw new JsonException()).ToArray() : null; }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
     }
 
     static NowPlaying? ReadNowPlaying(JsonElement root)
     {
-        try { return root.TryGetProperty("nowPlaying", out var n) && n.ValueKind == JsonValueKind.Object ? n.Deserialize<NowPlaying>(Options) : null; }
+        // A blank title is null here; the view's NowPlaying.Usable already trims every string, so no second trim.
+        try { return root.TryGetProperty("nowPlaying", out var n) && n.ValueKind == JsonValueKind.Object && n.Deserialize<NowPlaying>(Options) is { Title: { } t } np && !string.IsNullOrWhiteSpace(t) ? np : null; }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException) { return null; }
     }
 

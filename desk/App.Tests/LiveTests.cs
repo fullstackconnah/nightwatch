@@ -100,18 +100,50 @@ public class LiveTests
     }
 
     [Fact]
-    public void A_503_on_a_Live_frame_keeps_Live_on_and_polling()
+    public void One_or_two_503s_on_Live_frames_keep_Live_on_and_polling()
     {
         Sta.Run(() =>
         {
             Theme.EnsureLoaded();
             var r = new Rig { Reply = new FrameOutcome.Failure() };
             r.Feed.BlockHidden = false;
-            r.Feed.StartLive();
+            r.Feed.StartLive(); // failure 1
             Assert.True(r.Feed.Live);
             var before = r.Fetches;
+            r.LiveTick(); // failure 2
+            Assert.Equal(before + 1, r.Fetches);
+            Assert.True(r.Feed.Live);
+        });
+    }
+
+    [Fact]
+    public void Three_503s_in_a_row_end_Live_and_ask_for_no_more_frames()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig { Reply = new FrameOutcome.Failure() };
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive(); // failure 1
+            r.LiveTick(); r.LiveTick(); // failures 2 and 3
+            Assert.False(r.Feed.Live);
+            var before = r.Fetches;
             for (var i = 0; i < 3; i++) r.LiveTick();
-            Assert.Equal(before + 3, r.Fetches);
+            Assert.Equal(before, r.Fetches);
+        });
+    }
+
+    [Fact]
+    public void A_good_frame_resets_the_Live_failure_count()
+    {
+        Sta.Run(() =>
+        {
+            Theme.EnsureLoaded();
+            var r = new Rig();
+            r.Feed.BlockHidden = false;
+            r.Feed.StartLive(); // frame
+            void Run(bool fail) { r.Fail = fail; r.LiveTick(); }
+            Run(true); Run(true); Run(false); Run(true); Run(true); // fail, fail, frame, fail, fail
             Assert.True(r.Feed.Live);
         });
     }
@@ -198,10 +230,14 @@ public class LiveTests
             r.Now = t0.AddSeconds(10); r.LiveTick();
             Assert.Equal(FrameState.Stale, r.Feed.State);
             Assert.NotNull(r.Feed.Image);
-            r.Now = t0.AddSeconds(61); r.LiveTick();
+            // A third failure in a row would end Live (Three_503s_in_a_row_...), so a good frame comes between and the ageing runs on from it.
+            r.Fail = false; r.Now = t0.AddSeconds(11); r.LiveTick();
+            var t1 = r.Now;
+            r.Fail = true;
+            r.Now = t1.AddSeconds(61); r.LiveTick();
             Assert.Equal(FrameState.NoPicture, r.Feed.State);
             Assert.Null(r.Feed.Image); // dropped from memory at No picture
-            Assert.Equal(t0, r.Feed.FrameAt); // the time stays for "Last frame at"
+            Assert.Equal(t1, r.Feed.FrameAt); // the time stays for "Last frame at"
         });
     }
 
