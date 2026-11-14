@@ -623,6 +623,8 @@ for (const width of WIDTHS) {
   const clPlan = [
     // check 3, 4 (a "Wed 08:00" Recent time), 7 (count 4 -> 1 moves no rect), and the 52-char name at 390.
     { n: "cl0-recent-normal", widths: ["390", "1440"], fixture: "changesToday", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted itself and is running again", bare: true, texts: ["transmission-openvpn restarted itself and is running again", "sonarr stopped (exit 137)", "grafana started"] },
+    // H46-1: a self-restart whose container is not running reads "restarted itself", no "running again".
+    { n: "cl5-restart-not-running", widths: ["390", "1440"], fixture: "changesNotRunning", heading: "Since you last looked · 01:00", text0: "transmission-openvpn restarted itself", bare: true, texts: ["transmission-openvpn restarted itself", "sonarr stopped (exit 137)", "grafana started"] },
     { n: "cl1-recent-count-and-day-prefix", widths: ["390", "1440"], fixture: "changesCounts", other: "changesCountsOne", heading: "Since you last looked · 01:00" },
     { n: "cl2-week-covered-counts", widths: ["390", "1440"], week: "weekCovered", heading: "Last 7 days" },
     { n: "cl3-week-partial-log", widths: ["390", "1440"], week: "weekPartial", heading: "Last 7 days · counted since Mon" },

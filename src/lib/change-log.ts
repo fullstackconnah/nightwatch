@@ -201,14 +201,15 @@ export function tally(lines: ChangeLine[], sinceMs: number): Map<string, Tally> 
 export function countText(
   subject: string,
   verb: "start" | "stop",
-  t: { starts: number; byItself: number } | { stops: number; lastCode: number | null },
+  t: { starts: number; byItself: number; running?: boolean } | { stops: number; lastCode: number | null },
 ): string {
   if (verb === "stop") {
     const { stops, lastCode } = t as { stops: number; lastCode: number | null };
     if (stops <= 1) return `${subject} stopped${lastCode !== null ? ` (exit ${lastCode})` : ""}`;
     return `${subject} stopped ${stops} times${lastCode !== null ? ` (last exit ${lastCode})` : ""}`;
   }
-  const { starts, byItself } = t as { starts: number; byItself: number };
+  const { starts, byItself, running } = t as { starts: number; byItself: number; running?: boolean };
+  if (starts <= 1 && byItself > 0 && running === false) return `${subject} restarted itself`; // down: no "running again"
   if (starts <= 1) return byItself > 0 ? `${subject} restarted itself and is running again` : `${subject} started`;
   if (byItself === 0) return `${subject} restarted ${starts} times`;
   return byItself >= starts ? `${subject} restarted itself ${starts} times` : `${subject} restarted ${starts} times, ${byItself} by itself`;

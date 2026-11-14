@@ -168,6 +168,12 @@ export function build(now: number) {
       ev(now, "c:sonarr", "routine", 90, ["container:sonarr"], "sonarr stopped (exit 137)"),
       ev(now, "c:grafana", "routine", 150, ["container:grafana"], "grafana started"),
     ]),
+    // nw-chlog-copy (H46-1): a self-restarted container that is not running: routine tone, no "running again".
+    changesNotRunning: report(now, [], [
+      ev(now, "c:vpn", "routine", 20, ["container:transmission-openvpn"], "transmission-openvpn restarted itself"),
+      ev(now, "c:sonarr", "routine", 90, ["container:sonarr"], "sonarr stopped (exit 137)"),
+      ev(now, "c:grafana", "routine", 150, ["container:grafana"], "grafana started"),
+    ]),
     otherFailed: report(now, [], e,{ smart: { state: "failed", error: "smartctl exited with status 2" } }),
     // C1: the start (1 hit) and the arrival (a crash and a disk; the orchestra hit clears).
     c1Before: report(now, [lane(now, 40)], e),

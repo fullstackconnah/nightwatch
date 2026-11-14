@@ -195,3 +195,38 @@ test("H46-2 one unreadable day file is skipped and warned once; the readable lin
     w.restore();
   }
 });
+
+test("a good tick re-arms the append-failed warning, so a later outage warns again", async () => {
+  await seed([live("a")]);
+  const w = spyWarn();
+  try {
+    const tick = (n: number) => recordChangeLogTick(NOW + 30_000 + n, async () => [live("a", { startedAt: NOW + 10_000 + n })]);
+    fs.mkdirSync(today()); // append fails: warning 1
+    await tick(0);
+    fs.rmdirSync(today());
+    await tick(0); // a good tick clears the warned key
+    fs.rmSync(today());
+    fs.mkdirSync(today()); // append fails again with a newer start
+    await tick(5_000);
+    assert.equal(w.calls.filter((c) => c.includes("append failed")).length, 2);
+  } finally {
+    w.restore();
+  }
+});
+
+test("a clean read re-arms the unreadable-day-file warning, so a later outage warns again", async () => {
+  await seed([live("a")]);
+  const bad = file(`changes-${dateOf(NOW - DAY)}.jsonl`);
+  const w = spyWarn();
+  try {
+    fs.mkdirSync(bad); // readFile fails with EISDIR
+    await readChangeLog(NOW - 2 * DAY, NOW);
+    fs.rmdirSync(bad);
+    await readChangeLog(NOW - 2 * DAY, NOW); // clean
+    fs.mkdirSync(bad);
+    await readChangeLog(NOW - 2 * DAY, NOW);
+    assert.equal(w.calls.filter((c) => c.includes("could not be read")).length, 2);
+  } finally {
+    w.restore();
+  }
+});
