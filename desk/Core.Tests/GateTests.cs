@@ -193,6 +193,32 @@ public class TrayAndPollAndPlacementTests
     }
 
     [Fact]
+    public void WorkAreaOf_window_inside_one_area_gives_that_area()
+    {
+        Assert.Equal(Screen2, Placement.WorkAreaOf(new Box(2000, 100, 320, 200), new[] { Screen1, Screen2 }));
+    }
+
+    [Fact]
+    public void WorkAreaOf_window_taller_than_the_short_secondary_gives_the_secondary()
+    {
+        var tall = new Box(2000, 0, 320, 1030);
+        Assert.Equal(Screen2, Placement.WorkAreaOf(tall, new[] { Screen1, Screen2 }));
+    }
+
+    [Fact]
+    public void WorkAreaOf_straddling_window_gives_the_larger_overlap()
+    {
+        Assert.Equal(Screen1, Placement.WorkAreaOf(new Box(1700, 100, 320, 200), new[] { Screen1, Screen2 }));
+        Assert.Equal(Screen2, Placement.WorkAreaOf(new Box(1800, 100, 320, 200), new[] { Screen1, Screen2 }));
+    }
+
+    [Fact]
+    public void WorkAreaOf_no_overlap_gives_null()
+    {
+        Assert.Null(Placement.WorkAreaOf(new Box(5000, 0, 320, 200), new[] { Screen1, Screen2 }));
+    }
+
+    [Fact]
     public void Growth_anchor_follows_the_half_of_the_work_area()
     {
         Assert.True(Placement.GrowsDown(new Box(0, 100, 320, 100), Screen1));

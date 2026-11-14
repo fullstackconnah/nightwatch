@@ -93,8 +93,7 @@ internal sealed class Widget : Window
     public double WorkHeight()
     {
         var box = new Box(Left, Top, Width, CurrentHeight());
-        var work = WorkAreas().FirstOrDefault(w => w.Contains(box));
-        return work.Width > 0 ? work.Height : Primary().Height;
+        return Placement.WorkAreaOf(box, WorkAreas())?.Height ?? Primary().Height;
     }
 
     public double DpiScale => Scale;
