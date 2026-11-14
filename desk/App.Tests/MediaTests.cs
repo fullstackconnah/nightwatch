@@ -122,6 +122,24 @@ public class MediaTests
     }
 
     [Fact]
+    public void Open_header_shows_the_count_only_when_more_downloads_exist_than_rows()
+    {
+        var more = Comp("media-more"); // count 5, 3 rows drawn
+        Sta.Run(() =>
+        {
+            Assert.Equal("5 downloading", Header(more).Meta.Text);
+            Near("block height stays", 185, Ids(more.View, "media-block").Single().ActualHeight);
+        });
+        var dlOnly = Comp("media-downloads-only"); // its fixture also has count 5 and 3 rows, so the same rule applies
+        Sta.Run(() => Assert.Equal("5 downloading", Header(dlOnly).Meta.Text));
+        foreach (var s in new[] { "media-playing", "media-paused", "media-long" })
+        {
+            var c = Comp(s);
+            Sta.Run(() => Assert.Equal("", Header(c).Meta.Text));
+        }
+    }
+
+    [Fact]
     public void N7_progress_bar()
     {
         var playing = Comp("media-playing");
@@ -277,6 +295,15 @@ public class MediaTests
             Assert.True(labelRight + Theme.D("sp-base") <= Bounds(c, meta).Left + 0.01, $"label {labelRight} meta {Bounds(c, meta).Left}");
             Assert.True(Bounds(c, meta).Right <= Bounds(c, h.Chevron).Left + 0.01);
             Assert.True(meta.DesiredSize.Width <= meta.ActualWidth + 1.0 / (dpi / 96), "the meta never trims");
+        });
+        var openMore = Of(Media("media-more", fixture: "media-more"), dpi); // the open header now carries "5 downloading"
+        Sta.Run(() =>
+        {
+            var h = Header(openMore);
+            Assert.Equal("5 downloading", h.Meta.Text);
+            Assert.True(Bounds(openMore, h.Label).Left + h.Label.ActualWidth + Theme.D("sp-base") <= Bounds(openMore, h.Meta).Left + 0.01);
+            Assert.True(Bounds(openMore, h.Meta).Right <= Bounds(openMore, h.Chevron).Left + 0.01);
+            Assert.True(h.Meta.DesiredSize.Width <= h.Meta.ActualWidth + 1.0 / (dpi / 96), "the meta never trims");
         });
         var longC = Comp("media-long", dpi);
         Sta.Run(() =>

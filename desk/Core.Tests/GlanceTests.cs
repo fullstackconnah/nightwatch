@@ -82,6 +82,17 @@ public class GlanceTests
     }
 
     [Fact]
+    public void Both_media_keys_absent_parse_ok_with_both_null()
+    {
+        var absent = Fixture().Replace("\"nowPlaying\": null,", "").Replace("\"downloads\": null,", "");
+        Assert.DoesNotContain("nowPlaying", absent);
+        Assert.DoesNotContain("downloads", absent);
+        var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(absent)).Glance;
+        Assert.Null(g.NowPlaying);
+        Assert.Null(g.Downloads);
+    }
+
+    [Fact]
     public void Media_fields_parse()
     {
         var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(WithMedia(PlayingJson, DownloadsJson))).Glance;

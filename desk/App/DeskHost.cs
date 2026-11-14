@@ -183,7 +183,7 @@ internal sealed class DeskHost
             shownForecast = lastForecast;
             shownCam = camVis.Visible && !err;
             shownMedia = err || (lastNowPlaying is null && lastDownloads is null) ? null : new MediaNow(lastNowPlaying, lastDownloads, false);
-            workHeight = widget.WorkHeight(); // every section can fold now, not only the camera; never read outside this block
+            workHeight = widget.WorkHeight(); // every section can fold now, not only the camera; read here and in the DisplayChanged handler only
         }
         var dim = latest is View.Stale or View.Offline;
         var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim, shownForecast) : null;

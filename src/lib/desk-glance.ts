@@ -155,7 +155,9 @@ export function glanceWeatherExtras(get: () => Promise<WeatherResponse>, ms: num
 }
 
 // Mirrors the widget's Copy.Trim: UTF-16 length, `n-1` units plus an ellipsis, never splitting a surrogate pair.
-function cap(s: string, n: number): string {
+// Control characters and line or paragraph separators become one space first, so a title never carries a newline into the widget.
+function cap(raw: string, n: number): string {
+  const s = raw.replace(/[\0-\x1f\x7f\u{2028}\u{2029}]+/gu, " ").trim();
   if (s.length <= n) return s;
   let end = n - 1;
   const last = s.charCodeAt(end - 1);
@@ -168,7 +170,9 @@ const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 /** Allowlist: title, subtitle, app name, state and progress. Idle, an empty title or an unknown state is null. */
 export function glanceNowPlaying(s: NowPlayingSnapshot): GlanceNowPlaying | null {
   if (s.status !== "ok" || !s.title || (s.state !== "playing" && s.state !== "paused")) return null;
-  const out: GlanceNowPlaying = { title: cap(s.title, 80), state: s.state };
+  const title = cap(s.title, 80);
+  if (!title) return null;
+  const out: GlanceNowPlaying = { title, state: s.state };
   const subtitle = s.subtitle ? cap(s.subtitle, 80) : "";
   const appName = s.appName ? cap(s.appName, 24) : "";
   if (subtitle) out.subtitle = subtitle;
@@ -182,12 +186,15 @@ export function glanceDownloads(r: KioskDownloadsResult): GlanceDownloads | null
   if (r.status !== "ok") return null;
   return {
     count: r.items.length,
-    items: r.items.slice(0, 3).map((d) => ({
-      name: cap(d.name, 60),
-      progress: finite(d.progress) ? clamp01(d.progress) : 0,
-      speedBps: finite(d.dlspeed) && d.dlspeed > 0 ? d.dlspeed : 0,
-      etaS: finite(d.eta) && d.eta >= 0 ? Math.round(d.eta) : null,
-    })),
+    items: r.items
+      .map((d) => ({
+        name: cap(d.name, 60),
+        progress: finite(d.progress) ? clamp01(d.progress) : 0,
+        speedBps: finite(d.dlspeed) && d.dlspeed > 0 ? d.dlspeed : 0,
+        etaS: finite(d.eta) && d.eta >= 0 ? Math.round(d.eta) : null,
+      }))
+      .filter((d) => d.name) // a name that was only control characters is dropped; count still has it
+      .slice(0, 3),
   };
 }
 

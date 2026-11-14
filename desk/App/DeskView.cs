@@ -368,8 +368,9 @@ internal sealed class DeskView : Border
         var open = !closed && !folded;
         var dim = md!.Dim;
         mediaHeader.Label.Text = Copy.MediaTitle.ToUpperInvariant() + (asOf is null ? "" : " · " + asOf.ToUpperInvariant());
-        mediaHeader.Meta.Text = closed || folded ? Copy.MediaMeta(np, count) : ""; // open, the rows say the same thing
-        mediaHeader.Meta.Foreground = Theme.B(folded ? "ink-faint" : "ink-dim");
+        // open, the rows say the same thing, except the downloads that do not fit: then the header carries the count
+        mediaHeader.Meta.Text = closed || folded ? Copy.MediaMeta(np, count) : count > dls.Length ? Copy.MediaMeta(null, count) : "";
+        mediaHeader.Meta.Foreground = Theme.B(folded ? "ink-faint" : open && !dim ? "ink" : "ink-dim"); // open meta matches TODAY's: ink, quieter when stale
         mediaHeader.Expanded = open;
         mediaHeader.IsEnabled = !folded;
         mediaHeader.Cursor = folded ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;

@@ -45,6 +45,20 @@ test("nowPlaying caps strings and never splits a surrogate pair", () => {
   assert.equal(glanceNowPlaying(np({ title: "a".repeat(80) }))!.title, "a".repeat(80));
 });
 
+test("control characters become one space; a blank title gives null; a control-only download name is dropped", () => {
+  assert.equal(glanceNowPlaying(np({ title: "A\nB\tC" }))!.title, "A B C");
+  assert.equal(glanceNowPlaying(np({ title: "x\r\n\u{2028}y", subtitle: "p\u0000q", appName: "j\u007fk" }))!.title, "x y");
+  assert.equal(glanceNowPlaying(np({ subtitle: "p\u0000q", appName: "j\u007fk" }))!.subtitle, "p q");
+  assert.equal(glanceNowPlaying(np({ title: " \n\t\u{2029} " })), null);
+  const out = glanceDownloads(ok(item({ name: "\n\t\u0007" }), item({ name: "a\nb" }), item({ name: "c" })))!;
+  assert.equal(out.count, 3);
+  assert.deepEqual(out.items.map((i) => i.name), ["a b", "c"]);
+  assert.equal(glanceNowPlaying(np({ title: "\n" + "t".repeat(100) }))!.title.length, 80); // the cap holds after cleaning
+  const pair = glanceNowPlaying(np({ title: "\n" + "a".repeat(79) + "\u{1F3B5}" + "b" }))!;
+  assert.equal(pair.title, "a".repeat(79) + "…");
+  assert.doesNotMatch(pair.title, lone);
+});
+
 test("nowPlaying progress01 clamps and drops non-finite; an unknown state gives null", () => {
   assert.equal(glanceNowPlaying(np({ progress01: 1.3 }))!.progress01, 1);
   assert.equal(glanceNowPlaying(np({ progress01: -0.2 }))!.progress01, 0);
