@@ -55,7 +55,7 @@ test("settings/system POST keeps an unknown existing field (so deskToken) and ne
 });
 
 test("no console. in the new files, the middleware or mcp auth", () => {
-  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "./now-playing.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
+  for (const p of ["./bearer.ts", "./desk-auth.ts", "./desk-glance.ts", "./desk-glance-response.ts", "./now-playing.ts", "./container-counts.ts", "../app/api/desk/glance/route.ts", "../middleware.ts", "./mcp/auth.ts"]) {
     assert.doesNotMatch(read(p), /console\./, p);
   }
 });
