@@ -218,10 +218,13 @@ public class HomeTests
             Assert.Equal("3 on · 21.5° · 31 up", h.Meta.Text);
             Assert.Equal(Ink("ink-faint"), BrushOf(h.Meta.Foreground));
             Assert.True(folded.View.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg"));
-            Near("fold height home-folded", 367.6, folded.View.ActualHeight, 1);
+            // slice 5: 681.6 - 174 = 507.6; VITALS -54 = 453.6 is over 448: HOME -96 = 357.6
+            Assert.True(folded.View.VitalsFolded);
+            Near("fold height home-folded", 357.6, folded.View.ActualHeight, 1);
         });
         var cameraOnly = Of(ModelOf("home-folded") with { WorkHeight = Snapshot.CameraFoldWorkHeight });
-        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.False(cameraOnly.View.HomeFolded); Assert.False(cameraOnly.View.TodayFolded); });
+        // slice 5: 507.6 is over 496, so VITALS folds with the camera (453.6); HOME and TODAY stay open
+        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.True(cameraOnly.View.VitalsFolded); Assert.False(cameraOnly.View.HomeFolded); Assert.False(cameraOnly.View.TodayFolded); });
     }
 
     [Fact]
@@ -232,7 +235,7 @@ public class HomeTests
         Sta.Run(() =>
         {
             Assert.True(c.View.CameraFolded); Assert.True(c.View.MediaFolded); Assert.True(c.View.HomeFolded); Assert.False(c.View.TodayFolded);
-            Near("fold height media and home", 400.6, c.View.ActualHeight, 1);
+            Near("fold height media and home", 390.6, c.View.ActualHeight, 1); // slice 5: 834.6 - 174 - 54 - 120 - 96
         });
     }
 
@@ -243,18 +246,18 @@ public class HomeTests
         Sta.Run(() =>
         {
             Assert.True(c.View.HomeFolded); Assert.True(c.View.TodayFolded); Assert.False(c.View.CameraFolded);
-            Near("fold height Live home", 434.6, c.View.ActualHeight, 1);
+            Near("fold height Live home", 424.6, c.View.ActualHeight, 1); // slice 5: 686.6 - 54 (VITALS) - 96 - 112
         });
         var all = Of(Snapshot.ModelFor("camera-watch-on", Fix.Load("media")) with { Home = HomeOf("home"), WorkHeight = Snapshot.FoldedWorkHeight });
         Sta.Run(() =>
         {
             Assert.True(all.View.MediaFolded); Assert.True(all.View.HomeFolded); Assert.True(all.View.TodayFolded); Assert.True(all.View.CameraFolded);
-            Near("fold height Live media and home", 288.6, all.View.ActualHeight, 1);
+            Near("fold height Live media and home", 278.6, all.View.ActualHeight, 1); // slice 5: 839.6 - 54 - 120 - 96 - 112 = 457.6 is still over 448: Live ends (-179)
         });
     }
 
     [Fact]
-    public void No_camera_no_fold_and_the_probe_never_runs_on_a_clock_tick()
+    public void No_camera_vitals_folds_and_the_probe_never_runs_on_a_clock_tick()
     {
         var m = ModelOf("home-on");
         Assert.Null(m.Camera);
@@ -262,7 +265,8 @@ public class HomeTests
         Sta.Run(() =>
         {
             Assert.False(c.View.HomeFolded); Assert.False(c.View.TodayFolded); Assert.False(c.View.CameraFolded);
-            Near("home on, no camera, 464", 430.6, c.View.ActualHeight, 1);
+            Assert.True(c.View.VitalsFolded); // slice 5: 474.6 is over 448, so VITALS (-54) folds first and 420.6 fits
+            Near("home on, no camera, 464", 420.6, c.View.ActualHeight, 1);
         });
         Sta.Run(() =>
         {

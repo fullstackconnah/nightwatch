@@ -284,6 +284,21 @@ public static class Copy
             c is not null ? ContainersIssue(c) : null));
     }
 
+    // --- VITALS (slice 5) ---
+    public const string VitalsTitle = "Vitals";
+    public const string VitalsCollecting = "Collecting history";
+    public const string VitalsUnavailable = "Host vitals unavailable";
+
+    public static string VitalsHeaderTip(bool closed, bool folded) => folded ? SectionFolded : closed ? "Show vitals" : "Hide vitals";
+
+    /// <summary>The closed header's line, "CPU 12% · MEM 34% · DISK 71%" (DISK is the null figure without a reading), or the unavailable line when there are no vitals.</summary>
+    /// <remarks>withDisk false drops the DISK clause: a stale or offline header also carries "AS OF hh:mm", and the full line does not fit beside it at 100 / 100 / 100.</remarks>
+    public static string VitalsMeta(Vitals? v, bool withDisk = true) => v is null ? VitalsUnavailable
+        : $"CPU {VitalsPct(v.Cpu)} · MEM {VitalsPct(v.Mem)}" + (withDisk ? $" · DISK {(v.DiskMax is { } d ? VitalsPct(d) : NullFigure)}" : "");
+
+    /// <summary>"12%": the same Math.Round the caption runs use.</summary>
+    public static string VitalsPct(double x) => Math.Round(x).ToString(CultureInfo.InvariantCulture) + "%";
+
     /// <summary>The lucide icon name for a glance weather icon key; an unknown or missing key is a cloud (as weather.ts does).</summary>
     public static string GlyphKey(string? icon) => icon switch
     {

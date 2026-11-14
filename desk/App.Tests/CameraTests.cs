@@ -180,9 +180,10 @@ public class CameraTests
         Fix.Rec("N28 heights loading/live/swap/stale/none", string.Join("/", heights.Select(h => h.ToString("0.###"))));
         Assert.All(heights, h => Assert.Equal(heights[0], h));
         // slice 2: TODAY (89 with the strip) replaces the strip alone (57): +32 on every total
-        Near("N29 all clear, open", 452.6, heights[1], 1);
-        Near("N29 all clear, collapsed", 278.6, Sta.Run(() => Fix.Compose("camera-collapsed").View.ActualHeight), 1);
-        Near("N29 weather and camera hidden = N11", 189.6, Sta.Run(() => Fix.Compose("weather-null").View.ActualHeight), 1);
+        // slice 5: the VITALS block (87) replaces the vitals line (43): +44 on every total
+        Near("N29 all clear, open", 496.6, heights[1], 1);
+        Near("N29 all clear, collapsed", 322.6, Sta.Run(() => Fix.Compose("camera-collapsed").View.ActualHeight), 1);
+        Near("N29 weather and camera hidden = N11", 233.6, Sta.Run(() => Fix.Compose("weather-null").View.ActualHeight), 1);
         Near("N29 camera hidden = weather-on", Sta.Run(() => Fix.Compose("weather-on").View.ActualHeight), Sta.Run(() => Fix.Compose("camera-hidden").View.ActualHeight), 0.01);
     }
 
@@ -191,11 +192,13 @@ public class CameraTests
     {
         // slice 2: the TODAY header and forecast made every window 32 taller, so the old 464 work area now folds the all-clear camera;
         // 480 (limit 464) keeps the old story: all clear fits, one lane folds the camera, three items fold the camera and then TODAY
-        const double Work = 480;
+        // slice 5: the VITALS block made every window 44 taller, so the work area moves by the same 44 (524, limit 508); VITALS now folds
+        // between the camera and TODAY: three items fold the camera (519.6 > 508), then VITALS (465.6)
+        const double Work = 524;
         var clear = Open("camera", work: Work);
         Sta.Run(() => Assert.False(clear.View.CameraFolded));
         Sta.Run(() => Assert.False(clear.View.TodayFolded));
-        Near("N30 all clear stays open", 452.6, clear.View.ActualHeight, 1);
+        Near("N30 all clear stays open", 496.6, clear.View.ActualHeight, 1);
 
         var one = Fix.Load("one-lane") with { Weather = Fix.Load("camera").Weather, Camera = true };
         var m = Snapshot.ModelFor("camera-live", one) with { };
@@ -203,12 +206,13 @@ public class CameraTests
         var c1 = Sta.Run(() => Snapshot.Compose(m, 96));
         Sta.Run(() => Assert.True(c1.View.CameraFolded));
         Sta.Run(() => Assert.False(c1.View.TodayFolded));
-        Near("N30 one lane folds the camera only", 361.6, c1.View.ActualHeight, 1);
+        Near("N30 one lane folds the camera only", 405.6, c1.View.ActualHeight, 1); // 579.6 - 174 fits 508: the camera only
 
         var three = Open("camera-3-items", work: Work);
         Sta.Run(() => Assert.True(three.View.CameraFolded));
-        Sta.Run(() => Assert.True(three.View.TodayFolded)); // 475.6 with the camera folded is still over 464: TODAY folds next
-        Near("N30 3 items fold the camera, then TODAY", 419.6, three.View.ActualHeight, 1);
+        Sta.Run(() => Assert.True(three.View.VitalsFolded)); // 519.6 with the camera folded is still over 508: VITALS folds next (465.6), TODAY stays open
+        Sta.Run(() => Assert.False(three.View.TodayFolded));
+        Near("N30 3 items fold the camera, then VITALS", 465.6, three.View.ActualHeight, 1);
         Assert.True(three.View.ActualHeight <= Work - 16);
 
         // a view state only: unfolds on the first render that fits, and WinState has nothing to save it in
@@ -322,8 +326,9 @@ public class CameraTests
         var s = Stops(open);
         Fix.Rec("N36 tab stops", string.Join(" > ", s));
         // slice 2: the TODAY header (camera-3-items has weather, so it is a button) comes right before the camera's
-        Assert.Equal(new[] { "today-header", "camera-header", "camera-live-button", "camera-frame" }, s.TakeLast(4));
-        Assert.All(s.SkipLast(4), id => Assert.True(id is "row" or "more"));
+        // slice 5: the VITALS header (a button) ends the order, after the camera block
+        Assert.Equal(new[] { "today-header", "camera-header", "camera-live-button", "camera-frame", "vitals-header" }, s.TakeLast(5));
+        Assert.All(s.SkipLast(5), id => Assert.True(id is "row" or "more"));
         Assert.DoesNotContain("today-header", Stops(Open("camera-3-items", work: 464))); // TODAY folds too, and a folded header is not a stop
         Assert.DoesNotContain("camera-header", Stops(Open("camera-3-items", work: 464)));
         Assert.DoesNotContain("camera-live-button", Stops(Open("camera-3-items", work: 464)));

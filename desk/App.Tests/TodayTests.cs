@@ -289,6 +289,7 @@ public class TodayTests
         {
             Assert.True(folded.View.CameraFolded);
             Assert.True(folded.View.TodayFolded);
+            Assert.True(folded.View.VitalsFolded); // slice 5: 519.6 -> VITALS 465.6 (still over 448) -> TODAY 409.6
             var h = Header(folded);
             Assert.False(h.IsEnabled);
             Assert.Equal(Visibility.Collapsed, h.Chevron.Visibility);
@@ -299,7 +300,8 @@ public class TodayTests
             Assert.True(folded.View.ActualHeight <= Snapshot.FoldedWorkHeight - Theme.D("sp-lg"));
         });
         var cameraOnly = Comp("camera-folded"); // the 512 work area
-        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.False(cameraOnly.View.TodayFolded); });
+        // slice 5: 519.6 is over 496, so VITALS folds with the camera (465.6); TODAY stays open
+        Sta.Run(() => { Assert.True(cameraOnly.View.CameraFolded); Assert.True(cameraOnly.View.VitalsFolded); Assert.False(cameraOnly.View.TodayFolded); });
     }
 
     [Fact]
