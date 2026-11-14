@@ -9,6 +9,8 @@ Config is `%APPDATA%\NightwatchDesk\desk.json`, never committed; see `desk.examp
 
 Optional `desk.json` keys: `cameraIntervalSeconds` (5-300, default 30) sets how often the door-camera picture refreshes. `doorToasts` (default `true`) raises a Windows toast when someone rings or is at the front door, read from the public `/kiosk/api/doorbell` every 5 s while a door camera is configured; `false` stops that poll. Clicking the toast opens the kiosk door view.
 
+The FRONT DOOR header has a second button, `Watch live`: it opens the section and fetches the camera picture once a second (the server caches a frame for 1 s) in a full-width frame. Live ends when the button or the chevron is pressed, the window hides, the session locks, the PC suspends, the frame no longer fits the screen or the server answers 401, and it never restarts by itself. It is never saved.
+
 ## Build and test
 
 Needs the .NET 9 SDK on Windows.
@@ -16,7 +18,7 @@ Needs the .NET 9 SDK on Windows.
 ```powershell
 dotnet test desk/Core.Tests     # any OS, runs on CI
 dotnet test desk/App.Tests      # Windows only; runs on CI in the desk-app job
-powershell -File desk\snapshots.ps1 out   # 20 states at 100% and 150% plus the tray sheet, offscreen
+powershell -File desk\snapshots.ps1 out   # 42 states at 100% and 150% plus the tray sheet (85 PNGs), offscreen
 ```
 
 ## Install

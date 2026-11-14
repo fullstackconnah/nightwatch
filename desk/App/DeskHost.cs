@@ -51,7 +51,14 @@ internal sealed class DeskHost
             ct => cfg is { } c ? CameraFrame.FetchAsync(http, c.BaseUrl, c.Token, ct) : Task.FromResult<FrameOutcome>(new FrameOutcome.Failure()),
             () => DateTimeOffset.Now, () => widget.DpiScale);
         feed.Changed += () => Update();
-        view.CameraToggled = () => { collapsed = !collapsed; widget.SetCameraCollapsed(collapsed); Update(); };
+        view.CameraToggled = () => { collapsed = !collapsed; widget.SetCameraCollapsed(collapsed); Update(); }; // closing the block ends Live (feed.BlockHidden)
+        view.CameraLiveToggled = () =>
+        {
+            if (feed.Live) { feed.EndLive(); return; } // Changed redraws
+            if (collapsed) { collapsed = false; widget.SetCameraCollapsed(false); } // Watch live from closed opens the section
+            feed.StartLive();
+            Update();
+        };
         widget.VisibilityChanged += () => feed.WindowHidden = widget.IsHiddenOrMinimised;
         widget.DisplayChanged += () => { workHeight = widget.WorkHeight(); Update(); };
         SystemEvents.SessionSwitch += OnSession;
@@ -77,7 +84,7 @@ internal sealed class DeskHost
         if (firstRun) widget.Save(); // state.json now exists, so the first-run toast fires once ever
 
         var tick = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        tick.Tick += (_, _) => Update(gate.Release());
+        tick.Tick += (_, _) => { _ = feed.LiveTickAsync(); Update(gate.Release()); }; // Live fetches once a second off this tick
         tick.Start();
         var poll = new DispatcherTimer { Interval = PollEvery };
         poll.Tick += (_, _) => _ = PollAsync();
@@ -167,7 +174,7 @@ internal sealed class DeskHost
         }
         var dim = latest is View.Stale or View.Offline;
         var strip = shownWeather && lastWeather is { } w ? new Strip(w, dim || weatherVis.Dim) : null;
-        var cam = shownCam ? new Cam(collapsed, workHeight, feed.State, feed.Image, feed.FrameAt) : null;
+        var cam = shownCam ? new Cam(collapsed, workHeight, feed.State, feed.Image, feed.FrameAt, Live: feed.Live) : null;
         view.Render(new Model(gate.Committed!, gate.Latest!, gate.UpdateHeld, Weather: strip, Camera: cam), committed || changed);
         feed.ClientError = err;
         feed.BlockHidden = !shownCam || collapsed || view.CameraFolded;

@@ -167,7 +167,8 @@ public class CameraTests
     public void N27_camera_block_height_is_the_same_in_every_open_frame_state(string state, double want)
     {
         var c = Sta.Run(() => Fix.Compose(state));
-        Sta.Run(() => Near($"N27 camera block ({state})", want, ((FrameworkElement)Ids(c.View, "camera-header").Single().Parent).ActualHeight));
+        // the header and the Watch live button now share a row, so the block is found by its own id
+        Sta.Run(() => Near($"N27 camera block ({state})", want, Ids(c.View, "camera-block").Single().ActualHeight));
     }
 
     [Fact]
@@ -313,9 +314,10 @@ public class CameraTests
         var open = Open("camera-3-items");
         var s = Stops(open);
         Fix.Rec("N36 tab stops", string.Join(" > ", s));
-        Assert.Equal(new[] { "camera-header", "camera-frame" }, s.TakeLast(2));
-        Assert.All(s.SkipLast(2), id => Assert.True(id is "row" or "more"));
+        Assert.Equal(new[] { "camera-header", "camera-live-button", "camera-frame" }, s.TakeLast(3));
+        Assert.All(s.SkipLast(3), id => Assert.True(id is "row" or "more"));
         Assert.DoesNotContain("camera-header", Stops(Open("camera-3-items", work: 464)));
+        Assert.DoesNotContain("camera-live-button", Stops(Open("camera-3-items", work: 464)));
         Assert.DoesNotContain("camera-frame", Stops(Open("camera-3-items", collapsed: true)));
         Sta.Run(() => Assert.DoesNotContain(Fix.Walk<Button>(open.View), b => Ids(b, "weather").Length > 0));
     }
