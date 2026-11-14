@@ -152,6 +152,12 @@ test("climate name is cleaned and capped", () => {
   assert.deepEqual(keys(none), ["currentC", "mode", "targetC"]);
 });
 
+test("climate name equal to its entity id is never sent", () => {
+  const r = glanceHome(states([], [climate({ entityId: "climate.hallway", name: "climate.hallway" })]), new Set())!;
+  assert.deepEqual(keys(r.climate!), ["currentC", "mode", "targetC"]);
+  assert.ok(!JSON.stringify(r).includes("climate.hallway"));
+});
+
 test("climate temps", () => {
   const t = (over: Partial<HaClimate>) => glanceHome(states([], [climate(over)]), new Set())!.climate!;
   assert.equal(t({ currentTemp: 21.46 }).currentC, 21.5);

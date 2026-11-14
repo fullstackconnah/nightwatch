@@ -267,7 +267,8 @@ export function glanceHome(r: HaStatesResponse, hidden: ReadonlySet<string> | nu
   const c = visible.climates.find((x) => x.available !== false && KNOWN_HVAC.has(x.hvacMode));
   let climate: GlanceHomeClimate | null = null;
   if (c) {
-    const name = cap(c.name ?? "", 24);
+    // friendlyName() falls back to the entity id; an id must never leave the box
+    const name = c.name === c.entityId ? "" : cap(c.name ?? "", 24);
     climate = { ...(name ? { name } : {}), mode: c.hvacMode, currentC: celsius(c.currentTemp, c.unit), targetC: celsius(c.targetTemp, c.unit) };
   }
   return lights || climate ? { lights, climate } : null;
