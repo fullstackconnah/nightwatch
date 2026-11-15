@@ -159,7 +159,8 @@ export function settleRows(prev: RowOrder | null, items: ListItem[], top?: strin
     return { open: s.filter((i) => !i.done).map((i) => i.id), ticked: s.filter((i) => i.done).map((i) => i.id) };
   }
   const known = new Set([...prev.open, ...prev.ticked]);
-  const fresh = sortItems(items.filter((i) => !known.has(i.id))).map((i) => i.id);
+  const fresh = sortItems(items.filter((i) => !known.has(i.id)));
+  const fresh1 = (done: boolean) => fresh.filter((i) => i.done === done).map((i) => i.id);
   const keep = (a: string[]) => a.filter((id) => ids.has(id) && id !== top);
-  return { open: [...(top && ids.has(top) ? [top] : []), ...fresh, ...keep(prev.open)], ticked: keep(prev.ticked) };
+  return { open: [...(top && ids.has(top) ? [top] : []), ...fresh1(false), ...keep(prev.open)], ticked: [...fresh1(true), ...keep(prev.ticked)] };
 }

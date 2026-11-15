@@ -111,7 +111,7 @@ test("11 validation rows each store nothing", async () => {
     ["done", JSON.stringify({ ...L, id: ID(1), done: "yes" }), 400, "bad_done"],
     ["done", JSON.stringify({ ...L, id: "zz", done: true }), 400, "bad_id"],
     ["restore", JSON.stringify({ ...L, ids: [] }), 400, "bad_ids"],
-    ["restore", JSON.stringify({ ...L, ids: Array.from({ length: 27 }, (_, i) => ID(i)) }), 400, "bad_ids"],
+    ["restore", JSON.stringify({ ...L, ids: Array.from({ length: 40 }, (_, i) => ID(i)) }), 400, "bad_ids"],
     ["restore", JSON.stringify({ ...L, ids: ["nope"] }), 400, "bad_ids"],
     ["nuke", raw, 404, "unknown_action"],
   ];
@@ -171,8 +171,8 @@ test("14 restore: window, dedupe, cap, ids only, upper-case ids", async () => {
   const dupe = await post("restore", { listId: "shopping", ids: [ID(1)] }, T + 2);
   assert.deepEqual(dupe.json.skipped, [{ id: ID(1), reason: "exists" }]);
 
-  seed([mk(1, "Bread", { done: true, doneAt: T - 5 })]);
-  await post("clear-ticked", { listId: "shopping" }, T);
+  seed([mk(1, "Bread")]);
+  await post("clear-all", { listId: "shopping" }, T, await elevate());
   for (const t of names(13)) await add(t, T + 1);
   const full = await post("restore", { listId: "shopping", ids: [ID(1)] }, T + 2);
   assert.deepEqual(full.json.skipped, [{ id: ID(1), reason: "full" }]);
@@ -273,7 +273,7 @@ test("19 growth caps", async () => {
     (globalThis as any).__kioskList.file = null;
     await post("clear-ticked", { listId: "shopping" }, now);
   }
-  assert.equal((globalThis as any).__kioskList.buffer.length, 26); // 39 removed in 3 s, capped at 2 x 13
+  assert.equal((globalThis as any).__kioskList.buffer.length, 39); // 39 removed in 3 s, capped at MAX_ROWS
 });
 
 test("20 rate limit: 40 a minute, refusals and 400s are free", async () => {
@@ -331,4 +331,42 @@ test("19b a second corrupt file keeps the first copy; only the 3 newest stay", a
   const kept = corrupts();
   assert.equal(kept.length, 3);
   assert.deepEqual(kept.map((n) => fs.readFileSync(path.join(dir, n), "utf8")), ["{garbage3", "{garbage4", "{garbage5"]);
+});
+
+const elevate = async () => {
+  process.env.SESSION_SECRET = "test-secret-for-kiosk-list";
+  const auth = await import("./auth.ts");
+  return { elevationCookie: await auth.createKioskElevationToken() };
+};
+const rows = (open: number, ticked: number) => [
+  ...Array.from({ length: open }, (_, i) => mk(i + 1, `Open ${i}`)),
+  ...Array.from({ length: ticked }, (_, i) => mk(i + 1 + open, `Tick ${i}`, { done: true, doneAt: T - 500 })),
+];
+
+test("52a clear all then undo brings back 27 rows (13 open, 14 ticked)", async () => {
+  seed(rows(13, 14));
+  const cleared = await post("clear-all", { listId: "shopping" }, T, await elevate());
+  assert.equal(cleared.json.removed.length, 27);
+  const ids = Array.from({ length: 27 }, (_, i) => ID(i + 1));
+  const back = await post("restore", { listId: "shopping", ids }, T + 1000);
+  assert.equal(back.status, 200);
+  assert.equal(back.json.restored.length, 27);
+  assert.equal(stored().items.length, 27);
+});
+
+test("52b undo of a 20-row clear (8 open, 12 ticked) puts all 20 back", async () => {
+  seed(rows(8, 12));
+  await post("clear-all", { listId: "shopping" }, T, await elevate());
+  const back = await post("restore", { listId: "shopping", ids: Array.from({ length: 20 }, (_, i) => ID(i + 1)) }, T + 1000);
+  assert.equal(back.json.restored.length, 20);
+  assert.equal(stored().items.length, 20);
+});
+
+test("52c with 13 open rows, a ticked row restores and an open row reports full", async () => {
+  seed([mk(1, "Gone open"), mk(2, "Gone tick", { done: true, doneAt: T - 500 })]);
+  await post("clear-all", { listId: "shopping" }, T, await elevate());
+  for (let i = 0; i < 13; i++) await add(`Other ${i}`, T);
+  const back = await post("restore", { listId: "shopping", ids: [ID(2), ID(1)] }, T + 1000);
+  assert.deepEqual(back.json.restored.map((i: ListItem) => i.id), [ID(2)]);
+  assert.deepEqual(back.json.skipped, [{ id: ID(1), reason: "full" }]);
 });

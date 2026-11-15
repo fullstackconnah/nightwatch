@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { readCapped } from "./read-capped.ts";
 import {
-  checkAdd, fold, isListId, norm, parseListFile, sortItems, suggestions, sweepBoundary, MAX_ITEMS, UUID_RE,
+  checkAdd, fold, isListId, norm, parseListFile, sortItems, suggestions, sweepBoundary, MAX_ROWS, isFull, UUID_RE,
   type AddHistory, type ListFile, type ListItem,
 } from "./kiosk-list.ts";
 
@@ -19,7 +19,7 @@ export interface ListActionInput {
 export const MAX_BODY_BYTES = 2048;
 const MAX_BODY = MAX_BODY_BYTES;
 const RESTORE_MS = 60_000;
-const BUFFER_CAP = 2 * MAX_ITEMS;
+const BUFFER_CAP = MAX_ROWS;
 const KEEP_CORRUPT = 3;
 const HISTORY_CAP = 200;
 const HISTORY_MS = 90 * 86400000;
@@ -246,7 +246,7 @@ export async function handleListAction(action: string, input: ListActionInput): 
         for (const rid of restoreIds) {
           const held = s.buffer.find((x) => x.item.id === rid)?.item;
           const dupe = held && items.some((i) => !i.done && fold(i.text) === fold(held.text));
-          const reason = items.some((i) => i.id === rid) ? "present" : !held ? "expired" : dupe ? "exists" : items.length >= MAX_ITEMS ? "full" : "";
+          const reason = items.some((i) => i.id === rid) ? "present" : !held ? "expired" : dupe ? "exists" : (held.done ? items.length >= MAX_ROWS : isFull(items)) ? "full" : "";
           if (reason) skipped.push({ id: rid, reason });
           else { items.unshift(held as ListItem); restored.push(held as ListItem); }
         }
