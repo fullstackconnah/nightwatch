@@ -111,6 +111,17 @@ test("hits: worst severity and the headline lowercased", () => {
   const warn = answerFor({ ...base, report: report({ hits: [hit("disks", "disk:/x", "warn", "Disk is full")] }) });
   assert.equal(warn.tone, "warn");
 });
+test("a failed backup leads over a warn hit it carries; a bad hit still leads", () => {
+  const drill = hit("backup", "restore-drill", "warn", "A restore drill is due");
+  const p = probes(failed("backup", "no status file"));
+  const a = answerFor({ ...base, report: report({ probes: p, hits: [drill] }) });
+  assert.equal(a.text, "2 things need you. First: the backup check failed");
+  assert.equal(a.tone, "warn");
+  const ok = answerFor({ ...base, report: report({ hits: [drill] }) });
+  assert.equal(ok.text, "1 thing needs you: A restore drill is due");
+  const bad = answerFor({ ...base, report: report({ probes: p, hits: [hit("crashes", "container:radarr"), drill] }) });
+  assert.equal(bad.text, "3 things need you. First: the radarr app crashed");
+});
 test("another probe failed, pending, quiet", () => {
   const f = answerFor({ ...base, report: report({ probes: probes(failed("smart")) }) });
   assert.deepEqual(f, { tone: "pending", text: "Nothing wrong found, but the smart check failed" });

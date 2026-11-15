@@ -44,7 +44,7 @@ export function outcome(status: number | null): Outcome {
   if (status === null) return "keep";
   if (status >= 200 && status < 300) return "ok";
   if (status === 409) return "full";
-  return status === 400 || status === 404 ? "drop" : "keep";
+  return [400, 403, 404, 413].includes(status) ? "drop" : "keep"; // 403 and 413 can never succeed on a retry
 }
 
 /** The ids of every write still waiting, once each: those rows show "Not saved" until the queue drains. */

@@ -16,6 +16,7 @@ interface Stub {
   forecastStatus?: number;
   air?: unknown;
   airThrows?: boolean;
+  airGate?: Promise<void>;
   airCalls: number;
   forecastCalls: number;
 }
@@ -44,6 +45,7 @@ before(() => {
     const url = String(input);
     if (url.startsWith("https://air-quality-api.open-meteo.com/")) {
       stub.airCalls++;
+      if (stub.airGate) await stub.airGate;
       if (stub.airThrows) throw new Error("air down");
       return new Response(JSON.stringify(stub.air ?? { current: { european_aqi: 27 } }));
     }
@@ -58,7 +60,7 @@ after(() => {
 });
 beforeEach(() => {
   stub = { airCalls: 0, forecastCalls: 0 };
-  tick += 3_600_000; // an hour on: both caches expire, so every test fetches fresh
+  tick += 3 * 3_600_000; // 3 h on: both caches and the 2 h last-good air value expire, so every test fetches fresh
   setWeatherClock(() => tick);
 });
 
@@ -112,7 +114,7 @@ describe("kiosk uv and air: server (T1-T7)", () => {
     stub.air = { current: { european_aqi: 18.4 } };
     assert.deepEqual((await ok()).air, { index: 18 });
     for (const bad of [{ current: {} }, { current: { european_aqi: "x" } }, { current: { european_aqi: -3 } }, {}]) {
-      tick += 3_600_000;
+      tick += 3 * 3_600_000;
       stub.air = bad;
       assert.equal((await ok()).air, null, JSON.stringify(bad));
     }
@@ -138,6 +140,24 @@ describe("kiosk uv and air: server (T1-T7)", () => {
     const w = await ok();
     assert.equal(stub.airCalls, 2);
     assert.deepEqual(w.air, { index: 27 });
+  });
+
+  it("T5b: a failed refresh keeps the last good air under 2 h, without waiting for the call; null after", async () => {
+    assert.deepEqual((await ok()).air, { index: 27 });
+    tick += 3_600_000; // cache expired, last good is 1 h old
+    stub.airThrows = true;
+    let release!: () => void;
+    stub.airGate = new Promise<void>((res) => (release = res));
+    const w = await ok(); // resolves while the air call is still gated
+    assert.deepEqual(w.air, { index: 27 });
+    release();
+    await new Promise((res) => setTimeout(res, 10));
+    assert.equal(stub.airCalls, 2);
+    stub.airGate = undefined;
+    tick += 31_000; // the failure's 30 s cache is over; last good still under 2 h
+    assert.deepEqual((await ok()).air, { index: 27 });
+    tick += 3 * 3_600_000; // older than 2 h
+    assert.equal((await ok()).air, null);
   });
 
   it("T7: a forecast HTTP 500 is unreachable whatever the air call did", async () => {

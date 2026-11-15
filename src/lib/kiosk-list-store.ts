@@ -20,6 +20,7 @@ export const MAX_BODY_BYTES = 2048;
 const MAX_BODY = MAX_BODY_BYTES;
 const RESTORE_MS = 60_000;
 const BUFFER_CAP = 2 * MAX_ITEMS;
+const KEEP_CORRUPT = 3;
 const HISTORY_CAP = 200;
 const HISTORY_MS = 90 * 86400000;
 const PER_MINUTE = 40;
@@ -59,8 +60,13 @@ async function load(): Promise<ListFile> {
   }
   const parsed = parseListFile(raw);
   if (parsed) return (s.file = parsed);
-  try { await fs.rename(listPath(), `${listPath()}.corrupt`); } catch { throw new StoreError("corrupt file not kept"); } // never write over an unreadable file we could not keep
-  console.warn("[kiosk-list] unparsable list file, kept as .corrupt, starting empty");
+  const kept = `${listPath()}.corrupt.${new Date().toISOString().replace(/\D/g, "")}`; // UTC digits: a later corrupt file never overwrites an earlier copy
+  try { await fs.rename(listPath(), kept); } catch { throw new StoreError("corrupt file not kept"); } // never write over an unreadable file we could not keep
+  try {
+    const old = (await fs.readdir(dataDir())).filter((n) => /^kiosk-list\.json\.corrupt\.\d+$/.test(n)).sort().slice(0, -KEEP_CORRUPT);
+    for (const n of old) await fs.rm(path.join(dataDir(), n), { recursive: true, force: true });
+  } catch { /* pruning is best effort */ }
+  console.warn("[kiosk-list] unparsable list file, kept as .corrupt.<time>, starting empty");
   return (s.file = { v: 1, items: [], history: [] });
 }
 

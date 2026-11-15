@@ -10,6 +10,8 @@
 import useSWR from "swr";
 import { Trash } from "lucide-react";
 import { fetcher } from "@/lib/client";
+import { localDateKey } from "@/lib/climate-auto-off";
+import { useNow } from "@/lib/use-now";
 import { binLineSegments, binsTonight, type BinsResponse } from "@/lib/bin-night";
 import type { KioskPeriod } from "@/components/kiosk/kiosk-display";
 
@@ -18,7 +20,8 @@ const BINS_REFRESH_MS = 30 * 60_000;
 /** The bin names due tonight, or null. Fetches only in the evening window (a null key stops SWR outright); focus (a wake) revalidates. */
 export function useBinNight(period: KioskPeriod): string[] | null {
   const { data } = useSWR<BinsResponse>(period === "evening" ? "/kiosk/api/bins" : null, fetcher, { refreshInterval: BINS_REFRESH_MS });
-  return period === "evening" ? binsTonight(data) : null;
+  const now = useNow(true, true); // 0 until mounted: no date, nothing shown
+  return period === "evening" && now ? binsTonight(data, localDateKey(new Date(now))) : null;
 }
 
 /** The sentence: names in ink, medium weight; the rest dim. */

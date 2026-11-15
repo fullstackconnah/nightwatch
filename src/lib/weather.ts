@@ -197,6 +197,8 @@ export function setWeatherClock(fn: () => number) {
 }
 const cachedWeather = cachedByKey<WeatherResponse>((w) => (w.status === "ok" ? CACHE_MS : 30_000), () => clock());
 const cachedAir = cachedByKey<WeatherAir | null>((a) => (a ? CACHE_MS : 30_000), () => clock());
+const AIR_STALE_MS = 2 * 3_600_000;
+let lastAir: { key: string; at: number; air: WeatherAir } | null = null;
 
 interface RawCurrent {
   time?: unknown;
@@ -523,7 +525,14 @@ export async function getWeather(): Promise<WeatherResponse> {
   const cfg = displayConfig();
   if (!cfg) return { status: "unconfigured", detail: WEATHER_UNCONFIGURED_DETAIL };
   const key = `${cfg.lat},${cfg.lon},${cfg.timezone}`;
-  const [w, air] = await Promise.all([cachedWeather(key, () => fetchWeather(cfg)), cachedAir(key, () => fetchAir(cfg))]);
+  const airP = cachedAir(key, async () => {
+    const a = await fetchAir(cfg);
+    if (a) lastAir = { key, at: clock(), air: a };
+    return a;
+  });
+  // A good air value under 2 h old stands in for a failed refresh and spares the request the air wait (the refresh runs on, one at a time, in cachedAir).
+  const good = lastAir && lastAir.key === key && clock() - lastAir.at < AIR_STALE_MS ? lastAir.air : null;
+  const [w, air] = await Promise.all([cachedWeather(key, () => fetchWeather(cfg)), good ?? airP]);
   return w.status === "ok" ? { ...w, air } : w;
 }
 

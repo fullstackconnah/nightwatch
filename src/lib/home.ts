@@ -180,9 +180,11 @@ export function answerFor(i: AnswerInput): { tone: Tone; text: string } {
   if (r.hits.length > 0) {
     const worst = r.hits[0];
     const n = rows.length;
+    // A failed probe outranks a warn-level hit (the hit it carries, e.g. a due restore drill); a bad hit still leads.
+    const lead = worst.severity === "bad" ? worst.headline : (rows.find((x) => x.id.startsWith("failed:"))?.headline ?? worst.headline);
     return {
       tone: worst.severity,
-      text: n === 1 ? `1 thing needs you: ${lc(worst.headline)}` : `${n} things need you. First: ${lc(worst.headline)}`,
+      text: n === 1 ? `1 thing needs you: ${lc(lead)}` : `${n} things need you. First: ${lc(lead)}`,
     };
   }
   const failed = r.probes.filter((p) => p.state === "failed");
