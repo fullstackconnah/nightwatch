@@ -694,7 +694,8 @@ function CalendarSection() {
   if (!view && !failed) return null;
   return (
     <section data-calendar-section="" className="border-t border-line pt-3">
-      <div className="flex items-center gap-2">
+      {/* h-5 = the non-stale line: the taller stale pill overflows it evenly, so the hub below never moves */}
+      <div className="flex h-5 items-center gap-2">
         <SectionLabel icon={CalendarDays} label="Calendar" />
         {stale && <StaleTag />}
       </div>

@@ -98,7 +98,8 @@ export function settingsModel(i: ModelInput): Model {
   // a hand-edited rule may lack the array or hold junk entries: count only object rows
   const savedBins = (Array.isArray(data.config.bins?.collections) ? data.config.bins.collections : []).filter((c) => c && typeof c === "object").length;
   const hermes = data.config.hermes;
-  const setUp = [ig.homeassistant, ig.npm, ig.forgejo, ig.github, ig.minecraft, ig.media].filter((x) => x.configured).length + (system.voiceConfigured ? 1 : 0);
+  const counted = [ig.homeassistant.configured, ig.npm.configured, ig.forgejo.configured, ig.github.configured, ig.minecraft.configured, ig.media.configured, system.voiceConfigured, ig.calendar.configured, savedBins > 0];
+  const setUp = counted.filter(Boolean).length;
   const stamps: [string, string | null | undefined][] = [
     ["Home Assistant", ig.homeassistant.updatedAt], ["NPM", ig.npm.updatedAt], ["Forgejo", ig.forgejo.updatedAt],
     ["GitHub", ig.github.updatedAt], ["Minecraft", ig.minecraft.updatedAt], ["Media", ig.media.updatedAt], ["System settings", system.updatedAt],
@@ -120,7 +121,7 @@ export function settingsModel(i: ModelInput): Model {
   let answer =
     setUp === 0
       ? "No integrations are set up yet. Each one below says what it needs."
-      : `${setUp === 7 ? "All 7" : `${setUp} of 7`} integrations are set up. ${last}`;
+      : `${setUp === counted.length ? `All ${setUp}` : `${setUp} of ${counted.length}`} integrations are set up. ${last}`;
   let autoTarget: Model["autoTarget"] = null;
   if (draftStrips.length) {
     const more = draftStrips.length - 1;

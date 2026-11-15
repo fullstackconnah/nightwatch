@@ -1914,7 +1914,8 @@ const CAL_PANE = () => {
   const cut = [];
   const inner = [];
   for (const el of visible.flatMap((v) => [v, ...v.querySelectorAll("*")])) {
-    if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0) inner.push(el.textContent.trim().slice(0, 30)); // the sr-only sentence is skipped: it is 1 px high by design
+    // only an element that can clip or scroll counts: visible overflow (the leading-none time figure) clips nothing
+    if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0 && getComputedStyle(el).overflowY !== "visible") inner.push(el.textContent.trim().slice(0, 30)); // the sr-only sentence is skipped: it is 1 px high by design
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) cut.push({ text: el.textContent.trim().slice(0, 30), ellipsis: getComputedStyle(el).textOverflow === "ellipsis" });
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
