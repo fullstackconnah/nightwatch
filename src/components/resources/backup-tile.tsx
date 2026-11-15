@@ -7,7 +7,7 @@ import { useBackupStatus } from "@/lib/client";
 import { useNow } from "@/lib/use-now";
 import { relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { BACKUP_KIND_LABEL, BACKUP_TONE, summarizeBackup } from "@/lib/backup-status";
+import { BACKUP_KIND_LABEL, BACKUP_TONE, drillAge, drillAgeText, drillDateText, summarizeBackup } from "@/lib/backup-status";
 
 /** A one-line state with a dot, plus a quieter second line saying what is true. */
 function Notice({ dot, title, children }: { dot: string; title: string; children: React.ReactNode }) {
@@ -77,6 +77,9 @@ export function BackupTile({ stacked = false }: { stacked?: boolean }) {
     );
   }
 
+  const drill = data && now > 0 && data.drill ? drillAge(data.drill) : null;
+  const drillTone = drill?.state === "due" ? BACKUP_TONE.STALE : BACKUP_TONE.OK;
+
   return (
     <section className="panel" aria-labelledby="backup-tile-title">
       <CardHeader className="flex-wrap gap-x-3 gap-y-1">
@@ -89,7 +92,27 @@ export function BackupTile({ stacked = false }: { stacked?: boolean }) {
           </span>
         )}
       </CardHeader>
-      <CardContent>{body}</CardContent>
+      <CardContent>
+        {body}
+        {drill && data?.drill && (
+          // Your own hand test, not the automatic weekly one above; same row markup so nothing shifts.
+          <div className="mt-2 flex items-center gap-2 min-w-0 text-xs">
+            <span className={cn("dot", drill.state === "none" ? "dot-stopped" : drillTone.dot)} aria-hidden />
+            <span className="truncate text-ink">Restore drill</span>
+            <span
+              className="font-mono text-ink-dim whitespace-nowrap"
+              title={data.drill.testedOn ? `Tested on ${drillDateText(data.drill.testedOn)}` : undefined}
+            >
+              {drill.state === "none" ? "none recorded" : drillAgeText(drill.days)}
+            </span>
+            {drill.state !== "none" && (
+              <Badge variant={drillTone.variant} className="ml-auto sm:ml-0">
+                {drill.state === "due" ? "DUE" : "OK"}
+              </Badge>
+            )}
+          </div>
+        )}
+      </CardContent>
     </section>
   );
 }

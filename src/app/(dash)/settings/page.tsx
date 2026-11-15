@@ -25,6 +25,7 @@ import {
   VoiceCard,
   BinNightCard,
   CalendarCard,
+  RestoreDrillCard,
   useSettingsFull,
 } from "@/components/settings/settings-integrations";
 import { LabelConventionPanel } from "@/components/settings/settings-reference";
@@ -147,6 +148,7 @@ export default function SettingsPage() {
     voice: <VoiceCard {...panel} />,
     bins: <BinNightCard {...panel} />,
     calendar: <CalendarCard {...panel} />,
+    restore: <RestoreDrillCard {...panel} />,
     hermes: (
       <div className="space-y-5">
         <SettingsHermes />
