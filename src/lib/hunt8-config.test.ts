@@ -57,7 +57,7 @@ describe("hunt 8 A1: every save path reads strictly", () => {
     for (const e of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name.endsWith(".ts") || e.name.endsWith(".tsx")) files.push(p);
+      else if ((e.name.endsWith(".ts") || e.name.endsWith(".tsx")) && !/\.test\.tsx?$/.test(e.name)) files.push(p); // a test is not a save route
     }
   };
   walk(fileURLToPath(new URL("../app", import.meta.url)));

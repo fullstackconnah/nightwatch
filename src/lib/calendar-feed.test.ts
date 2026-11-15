@@ -6,7 +6,7 @@ import { after, before, beforeEach, describe, it, mock } from "node:test";
 import { inspect } from "node:util";
 import { loadConfigForSave, saveConfig, type AppConfig } from "./config.ts";
 import {
-  CALENDAR_PROBLEM_COPY, MAX_CALENDAR_BYTES, applyCalendar, calendarMeta, commitCalendar, fetchCalendar,
+  CALENDAR_PROBLEM_COPY, MAX_CALENDAR_BYTES, MAX_CALENDAR_EVENTS, applyCalendar, calendarMeta, commitCalendar, fetchCalendar,
   getCalendarResponse, prepareCalendar, resetCalendarCache, type CalendarResponse,
 } from "./calendar-feed.ts";
 import { sanitizeConfig } from "./settings/public-config.ts";
@@ -289,5 +289,39 @@ describe("saving a calendar link", () => {
     await pending;
     assert.equal(loadConfigForSave().display?.place, "Elsewhere");
     assert.equal(savedUrl(), LINK2);
+  });
+});
+
+describe("fix round: shared state, bounded list, unread bodies", () => {
+  it("a list committed through one module instance is served by another (state lives on globalThis)", async () => {
+    const spec = "./calendar-feed.ts?second-instance"; // a variable specifier: tsc cannot resolve a query string
+    const other = (await import(spec)) as typeof import("./calendar-feed.ts");
+    const fetched = await fetchCalendar(LINK, SYD, NOW);
+    if ("problem" in fetched) return assert.fail(fetched.problem);
+    calls = [];
+    other.commitCalendar({ kind: "set", url: LINK, fetched });
+    assert.equal(ok(await getCalendarResponse(NOW)).events.length, 5);
+    assert.equal(calls.length, 0);
+  });
+  it("the kiosk list is cut to MAX_CALENDAR_EVENTS in agenda order; the week count stays whole", async () => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const many = Array.from({ length: 250 }, (_, i) => {
+      const t = `E${String(i).padStart(3, "0")}`;
+      return ev(t, `20261116T${pad(8 + Math.floor(i / 60))}${pad(i % 60)}00`, `20261116T${pad(8 + Math.floor(i / 60))}${pad(i % 60)}30`);
+    });
+    handler = async () => new Response(cal(...many));
+    const r = ok(await getCalendarResponse(NOW));
+    assert.equal(MAX_CALENDAR_EVENTS, 200);
+    assert.deepEqual(r.events.map((e) => e.title), many.slice(0, 200).map((_, i) => `E${String(i).padStart(3, "0")}`));
+    assert.equal(calendarMeta(loadConfigForSave()).eventsThisWeek, 250);
+  });
+  it("an early return cancels the unread body", async () => {
+    for (const s of [302, 404, 500]) {
+      let cancelled = false;
+      const stream = new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } });
+      handler = async () => new Response(stream, { status: s });
+      await fetchCalendar(LINK, SYD, NOW);
+      assert.equal(cancelled, true, String(s));
+    }
   });
 });

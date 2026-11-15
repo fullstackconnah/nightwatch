@@ -16,6 +16,7 @@ export interface Fetched { at: number; kept: CalendarEvent[]; end: number; week:
 export type CalendarChange = { kind: "clear" } | { kind: "keep" } | { kind: "set"; url: string; fetched: Fetched };
 
 export const MAX_CALENDAR_BYTES = 5 * 1024 * 1024;
+export const MAX_CALENDAR_EVENTS = 200; // the kiosk route is public and polled; one huge repeating event must not be served whole
 const FETCH_TIMEOUT_MS = 10_000;
 const REFRESH_MS = 15 * 60_000;
 const RETRY_MS = 60_000; // after a failure; the public kiosk route must not be able to hammer the upstream
@@ -65,6 +66,7 @@ export async function fetchCalendar(url: string, tz: string, now: number): Promi
   try {
     // Never follow a redirect: the link is a secret and a redirect could send it, or us, somewhere else.
     const res = await fetch(url, { redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) await res.body?.cancel().catch(() => {}); // the early returns below leave the body unread
     if ([401, 403, 404, 410].includes(res.status)) return { problem: "refused" };
     if (!res.ok) return { problem: "unreachable" }; // includes every 3xx
     const text = await readBody(res);
@@ -73,14 +75,17 @@ export async function fetchCalendar(url: string, tz: string, now: number): Promi
     const day0 = startOfDay(tz, now);
     const end = addDays(tz, day0, 3);
     const week = parseIcs(text, day0, addDays(tz, day0, 7), tz);
-    return { at: now, kept: week.filter((e) => eventOverlaps(e, day0, end)), end, week: week.length };
+    const kept = week.filter((e) => eventOverlaps(e, day0, end)).sort(byAgenda).slice(0, MAX_CALENDAR_EVENTS);
+    return { at: now, kept, end, week: week.length };
   } catch {
     return { problem: "unreachable" };
   }
 }
 
 type Entry = { url: string; good: Fetched | null; problem: CalendarProblem | null; failedAt: number; inflight: Promise<void> | null };
-let entry: Entry | null = null; // bound to the link it was fetched with
+// On globalThis so every route bundle shares one cache (house pattern, see cache.ts).
+const g = globalThis as unknown as { __calendarFeed?: { entry: Entry | null } };
+const state = (g.__calendarFeed ??= { entry: null }); // entry is bound to the link it was fetched with
 
 function refresh(e: Entry, tz: string, now: number): Promise<void> {
   return (e.inflight ??= fetchCalendar(e.url, tz, now)
@@ -99,15 +104,15 @@ export async function getCalendarResponse(now = Date.now()): Promise<CalendarRes
   const config = loadConfig();
   const url = config.calendar?.url;
   if (!url) {
-    entry = null;
+    state.entry = null;
     return { status: "unconfigured" };
   }
-  if (entry?.url !== url) entry = { url, good: null, problem: null, failedAt: 0, inflight: null };
-  const e = entry;
+  if (state.entry?.url !== url) state.entry = { url, good: null, problem: null, failedAt: 0, inflight: null };
+  const e = state.entry;
   const tz = zoneOf(config);
   const due = !e.good || now - e.good.at >= REFRESH_MS;
   if (due && (e.inflight || !e.failedAt || now - e.failedAt >= RETRY_MS)) await refresh(e, tz, now);
-  if (entry !== e) return getCalendarResponse(now); // the link changed while we waited
+  if (state.entry !== e) return getCalendarResponse(now); // the link changed while we waited
   const from = startOfDay(tz, now);
   const to = addDays(tz, from, 2);
   // A list fetched before the second local midnight ago no longer covers tomorrow: an error beats a silent zero.
@@ -123,7 +128,7 @@ export async function getCalendarResponse(now = Date.now()): Promise<CalendarRes
 /** For the settings card: the cache's state, never the link. Reads only; it never triggers a fetch. */
 export function calendarMeta(config: AppConfig) {
   const url = config.calendar?.url;
-  const e = entry && entry.url === url ? entry : null;
+  const e = state.entry && state.entry.url === url ? state.entry : null;
   return {
     configured: Boolean(url),
     updatedAt: config.calendar?.updatedAt ?? null,
@@ -157,10 +162,10 @@ export function applyCalendar(config: AppConfig, change: CalendarChange, updated
 
 /** Call after the config is saved: the cache follows the saved link, never leads it. */
 export function commitCalendar(change: CalendarChange): void {
-  if (change.kind === "clear") entry = null;
-  else if (change.kind === "set") entry = { url: change.url, good: change.fetched, problem: null, failedAt: 0, inflight: null };
+  if (change.kind === "clear") state.entry = null;
+  else if (change.kind === "set") state.entry = { url: change.url, good: change.fetched, problem: null, failedAt: 0, inflight: null };
 }
 
 export function resetCalendarCache(): void {
-  entry = null;
+  state.entry = null;
 }
