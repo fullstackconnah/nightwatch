@@ -86,6 +86,13 @@ describe("kiosk agenda: event rules", () => {
     assert.equal(view([e, hour(D, 11)], at(D, 9, 29)).rows.length, 2);
     assert.equal(view([e, hour(D, 11)], at(D, 9, 30)).rows.length, 1);
   });
+  it("an overnight event reads until its end under Tomorrow; one covering all of tomorrow, and an all-day one, still read All day", () => {
+    const night = ev("Night shift", at(D, 22), at(D + 1, 7));
+    assert.deepEqual(view([night], at(D, 12)).rows.map((r) => [r.day, r.time]), [["Today", "10:00 pm"], ["Tomorrow", "until 7:00 am"]]);
+    const whole = ev("Away", at(D, 22), at(D + 2, 0));
+    assert.equal(view([whole], at(D, 12)).rows[1].time, "All day");
+    assert.equal(view([allDay(D + 1, "Holiday")], at(D, 12)).rows[0].time, "All day");
+  });
   it("multi-day: now and till a weekday, All day on tomorrow", () => {
     const trip = ev("Camping", at(D - 1, 10), at(D + 3, 11));
     const v = view([trip], at(D, 12));

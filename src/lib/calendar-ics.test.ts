@@ -37,12 +37,12 @@ describe("parseIcs text", () => {
   it("drops a cancelled event", () => {
     assert.deepEqual(run(cal(vevent("UID:a", MON9, "STATUS:CANCELLED", "SUMMARY:x"))), []);
   });
-  it("ids are the UID plus the start, stable across parses", () => {
+  it("ids are a short key of the UID and the start, stable across parses, never the UID itself", () => {
     const text = cal(vevent("UID:abc-1", MON9, "SUMMARY:x", "RRULE:FREQ=DAILY;COUNT=2"));
     const a = run(text).map((e) => e.id);
     assert.deepEqual(a, run(text).map((e) => e.id));
     assert.equal(new Set(a).size, 2);
-    assert.ok(a.every((id) => id.includes("abc-1")));
+    assert.ok(a.every((id) => /^[0-9a-f]{12}$/.test(id)));
   });
 });
 
@@ -128,11 +128,68 @@ describe("parseIcs repeats", () => {
       "2026-11-02T09:00:00+11:00", "2026-11-16T09:00:00+11:00", "2026-11-30T09:00:00+11:00",
     ]);
   });
-  it("any other repeat shows at its first occurrence only", () => {
-    assert.equal(starts(cal(vevent("UID:a", MON9, "SUMMARY:x", "RRULE:FREQ=MONTHLY;BYDAY=1MO"))).length, 1);
-    const earlier = cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:20261019T090000", "SUMMARY:x", "RRULE:FREQ=MONTHLY"));
-    assert.deepEqual(run(earlier), []);
-    assert.deepEqual(run(cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:20201116T090000", "SUMMARY:x", "RRULE:FREQ=YEARLY"))), []);
+  it("an unsupported repeat shows at its first occurrence only", () => {
+    assert.equal(starts(cal(vevent("UID:a", MON9, "SUMMARY:x", "RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1"))).length, 1);
+    const earlier = (rule: string) => cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:20261019T090000", "SUMMARY:x", rule));
+    for (const rule of ["RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1", "RRULE:FREQ=MONTHLY;BYMONTHDAY=1,15", "RRULE:FREQ=MONTHLY;BYMONTHDAY=-1", "RRULE:FREQ=YEARLY;BYYEARDAY=100", "RRULE:FREQ=YEARLY;BYMONTH=3", "RRULE:FREQ=HOURLY"]) {
+      assert.deepEqual(run(earlier(rule)), [], rule);
+    }
+  });
+  describe("monthly and yearly", () => {
+    const sy = (dtstart: string, rule: string, w = WEEK, extra: string[] = []) =>
+      starts(cal(vevent("UID:a", dtstart.length === 8 ? `DTSTART;VALUE=DATE:${dtstart}` : `DTSTART;TZID=Australia/Sydney:${dtstart}`, "SUMMARY:x", `RRULE:${rule}`, ...extra)), w);
+    const wide = win("2026-10-25T00:00:00+11:00", "2027-02-01T00:00:00+11:00");
+    it("a yearly birthday from 1990 shows on its day and not the day before", () => {
+      assert.deepEqual(sy("19901118", "FREQ=YEARLY"), ["2026-11-18T00:00:00+11:00"]);
+      assert.deepEqual(sy("19901118", "FREQ=YEARLY;BYMONTH=11;BYMONTHDAY=18"), ["2026-11-18T00:00:00+11:00"]);
+      assert.deepEqual(sy("19901118", "FREQ=YEARLY;INTERVAL=2"), ["2026-11-18T00:00:00+11:00"]);
+      assert.deepEqual(sy("19901118", "FREQ=YEARLY;INTERVAL=5"), []); // 1990 + 5k never reaches 2026
+    });
+    it("a 29 February yearly event shows only in leap years", () => {
+      assert.deepEqual(sy("20240229", "FREQ=YEARLY", win("2027-02-22T00:00:00+11:00", "2027-03-08T00:00:00+11:00")), []);
+      assert.deepEqual(sy("20240229", "FREQ=YEARLY", win("2028-02-22T00:00:00+11:00", "2028-03-08T00:00:00+11:00")), ["2028-02-29T00:00:00+11:00"]);
+    });
+    it("monthly on a day number, skipping months without it", () => {
+      assert.deepEqual(sy("20261031T090000", "FREQ=MONTHLY", wide), ["2026-10-31T09:00:00+11:00", "2026-12-31T09:00:00+11:00", "2027-01-31T09:00:00+11:00"]);
+      assert.deepEqual(sy("20260901T090000", "FREQ=MONTHLY;BYMONTHDAY=18", wide), ["2026-11-18T09:00:00+11:00", "2026-12-18T09:00:00+11:00", "2027-01-18T09:00:00+11:00"]);
+    });
+    it("second Tuesday and last Friday", () => {
+      assert.deepEqual(sy("20261110T090000", "FREQ=MONTHLY;BYDAY=2TU", wide), ["2026-11-10T09:00:00+11:00", "2026-12-08T09:00:00+11:00", "2027-01-12T09:00:00+11:00"]);
+      assert.deepEqual(sy("20261127T090000", "FREQ=MONTHLY;BYDAY=-1FR", wide), ["2026-11-27T09:00:00+11:00", "2026-12-25T09:00:00+11:00", "2027-01-29T09:00:00+11:00"]);
+    });
+    it("INTERVAL=2, COUNT and UNTIL", () => {
+      assert.deepEqual(sy("20261116T090000", "FREQ=MONTHLY;INTERVAL=2", wide), ["2026-11-16T09:00:00+11:00", "2027-01-16T09:00:00+11:00"]);
+      assert.deepEqual(sy("20260916T090000", "FREQ=MONTHLY;COUNT=2"), []);
+      assert.deepEqual(sy("20260916T090000", "FREQ=MONTHLY;COUNT=3"), ["2026-11-16T09:00:00+11:00"]);
+      assert.deepEqual(sy("20260916T090000", "FREQ=MONTHLY;UNTIL=20261101T000000Z"), []);
+      assert.deepEqual(sy("20260916T090000", "FREQ=MONTHLY;UNTIL=20261201T000000Z"), ["2026-11-16T09:00:00+11:00"]);
+    });
+    it("EXDATE removes one monthly occurrence", () => {
+      assert.deepEqual(sy("20260916T090000", "FREQ=MONTHLY", WEEK, ["EXDATE;TZID=Australia/Sydney:20261116T090000"]), []);
+    });
+    it("keeps 09:00 local on both sides of the daylight-saving changes", () => {
+      const all = win("2026-09-01T00:00:00+10:00", "2026-11-01T00:00:00+11:00");
+      assert.deepEqual(sy("20260915T090000", "FREQ=MONTHLY", all), ["2026-09-15T09:00:00+10:00", "2026-10-15T09:00:00+11:00"]);
+      const apr = win("2026-03-01T00:00:00+11:00", "2026-05-01T00:00:00+10:00");
+      assert.deepEqual(sy("20260315T090000", "FREQ=MONTHLY", apr), ["2026-03-15T09:00:00+11:00", "2026-04-15T09:00:00+10:00"]);
+    });
+    it("a 1995 start without COUNT jumps to the window, quickly", { timeout: 5000 }, () => {
+      assert.equal(sy("19950118T090000", "FREQ=MONTHLY").length, 1);
+      assert.equal(sy("19950118T090000", "FREQ=MONTHLY;BYDAY=3WE;COUNT=999999").length, 1);
+    });
+  });
+  it("a title is cut at 120 code points with an ellipsis, and the id is a short key, not the UID", () => {
+    const long = "🎂".repeat(130);
+    const [e] = run(cal(vevent("UID:secret-uid-value", MON9, MON9END, `SUMMARY:${long}`)));
+    assert.equal(Array.from(e.title!).length, 120);
+    assert.ok(e.title!.endsWith("…"));
+    assert.match(e.id, /^[0-9a-f]{12}$/);
+    assert.equal(run(cal(vevent("UID:ok", MON9, MON9END, "SUMMARY:short")))[0].title, "short");
+  });
+  it("two events with no UID at the same start stay two events with different ids", () => {
+    const r = run(cal(vevent(MON9, MON9END, "SUMMARY:a"), vevent(MON9, MON9END, "SUMMARY:b")));
+    assert.equal(r.length, 2);
+    assert.notEqual(r[0].id, r[1].id);
   });
   it("a repeat that started decades ago still lands in the window, quickly", { timeout: 5000 }, () => {
     const old = cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:19950102T090000", "SUMMARY:x", "RRULE:FREQ=DAILY"));

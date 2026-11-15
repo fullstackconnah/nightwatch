@@ -1,6 +1,6 @@
-/* A hand-rolled iCalendar subset for the kiosk agenda: single events, DAILY and WEEKLY repeats (INTERVAL, UNTIL, COUNT,
- * EXDATE, moved occurrences, WEEKLY BYDAY) and nothing else. Any other repeat shows at its first occurrence only.
- * Pure and import-free so node:test loads it. It never throws: a bad line or event is skipped, and every expansion is bounded. */
+/* A hand-rolled iCalendar subset for the kiosk agenda: single events, DAILY, WEEKLY (BYDAY), MONTHLY (one BYMONTHDAY, or one
+ * ordinal BYDAY such as 2TU or -1FR) and YEARLY (same month and day) repeats, with INTERVAL, UNTIL, COUNT, EXDATE and moved
+ * occurrences. Any other repeat shows at its first occurrence only. Pure (node:crypto only) so node:test loads it. It never throws: a bad line or event is skipped, and every expansion is bounded. */
 
 export interface CalendarEvent {
   /** UID + occurrence start; stable across polls. */
@@ -17,6 +17,10 @@ export interface CalendarEvent {
 
 const DAY = 86_400_000;
 const STEP_BUDGET = 300_000; // candidate days examined per parse, so hostile repeats cannot hang the server
+
+import { createHash } from "node:crypto";
+
+const MAX_TITLE = 120;
 
 // --- zone maths (Intl only; the server's own zone never matters) ---
 const formatters = new Map<string, Intl.DateTimeFormat | null>();
@@ -129,27 +133,46 @@ function parseDuration(v: string): number | null {
 
 // --- repeats ---
 const DAY_CODES = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-type Rule = { weekly: boolean; interval: number; count?: number; until?: Dt; byday: number[] };
+type Rule = { weekly: boolean; interval: number; count?: number; until?: Dt; byday: number[]; months?: number; monthDay?: number; nth?: [number, number] };
 
 /** null = not one of the supported repeats, so the event shows at its first occurrence only. */
-function parseRule(value: string, zone: string): Rule | null {
+function parseRule(value: string, zone: string, start: Dt): Rule | null {
   const r: Record<string, string> = {};
   for (const kv of value.split(";")) {
     const eq = kv.indexOf("=");
     if (eq > 0) r[kv.slice(0, eq).toUpperCase()] = kv.slice(eq + 1);
   }
   const weekly = r.FREQ === "WEEKLY";
+  const monthly = r.FREQ === "MONTHLY";
+  const yearly = r.FREQ === "YEARLY";
   // shortcut: WKST is ignored (weeks start Monday), so a WEEKLY;INTERVAL>1;WKST=SU rule can land a week off; upgrade if one shows up.
-  const extra = Object.keys(r).some((k) => !["FREQ", "INTERVAL", "COUNT", "UNTIL", "WKST", weekly ? "BYDAY" : ""].includes(k));
-  if ((!weekly && r.FREQ !== "DAILY") || extra) return null;
-  const byday = r.BYDAY ? r.BYDAY.split(",").map((c) => DAY_CODES.indexOf(c.toUpperCase())) : [];
+  const extra = Object.keys(r).some((k) => !["FREQ", "INTERVAL", "COUNT", "UNTIL", "WKST", weekly || monthly ? "BYDAY" : "", monthly || yearly ? "BYMONTHDAY" : "", yearly ? "BYMONTH" : ""].includes(k));
+  if ((!weekly && !monthly && !yearly && r.FREQ !== "DAILY") || extra) return null;
+  const byday = weekly && r.BYDAY ? r.BYDAY.split(",").map((c) => DAY_CODES.indexOf(c.toUpperCase())) : [];
   if (byday.includes(-1)) return null;
+  let monthDay: number | undefined;
+  let nth: [number, number] | undefined;
+  if (monthly) {
+    const o = /^(-1|[1-4])(SU|MO|TU|WE|TH|FR|SA)$/i.exec(r.BYDAY ?? "");
+    if (r.BYDAY !== undefined && (!o || r.BYMONTHDAY !== undefined)) return null;
+    if (o) nth = [Number(o[1]), DAY_CODES.indexOf(o[2].toUpperCase())];
+    if (r.BYMONTHDAY !== undefined) {
+      monthDay = /^\d{1,2}$/.test(r.BYMONTHDAY) ? Number(r.BYMONTHDAY) : 0;
+      if (monthDay < 1 || monthDay > 31) return null; // negative days stay unsupported
+    }
+  }
+  // A yearly repeat is the start's own month and day; a BY part that says otherwise is not supported.
+  if (yearly && ((r.BYMONTH !== undefined && r.BYMONTH !== String(start.mo)) || (r.BYMONTHDAY !== undefined && r.BYMONTHDAY !== String(start.d)))) return null;
   const count = r.COUNT === undefined ? undefined : Number(r.COUNT);
   if (count !== undefined && !(Number.isInteger(count) && count >= 1)) return null;
   const interval = Number(r.INTERVAL ?? 1);
+  const step = Number.isInteger(interval) && interval >= 1 ? interval : 1;
   return {
     weekly,
-    interval: Number.isInteger(interval) && interval >= 1 ? interval : 1,
+    interval: step,
+    months: monthly ? step : yearly ? 12 * step : undefined,
+    monthDay,
+    nth,
     count,
     until: r.UNTIL ? (parseDt({ params: {}, value: r.UNTIL }, zone) ?? undefined) : undefined,
     byday,
@@ -170,6 +193,9 @@ interface Ev {
   days: number;
 }
 
+/** At most MAX_TITLE code points; a cut title ends with an ellipsis. */
+const capTitle = (t: string) => { const c = Array.from(t); return c.length > MAX_TITLE ? c.slice(0, MAX_TITLE - 1).join("") + "…" : t; };
+
 const first = (props: Props, name: string) => props.get(name)?.[0];
 
 function toEv(props: Props, tz: string): Ev | null {
@@ -189,7 +215,7 @@ function toEv(props: Props, tz: string): Ev | null {
   const rid = first(props, "RECURRENCE-ID");
   return {
     uid: first(props, "UID")?.value.trim() ?? "",
-    title: busy || !summary ? null : summary,
+    title: busy || !summary ? null : capTitle(summary),
     busy,
     start,
     rrule: first(props, "RRULE")?.value,
@@ -240,14 +266,16 @@ export function parseIcs(text: string, winStart: number, winEnd: number, tz: str
     const replaced = new Set(evs.filter((e) => e.ev.recurrenceId).map((e) => `${e.ev.uid}|${dtMs(e.ev.recurrenceId!, zone)}`));
     let steps = STEP_BUDGET;
 
-    for (const { ev, cancelled } of evs) {
+    for (const [index, { ev, cancelled }] of evs.entries()) {
       if (cancelled) continue;
       try {
         const { start } = ev;
         const emit = (s: number, e: number) => {
           if (!overlapsMs(s, e, winStart, winEnd)) return;
           const startIso = isoIn(zone, s);
-          out.set(`${ev.uid}@${startIso}`, { id: `${ev.uid}@${startIso}`, title: ev.title, busy: ev.busy, allDay: start.allDay, start: startIso, end: isoIn(zone, e) });
+          // The client gets a short non-reversible key, not the feed's UID; an event with no UID is keyed by its place in the file.
+          const key = `${ev.uid || `#${index}`}@${startIso}`;
+          out.set(key, { id: createHash("sha256").update(key).digest("hex").slice(0, 12), title: ev.title, busy: ev.busy, allDay: start.allDay, start: startIso, end: isoIn(zone, e) });
         };
         const occurrence = (dn: number): [number, number] => {
           const d = new Date(dn * DAY);
@@ -257,7 +285,7 @@ export function parseIcs(text: string, winStart: number, winEnd: number, tz: str
           return [s, s + ev.durMs];
         };
         const startDn = dayNumber(start);
-        const rule = ev.rrule && !ev.recurrenceId ? parseRule(ev.rrule, start.zone) : null;
+        const rule = ev.rrule && !ev.recurrenceId ? parseRule(ev.rrule, start.zone, start) : null;
         if (!rule) {
           const [s, e] = occurrence(startDn);
           if (!ev.exdates.some((x) => dtMs(x, zone) === s)) emit(s, e);
@@ -277,6 +305,25 @@ export function parseIcs(text: string, winStart: number, winEnd: number, tz: str
         const offsets = (rule.byday.length ? rule.byday : [weekday(startDn)]).map((d) => (d + 6) % 7).sort((a, b) => a - b);
         const monday = startDn - ((weekday(startDn) + 6) % 7);
         function* candidates(): Generator<number> {
+          if (rule!.months) {
+            yield startDn; // DTSTART always counts, whatever the BY parts say
+            const step = rule!.months;
+            const startM = start.y * 12 + start.mo - 1;
+            const fd = new Date(from * DAY);
+            for (let k = jump ? Math.max(0, Math.floor((fd.getUTCFullYear() * 12 + fd.getUTCMonth() - startM) / step)) : 0; ; k++) {
+              const m = startM + k * step;
+              const [y, mo] = [Math.floor(m / 12), m % 12];
+              const m1 = Date.UTC(y, mo, 1) / DAY;
+              if (m1 > winEndDn) return;
+              const dim = Date.UTC(y, mo + 1, 0) / DAY - m1 + 1;
+              let day = rule!.monthDay ?? start.d;
+              if (rule!.nth) {
+                const [n, wd] = rule!.nth;
+                day = n > 0 ? 1 + ((wd - weekday(m1) + 7) % 7) + 7 * (n - 1) : dim - ((weekday(m1 + dim - 1) - wd + 7) % 7);
+              }
+              if (day <= dim && m1 + day - 1 > startDn) yield m1 + day - 1; // a month without that day is skipped
+            }
+          }
           if (rule!.weekly) {
             for (let w = jump ? Math.max(0, Math.floor((from - 6 - monday) / (7 * rule!.interval))) : 0; ; w++) {
               for (const o of offsets) {

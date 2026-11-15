@@ -73,7 +73,7 @@ export async function fetchCalendar(url: string, tz: string, now: number): Promi
     if (text === null) return { problem: "too-large" };
     if (!text.trimStart().startsWith("BEGIN:VCALENDAR")) return { problem: "not-calendar" };
     const day0 = startOfDay(tz, now);
-    const end = addDays(tz, day0, 3);
+    const end = addDays(tz, day0, 4); // one day more than the route serves, so a wall left open over midnight still has its new third day
     const week = parseIcs(text, day0, addDays(tz, day0, 7), tz);
     const kept = week.filter((e) => eventOverlaps(e, day0, end)).sort(byAgenda).slice(0, MAX_CALENDAR_EVENTS);
     return { at: now, kept, end, week: week.length };
@@ -99,7 +99,7 @@ function refresh(e: Entry, tz: string, now: number): Promise<void> {
 const byAgenda = (a: CalendarEvent, b: CalendarEvent) =>
   Number(b.allDay) - Number(a.allDay) || Date.parse(a.start) - Date.parse(b.start) || (a.title ?? "").localeCompare(b.title ?? "") || a.id.localeCompare(b.id);
 
-/** What the kiosk shows: [today 00:00, day after tomorrow 00:00) in the display zone. */
+/** What the kiosk shows: [today 00:00, three days on 00:00) in the display zone; the client only uses today and tomorrow, and the third day covers a wall left open over midnight. A good copy is served at once and refreshed in the background. */
 export async function getCalendarResponse(now = Date.now()): Promise<CalendarResponse> {
   const config = loadConfig();
   const url = config.calendar?.url;
@@ -111,11 +111,14 @@ export async function getCalendarResponse(now = Date.now()): Promise<CalendarRes
   const e = state.entry;
   const tz = zoneOf(config);
   const due = !e.good || now - e.good.at >= REFRESH_MS;
-  if (due && (e.inflight || !e.failedAt || now - e.failedAt >= RETRY_MS)) await refresh(e, tz, now);
+  if (due && (e.inflight || !e.failedAt || now - e.failedAt >= RETRY_MS)) {
+    const fetching = refresh(e, tz, now); // never rejects: fetchCalendar catches everything
+    if (!e.good) await fetching; // with a good copy it is served now and the next request sees the result
+  }
   if (state.entry !== e) return getCalendarResponse(now); // the link changed while we waited
   const from = startOfDay(tz, now);
-  const to = addDays(tz, from, 2);
-  // A list fetched before the second local midnight ago no longer covers tomorrow: an error beats a silent zero.
+  const to = addDays(tz, from, 3);
+  // A list fetched before the second local midnight ago no longer covers the served days: an error beats a silent zero.
   if (!e.good || to > e.good.end) return { status: "error" };
   return {
     status: "ok",

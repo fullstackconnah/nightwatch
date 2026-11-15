@@ -79,7 +79,7 @@ export function agendaView(events: CalendarEvent[], now: number, zone?: string):
     })),
     ...tomorrowItems.map((i, n) => ({
       id: `${i.e.id}:tomorrow`, day: n === 0 ? ("Tomorrow" as const) : null, now: false, ...title(i.e),
-      time: i.e.allDay || i.first < tomorrow ? "All day" : wallTime(new Date(i.start)), till: null,
+      time: i.e.allDay ? "All day" : i.first < tomorrow ? (key(i.end) === tomorrow ? `until ${wallTime(new Date(i.end))}` : "All day") : wallTime(new Date(i.start)), till: null,
     })),
   ];
   const shown = rows.slice(0, AGENDA_ROWS);
