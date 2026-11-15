@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { labelUrlInvalid, pickOwn, widgetMemoKey, widgetTarget } from "./target.ts";
+import { labelUrlInvalid, pickOwn, registerPending, widgetMemoKey, widgetTarget } from "./target.ts";
 
 describe("hunt 8 widget labels", () => {
   it("B1: inherited keys resolve to the fallback, own keys to themselves", () => {
@@ -33,6 +33,16 @@ describe("widget memo key", () => {
     for (const over of [{ key: "k2" }, { url: "http://y" }, { type: "sonarr" }, { headers: { a: "b" } }, { fields: [{ label: "a", path: "b" }] }, { endpoint: "/e" }]) {
       assert.notEqual(widgetMemoKey({ ...w, ...over }), widgetMemoKey(w), JSON.stringify(over));
     }
+  });
+  it("registerPending drops older keys of the same widget id only", () => {
+    const pending = new Map<string, typeof w>();
+    const k1 = registerPending(pending, w);
+    const other = registerPending(pending, { ...w, id: "w2" });
+    const k3 = registerPending(pending, { ...w, key: "k2" });
+    assert.notEqual(k1, k3);
+    assert.deepEqual([...pending.keys()].sort(), [other, k3].sort());
+    assert.equal(registerPending(pending, { ...w, key: "k2" }), k3);
+    assert.equal(pending.size, 2);
   });
   it("holds no key material", () => {
     assert.ok(!widgetMemoKey({ ...w, key: "supersecret" }).includes("supersecret"));

@@ -82,7 +82,7 @@ export async function fetchCalendar(url: string, tz: string, now: number): Promi
   }
 }
 
-type Entry = { url: string; good: Fetched | null; problem: CalendarProblem | null; failedAt: number; inflight: Promise<void> | null };
+type Entry = { url: string; tz: string; good: Fetched | null; problem: CalendarProblem | null; failedAt: number; inflight: Promise<void> | null };
 // On globalThis so every route bundle shares one cache (house pattern, see cache.ts).
 const g = globalThis as unknown as { __calendarFeed?: { entry: Entry | null } };
 const state = (g.__calendarFeed ??= { entry: null }); // entry is bound to the link it was fetched with
@@ -107,9 +107,10 @@ export async function getCalendarResponse(now = Date.now()): Promise<CalendarRes
     state.entry = null;
     return { status: "unconfigured" };
   }
-  if (state.entry?.url !== url) state.entry = { url, good: null, problem: null, failedAt: 0, inflight: null };
-  const e = state.entry;
   const tz = zoneOf(config);
+  // the saved events were cut at the start of day in the zone they were fetched for, so a zone change resets like a link change
+  if (state.entry?.url !== url || state.entry.tz !== tz) state.entry = { url, tz, good: null, problem: null, failedAt: 0, inflight: null };
+  const e = state.entry;
   const due = !e.good || now - e.good.at >= REFRESH_MS;
   if (due && (e.inflight || !e.failedAt || now - e.failedAt >= RETRY_MS)) {
     const fetching = refresh(e, tz, now); // never rejects: fetchCalendar catches everything
@@ -167,7 +168,7 @@ export function applyCalendar(config: AppConfig, change: CalendarChange, updated
 /** Call after the config is saved: the cache follows the saved link, never leads it. */
 export function commitCalendar(change: CalendarChange): void {
   if (change.kind === "clear") state.entry = null;
-  else if (change.kind === "set") state.entry = { url: change.url, good: change.fetched, problem: null, failedAt: 0, inflight: null };
+  else if (change.kind === "set") state.entry = { url: change.url, tz: zoneOf(loadConfig()), good: change.fetched, problem: null, failedAt: 0, inflight: null };
 }
 
 export function resetCalendarCache(): void {

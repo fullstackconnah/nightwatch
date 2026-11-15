@@ -2,7 +2,7 @@ import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { parseDashboardLabels } from "@/lib/labels";
 import type { ContainerSummary } from "@/lib/docker";
 import { BUILTIN_WIDGETS } from "./builtins";
-import { LABEL_URL_ERROR, labelUrlInvalid, pickOwn, widgetMemoKey } from "./target";
+import { LABEL_URL_ERROR, labelUrlInvalid, pickOwn, registerPending } from "./target";
 import { WidgetError, type WidgetData } from "./types";
 import { KeyedMemo } from "@/lib/cache";
 
@@ -85,8 +85,7 @@ const widgetMemo = new KeyedMemo<WidgetData>({
 });
 
 export function fetchWidgetData(instance: WidgetInstance): Promise<WidgetData> {
-  const memoKey = widgetMemoKey(instance);
-  pendingInstances.set(memoKey, instance);
+  const memoKey = registerPending(pendingInstances, instance);
   return widgetMemo.get(memoKey);
 }
 

@@ -192,6 +192,13 @@ describe("parseIcs repeats", () => {
     assert.match(e.id, /^[0-9a-f]{12}$/);
     assert.equal(run(cal(vevent("UID:ok", MON9, MON9END, "SUMMARY:short")))[0].title, "short");
   });
+  it("the title cap never splits a joined emoji, and a plain long title is cut as before", () => {
+    const fam = "👨‍👩‍👧‍👦";
+    const title = (s: string) => run(cal(vevent("UID:t", MON9, MON9END, `SUMMARY:${s}`)))[0].title;
+    assert.equal(title("a".repeat(118) + fam + " and more"), "a".repeat(118) + fam + "…"); // emoji is the 119th character: kept whole
+    assert.equal(title("a".repeat(119) + fam + " and more"), "a".repeat(119) + "…"); // 120th: dropped whole, never half
+    assert.equal(title("b".repeat(200)), "b".repeat(119) + "…");
+  });
   it("two events with no UID at the same start stay two events with different ids", () => {
     const r = run(cal(vevent(MON9, MON9END, "SUMMARY:a"), vevent(MON9, MON9END, "SUMMARY:b")));
     assert.equal(r.length, 2);

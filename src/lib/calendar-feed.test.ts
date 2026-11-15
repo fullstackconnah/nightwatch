@@ -134,6 +134,15 @@ describe("getCalendarResponse", () => {
     assert.equal(r.fetchedAt, new Date(NOW).toISOString());
     assert.deepEqual([r.events[0].allDay, r.events[0].start, r.events[0].end], [true, "2026-11-16T00:00:00+11:00", "2026-11-17T00:00:00+11:00"]);
   });
+  it("a changed display zone drops the cached copy and fetches again for the new zone", async () => {
+    await getCalendarResponse(NOW);
+    assert.equal(calls.length, 1);
+    setCfg({ display: { timezone: "Australia/Perth" } });
+    const r = ok(await getCalendarResponse(NOW + 1000));
+    assert.equal(calls.length, 2);
+    assert.equal(r.fetchedAt, new Date(NOW + 1000).toISOString());
+    assert.equal(r.events.find((e) => e.title === "Birthday")?.start, "2026-11-16T00:00:00+08:00");
+  });
   it("caches for 15 minutes and shares one in-flight fetch", async () => {
     await Promise.all([getCalendarResponse(NOW), getCalendarResponse(NOW), getCalendarResponse(NOW + 1)]);
     assert.equal(calls.length, 1);
