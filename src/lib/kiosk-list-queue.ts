@@ -54,6 +54,20 @@ export const queuedIds = (q: QueueOp[]): string[] => [...new Set(q.map((o) => o.
 export const repoint = (q: QueueOp[], from: string, to: string): QueueOp[] =>
   q.map((o) => (o.op === "done" && o.body.id === from ? { ...o, body: { ...o.body, id: to } } : o));
 
+/** Applies ONE server answer to the queue head `op`. keep: queue stays, every waiting id is marked "Not saved", stop the drain.
+ *  Otherwise the op leaves the queue (ticks follow `served` after an add), marks of ids no longer waiting go, and the caller
+ *  announces `saved` (a row that was unsaved is now saved) or shows the full hint (`full`: a queued add met 409 on replay). */
+export function settle(q: QueueOp[], failed: string[], op: QueueOp, out: Outcome, served?: string): { queue: QueueOp[]; failed: string[]; stop: boolean; full: boolean; saved: boolean } {
+  if (out === "keep") return { queue: q, failed: queuedIds(q), stop: true, full: false, saved: false };
+  let queue = q.filter((o) => o !== op);
+  if (out === "ok" && op.op === "add" && served && served !== op.body.id) queue = repoint(queue, op.body.id, served);
+  const waiting = queuedIds(queue);
+  return { queue, failed: failed.filter((f) => waiting.includes(f)), stop: false, full: out === "full" && op.op === "add", saved: failed.includes(op.body.id) && out === "ok" && op.op === "add" };
+}
+
+/** A successful clear-all removes only the entries that were queued when it was sent; later adds survive. */
+export const removeIds = (q: QueueOp[], ids: string[]): QueueOp[] => q.filter((o) => !ids.includes(o.body.id));
+
 /** The server's items with the unsent writes laid over them, so a pending row wins until it is acknowledged. */
 export function applyQueue(items: ListItem[], q: QueueOp[], now: number): ListItem[] {
   let out = items;

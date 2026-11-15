@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 import { useFreshness, type FreshnessStatus } from "@/lib/kiosk-client";
 import { MAX_ITEMS, MAX_LEN, checkAdd, fold, listButtonView, newItemId, settleRows, type ListItem, type ListPaneView, type RowOrder } from "@/lib/kiosk-list";
-import { QUEUE_KEY, applyQueue, enqueue, outcome, parseQueue, queuedIds, repoint, type QueueOp } from "@/lib/kiosk-list-queue";
+import { QUEUE_KEY, applyQueue, enqueue, outcome, parseQueue, queuedIds, removeIds, settle, type QueueOp } from "@/lib/kiosk-list-queue";
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
 import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -82,6 +82,7 @@ async function post(action: string, body: unknown): Promise<{ status: number | n
   }
 }
 
+let sheetOpen = false; // while the sheet is open its hint line announces the full hint, so flush() stays silent
 let flushing = false;
 /** Sends the queue oldest first; stops at the first answer that means "try again later". */
 export async function flush() {
@@ -93,25 +94,17 @@ export async function flush() {
       const op = state.queue[0];
       const res = await post(op.op, op.body);
       const out = outcome(res.status);
-      const id = op.body.id;
-      if (out === "keep") {
-        setState({ failed: queuedIds(state.queue) }); // every waiting row says "Not saved", not only the first
-        return;
-      }
-      sent = true;
-      let queue = state.queue.filter((o) => o !== op);
+      if (out !== "keep") sent = true;
       const item = res.json?.item as ListItem | undefined;
-      const served = item?.id;
       // Fold the answer into the cache before the op leaves the queue, so the row never blinks out while the refetch is in flight.
       if (out === "ok" && item) await globalMutate(KEY, (d: ListResponse | undefined) => (d ? { ...d, items: d.items.some((i) => i.id === item.id) ? d.items.map((i) => (i.id === item.id ? item : i)) : [item, ...d.items] } : d), { revalidate: false });
-      if (out === "ok" && op.op === "add" && served && served !== id) queue = repoint(queue, id, served); // exists / revived: ticks follow the server's item
-      const wasFailed = state.failed.includes(id);
-      const waiting = queuedIds(queue);
-      setState({ queue, failed: state.failed.filter((f) => waiting.includes(f)) });
-      if (wasFailed && out === "ok" && op.op === "add") announce(`Saved ${op.body.text}.`);
-      if (out === "full" && op.op === "add") {
-        setState({ rejected: state.rejected + 1 }); // an open sheet shows the full hint; the row is already gone with the queue entry
-        announce(FULL_HINT);
+      const r = settle(state.queue, state.failed, op, out, item?.id);
+      setState({ queue: r.queue, failed: r.failed });
+      if (r.stop) return;
+      if (r.saved) announce(`Saved ${op.body.text}.`);
+      if (r.full) {
+        setState({ rejected: state.rejected + 1 }); // the open sheet's hint line announces it; closed, the shared announcer does
+        if (!sheetOpen) announce(FULL_HINT);
       }
     }
   } finally {
@@ -278,7 +271,11 @@ export function KioskListSheet({
     const previouslyFocused = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
     void refresh(); // sync on open
-    return () => previouslyFocused?.focus();
+    sheetOpen = true;
+    return () => {
+      sheetOpen = false;
+      previouslyFocused?.focus();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -411,12 +408,14 @@ export function KioskListSheet({
   async function clear(kind: "ticked" | "all") {
     if (!items) return;
     const gone = new Set(items.filter((i) => kind === "all" || i.done).map((i) => i.id));
+    const queuedThen = queuedIds(state.queue); // adds typed while the request is in flight must survive it
     void globalMutate(KEY, (d: ListResponse | undefined) => (d ? { ...d, items: d.items.filter((i) => !gone.has(i.id)) } : d), { revalidate: false }); // optimistic
     setFooter(IDLE);
     const res = await post(kind === "all" ? "clear-all" : "clear-ticked", { listId: "shopping" });
     const removed = res.status === 200 ? ((res.json?.removed as ListItem[] | undefined) ?? []) : null;
     if (removed) {
-      if (kind === "all") setState({ queue: [], failed: [] }); // waiting adds would bring the cleared items back
+      setHint(null);
+      if (kind === "all") setState({ queue: removeIds(state.queue, queuedThen), failed: state.failed.filter((f) => !queuedThen.includes(f)) }); // waiting adds would bring the cleared items back
       const label = kind === "all" ? plural(removed.length, "item") : `${plural(removed.length, "ticked item")}`;
       const text = `Cleared ${label}.`;
       setFooter({ k: "undo", text, ids: removed.map((i) => i.id) });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyQueue, enqueue, outcome, parseQueue, queuedIds, repoint, QUEUE_CAP, type QueueOp } from "./kiosk-list-queue.ts";
+import { applyQueue, enqueue, outcome, parseQueue, queuedIds, removeIds, repoint, settle, QUEUE_CAP, type QueueOp } from "./kiosk-list-queue.ts";
 import type { ListItem } from "./kiosk-list.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -65,7 +65,61 @@ test("22h queuedIds: every waiting write marks its row, once per id, so each sho
   assert.deepEqual(queuedIds([add(1), add(2), done(1, true), done(3, false)]), [ID(1), ID(2), ID(3)]);
 });
 
-test("22i a 409 full is told apart from a saved write, so the caller can say so (fix item 1)", () => {
-  assert.notEqual(outcome(409), outcome(201));
-  assert.equal(outcome(409), "full");
+test("22i a full answer to a queued add drops it, leaves no mark and asks for the full hint", () => {
+  const q = [add(1), add(2)];
+  const r = settle(q, [ID(1)], q[0], outcome(409));
+  assert.deepEqual(r.queue.map((o) => o.body.id), [ID(2)]);
+  assert.ok(!r.failed.includes(ID(1)));
+  assert.equal(r.full, true);
+  assert.equal(r.stop, false);
+});
+
+test("22j a kept answer keeps the entry, marks every queued id and stops the drain", () => {
+  for (const s of [null, 429, 503]) {
+    const q = [add(1), add(2), done(3, true)];
+    const r = settle(q, [], q[0], outcome(s));
+    assert.deepEqual(r.queue, q);
+    assert.deepEqual(r.failed, [ID(1), ID(2), ID(3)]);
+    assert.equal(r.stop, true);
+    assert.equal(r.full, false);
+  }
+});
+
+test("22k after a partial drain the saved id has no mark and the rest are marked", () => {
+  const q = [add(1), add(2), add(3)];
+  const a = settle(q, [], q[0], "keep");
+  const b = settle(a.queue, a.failed, q[0], "ok", ID(1));
+  assert.equal(b.saved, true, "it was marked and is saved now");
+  assert.deepEqual(b.failed, [ID(2), ID(3)]);
+  const c = settle(b.queue, b.failed, q[1], "keep");
+  assert.deepEqual(c.queue.map((o) => o.body.id), [ID(2), ID(3)]);
+  assert.deepEqual(c.failed, [ID(2), ID(3)]);
+  assert.equal(c.stop, true);
+});
+
+test("22l exists, replay, revived and added drop the entry with no mark and no hint", () => {
+  for (const [out, served] of [["ok", ID(1)], ["ok", ID(9)], ["drop", undefined]] as const) {
+    const q = [add(1), add(2)];
+    const r = settle(q, [], q[0], out, served);
+    assert.deepEqual(r.queue.map((o) => o.body.id), [ID(2)]);
+    assert.deepEqual(r.failed, []);
+    assert.equal(r.full, false);
+    assert.equal(r.stop, false);
+  }
+  const t = [add(1), done(1, true)];
+  assert.deepEqual(settle(t, [], t[0], "ok", ID(9)).queue, [done(9, true)], "ticks follow the server item");
+});
+
+test("22m after the last entry drains no marks remain", () => {
+  const q = [add(1)];
+  const r = settle(q, [ID(1)], q[0], "ok", ID(1));
+  assert.deepEqual(r.queue, []);
+  assert.deepEqual(r.failed, []);
+  assert.equal(r.saved, true);
+});
+
+test("22n removeIds drops only the snapshotted ids; entries queued after the snapshot survive", () => {
+  const snap = queuedIds([add(1), done(2, true)]);
+  assert.deepEqual(removeIds([add(1), done(2, true), add(3)], snap), [add(3)]);
+  assert.deepEqual(removeIds([add(3)], []), [add(3)]);
 });
