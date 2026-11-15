@@ -27,3 +27,15 @@ test("2 a small body is returned whole with or without content-length", async ()
 test("3 a declared content-length over the cap is over-cap", async () => {
   assert.equal((await readListBody(req([enc.encode("{}")], { "content-length": "5000" }).r)).tooLarge, true);
 });
+
+test("4 a body of exactly 2048 bytes is kept, 2049 bytes is over-cap", async () => {
+  const exact = "a".repeat(2048);
+  assert.deepEqual(await readListBody(req([enc.encode(exact)]).r), { body: exact, tooLarge: false });
+  assert.equal((await readListBody(req([enc.encode("a".repeat(2049))]).r)).tooLarge, true);
+});
+
+test("5 a multi-byte body over 2048 bytes whose string length is under 2048 is over-cap", async () => {
+  const text = "\u00e9".repeat(1500); // 1500 characters, 3000 bytes
+  assert.ok(text.length < 2048 && Buffer.byteLength(text, "utf8") > 2048);
+  assert.equal((await readListBody(req([enc.encode(text)]).r)).tooLarge, true);
+});
