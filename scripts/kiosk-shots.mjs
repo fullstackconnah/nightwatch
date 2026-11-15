@@ -1824,8 +1824,12 @@ await bnRun("settings empty", () => binsSettings("settings-empty", null, {
   mark: async (page) => ({ ok: await saveDisabled(page) }), // nothing typed, nothing to save, nothing flagged
 }));
 await bnRun("settings two bins", () => binsSettings("settings-two-bins", BIN_RULE_TWO, {
-  want: ['Next on the wall: Monday 15 Jun, 5 pm to 10 pm. "Recycling and Garden organics go out tonight"', "A collection date"], not: BIN_ERRORS,
-  mark: async (page) => ({ ok: !(await saveDisabled(page)) }),
+  want: ['Next on the wall: Monday 15 Jun, 5 pm to 10 pm. "Recycling and Garden organics go out tonight"', "A COLLECTION DATE"], not: BIN_ERRORS, // innerText gives a Label as the CSS upper-cases it
+  // no segment label may be cut to an ellipsis at desktop width
+  mark: async (page) => {
+    const clipped = await binCard(page).locator("button[aria-pressed]").evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent));
+    return { ok: !(await saveDisabled(page)) && clipped.length === 0, clipped };
+  },
 }));
 await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TWO, {
   drive: async (page) => {
@@ -1847,7 +1851,7 @@ await bnRun("settings night too long", () => binsSettings("settings-night-long",
 }));
 await bnRun("settings 390", () => binsSettings("settings-390", BIN_RULE_TWO, {
   viewport: { width: 390, height: 844 },
-  want: ["Collection day", "Every second week"],
+  want: ["COLLECTION DAY", "Every second week"],
   // Vision principle 7: each of the seven day buttons is at least 44 px wide, and the page does not scroll sideways
   mark: async (page) => page.evaluate(() => {
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];

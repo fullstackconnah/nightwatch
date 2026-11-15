@@ -905,7 +905,7 @@ function BinRowEditor({
   const dayNote = `${uid}-day-note`;
   const everyLabel = `${uid}-every`;
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 gap-3">
       <Field label="Bin" required error={errors.name}>
         <Input placeholder="Recycling" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
       </Field>
@@ -916,7 +916,7 @@ function BinRowEditor({
           <SegmentButton fill active={row.every === 2} onClick={() => onChange({ every: 2 })}>Every second week</SegmentButton>
         </div>
       </div>
-      <div className="sm:col-span-2">
+      <div>
         <Label id={dayLabel}>
           Collection day<span className="text-ink-dim"> *</span>
         </Label>
@@ -937,13 +937,12 @@ function BinRowEditor({
           required
           error={errors.anchor}
           hint="Any past or coming date this bin is collected. It sets which week."
-          className="sm:col-span-2"
         >
           <Input type="date" min="2000-01-01" max="2099-12-31" value={row.anchor} onChange={(e) => onChange({ anchor: e.target.value })} />
         </Field>
       )}
       {removable && (
-        <div className="sm:col-span-2 flex justify-end">
+        <div className="flex justify-end">
           <Button variant="ghost" size="sm" aria-label={`Remove ${row.name.trim() || "this bin"}`} onClick={onRemove}>
             Remove
           </Button>

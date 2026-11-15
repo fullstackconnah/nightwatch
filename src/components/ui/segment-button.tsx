@@ -45,7 +45,8 @@ export function SegmentButton({
         // 360px viewport, and a horizontal scroll strip would hide tabs behind a
         // gesture nobody discovers.
         "h-11 md:h-8 min-w-11 md:min-w-0 px-1 sm:px-3 rounded-md text-[0.7rem] sm:text-xs font-medium transition cursor-pointer border disabled:pointer-events-none disabled:opacity-40 active:scale-[0.98] motion-reduce:active:scale-100",
-        fill && "flex-1 truncate",
+        // a fill button's width comes from the row, so the wide padding only clips its label ("M…" in a 47 px day button)
+        fill && "flex-1 truncate sm:px-1",
         active
           ? "bg-accent/10 text-accent border-accent/30"
           : "text-ink-dim border-transparent hover:text-ink hover:bg-panel-2",
