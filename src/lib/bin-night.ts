@@ -19,7 +19,7 @@ export type BinField = "name" | "weekday" | "every" | "anchor" | "bins" | "night
 export type BinError = { row?: number; field: BinField; message: string };
 export type BinCheck = { ok: true; value: BinsConfig } | { ok: false; errors: BinError[] };
 export type BinNight = { date: string; bins: string[] };
-export type BinsResponse = { status: "ok"; night: BinNight | null } | { status: "unconfigured" } | { status: "error" };
+export type BinsResponse = { status: "ok"; today: string; night: BinNight | null } | { status: "unconfigured" } | { status: "error" };
 export type BinSegment = { text: string; name: boolean };
 
 export const MAX_BINS = 4;
@@ -58,7 +58,7 @@ export const binLine = (names: string[]): string => binLineSegments(names).map((
 // ---- the checker ----
 // Whitespace first becomes a space (so "a<TAB>b" stays two words), then control and invisible characters go.
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu; // control, format (zero-width, bidi, soft hyphen, BOM), line and paragraph separators
-const cleanName = (s: string): string => s.replace(/\s+/g, " ").replace(INVISIBLE, "").replace(/ +/g, " ").trim();
+const cleanName = (s: string): string => s.replace(/﻿/g, "").replace(/\s+/g, " ").replace(INVISIBLE, "").replace(/ +/g, " ").trim();
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 export const BIN_COPY = {
@@ -159,7 +159,12 @@ export const nightLabel = (date: string): string => `${DAY_NAMES[weekdayOf(dayNu
 export function binsPayload(stored: unknown, today: string): BinsResponse {
   if (stored === undefined) return { status: "unconfigured" };
   const c = checkBins(stored);
-  return c.ok ? { status: "ok", night: nextBinNight(c.value, today) } : { status: "error" };
+  return c.ok ? { status: "ok", today, night: nextBinNight(c.value, today) } : { status: "error" };
+}
+
+/** The bin names due tonight in the display zone, or null. `today` is that zone's date from the server, so the device's own clock never decides; an answer without it shows nothing. */
+export function binsTonight(data: BinsResponse | undefined): string[] | null {
+  return data?.status === "ok" && data.night && data.night.date === data.today ? data.night.bins : null;
 }
 
 /** POST /api/settings/integrations { bins }: the config with the cleaned rule saved (or the key removed for null), every other key untouched. */

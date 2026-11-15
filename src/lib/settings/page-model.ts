@@ -103,7 +103,7 @@ export function settingsModel(i: ModelInput): Model {
   const stamps: [string, string | null | undefined][] = [
     ["Home Assistant", ig.homeassistant.updatedAt], ["NPM", ig.npm.updatedAt], ["Forgejo", ig.forgejo.updatedAt],
     ["GitHub", ig.github.updatedAt], ["Minecraft", ig.minecraft.updatedAt], ["Media", ig.media.updatedAt], ["System settings", system.updatedAt],
-    ["Hermes model", meta.hermesModelUpdatedAt], ["Hermes daemon", hd.updatedAt],
+    ["Calendar", ig.calendar.updatedAt], ["Hermes model", meta.hermesModelUpdatedAt], ["Hermes daemon", hd.updatedAt],
   ];
   const newest = stamps
     .flatMap(([name, at]) => (at && !isNaN(Date.parse(at)) ? [{ name, ts: Date.parse(at) }] : []))

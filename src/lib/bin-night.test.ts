@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { binLine, binLineSegments, binsPayload, checkBins, mergeBins, nextBinNight, nightLabel, type BinsConfig } from "./bin-night.ts";
+import { binLine, binLineSegments, binsPayload, binsTonight, checkBins, mergeBins, nextBinNight, nightLabel, type BinsConfig } from "./bin-night.ts";
 import type { AppConfig } from "./config.ts";
 
 // invisible characters are built, never typed, so the source holds no hidden text
@@ -212,11 +212,26 @@ test("mergeBins: a refused rule stores nothing and returns the first message", (
   assert.deepEqual(mergeBins(synthetic, undefined), { error: "The bin schedule isn't valid." });
 });
 
+test("mergeBins: a BOM inside a bin name is removed, not turned into a space", () => {
+  const saved = nextOf(mergeBins(synthetic, { collections: [{ name: "Recy﻿cling", weekday: TUE, every: 1 }] }));
+  assert.equal((saved.bins as BinsConfig).collections[0].name, "Recycling");
+});
+
+test("binsTonight: the server's today decides, never the device date", () => {
+  const night = { date: "2026-11-17", bins: ["Recycling"] };
+  assert.deepEqual(binsTonight({ status: "ok", today: "2026-11-17", night }), ["Recycling"]);
+  assert.equal(binsTonight({ status: "ok", today: "2026-11-16", night }), null);
+  assert.equal(binsTonight({ status: "ok", night } as never), null); // an old cached answer without `today`
+  assert.equal(binsTonight({ status: "ok", today: "2026-11-17", night: null }), null);
+  assert.equal(binsTonight({ status: "error" }), null);
+  assert.equal(binsTonight(undefined), null);
+});
+
 // ---- the public payload ----
 test("binsPayload: only the three shapes, and a bad stored rule is an error that echoes nothing", () => {
   assert.deepEqual(binsPayload(undefined, "2026-11-16"), { status: "unconfigured" });
   const ok = binsPayload({ collections: [{ name: "Recycling", weekday: TUE, every: 1, secretNote: "x" }] }, "2026-11-16");
-  assert.deepEqual(ok, { status: "ok", night: { date: "2026-11-16", bins: ["Recycling"] } });
+  assert.deepEqual(ok, { status: "ok", today: "2026-11-16", night: { date: "2026-11-16", bins: ["Recycling"] } });
   const bad = binsPayload({ collections: [{ name: "Private name", weekday: 9, every: 1 }] }, "2026-11-16");
   assert.deepEqual(bad, { status: "error" });
   assert.equal(JSON.stringify(bad).includes("Private"), false);

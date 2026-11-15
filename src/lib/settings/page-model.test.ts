@@ -238,6 +238,9 @@ test("last change is the newest updatedAt, named by its source", () => {
   assert.match(ans({ daemon: { updatedAt: iso(60_000) } }), /Last change: Hermes daemon, 1 min ago\.$/);
   assert.match(ans({ daemon: { updatedAt: null }, updated: { minecraft: iso(7_200_000) } }), /Last change: Minecraft, 2 h ago\.$/);
   assert.match(ans({ daemon: { updatedAt: null } }), /Nothing has been changed here yet\.$/);
+  const d = data();
+  d.integrations.calendar = { configured: true, updatedAt: iso(2 * DAY), lastSyncAt: null, eventsThisWeek: null, problem: null };
+  assert.match(settingsModel({ ...input(), data: d }).answer, /Last change: Calendar, 2 d ago\.$/);
 });
 
 test("integration strip lines: set up with age, set up, not set up; Minecraft notes a missing CurseForge key", () => {

@@ -143,6 +143,8 @@ function KioskPageInner() {
   // elevated, fall back to the day band's compact layout rather than invent a
   // fifth period nobody specified.
   const displayPeriod = isNight ? "day" : period;
+  // The list sheet closes when the night overlay covers it, so it does not reappear on wake.
+  useEffect(() => { if (showNightOverlay) setListSheet(null); }, [showNightOverlay]);
 
   const wakeNight = useCallback(() => {
     setNightWoken(true);
