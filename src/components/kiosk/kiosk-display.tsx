@@ -302,8 +302,9 @@ function SectionLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }
 
 /** The UV and air view, recomputed as the wall clock passes the peak and sunset (shared by the Standard inline and the glance pane). */
 export function useSunAirView(ok: WeatherOk | null) {
-  const now = useNow(true);
-  return useMemo(() => sunAirView(ok, new Date(now)), [ok, now]);
+  // Minute ticks: the view changes only at the peak time and sunset. 0 is "not yet known" (hydration), so no view then.
+  const now = useNow(true, true);
+  return useMemo(() => (now === 0 ? null : sunAirView(ok, new Date(now))), [ok, now]);
 }
 
 /** MicroDatum values are `text-ink` by default; only a tone changes that. */

@@ -37,6 +37,8 @@ const MAIN_URL = `${BASE_URL}/kiosk?theme=sunroom&wx=overcast&wxsun=day`;
 // glance renders only the read-only climate summary; the controls live in the pinned standard layout
 const CONTROLS_URL = `${MAIN_URL}&layout=standard`;
 const STOP_URL = `${BASE_URL}/kiosk?theme=sunroom&wx=off`;
+// no ?wx= at all: every preset ("off" too) replaces an unreachable payload with a synthetic ok one, so no outage would show
+const SA_STALE_URL = `${BASE_URL}/kiosk?theme=sunroom`;
 
 mkdirSync(OUT_DIR, { recursive: true });
 const results = { errors: [], sixStop: {}, crossing: {} };
@@ -935,6 +937,7 @@ const SUN_AIR_PANE = () => {
     figurePx: fig ? parseFloat(getComputedStyle(fig).fontSize) : null,
     railPx: railHi ? parseFloat(getComputedStyle(railHi).fontSize) : null,
     staleTags: root.querySelectorAll(".sr-stale").length,
+    staleInCaption: [...root.querySelectorAll(".sr-stale")].filter((t) => t.parentElement?.querySelector(":scope > .microlabel")).length,
     clip: { x: Math.max(0, band.left - 8), y: Math.max(0, band.top - 8), width: band.width + 16, height: band.height + 52 },
   };
 };
@@ -946,8 +949,8 @@ for (const size of SIZES) {
     await saRun(`glance ${key}`, async () => {
       const def = SUN_AIR_STATES[state];
       const stale = state === SA_STALE_STATE;
-      // stale needs an outage after a good poll, which ?wx= would paper over: wx=off with the real fixture days (sunset 19:42)
-      const { context, page, state: st } = await visit(stale ? STOP_URL : MAIN_URL, { viewport: size.viewport, weather: sunAirWeatherFor(state), fixedTime: stale ? "ticking" : true, instant: sunAirInstant(state) });
+      // stale needs an outage after a good poll, which any ?wx= preset (wx=off included) would paper over: no ?wx=, the real fixture days (sunset 19:42)
+      const { context, page, state: st } = await visit(stale ? SA_STALE_URL : MAIN_URL, { viewport: size.viewport, weather: sunAirWeatherFor(state), fixedTime: stale ? "ticking" : true, instant: sunAirInstant(state) });
       if (stale) {
         st.weather = { status: "unreachable", detail: "mocked outage" };
         await page.clock.fastForward(6000);
@@ -970,7 +973,7 @@ for (const size of SIZES) {
         saRecord("N2", key, m.paneW <= m.bandW + 0.5 && m.clipped.length === 0, { paneW: m.paneW, bandW: m.bandW, clipped: m.clipped });
         if (def.uv) saRecord("N3", key, m.figurePx !== null && m.figurePx === m.railPx, { figurePx: m.figurePx, railPx: m.railPx }); // no figure on an air-only pane
         saRecord("N4", key, m.small.length === 0, { floor: m.floor, small: m.small });
-        if (stale) saRecord("N5", `${key} one stale tag`, m.staleTags === 1, { staleTags: m.staleTags });
+        if (stale) saRecord("N5", `${key} one stale tag`, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
         await page.locator('button[aria-label="Show UV and air"]').first().click().catch(() => {});
         await page.waitForTimeout(700);
         await page.screenshot({ path: join(OUT_DIR, `sunair-${key}.png`), clip: m.clip });
