@@ -18,7 +18,7 @@ test("1 a chunked body over 2048 bytes with no content-length stops reading and 
 
 test("2 a small body is returned whole with or without content-length", async () => {
   const text = JSON.stringify({ a: 1 });
-  for (const h of [{}, { "content-length": String(text.length) }, { "content-length": "abc" }]) {
+  for (const h of [{}, { "content-length": String(text.length) }, { "content-length": "abc" }] as Record<string, string>[]) {
     const out = await readListBody(req([enc.encode(text)], h).r);
     assert.deepEqual(out, { body: text, tooLarge: false });
   }
