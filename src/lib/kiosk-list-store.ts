@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { readCapped } from "./read-capped.ts";
 import {
   checkAdd, fold, isListId, norm, parseListFile, sortItems, suggestions, sweepBoundary, MAX_ITEMS, UUID_RE,
   type AddHistory, type ListFile, type ListItem,
@@ -15,7 +16,8 @@ export interface ListActionInput {
   now: number;
 }
 
-const MAX_BODY = 2048;
+export const MAX_BODY_BYTES = 2048;
+const MAX_BODY = MAX_BODY_BYTES;
 const RESTORE_MS = 60_000;
 const BUFFER_CAP = 2 * MAX_ITEMS;
 const HISTORY_CAP = 200;
@@ -58,7 +60,7 @@ async function load(): Promise<ListFile> {
   const parsed = parseListFile(raw);
   if (parsed) return (s.file = parsed);
   console.warn("[kiosk-list] unparsable list file, kept as .corrupt, starting empty");
-  try { await fs.rename(listPath(), `${listPath()}.corrupt`); } catch { /* the next write replaces it */ }
+  try { await fs.rename(listPath(), `${listPath()}.corrupt`); } catch { throw new StoreError("corrupt file not kept"); } // never write over an unreadable file we could not keep
   return (s.file = { v: 1, items: [], history: [] });
 }
 
@@ -140,10 +142,18 @@ async function elevated(session?: string, elevation?: string): Promise<boolean> 
   return (await a.verifySessionToken(session)) || (await a.verifyKioskElevationToken(elevation));
 }
 
+/** Reads a request body capped at MAX_BODY bytes whatever content-length says (chunked or bogus headers included). */
+export async function readListBody(req: { headers: Headers; body: ReadableStream<Uint8Array> | null }): Promise<{ body: string; tooLarge: boolean }> {
+  // cap + 4 so a multi-byte char cut at the cap still decodes to more than MAX_BODY bytes
+  const text = await readCapped(req, MAX_BODY + 4);
+  if (text === null || Buffer.byteLength(text, "utf8") > MAX_BODY) return { body: "", tooLarge: true };
+  return { body: text, tooLarge: false };
+}
+
 export async function handleListAction(action: string, input: ListActionInput): Promise<ListReply> {
   const { now } = input;
   if (!ACTIONS.includes(action)) return fail(404, "unknown_action");
-  if (input.contentLength > MAX_BODY || input.body.length > MAX_BODY) return fail(400, "too_large");
+  if (input.contentLength > MAX_BODY || Buffer.byteLength(input.body, "utf8") > MAX_BODY) return fail(400, "too_large");
   let b: Record<string, unknown>;
   try {
     const j: unknown = JSON.parse(input.body);

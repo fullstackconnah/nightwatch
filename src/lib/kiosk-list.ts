@@ -12,7 +12,8 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 export const isListId = (v: unknown): v is ListId => v === "shopping";
 
 export const norm = (s: string): string =>
-  String(s).normalize("NFC").replace(/[\u0000-\u001f\u007f-\u009f]/g, "").replace(/\s+/g, " ").trim();
+  // strip first, then NFC, so the result is idempotent; zero-width/format chars (incl. ZWJ in emoji) go too
+  String(s).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/g, "").normalize("NFC").replace(/\s+/g, " ").trim();
 export const fold = (s: string): string => norm(s).toLocaleLowerCase();
 
 export type AddCheck =

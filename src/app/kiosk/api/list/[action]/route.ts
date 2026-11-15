@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE } from "@/lib/auth";
-import { handleListAction } from "@/lib/kiosk-list-store";
+import { handleListAction, readListBody, MAX_BODY_BYTES } from "@/lib/kiosk-list-store";
 import { displayTimeZone } from "../tz";
 
 export const dynamic = "force-dynamic";
@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ action: string }> }) {
   const { action } = await params;
-  const contentLength = Number(req.headers.get("content-length"));
+  const { body, tooLarge } = await readListBody(req);
   const r = await handleListAction(action, {
-    body: contentLength > 2048 ? "" : await req.text(), // the store refuses a declared-big body before parsing; do not buffer it
-    contentLength,
+    body,
+    contentLength: tooLarge ? MAX_BODY_BYTES + 1 : 0, // the store refuses an over-cap body before parsing
     sessionCookie: req.cookies.get(SESSION_COOKIE)?.value,
     elevationCookie: req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value,
     tz: displayTimeZone(),

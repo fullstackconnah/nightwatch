@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkAdd, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
+import { checkAdd, norm, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const item = (n: number, text: string, o: Partial<ListItem> = {}): ListItem => ({
@@ -26,6 +26,14 @@ test("1 checkAdd port parity", () => {
 test("2 checkAdd NFC and control characters", () => {
   assert.equal(checkAdd("Cafe\u0301", [{ text: "Caf\u00e9", done: false }]).kind, "dupe");
   assert.deepEqual(checkAdd("Oat\u0000milk", []), { kind: "add", text: "Oatmilk" });
+  // strip first, then NFC: norm is idempotent and a saved item survives a reload
+  assert.equal(norm("Cafe\u0001́"), "Café");
+  assert.equal(norm(norm("Cafe\u0001́")), norm("Cafe\u0001́"));
+  const it = { id: "00000000-0000-4000-8000-000000000001", listId: "shopping", text: norm("Cafe\u0001́"), done: false, createdAt: 1, doneAt: null, updatedAt: 1 };
+  assert.equal(parseListFile(JSON.stringify({ v: 1, items: [it], history: [] }))?.items.length, 1);
+  // zero-width and format characters are stripped
+  assert.equal(checkAdd("​​", []).kind, "blank");
+  assert.equal(norm("milk​"), "milk");
 });
 
 test("3 sweepBoundary in Australia/Sydney", () => {

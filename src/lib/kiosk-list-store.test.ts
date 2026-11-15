@@ -288,3 +288,23 @@ test("20 rate limit: 40 a minute, refusals and 400s are free", async () => {
   for (let i = 0; i < 41; i++) assert.equal((await post("add", "{nope")).status, 400);
   assert.equal((await add("Tea")).status, 200);
 });
+
+test("18 a body over 2048 bytes by byte count (short by string length) is refused and the file is unchanged", async () => {
+  seed([mk(1, "Bread")]);
+  const before = bytes();
+  const body = JSON.stringify({ listId: "shopping", id: ID(900), text: "é".repeat(1000) }); // ~2.1 KB in UTF-8, under 2048 chars
+  assert.ok(body.length < 2048 && Buffer.byteLength(body, "utf8") > 2048);
+  const r = await post("add", body);
+  assert.deepEqual([r.status, r.json], [400, { error: "too_large" }]);
+  assert.equal(bytes(), before);
+});
+
+test("19 a corrupt file whose .corrupt rename fails is not overwritten", async () => {
+  fs.writeFileSync(file(), "{garbage");
+  fs.mkdirSync(file() + ".corrupt");
+  fs.writeFileSync(path.join(file() + ".corrupt", "keep"), "x");
+  resetKioskListState();
+  const r = await add("Tea");
+  assert.deepEqual([r.status, r.json], [503, { error: "store" }]);
+  assert.equal(bytes(), "{garbage");
+});
