@@ -67,8 +67,12 @@ export function fetchRegistryHiddenIds(creds: { url: string; token: string }, ti
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(creds.url.replace(/\/+$/, "").replace(/^http/, "ws") + "/api/websocket");
     const timer = setTimeout(() => done(new Error("timeout")), timeoutMs);
+    let settled = false;
     function done(err: Error | null, ids?: Set<string>) {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      ws.onerror = ws.onclose = ws.onmessage = null;
       try { ws.close(); } catch { /* already closed */ }
       if (err) reject(err); else resolve(ids!);
     }
