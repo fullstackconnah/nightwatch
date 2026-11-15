@@ -118,3 +118,60 @@ export function nightlyAt(s: BackupStatus | undefined, nowMs: number): string | 
   const n = summarizeBackup(s, nowMs).items.find((i) => i.kind === "backup");
   return n?.state === "OK" ? n.at : null;
 }
+
+// --- the owner's own restore drill: the day a backup was last restored by hand ------------------
+
+/** Up to this many whole days since the drill is OK; one more is due. */
+export const DRILL_LIMIT_DAYS = 90;
+export const DRILL_INVALID = "That isn't a real date. Pick one from the calendar.";
+export const DRILL_TOO_OLD = "Pick a date from 2000 on.";
+export const DRILL_FUTURE = "That date hasn't happened yet. Enter the day you last tested a restore.";
+
+/** `today` is the display-zone date (localDateString), so a count never depends on the server's UTC day. */
+export type RestoreDrill = { testedOn: string | null; today: string };
+export type BackupResponse = BackupStatus & { drill: RestoreDrill | null };
+
+// Whole-day numbers in UTC, so DST never moves a count (same two lines as bin-night.ts, which this file cannot import).
+const dayNumber = (iso: string): number => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86_400_000;
+const isoOf = (n: number): string => new Date(n * 86_400_000).toISOString().slice(0, 10);
+/** A real calendar day written exactly YYYY-MM-DD (2026-02-30 and 0050-01-01 are not). */
+const realDay = (s: string): boolean => s.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(s) && isoOf(dayNumber(s)) === s;
+
+export function drillAge(d: RestoreDrill): { state: "none" } | { state: "ok" | "due"; days: number } {
+  if (!d.testedOn) return { state: "none" };
+  const days = Math.max(0, dayNumber(d.today) - dayNumber(d.testedOn));
+  return { state: days > DRILL_LIMIT_DAYS ? "due" : "ok", days };
+}
+
+/** The trust boundary for a typed date: blank clears (value null), anything else must be a real day from 2000 to today. */
+export function checkRestoreDate(raw: unknown, today: string): { ok: true; value: string | null } | { ok: false; error: string } {
+  const t = (raw as { testedOn?: unknown } | null | undefined)?.testedOn;
+  if (typeof t !== "string") return { ok: false, error: DRILL_INVALID };
+  const s = t.trim();
+  if (s === "") return { ok: true, value: null };
+  if (!realDay(s)) return { ok: false, error: DRILL_INVALID };
+  if (s < "2000-01-01") return { ok: false, error: DRILL_TOO_OLD };
+  if (s > today) return { ok: false, error: DRILL_FUTURE };
+  return { ok: true, value: s };
+}
+
+/** Sets or clears only `restoreTestedOn` on a copy of the config; a rejected value changes nothing. */
+export function applyRestoreDrill<T extends object>(config: T, raw: unknown, today: string): { next: T & { restoreTestedOn?: string } } | { error: string } {
+  const c = checkRestoreDate(raw, today);
+  if (!c.ok) return { error: c.error };
+  const next: Record<string, unknown> = { ...(config as Record<string, unknown>) };
+  if (c.value === null) delete next.restoreTestedOn;
+  else next.restoreTestedOn = c.value;
+  return { next: next as T & { restoreTestedOn?: string } };
+}
+
+/** What /api/backup sends for the stored date: a hand-edited bad value reads as never; a date after today is kept (drillAge clamps it to 0). */
+export function drillPayload(stored: unknown, today: string): RestoreDrill {
+  return { testedOn: typeof stored === "string" && realDay(stored) && stored >= "2000-01-01" ? stored : null, today };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "2026-10-12" as "12 Oct 2026", from the string itself so no zone can shift the day. */
+export const drillDateText = (iso: string): string => `${+iso.slice(8, 10)} ${MONTHS[+iso.slice(5, 7) - 1]} ${iso.slice(0, 4)}`;
+/** "today", "1 day ago", "35 days ago". */
+export const drillAgeText = (days: number): string => (days === 0 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`);

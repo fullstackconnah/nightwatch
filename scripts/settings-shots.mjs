@@ -12,7 +12,7 @@
  *
  * Checks written: C1 height, C2 inventory (the 98 spec kinds as probes, see inventory.json), RF refresh-failed, SF save-failed, C2c no write before Yes (Clear and widget Delete), C10 K12 real-API saves, C3 sentinels,
  * C5s auto-open on paint, C6 calm paint, C7 answer slot, C9 drafts, C11 deep link, C12 targets / motion / errors,
- * C14 page errors and foreign requests.
+ * C14 page errors and foreign requests, and the restore drill strip (blank, typed, invalid, future, saving, save-failed, offline, saved-due; tap target and contrast).
  * Captures, per width: calm, partial, none, loading, load-error, refresh-failed, save-failed, no-password,
  * hermes-key-missing, unsaved-draft: a padded crop of the open strip (else the head); plus one full page per width for calm.
  */
@@ -308,7 +308,7 @@ await guarded("C1", () =>
         return { bottom: Math.round(list?.bottom ?? 0), barTop: Math.round(bar?.top ?? innerHeight), scrollHeight: document.documentElement.scrollHeight };
       });
       record("C1 list above the bottom bar", "390", { ...m, ok: m.bottom <= m.barTop });
-      record("C1 page scrollHeight", "390", { value: m.scrollHeight, ok: m.scrollHeight <= 940 });
+      record("C1 page scrollHeight", "390", { value: m.scrollHeight, ok: m.scrollHeight <= 1080 }); // 940 before the Calendar and Restore drill strips (about 66 px each)
       record("C5s calm opens nothing", "390", (await Promise.all(STRIPS.map((id) => isOpen(page, id)))).every((v) => !v));
     } else {
       record("C5s calm opens Access", "1440", await isOpen(page, "access"));
@@ -496,7 +496,7 @@ await guarded("C12-motion", () =>
 
 // ---- H13: widget-switch, budget-hint, rcon-port-error, access-stamp (hunt 13 settings fixes) ----
 // Padded element crop (16 px, clamped to the page) after an instant scroll; the check fails when fixed or sticky chrome covers the crop rect.
-async function cropEl(page, s, loc, name) {
+async function cropEl(page, s, loc, name, full = true) {
   await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" }); // the same fixed bottom nav the other states hide
   // loc may match several elements: the crop is their union. A target that fits scrolls to just under the sticky mobile header; a taller one hides that header before the full-page clip.
   const { clip, covered } = await loc.evaluateAll((els, pad) => {
@@ -527,7 +527,7 @@ async function cropEl(page, s, loc, name) {
   record("H13 crop clear of fixed or sticky chrome", `${name}@${s.name}`, covered.length ? covered : "ok");
   if (covered.length) fail(s.name, `${name}: crop covered by ${covered.join(", ")}`); // a FAIL record makes the helper print SHOTS fail
   await page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: true, clip });
-  await fullShot(page, s, name);
+  if (full) await fullShot(page, s, name);
 }
 FIXTURES.twoWidgets ??= (() => {
   const f = structuredClone(FIXTURES.calm);
@@ -664,6 +664,109 @@ if (process.env.C10 || process.env.SENTINELS) {
       await page.close();
     } catch (e) { await failShot(s, e); }
   });
+}
+
+// ---- Restore drill strip: states, copy and numeric checks (restore-drill shape brief, sections 3, 5 and 6) ----
+// The strip body is the open strip's body. States: settings-blank, -typed, -invalid (a year before 2000: a date input cannot
+// hold an unreal day, so "That isn't a real date" is covered by backup-status.test.ts), -future, -saving, -save-failed, -offline, -saved-due.
+{
+  const TODAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(NOW);
+  const dayIso = (daysAgo) => new Date(Date.parse(`${TODAY}T00:00:00Z`) - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  FIXTURES.restoreDue ??= (() => {
+    const f = structuredClone(FIXTURES.calm);
+    f.get.config.restoreTestedOn = dayIso(127);
+    return f;
+  })();
+  const KEY = "restore drill";
+  const rec = (name, vp, v) => record(`${KEY} ${name}`, vp, v);
+  const save = (body) => body.getByRole("button", { name: "Save", exact: true });
+  const drillInput = (body) => field(body, "Last restore drill").first();
+  /** Contrast of one element's text against its composited backdrop, in the page. */
+  const contrastOf = (loc) =>
+    loc.evaluate((el) => {
+      const cv = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      const rgba = (css) => { cv.clearRect(0, 0, 1, 1); cv.fillStyle = "#000"; cv.fillStyle = css; cv.fillRect(0, 0, 1, 1); const [r, g, b, a] = cv.getImageData(0, 0, 1, 1).data; return [r, g, b, a / 255]; };
+      const chain = [];
+      for (let n = el; n; n = n.parentElement) chain.unshift(getComputedStyle(n).backgroundColor);
+      const bg = chain.reduce((base, css) => { const [r, g, b, a] = rgba(css); return [r * a + base[0] * (1 - a), g * a + base[1] * (1 - a), b * a + base[2] * (1 - a)]; }, [255, 255, 255]);
+      const [r, g, b, a] = rgba(getComputedStyle(el).color);
+      const fg = [r * a + bg[0] * (1 - a), g * a + bg[1] * (1 - a), b * a + bg[2] * (1 - a)];
+      const lum = ([x, y, z]) => { const f = (c) => ((c /= 255) <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4); return 0.2126 * f(x) + 0.7152 * f(y) + 0.0722 * f(z); };
+      const [hi, lo] = [lum(fg), lum(bg)].sort((p, q) => q - p);
+      return +((hi + 0.05) / (lo + 0.05)).toFixed(2);
+    });
+  const height = (loc) => loc.evaluate((el) => +el.getBoundingClientRect().height.toFixed(1));
+
+  await guarded("restore-drill", () =>
+    each(async (s) => {
+      // Blank, typed, invalid and future: nothing saved, nothing written until Save.
+      {
+        const { page, mock } = await visit(s, "calm", { hash: "#restore" });
+        const body = visibleBody(page).first();
+        const input = drillInput(body);
+        rec("blank: saved line", s.name, (await body.innerText()).includes("Nothing saved yet. The backup tile says no drill is recorded."));
+        rec("blank: Save disabled", s.name, await save(body).isDisabled());
+        await cropEl(page, s, body, "settings-blank", false);
+
+        await input.fill(dayIso(35));
+        rec("typed: Save enabled, no error", s.name, (await save(body).isEnabled()) && !(await body.innerText()).includes("That "));
+        await cropEl(page, s, body, "settings-typed", false);
+
+        await input.fill("1999-12-31");
+        rec("invalid: copy and Save disabled", s.name, (await body.innerText()).includes("Pick a date from 2000 on.") && (await save(body).isDisabled()));
+        await cropEl(page, s, body, "settings-invalid", false);
+
+        await input.fill(dayIso(-1));
+        rec("future: copy and Save disabled", s.name, (await body.innerText()).includes("That date hasn't happened yet. Enter the day you last tested a restore.") && (await save(body).isDisabled()));
+        await cropEl(page, s, body, "settings-future", false);
+        rec("no write before Save", s.name, mock.posts.length === 0);
+
+        // 4. Tap target: the date Input and the Save Button match the house ones (Input h-11 / md:h-8, Button size sm).
+        await input.fill(dayIso(35));
+        const own = { input: await height(input), save: await height(save(body)) };
+        await page.close();
+        const bins = await visit(s, "calm", { hash: "#bins" });
+        const binInput = await height(visibleBody(bins.page).first().locator("input").first());
+        await bins.page.close();
+        const cal = await visit(s, "calm", { hash: "#calendar" });
+        const calSave = await height(save(visibleBody(cal.page).first()));
+        await cal.page.close();
+        rec("4 tap target: Input and Save match the house ones", s.name, { ...own, binInput, calSave, ok: own.input === binInput && own.save === calSave && (s.name !== "390" || own.input >= 44) });
+      }
+
+      // Saving: the request hangs, Save stays disabled.
+      for (const [state, route, want] of [
+        ["saving", (r) => undefined, null],
+        ["save-failed", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Couldn't write the settings file (placeholder reason)." }) }), "Couldn't write the settings file (placeholder reason)."],
+        ["offline", (r) => r.abort("failed"), "Couldn't reach the server. Nothing was saved."],
+      ]) {
+        const { page } = await visit(s, "calm", { hash: "#restore" });
+        await page.route("**/api/settings/integrations", route);
+        const body = visibleBody(page).first();
+        const input = drillInput(body);
+        await input.fill(dayIso(35));
+        await save(body).click();
+        await page.waitForTimeout(400);
+        if (state === "saving") rec("saving: Save disabled", s.name, await save(body).isDisabled());
+        else rec(`${state}: server text shown and typed value kept`, s.name, (await body.innerText()).includes(want) && (await input.inputValue()) === dayIso(35));
+        await cropEl(page, s, body, `settings-${state}`, false);
+        await page.close();
+      }
+
+      // Saved and due: the line is amber text and still readable, and says the drill is due.
+      {
+        const { page } = await visit(s, "restoreDue", { hash: "#restore" });
+        const body = visibleBody(page).first();
+        const line = body.getByText(/^Saved: .*127 days ago\. A drill is due\.$/);
+        rec("saved-due: line says due", s.name, (await line.count()) === 1);
+        rec("5 contrast: due line at least 4.5:1", s.name, await contrastOf(line.first()));
+        const strip = await page.locator('[data-k="open-restore"]').innerText();
+        rec("strip state reads Last drill", s.name, /Last drill \d{1,2} \w{3} \d{4}/.test(strip));
+        await cropEl(page, s, body, "settings-saved-due", true);
+        await page.close();
+      }
+    }),
+  );
 }
 
 // The final records print even after failures, and on a runner kill.

@@ -1,6 +1,6 @@
 "use client";
 
-/* Settings on the strips pattern: the head says whether anything needs you, twelve strips each hold one area's forms
+/* Settings on the strips pattern: the head says whether anything needs you, thirteen strips each hold one area's forms
    (Access, six integrations, Hermes, Dashboard). The page owns the tile draft and the widget/tile writes (3b gives
    those the strip treatment); every other form reports its draft and last error up through useFormReport. */
 
@@ -25,6 +25,7 @@ import {
   VoiceCard,
   BinNightCard,
   CalendarCard,
+  RestoreDrillCard,
   useSettingsFull,
 } from "@/components/settings/settings-integrations";
 import { LabelConventionPanel } from "@/components/settings/settings-reference";
@@ -147,6 +148,7 @@ export default function SettingsPage() {
     voice: <VoiceCard {...panel} />,
     bins: <BinNightCard {...panel} />,
     calendar: <CalendarCard {...panel} />,
+    restore: <RestoreDrillCard {...panel} />,
     hermes: (
       <div className="space-y-5">
         <SettingsHermes />

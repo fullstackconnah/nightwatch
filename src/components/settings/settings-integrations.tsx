@@ -25,6 +25,7 @@ import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import { DAY_NAMES, MAX_BINS, MAX_NAME, binLine, checkBins, nextBinNight, nightLabel, type BinsConfig } from "@/lib/bin-night";
 import { localDateString } from "@/lib/local-time";
+import { checkRestoreDate, drillAge, drillAgeText, drillDateText } from "@/lib/backup-status";
 import type { AppConfig } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
 import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar-status";
@@ -642,6 +643,64 @@ export function CalendarCard({ data, mutate }: PanelProps) {
             <Save size={13} /> Save
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Restore drill: the one day the owner last restored a backup by hand. Blank plus Save clears it, so there is no ClearAction.
+
+export function RestoreDrillCard({ data, mutate }: PanelProps) {
+  const stored = data?.config.restoreTestedOn ?? "";
+  const today = localDateString(data?.config.display?.timezone);
+  const [typed, setTyped] = useState("");
+  const [seeded, setSeeded] = useState(false);
+  const { saving, error, save } = useIntegrationWrite(mutate, () => setSeeded(false), true);
+  const errorId = useId();
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setTyped(data.config.restoreTestedOn ?? "");
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+  const dirty = seeded && typed.trim() !== stored;
+  useFormReport("restore", { dirty, error });
+
+  const check = checkRestoreDate({ testedOn: typed }, today);
+  const age = drillAge({ testedOn: stored || null, today });
+  const savedLine =
+    age.state === "none"
+      ? "Nothing saved yet. The backup tile says no drill is recorded."
+      : `Saved: ${drillDateText(stored)}, ${drillAgeText(age.days)}.${age.state === "due" ? " A drill is due." : ""}`;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        The last day you restored a backup by hand and checked it worked. The weekly restore test runs by itself; this one is yours. The backup tile turns amber 90 days after this date.
+      </p>
+      <div>
+        <Field label="Last restore drill" hint="Leave it blank if you haven't done one yet." error={check.ok ? undefined : check.error} describedBy={error ? errorId : undefined}>
+          <Input type="date" min="2000-01-01" max={today} value={typed} onChange={(e) => setTyped(e.target.value)} />
+        </Field>
+        <p className={`mt-1 text-[0.7rem] ${age.state === "due" ? "text-warn" : "text-ink-dim"}`}>{savedLine}</p>
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-1">
+        {error && (
+          <span id={errorId} className="text-[0.7rem] text-bad">
+            {error}
+          </span>
+        )}
+        <Button
+          size="sm"
+          disabled={saving || !dirty || !check.ok}
+          onClick={() => {
+            if (check.ok) void save("restoreDrill", { testedOn: typed });
+          }}
+        >
+          <Save size={13} /> Save
+        </Button>
       </div>
     </div>
   );

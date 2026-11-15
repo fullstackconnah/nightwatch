@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   deriveChanges,
+  drillHit,
   firstHit,
   parseSince,
   pruneRestartCounts,
@@ -356,4 +357,24 @@ test("A3 one running and one exited self-restarted container of a project split 
   assert.equal(starts.find((e) => e.subjects[0] === "container:up")!.kind, "handled");
   assert.equal(starts.find((e) => e.subjects[0] === "container:down")!.text, "down restarted itself");
   assert.equal(starts.find((e) => e.subjects[0] === "container:down")!.kind, "routine");
+});
+
+// --- restore drill: a Home hit, never the wall kiosk ---
+
+test("a 91-day drill is a dashboard hit and no kiosk hit; 90 days and never raise none", async () => {
+  const drillHits = (testedOn: string | null) => {
+    const h = drillHit({ testedOn, today: "2026-11-16" });
+    return h ? [h] : [];
+  };
+  assert.deepEqual(drillHits("2026-08-18"), []);
+  assert.deepEqual(drillHits(null), []);
+  const due = drillHits("2026-08-17");
+  assert.equal(due.length, 1);
+  assert.equal(due[0].severity, "warn");
+  const ordered = toHits(await runProbes([def("backup", () => due)], 50), () => "2026-11-04T00:00:00.000Z");
+  assert.deepEqual(ordered.map((h) => h.id), ["backup:restore-drill"]);
+  assert.deepEqual(firstHit(ordered), { status: "quiet" });
+  const withOther = toHits(await runProbes([def("backup", () => [raw("backup", "warn"), ...due])], 50), () => "2026-11-04T00:00:00.000Z");
+  assert.equal(firstHit(withOther).status, "attention");
+  assert.equal((firstHit(withOther) as { headline: string }).headline, "backup h");
 });

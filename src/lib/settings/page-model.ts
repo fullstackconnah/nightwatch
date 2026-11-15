@@ -1,14 +1,15 @@
-/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the twelve strips in a fixed
+/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the thirteen strips in a fixed
  * order, which strip the answer names, and whether writes are on. It claims nothing about reachability: only
  * configured flags, updatedAt stamps and the forms' own reports (R1). Type-only imports so node:test can load it.
  * Section 5 of the settings shape brief is the spec; page-model.test.ts has a case per row. */
 import { ageText } from "../home.ts";
+import { drillDateText } from "../backup-status.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
 
-export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar" | "hermes" | "dashboard";
+export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar" | "restore" | "hermes" | "dashboard";
 export type FormId =
   | "password" | "system" | "sso" | "orchestra" | "outside"
-  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar"
+  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar" | "restore"
   | "hermes-model" | "hermes-daemon" | "widgets" | "tiles";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 
@@ -50,18 +51,18 @@ export interface Model {
 
 const TITLES: Record<StripId, string> = {
   access: "Access", homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub",
-  minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "Bin night", calendar: "Calendar", hermes: "Hermes", dashboard: "Dashboard",
+  minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "Bin night", calendar: "Calendar", restore: "Restore drill", hermes: "Hermes", dashboard: "Dashboard",
 };
 const ORDER = Object.keys(TITLES) as StripId[];
 /** Each form's strip, in the order a save failure is looked for. */
 const FORMS: Record<FormId, StripId> = {
   password: "access", system: "access", sso: "access", orchestra: "access", outside: "access",
-  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice", bins: "bins", calendar: "calendar",
+  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice", bins: "bins", calendar: "calendar", restore: "restore",
   "hermes-model": "hermes", "hermes-daemon": "hermes", widgets: "dashboard", tiles: "dashboard",
 };
 const FORM_TITLE: Record<FormId, string> = {
   password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra", outside: "the outside check",
-  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "the bin schedule", calendar: "the calendar link",
+  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "the bin schedule", calendar: "the calendar link", restore: "the restore drill date",
   "hermes-model": "the Hermes model", "hermes-daemon": "the Hermes daemon", widgets: "the widgets", tiles: "the tiles",
 };
 const FORM_IDS = Object.keys(FORMS) as FormId[];
@@ -163,6 +164,7 @@ export function settingsModel(i: ModelInput): Model {
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
     bins: { state: savedBins ? plural(savedBins, "bin") : "Not set up", tone: null },
     calendar: { state: integration({ configured: ig.calendar.configured, updatedAt: ig.calendar.updatedAt ?? undefined }), tone: null },
+    restore: { state: data.config.restoreTestedOn ? `Last drill ${drillDateText(data.config.restoreTestedOn)}` : "Not recorded", tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }
       : {

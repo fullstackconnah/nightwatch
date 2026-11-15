@@ -6,8 +6,9 @@ import { getHostVitals, HOST_ROOTFS, HOST_SYS, readHostMounts } from "@/lib/host
 import { queryMountHistory } from "@/lib/metrics-history";
 import { formatUptime, relativeTime } from "@/lib/format";
 import { readBackupStatus } from "@/lib/backup-status-read";
-import { backupHeadline, summarizeBackup, type BackupStatus } from "@/lib/backup-status";
+import { backupHeadline, drillPayload, summarizeBackup, type BackupStatus, type RestoreDrill } from "@/lib/backup-status";
 import {
+  drillHit,
   firstHit,
   PENDING,
   parseSince,
@@ -38,7 +39,9 @@ import {
   type AlertCopy,
 } from "@/lib/attention-copy";
 import { Memo } from "@/lib/cache";
-import { systemSetting } from "@/lib/config";
+import { loadConfig, systemSetting } from "@/lib/config";
+import { localDateString } from "@/lib/local-time";
+import { displayTimeZone } from "@/app/kiosk/api/list/tz";
 import { createOutsideTracker, OUTSIDE_START, outsideCopy, outsideRun, pickReader, realDeps, type OutsideState } from "@/lib/outside-check";
 import { getDoorbellSnapshot } from "@/lib/ha-doorbell";
 import { doorbellQuiet } from "@/lib/doorbell-quiet";
@@ -358,19 +361,23 @@ async function probeDiskCapacity(): Promise<RawHit[]> {
  * missing or unreadable status file throws, so the report shows the backup
  * probe as failed rather than quiet; the kiosk still says nothing for it.
  */
-function probeBackup(status: BackupStatus | null, readError: unknown): RawHit[] {
+function probeBackup(status: BackupStatus | null, readError: unknown, drill: RestoreDrill | null): RawHit[] {
   if (!status) throw readError;
   if (status.status === "missing") throw new Error("the backup status file is missing");
   if (status.status === "unreadable") throw new Error(`the backup status file is unreadable: ${status.reason}`);
 
+  // The owner's own restore drill rides after the backup hit, and is Home-only (firstHit skips it for the kiosk).
+  const drillDue = drill ? drillHit(drill) : null;
+  const extra = drillDue ? [hit(drillDue.subject, drillDue.severity, drillDue)] : [];
+
   const summary = summarizeBackup(status, Date.now());
-  if (summary.worst === "OK") return [];
+  if (summary.worst === "OK") return extra;
 
   const item = summary.items.find((i) => i.state === summary.worst)!;
   const copy = { headline: backupHeadline(summary), ...backupDetail(summary.worst, item.at ? relativeTime(item.at) : null) };
-  if (summary.worst === "FAILED") return [hit("backup", "bad", copy, item.at ?? undefined)];
-  if (summary.checkStale) return [hit("backup", "warn", backupCheckStopped(relativeTime(status.checkedAt)), status.checkedAt)];
-  return [hit("backup", "warn", copy, item.at ?? undefined)];
+  if (summary.worst === "FAILED") return [hit("backup", "bad", copy, item.at ?? undefined), ...extra];
+  if (summary.checkStale) return [hit("backup", "warn", backupCheckStopped(relativeTime(status.checkedAt)), status.checkedAt), ...extra];
+  return [hit("backup", "warn", copy, item.at ?? undefined), ...extra];
 }
 
 // --- (e) failing healthcheck -------------------------------------------------
@@ -518,6 +525,13 @@ async function computeReport(): Promise<Computed> {
     backupFailure = e;
   }
 
+  let drill: RestoreDrill | null = null;
+  try {
+    drill = drillPayload(loadConfig().restoreTestedOn, localDateString(displayTimeZone()));
+  } catch {
+    // an unreadable config means no drill reminder this cycle; the backup probe itself is unaffected
+  }
+
   const outsideHost = outsideHostSetting();
   const defs: ProbeDef[] = [
     { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(containers)) },
@@ -526,7 +540,7 @@ async function computeReport(): Promise<Computed> {
     { id: "mounts", label: "Mounts", run: () => probeMountReadable() },
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.
-    { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure) },
+    { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure, drill) },
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),

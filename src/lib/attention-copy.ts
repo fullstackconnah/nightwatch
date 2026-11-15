@@ -197,6 +197,15 @@ export function backupCheckStopped(rel: string): AlertCopy {
   };
 }
 
+/** The owner's own hand-run restore is late (91 days or more); it clears only when a newer date is saved in Settings. */
+export function restoreDrillDue(days: number): AlertCopy {
+  return {
+    headline: "ODIP restore drill is due",
+    detail: `The last restore you tested by hand was ${days} days ago.`,
+    action: "Restore a backup by hand, then enter the date in Settings.",
+  };
+}
+
 // --- front door camera ------------------------------------------------------------------------
 
 /** `days` is null when no motion was ever reported. The count stays in the detail: a ticking number in the headline would re-raise the alert. */

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfigForSave, saveConfig, saveErrorText, type AppConfig } from "@/lib/config";
 import { mergeBins } from "@/lib/bin-night";
+import { applyRestoreDrill } from "@/lib/backup-status";
+import { localDateString } from "@/lib/local-time";
+import { displayTimeZone } from "@/app/kiosk/api/list/tz";
 import { mergeMedia } from "@/lib/media/settings";
 import { applyCalendar, calendarMeta, commitCalendar, prepareCalendar, type CalendarChange } from "@/lib/calendar-feed";
 import { rconPasswordForHost, secretForUrl } from "@/lib/settings/dash-put";
@@ -53,6 +56,8 @@ type Body = {
   media?: { workerUrl?: unknown; workerToken?: unknown } | null;
   /** Bin night: the whole rule (checked by bin-night.ts's checkBins) or null to remove it. Nothing secret. */
   bins?: unknown;
+  /** Restore drill: `{ testedOn }`, a YYYY-MM-DD day (checked by backup-status.ts's checkRestoreDate) or blank to clear. Nothing secret. */
+  restoreDrill?: unknown;
 };
 
 function str(v: unknown): string | undefined {
@@ -180,6 +185,12 @@ export async function POST(req: NextRequest) {
     const merged = mergeBins(next, body.bins);
     if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
     next = merged.next;
+  }
+
+  if ("restoreDrill" in body) {
+    const applied = applyRestoreDrill(next, body.restoreDrill, localDateString(displayTimeZone()));
+    if ("error" in applied) return NextResponse.json({ error: applied.error }, { status: 400 });
+    next = applied.next;
   }
 
   if ("github" in body) {
