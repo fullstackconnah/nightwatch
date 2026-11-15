@@ -24,6 +24,7 @@ import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
 import {
   AlertTriangle,
+  CalendarDays,
   Cloud,
   CloudDrizzle,
   CloudFog,
@@ -43,6 +44,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
 import { BinNightRow } from "@/components/kiosk/kiosk-bins";
+import { useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
@@ -684,6 +686,37 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
   );
 }
 
+/* ── calendar (today's and tomorrow's events) ───────────────────────────── */
+
+/** The agenda's one home on Standard: at most 3 rows and one "and N more" row. 0 px (no node) when there is nothing to say. */
+function CalendarSection() {
+  const { view, stale, failed } = useKioskAgenda();
+  if (!view && !failed) return null;
+  return (
+    <section data-calendar-section="" className="border-t border-line pt-3">
+      <div className="flex items-center gap-2">
+        <SectionLabel icon={CalendarDays} label="Calendar" />
+        {/* -my-1: the 24 px sunroom pill overflows the label's line evenly, so the hub below never moves */}
+        {stale && <span className="-my-1 flex"><StaleTag /></span>}
+      </div>
+      {failed && <p className="mt-2 text-xs text-ink-faint">Calendar unavailable.</p>}
+      {view && (
+        <ul className="mt-2 space-y-1 text-sm">
+          {view.rows.map((r) => (
+            <li key={r.id} data-agenda-row="" className="flex items-baseline gap-2">
+              <span className="w-16 shrink-0 text-xs text-ink-faint">{r.day}</span>
+              <span className={`w-20 shrink-0 font-mono ${r.now ? "text-ink" : "text-ink-dim"}`}>{r.time}</span>
+              <span className={`min-w-0 truncate ${r.dim ? "text-ink-dim" : "text-ink"}`}>{r.title}</span>
+              {r.till && <span className="shrink-0 text-xs text-ink-faint">{r.till}</span>}
+            </li>
+          ))}
+          {view.more && <li data-agenda-more="" className="pl-[4.5rem] text-ink-dim">{view.more}</li>}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 /* ── display band (morning / day / evening) ─────────────────────────────── */
 
 export function KioskDisplay({ period }: { period: KioskPeriod }) {
@@ -700,6 +733,7 @@ export function KioskDisplay({ period }: { period: KioskPeriod }) {
       <WeatherBand period={period} weather={weather} />
       <BinNightRow period={period} />
       {period === "morning" && <BriefingCard briefing={briefing} />}
+      <CalendarSection />
     </div>
   );
 }

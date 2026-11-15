@@ -246,14 +246,86 @@ export const BIN_RULE_WED = {
     { name: "General waste", weekday: 3, every: 1 },
   ],
 };
-export const settingsFullFor = (bins) => ({
+export const settingsFullFor = (bins, calendar = CAL_UNSET) => ({
   config: { groups: [], urls: {}, icons: {}, hidden: [], widgets: [], display: { timezone: ZONE }, ...(bins ? { bins } : {}) },
   versions: { tiles: "1", widgets: "1" },
   meta: { widgetTypes: ["generic"], publicHost: "nightwatch.example", dockgeUrl: "http://dockge.example.invalid", authConfigured: true, dataDir: "/data", hermesModelUpdatedAt: null, mcpEnabled: false, mcpEndpoint: "", kioskPinConfigured: false },
   integrations: {
     homeassistant: { configured: false }, npm: { configured: false }, forgejo: { configured: false }, github: { configured: false },
-    minecraft: { configured: false }, media: { configured: false }, hermes: { openrouterConfigured: false, anthropicConfigured: false },
+    minecraft: { configured: false }, media: { configured: false }, calendar, hermes: { openrouterConfigured: false, anthropicConfigured: false },
   },
   system: { mcpTokenConfigured: false, kioskPinConfigured: false, hermesApiConfigured: false, voiceConfigured: false, oidcClientSecretConfigured: false },
   hermesDaemon: { discordWebhookConfigured: false, discordBotTokenConfigured: false, discordAllowedUserIds: [], updatedAt: null },
 });
+
+/** Kiosk calendar (kiosk-calendar). Invented events only; no link, address or host anywhere. ONE date: CAL_TODAY (a Monday) is the fake clock's
+ *  day, so `at` pins the moment (Sydney, +10:00). Events carry an end, as the route serves them (all-day = local 00:00 to the next local 00:00).
+ *  The route's order: all-day first, then start, then title. `crowded` is PLACEMENT.md's 18:30 evening; `six-four` is the shape brief's 11:00 worked example. */
+export const CAL_TODAY = "2026-06-15";
+export const CAL_TOMORROW = "2026-06-16";
+export const calInstant = (hhmm) => `${CAL_TODAY}T${hhmm}:00+10:00`;
+let calN = 0;
+const calAt = (day, hhmm) => `${day}T${hhmm}:00+10:00`;
+const ev = (day, from, to, title, o = {}) => ({ id: `cal-${calN++}`, title, busy: false, allDay: false, start: calAt(day, from), end: calAt(o.endDay ?? day, to), ...o.over });
+const allDayEv = (day, nextDay, title) => ({ id: `cal-${calN++}`, title, busy: false, allDay: true, start: calAt(day, "00:00"), end: calAt(nextDay, "00:00") });
+const calOk = (events, over = {}) => ({ status: "ok", stale: false, fetchedAt: `${CAL_TODAY}T06:00:00+10:00`, events, ...over });
+const T = CAL_TODAY;
+const M = CAL_TOMORROW;
+const DENTIST = ev(M, "09:00", "10:00", "Dentist");
+const SWIM = ev(T, "16:00", "17:00", "Swim lesson");
+const CROWDED = [
+  ev(T, "16:00", "18:45", "Swim lesson"), ev(T, "18:30", "19:30", "Book club"),
+  ev(T, "19:15", "19:45", "Call with Gran"), ev(T, "20:00", "20:30", "Pick up Mika"), DENTIST,
+];
+/** `want` text must show in the pane and `std` rows in Standard (innerText; the pane caption is upper-cased by CSS). `pane: false` = the pane drops. */
+export const CAL_STATES = {
+  ordinary: { at: "11:00", body: calOk([SWIM, DENTIST]), want: ["NEXT UP", "4:00", "pm", "Swim lesson", "and 1 more tomorrow"], std: ["Today", "4:00 pm", "Swim lesson", "Tomorrow", "9:00 am", "Dentist"], rows: 2 },
+  "on-now": { at: "18:30", body: calOk([ev(T, "16:00", "18:45", "Swim lesson"), DENTIST]), want: ["ON NOW", "Now", "Swim lesson", "till 6:45 pm", "and 1 more tomorrow"], std: ["now", "Swim lesson", "till 6:45 pm"], rows: 2 },
+  "tomorrow-only": { at: "20:00", body: calOk([SWIM, DENTIST]), want: ["TOMORROW", "9:00", "am", "Dentist"], not: ["and"], std: ["Tomorrow", "9:00 am", "Dentist"], rows: 1 },
+  crowded: { at: "18:30", crowded: true, body: calOk(CROWDED), want: ["ON NOW", "Now", "Swim lesson", "till 6:45 pm", "and 3 more today · 1 tomorrow"], std: ["Today", "now", "Swim lesson", "till 6:45 pm", "Book club", "till 7:30 pm", "7:15 pm", "Call with Gran", "and 1 more today · 1 tomorrow"], rows: 3, more: true },
+  "six-four": {
+    at: "11:00", crowded: true,
+    body: calOk([
+      ev(T, "12:30", "13:30", "Lunch with Ana"), ev(T, "14:00", "14:30", "School pickup"), ev(T, "15:15", "16:00", "Piano"),
+      ev(T, "16:30", "17:30", "Swim lesson"), ev(T, "17:30", "18:30", "Book club"), ev(T, "19:00", "19:30", "Call with Gran"),
+      DENTIST, ev(M, "10:30", "11:30", "Yoga class"), ev(M, "13:00", "13:30", "Library return"), ev(M, "18:00", "20:00", "Dinner at Mika's"),
+    ]),
+    want: ["NEXT UP", "12:30", "pm", "Lunch with Ana", "and 5 more today · 4 tomorrow"],
+    std: ["Today", "12:30 pm", "Lunch with Ana", "2:00 pm", "School pickup", "3:15 pm", "Piano", "and 3 more today · 4 tomorrow"], rows: 3, more: true,
+  },
+  "long-title": { at: "11:00", body: calOk([ev(T, "15:00", "16:00", "Parent-teacher interviews at Bellwood Primary"), DENTIST]), want: ["NEXT UP", "3:00", "Parent-teacher interviews at Bellwood Primary"], std: ["3:00 pm", "Parent-teacher interviews at Bellwood Primary"], rows: 2 },
+  // all-day first, a multi-day event already running (ends Wednesday), and a busy-only event
+  mixed: {
+    at: "08:00",
+    body: calOk([
+      allDayEv(T, CAL_TOMORROW, "Public holiday"), ev("2026-06-14", "10:00", "11:00", "Camping trip", { endDay: "2026-06-17" }),
+      ev(T, "09:00", "10:00", null, { over: { busy: true } }), ev(T, "13:00", "13:30", "Alpha review"), DENTIST,
+    ]),
+    want: ["ON NOW", "Now", "Camping trip", "till Wed", "and 3 more today · 1 tomorrow"], std: ["Today", "All day", "Public holiday", "now", "Camping trip", "till Wed", "9:00 am", "Busy"], rows: 3, more: true,
+  },
+  // an untitled event and two at the same time
+  gaps: { at: "12:00", body: calOk([ev(T, "13:00", "13:30", null), ev(T, "13:00", "13:30", "Alpha review"), ev(T, "13:00", "13:30", "Beta review")]), want: ["NEXT UP", "1:00", "No title", "and 2 more today"], std: ["1:00 pm", "No title", "Alpha review", "Beta review"], rows: 3 },
+  stale: { at: "11:00", body: calOk([SWIM, DENTIST], { stale: true }), want: ["NEXT UP", "Swim lesson"], std: ["Swim lesson"], rows: 2, stale: true },
+  // absent: nothing left today or tomorrow, not set up, and a feed that never read
+  quiet: { at: "11:00", body: calOk([]), pane: false },
+  unconf: { at: "11:00", body: { status: "unconfigured" }, pane: false },
+  failed: { at: "11:00", body: { status: "error" }, pane: false, failedLine: true },
+  // 22:30 is the night overlay; a wake tap runs Standard as the day: tomorrow's first event
+  "woken-night": { at: "22:30", body: calOk([SWIM, DENTIST]), pane: false, std: ["Tomorrow", "9:00 am", "Dentist"], rows: 1 },
+};
+/** The weather behind a state: `crowded` borrows the sun-air crowded day (UV 12, the tallest Standard weather line); the rest are UV-quiet. */
+export const calWeatherFor = (state) => sunAirWeatherFor(CAL_STATES[state].crowded ? "crowded" : "quiet");
+
+/** GET /api/settings integrations.calendar for the settings card. Invented times: the fake clock is 2026-06-15 19:00 Sydney. */
+export const CAL_UNSET = { configured: false, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null };
+const CAL_SET = { configured: true, updatedAt: "2026-06-13T09:00:00Z", lastSyncAt: "2026-06-15T08:40:00Z", eventsThisWeek: 14, problem: null };
+export const CAL_SETTINGS = {
+  empty: CAL_UNSET,
+  configured: CAL_SET,
+  warn: { ...CAL_SET, lastSyncAt: "2026-06-11T04:40:00Z", problem: "refused" }, // Thursday 2:40 pm Sydney
+  replace: CAL_SET,
+};
+/** The longest of the server's fixed save errors (98 characters): the card must show it whole. */
+export const CAL_LONGEST_ERROR = "That link opened, but it isn't a calendar. Copy the private calendar link, not the calendar's page.";
+/** A draft made of words only: the settings captures never type a real link, and the save reply is mocked. */
+export const CAL_DRAFT = "private-calendar-link-goes-here";

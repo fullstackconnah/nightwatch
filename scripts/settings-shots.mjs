@@ -35,7 +35,7 @@ const STATES = [
   ["loading", "loading", "Loading", "Loading settings", null],
   ["loadError", "load-error", "Not loaded", "couldn’t load", null],
   ["calm", "calm", "Ready", "integrations are set up", null],
-  ["partial", "partial", "Ready", "of 7 integrations are set up", null],
+  ["partial", "partial", "Ready", "of 9 integrations are set up", null],
   ["none", "none", "Not set up", "No integrations are set up", null],
   ["noPassword", "no-password", "Sign-in off", "No login password", "access"],
   ["hermesKeyMissing", "hermes-key-missing", "Needs a key", "no OpenRouter key is saved", "hermes"],

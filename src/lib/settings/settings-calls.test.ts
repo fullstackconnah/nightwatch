@@ -64,3 +64,9 @@ test("O1 polish: Clear saves the stored widget, not the editor draft", () => {
   assert.match(w, /onClear=\{onSave\}/);
   assert.doesNotMatch(w, /onSave\(\{ \.\.\.w, \[f\]: undefined/);
 });
+
+test("the Calendar card shows the server's fixed error copy whole, and no other panel opts out of the 80-character cut", () => {
+  const integ = readFileSync(join(SRC, "components/settings/settings-integrations.tsx"), "utf8");
+  assert.match(integ, /verbatim \? e\.message : plainReason\(e\.message\)/);
+  assert.deepEqual([...integ.matchAll(/useIntegrationWrite\([^)]*true\)/g)].map((m) => m[0]), ["useIntegrationWrite(mutate, undefined, true)"]);
+});

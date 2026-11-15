@@ -27,6 +27,8 @@ import { DAY_NAMES, MAX_BINS, MAX_NAME, binLine, checkBins, nextBinNight, nightL
 import { localDateString } from "@/lib/local-time";
 import type { AppConfig } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
+import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar-status";
+import { MAX_CALENDAR_LINK } from "@/lib/settings-checks";
 import { rconPortFieldError } from "@/lib/settings-field-checks";
 import { useFormReport } from "@/components/settings/form-report";
 
@@ -70,6 +72,8 @@ export interface SettingsFullResponse {
     github: IntegrationStatus;
     minecraft: IntegrationStatus & { curseforgeKeySet?: boolean; rconPasswordSet?: boolean };
     media: IntegrationStatus;
+    /** The cache's state, never the link (calendarMeta in calendar-feed.ts). */
+    calendar: CalendarStatus;
     hermes: { openrouterConfigured: boolean; anthropicConfigured: boolean };
   };
   /** GOAL A: config.json's `system` block — MCP token, kiosk PIN, Hermes API,
@@ -119,6 +123,7 @@ export function SecretField({
   disabled,
   action,
   describedBy,
+  maxLength,
 }: {
   label: string;
   configured: boolean;
@@ -134,6 +139,7 @@ export function SecretField({
   /** id of an external hint/error element (owned by the caller) to fold
    *  into this field's own aria-describedby. */
   describedBy?: string;
+  maxLength?: number;
 }) {
   const [replacing, setReplacing] = useState(!configured);
   // One id backs both states: the editable <input> gets it directly, and
@@ -206,6 +212,7 @@ export function SecretField({
           value={draft}
           disabled={disabled}
           aria-describedby={describedBy}
+          maxLength={maxLength}
           onChange={(e) => onDraftChange(e.target.value)}
           placeholder={placeholder ?? (configured ? "leave blank to keep the current value" : "not set")}
         />
@@ -250,7 +257,7 @@ const clearSay = (x: string) => `Removes the saved ${x} connection. ${x} stops w
  *  revalidates the shared /api/settings SWR cache on success. Local to each
  *  panel — nothing here is shared state, so four panels can save/clear
  *  independently without racing each other's in-flight request. */
-function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void) {
+function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void, verbatim = false) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -267,7 +274,7 @@ function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void
       return true;
     } catch (e) {
       // fetch rejects with a TypeError when the server is unreachable; its own text ("Failed to fetch") says nothing to the owner
-      setError(e instanceof TypeError ? "Couldn't reach the server. Nothing was saved." : e instanceof Error && e.message ? plainReason(e.message) : "Couldn't save — check the values and try again");
+      setError(e instanceof TypeError ? "Couldn't reach the server. Nothing was saved." : e instanceof Error && e.message ? (verbatim ? e.message : plainReason(e.message)) : "Couldn't save — check the values and try again");
       return false;
     } finally {
       setSaving(false);
@@ -557,6 +564,77 @@ export function GithubPanel({ data, mutate }: PanelProps) {
               const ok = await save("github", { token: token || undefined });
               if (ok) {
                 setToken("");
+                setSaveVersion((v) => v + 1);
+              }
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Calendar: one private link, write-only like GitHub's token. Save is the test (the server checks the link before it
+// stores it), so there is no Test button; its fixed error copy is shown whole.
+
+export function CalendarCard({ data, mutate }: PanelProps) {
+  const status = data?.integrations.calendar;
+  const configured = status?.configured ?? false;
+  const [link, setLink] = useState("");
+  const [saveVersion, setSaveVersion] = useState(0);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, undefined, true);
+  const errorId = useId();
+  const line = status && calendarStatusLine(status);
+  useFormReport("calendar", { dirty: link !== "", error });
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        The private link from your calendar&apos;s sharing settings. The kiosk uses it for today&apos;s and tomorrow&apos;s events. It&apos;s stored on this server and never shown again.
+      </p>
+      <div>
+        <SecretField
+          key={saveVersion}
+          label="Private calendar link"
+          configured={configured}
+          updatedAt={status?.updatedAt ?? undefined}
+          draft={link}
+          onDraftChange={setLink}
+          placeholder={configured ? undefined : "Paste the private calendar link"}
+          describedBy={error ? errorId : undefined}
+          maxLength={MAX_CALENDAR_LINK}
+        />
+        {line && <p className={`mt-1 text-[0.7rem] ${line.tone === "warn" ? "text-warn" : "text-ink-dim"}`}>{line.text}</p>}
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {configured ? (
+          <ClearAction
+            say="Removes the saved calendar link. The kiosk's agenda disappears until you paste a link again."
+            failure="Couldn't remove the calendar link"
+            run={async () => {
+              await clear("calendar");
+              setSaveVersion((v) => v + 1);
+            }}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && (
+            <span id={errorId} className="text-[0.7rem] text-bad">
+              {error}
+            </span>
+          )}
+          <Button
+            size="sm"
+            disabled={saving || (!configured && !link.trim())}
+            onClick={async () => {
+              const ok = await save("calendar", { url: link });
+              if (ok) {
+                setLink("");
                 setSaveVersion((v) => v + 1);
               }
             }}

@@ -22,13 +22,15 @@ type Over = {
   minecraft?: { curseforgeKeySet?: boolean };
   hermesModelUpdatedAt?: string | null;
   widgets?: number;
+  calendar?: boolean;
+  bins?: number;
 };
-/** Seven of seven set up by default. */
+/** Nine of nine set up by default (six integrations, voice, the calendar link, one bin). */
 function data(o: Over = {}): SettingsFullResponse {
   const on = (k: keyof NonNullable<Over["set"]>) => o.set?.[k] ?? true;
   const st = (k: keyof NonNullable<Over["set"]>) => ({ configured: on(k), updatedAt: o.updated?.[k] });
   return {
-    config: { widgets: Array.from({ length: o.widgets ?? 2 }), hermes: o.hermes ?? { tier: "local", model: "qwen" } },
+    config: { widgets: Array.from({ length: o.widgets ?? 2 }), bins: { collections: Array.from({ length: o.bins ?? 1 }, (_, i) => ({ name: `Bin ${i}`, weekday: 2, every: 1 as const })) }, hermes: o.hermes ?? { tier: "local", model: "qwen" } },
     meta: {
       authConfigured: o.auth ?? true, mcpEnabled: true, kioskPinConfigured: true, ssoConfigured: false,
       hermesModelUpdatedAt: o.hermesModelUpdatedAt ?? null, ...o.meta,
@@ -37,6 +39,7 @@ function data(o: Over = {}): SettingsFullResponse {
       homeassistant: st("homeassistant"), npm: st("npm"), forgejo: st("forgejo"), github: st("github"),
       minecraft: { ...st("minecraft"), curseforgeKeySet: true, ...o.minecraft },
       media: st("media"),
+      calendar: { configured: o.calendar ?? true, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null },
       hermes: o.hermesKeys ?? { openrouterConfigured: true, anthropicConfigured: true },
     },
     system: { voiceConfigured: o.voice ?? true, updatedAt: o.sys, mcpTokenConfigured: true, kioskPinConfigured: true, ...o.system },
@@ -49,7 +52,7 @@ function input(o: Partial<ModelInput> & { d?: Over } = {}): ModelInput {
 }
 const model = (o: Partial<ModelInput> & { d?: Over } = {}) => settingsModel(input(o));
 const strip = (m: ReturnType<typeof model>, id: StripId) => m.strips.find((s) => s.id === id)!;
-const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "hermes", "dashboard"];
+const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "calendar", "hermes", "dashboard"];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 
 // ---- C8: one case per section 5 row ----
@@ -77,11 +80,11 @@ test("load error before any data: warn, its own copy, no strips, no writes", () 
 test("refresh failed: the data's own chip and answer, a notice with the age, writes stay on, keep", () => {
   const m = model({ loadError: "boom", loadedAt: NOW - 90_000 });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.match(m.answer, /^All 7 integrations are set up/);
+  assert.match(m.answer, /^All 9 integrations are set up/);
   assert.equal(m.notice, "Couldn’t refresh: showing what loaded 2 min ago.");
   assert.equal(m.writable, true);
   assert.equal(m.autoTarget, "keep");
-  assert.equal(m.strips.length, 11);
+  assert.equal(m.strips.length, 12);
 });
 
 test("save failed: warn, names the form, keeps the changes, opens that form's strip", () => {
@@ -145,10 +148,10 @@ test("unsaved: neutral, names the strips, never moves anything", () => {
   assert.equal(same.answer, "Unsaved changes in Access. They stay while this page is open.");
 });
 
-test("calm: all 7 set up, ok chip, last change, calm evidence, opens nothing", () => {
+test("calm: all 9 set up, ok chip, last change, calm evidence, opens nothing", () => {
   const m = model({ d: { updated: { forgejo: iso(2 * DAY), github: iso(5 * DAY) } } });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.equal(m.answer, "All 7 integrations are set up. Last change: Forgejo, 2 d ago.");
+  assert.equal(m.answer, "All 9 integrations are set up. Last change: Forgejo, 2 d ago.");
   assert.equal(m.evidence, CALM_EVIDENCE);
   assert.equal(m.notice, null);
   assert.equal(m.autoTarget, null);
@@ -156,33 +159,39 @@ test("calm: all 7 set up, ok chip, last change, calm evidence, opens nothing", (
   assert.equal(m.writable, true);
 });
 
-test("partial: n of 7, ok chip", () => {
+test("partial: n of 9, ok chip", () => {
   const m = model({ d: { set: { npm: false, github: false }, voice: false } });
   assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
-  assert.match(m.answer, /^4 of 7 integrations are set up\. Last change:/);
+  assert.match(m.answer, /^6 of 9 integrations are set up\. Last change:/);
   assert.equal(m.autoTarget, null);
 });
 
 test("none set up: neutral, each strip says what it needs, nothing required is named", () => {
-  const m = model({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false, media: false }, voice: false } });
+  const m = model({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false, media: false }, voice: false, calendar: false, bins: 0 } });
   assert.deepEqual(m.chip, { tone: "neutral", label: "Not set up" });
   assert.equal(m.answer, "No integrations are set up yet. Each one below says what it needs.");
   assert.equal(m.autoTarget, null);
   assert.equal(m.evidence, CALM_EVIDENCE);
 });
 
+test("only the calendar set up: counted, so the header is not the empty wording", () => {
+  const m = model({ d: { set: { homeassistant: false, npm: false, forgejo: false, github: false, minecraft: false, media: false }, voice: false, bins: 0 } });
+  assert.deepEqual(m.chip, { tone: "ok", label: "Ready" });
+  assert.match(m.answer, /^1 of 9 integrations are set up\./);
+});
+
 test("optional things are never problems: no SSO, PIN, Orchestra or daemon is still calm", () => {
   const m = model({ d: { meta: { ssoConfigured: false, kioskPinConfigured: false }, daemon: { updatedAt: null } } });
   assert.equal(m.chip.tone, "ok");
-  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null]);
+  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null, null]);
 });
 
 // ---- order, last change, strip lines ----
 
-test("the eleven strips come in a fixed order with titles", () => {
+test("the twelve strips come in a fixed order with titles", () => {
   const m = model();
   assert.deepEqual(m.strips.map((s) => s.id), NINE);
-  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Hermes", "Dashboard"]);
+  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Calendar", "Hermes", "Dashboard"]);
   // priority states never reorder them (D3)
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
 });
@@ -195,20 +204,31 @@ test("a hand-edited bins rule never crashes the page model", () => {
   }
 });
 
-test("the Bin night strip says how many bins are saved, and stays out of the integrations count", () => {
-  const withBins = (n: number) => {
-    const d = data();
-    if (n) d.config.bins = { collections: Array.from({ length: n }, (_, i) => ({ name: `Bin ${i}`, weekday: 2, every: 1 as const })) };
-    return settingsModel({ ...input(), data: d });
-  };
+test("the Bin night strip says how many bins are saved, and counts as one set-up integration", () => {
+  const withBins = (n: number) => model({ d: { bins: n } });
   assert.equal(strip(withBins(0), "bins").state, "Not set up");
   assert.equal(strip(withBins(1), "bins").state, "1 bin");
   assert.equal(strip(withBins(3), "bins").state, "3 bins");
-  assert.match(withBins(3).answer, /^All 7 integrations are set up/);
+  assert.match(withBins(3).answer, /^All 9 integrations are set up/);
+  assert.match(withBins(0).answer, /^8 of 9 integrations are set up/);
   const draft = model({ forms: { bins: { dirty: true, error: null } } });
   assert.equal(draft.answer, "Unsaved changes in Bin night. They stay while this page is open.");
   const failed = model({ forms: { bins: { dirty: true, error: "Four bins at most." } } });
   assert.equal(strip(failed, "bins").state, "Couldn’t save: Four bins at most");
+});
+
+test("the Calendar strip says whether a link is saved, and counts as one set-up integration", () => {
+  const withCalendar = (configured: boolean) => {
+    const d = data();
+    d.integrations.calendar = { configured, updatedAt: configured ? iso(2 * DAY) : null, lastSyncAt: null, eventsThisWeek: null, problem: null };
+    return settingsModel({ ...input(), data: d });
+  };
+  assert.equal(strip(withCalendar(false), "calendar").state, "Not set up");
+  assert.equal(strip(withCalendar(true), "calendar").state, "Set up · changed 2 d ago");
+  assert.match(withCalendar(true).answer, /^All 9 integrations are set up/);
+  assert.match(withCalendar(false).answer, /^8 of 9 integrations are set up/);
+  const failed = model({ forms: { calendar: { dirty: true, error: "That link opened, but it isn't a calendar. Copy the private calendar link, not the calendar's page." } } });
+  assert.equal(strip(failed, "calendar").state, "Couldn’t save: the server refused it");
 });
 
 test("last change is the newest updatedAt, named by its source", () => {
