@@ -207,3 +207,29 @@ test("kioskActionRefusal: an unreadable hidden set fails closed for light and sw
   assert.equal(kioskActionRefusal("scene.fake_movie", null), null);
   assert.equal(kioskActionRefusal("climate.fake_ac", null), null);
 });
+
+// --- hunt 49: a close while CONNECTING fires the handlers synchronously ------
+class SyncCloseWs extends FakeWs {
+  closes = 0;
+  close() { this.closes++; this.onerror?.(); this.onclose?.(); }
+}
+async function withSyncClose<T>(fn: () => Promise<T>): Promise<T> {
+  const g = globalThis as unknown as { WebSocket: unknown };
+  const orig = g.WebSocket;
+  g.WebSocket = SyncCloseWs;
+  try { return await fn(); } finally { g.WebSocket = orig; }
+}
+test("ws: a timeout on a socket whose close() re-fires its handlers closes once and rejects timeout", () => withSyncClose(async () => {
+  const p = fetchRegistryHiddenIds({ url: "https://ha.example", token: "t" }, 20);
+  const ws = FakeWs.last as SyncCloseWs;
+  await assert.rejects(p, (e: Error) => e.message === "timeout");
+  assert.equal(ws.closes, 1);
+}));
+test("ws: a late close after a good result does not change the outcome", () => withSyncClose(async () => {
+  const p = fetchRegistryHiddenIds({ url: "https://ha.example", token: "t" }, 1000);
+  const ws = FakeWs.last as SyncCloseWs;
+  ws.push({ type: "result", id: 1, success: true, result: [] });
+  assert.equal((await p).size, 0);
+  ws.onclose?.();
+  assert.equal(ws.closes, 1);
+}));
