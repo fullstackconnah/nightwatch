@@ -2,7 +2,7 @@
  * hh:mm is the same whatever day the run happens. `satisfies AttentionReport` makes tsc check each one
  * against the real type; the shots script imports this file under node --experimental-strip-types.
  * Names are placeholders: no real host, address or token appears here. */
-import type { BackupStatus } from "../../../src/lib/backup-status.ts";
+import type { BackupResponse } from "../../../src/lib/backup-status.ts";
 import type { TiledContainer } from "../../../src/lib/tiles.ts";
 import type {
   AttentionHit,
@@ -313,12 +313,13 @@ export const WIDGETS = {
   },
 };
 
-/** /api/backup with both checks fresh, so the quiet Home has no stale or unreadable backup dot. */
-export const backupOk = (now: number): BackupStatus => ({
+/** /api/backup with both checks fresh, so the quiet Home has no stale or unreadable backup dot; the restore drill was 35 days ago (OK). */
+export const backupOk = (now: number): BackupResponse => ({
   status: "ok",
   checkedAt: new Date(now - 60 * MIN).toISOString(),
   items: [
     { kind: "backup", state: "OK", at: new Date(now - 6 * 60 * MIN).toISOString() },
     { kind: "restore-test", state: "OK", at: new Date(now - 18 * 60 * MIN).toISOString() },
   ],
+  drill: { testedOn: new Date(now - 35 * 24 * 60 * MIN).toISOString().slice(0, 10), today: new Date(now).toISOString().slice(0, 10) },
 });
