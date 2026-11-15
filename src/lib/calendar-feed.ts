@@ -113,7 +113,8 @@ export async function getCalendarResponse(now = Date.now()): Promise<CalendarRes
   const due = !e.good || now - e.good.at >= REFRESH_MS;
   if (due && (e.inflight || !e.failedAt || now - e.failedAt >= RETRY_MS)) {
     const fetching = refresh(e, tz, now); // never rejects: fetchCalendar catches everything
-    if (!e.good) await fetching; // with a good copy it is served now and the next request sees the result
+    // with a good copy that still covers the days it is served now and the next request sees the result; one that no longer covers them waits for the fetch
+    if (!e.good || addDays(tz, startOfDay(tz, now), 3) > e.good.end) await fetching;
   }
   if (state.entry !== e) return getCalendarResponse(now); // the link changed while we waited
   const from = startOfDay(tz, now);

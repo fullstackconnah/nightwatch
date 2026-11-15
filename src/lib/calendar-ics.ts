@@ -162,7 +162,7 @@ function parseRule(value: string, zone: string, start: Dt): Rule | null {
     }
   }
   // A yearly repeat is the start's own month and day; a BY part that says otherwise is not supported.
-  if (yearly && ((r.BYMONTH !== undefined && r.BYMONTH !== String(start.mo)) || (r.BYMONTHDAY !== undefined && r.BYMONTHDAY !== String(start.d)))) return null;
+  if (yearly && ((r.BYMONTH !== undefined && Number(r.BYMONTH) !== start.mo) || (r.BYMONTHDAY !== undefined && Number(r.BYMONTHDAY) !== start.d))) return null;
   const count = r.COUNT === undefined ? undefined : Number(r.COUNT);
   if (count !== undefined && !(Number.isInteger(count) && count >= 1)) return null;
   const interval = Number(r.INTERVAL ?? 1);

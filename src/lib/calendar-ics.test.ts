@@ -128,6 +128,12 @@ describe("parseIcs repeats", () => {
       "2026-11-02T09:00:00+11:00", "2026-11-16T09:00:00+11:00", "2026-11-30T09:00:00+11:00",
     ]);
   });
+  it("a yearly repeat with leading-zero BYMONTH and BYMONTHDAY still repeats; a BYMONTH list does not", () => {
+    const rule = (r: string) => cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:20200305T090000", "SUMMARY:x", r));
+    const w = win("2026-03-05T00:00:00+11:00", "2026-03-06T00:00:00+11:00");
+    assert.equal(run(rule("RRULE:FREQ=YEARLY;BYMONTH=03;BYMONTHDAY=05"), w).length, 1);
+    assert.equal(run(rule("RRULE:FREQ=YEARLY;BYMONTH=3,6"), w).length, 0);
+  });
   it("an unsupported repeat shows at its first occurrence only", () => {
     assert.equal(starts(cal(vevent("UID:a", MON9, "SUMMARY:x", "RRULE:FREQ=MONTHLY;BYDAY=MO;BYSETPOS=1"))).length, 1);
     const earlier = (rule: string) => cal(vevent("UID:a", "DTSTART;TZID=Australia/Sydney:20261019T090000", "SUMMARY:x", rule));

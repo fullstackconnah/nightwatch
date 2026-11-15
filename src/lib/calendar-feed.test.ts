@@ -174,6 +174,13 @@ describe("getCalendarResponse", () => {
     assert.equal(ok(await getCalendarResponse(Date.parse("2026-11-17T10:00:01+11:00"))).stale, true);
     assert.deepEqual(await getCalendarResponse(Date.parse("2026-11-18T10:00:00+11:00")), { status: "error" });
   });
+  it("waits for the running fetch when the saved copy no longer covers the served days", async () => {
+    await getCalendarResponse(NOW);
+    const later = Date.parse("2026-11-18T10:00:00+11:00");
+    assert.deepEqual(titles(await getCalendarResponse(later)), ["Later", "NextWeek"]); // fresh feed, not an error
+    handler = reject(new Error("down"));
+    assert.deepEqual(await getCalendarResponse(Date.parse("2026-11-20T10:00:00+11:00")), { status: "error" });
+  });
   it("a wall left open over midnight already has its new tomorrow", async () => {
     handler = async () => new Response(cal(ev("Today", "20261116T120000", "20261116T130000"), ev("Wed", "20261118T090000", "20261118T100000"), ev("Thu", "20261119T090000", "20261119T100000")));
     assert.deepEqual(titles(await getCalendarResponse(NOW)), ["Today", "Wed"]);
