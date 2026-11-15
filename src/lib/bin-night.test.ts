@@ -213,7 +213,7 @@ test("mergeBins: a refused rule stores nothing and returns the first message", (
 });
 
 test("mergeBins: a BOM inside a bin name is removed, not turned into a space", () => {
-  const saved = nextOf(mergeBins(synthetic, { collections: [{ name: "Recy﻿cling", weekday: TUE, every: 1 }] }));
+  const saved = nextOf(mergeBins(synthetic, { collections: [{ name: "Recy\uFEFFcling", weekday: TUE, every: 1 }] }));
   assert.equal((saved.bins as BinsConfig).collections[0].name, "Recycling");
 });
 

@@ -58,7 +58,7 @@ export const binLine = (names: string[]): string => binLineSegments(names).map((
 // ---- the checker ----
 // Whitespace first becomes a space (so "a<TAB>b" stays two words), then control and invisible characters go.
 const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu; // control, format (zero-width, bidi, soft hyphen, BOM), line and paragraph separators
-const cleanName = (s: string): string => s.replace(/﻿/g, "").replace(/\s+/g, " ").replace(INVISIBLE, "").replace(/ +/g, " ").trim();
+const cleanName = (s: string): string => s.replace(/\uFEFF/g, "").replace(/\s+/g, " ").replace(INVISIBLE, "").replace(/ +/g, " ").trim();
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
 export const BIN_COPY = {
