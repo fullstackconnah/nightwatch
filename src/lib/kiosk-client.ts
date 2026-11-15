@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/client";
+import type { SunAirAir, SunAirUv } from "@/lib/kiosk-sun-air";
 import type { KioskVitalsData } from "@/lib/kiosk-vitals-view";
 import type { NowPlayingSnapshot } from "@/lib/types/nowplaying";
 import { applyWxPreview } from "@/lib/kiosk-weather-fx";
@@ -180,6 +181,9 @@ export interface KioskWeatherOk {
      *  cache), the stop ramp's own hand-tuned direction is left untouched. */
     azimuthDeg?: number;
   };
+  /** UV and air, read by kiosk-sun-air.ts; absent on a payload cached before they existed. */
+  uv?: SunAirUv | null;
+  air?: SunAirAir | null;
 }
 
 export type KioskWeatherResponse =

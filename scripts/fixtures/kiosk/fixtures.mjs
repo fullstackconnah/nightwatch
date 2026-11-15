@@ -131,3 +131,49 @@ export const ROUTES = {
   "/kiosk/api/briefing": { status: "unconfigured" },
   "/kiosk/api/weather/radar": { status: "unconfigured" },
 };
+
+/** UV and air states for the sun-air shots (kiosk-uv). Invented values. `at` pins the clock (Sydney, June, +10:00); `want` is
+ *  the text the state must show (the shots fail the state when it is absent) and `not` text it must not. Sunset is 19:42 on every day (wx=off);
+ *  under ?wx=overcast the client sees the preview's 18:40 instead. Crowded (18:30) is before either and uv-past (19:50) after both. `base` is the same moment with no UV or air
+ *  (the Standard weather-line growth is measured against it). */
+const uvOf = (day, peak, peakAt = "12:30 pm") => ({ day, peak, peakAt });
+export const SUN_AIR_STATES = {
+  ordinary: { at: "11:00", uv: uvOf("today", 6), air: { index: 31 }, want: ["Hats and sunscreen", "peak 12:30 pm", "Fair", "Index 31"] },
+  morning: { at: "07:30", uv: uvOf("today", 6), air: { index: 31 }, want: ["Hats and sunscreen"] },
+  crowded: { at: "18:30", uv: uvOf("today", 12), air: { index: 31 }, want: ["peaked 12:30 pm", "Extreme", "Hats and sunscreen"] },
+  "crowded-am": { at: "07:30", uv: uvOf("today", 12), air: { index: 31 }, want: ["Extreme", "Hats and sunscreen"] },
+  "uv-past": { at: "19:50", uv: uvOf("today", 12), air: { index: 31 }, want: ["Peaked 12:30 pm", "Extreme"], not: ["Hats and sunscreen"] },
+  tomorrow: { at: "21:00", uv: uvOf("tomorrow", 12), air: { index: 31 }, want: ["Pack hats and sunscreen", "Extreme tomorrow", "peak 12:30 pm"] },
+  worst: { at: "21:00", uv: uvOf("tomorrow", 10), air: { index: 140 }, want: ["Very high tomorrow", "Extremely poor", "Index 140"] },
+  "air-poor-uv-low": { at: "11:00", uv: uvOf("today", 2), air: { index: 74 }, want: ["No hats needed", "Poor", "Index 74"] },
+  "uv-missing-air-moderate": { at: "11:00", uv: null, air: { index: 52 }, want: ["Moderate", "Index 52"], not: ["UV"] },
+  "air-missing-uv-9": { at: "11:00", uv: uvOf("today", 9, "1:00 pm"), air: null, want: ["Very high", "peak 1:00 pm"], not: ["Air quality"] },
+  stale: { at: "11:00", uv: uvOf("today", 6), air: { index: 31 }, want: ["Hats and sunscreen"] },
+  quiet: { at: "11:00", uv: uvOf("today", 2), air: { index: 12 }, want: [], quiet: true },
+};
+
+/** /kiosk/api/weather for one sun-air state (`base: true` drops uv and air). */
+export function sunAirWeatherFor(state, { base = false } = {}) {
+  const s = SUN_AIR_STATES[state];
+  const w = weatherFor("midday");
+  return { ...w, days: w.days.map((d) => ({ ...d, sunrise: `${d.date}T07:00`, sunset: `${d.date}T19:42` })), ...(base ? {} : { uv: s.uv, air: s.air }) };
+}
+
+/** The pinned instant for a sun-air state. */
+export const sunAirInstant = (state) => `2026-06-15T${SUN_AIR_STATES[state].at}:00+10:00`;
+
+/** What the Standard weather line must contain for a state (`not`: must not). Day and evening read "UV 6 High" and "Air fair";
+ *  morning (07:30) is two MicroDatum, value only ("6 High", "Fair"). */
+export const SUN_AIR_STD = {
+  ordinary: { want: ["UV 6 High", "Air fair"] },
+  morning: { want: ["6 High", "Fair"] },
+  crowded: { want: ["UV 12 Extreme", "Air fair"] },
+  "crowded-am": { want: ["12 Extreme", "Fair"] },
+  "uv-past": { want: ["UV peaked 12 Extreme", "Air fair"] },
+  tomorrow: { want: ["UV 12 Extreme tomorrow", "Air fair"] },
+  worst: { want: ["UV 10 Very high tomorrow", "Air extremely poor"] },
+  "air-poor-uv-low": { want: ["UV 2 Low", "Air poor"] },
+  "uv-missing-air-moderate": { want: ["Air moderate"], not: ["UV"] },
+  "air-missing-uv-9": { want: ["UV 9 Very high"], not: ["Air"] },
+  quiet: { want: ["UV 2 Low"], not: ["Air"] },
+};

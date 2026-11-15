@@ -13,7 +13,7 @@
 
    The ROTATING carousel is not here. It lives in kiosk-surface.tsx, inside
    the shared forecast FLIP node, because the owner wanted the wide band under
-   the clock to be what cycles — forecast, news, climate, containers — rather
+   the clock to be what cycles — forecast, sun-air, news, climate, containers — rather
    than a second pane area stacked beneath it. `layout.glance` drives THAT.
    What this file still renders is the fixed stack below the band plus the two
    corner buttons, all of which stay OUTSIDE the rotation on purpose: a

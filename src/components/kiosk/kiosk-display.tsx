@@ -46,6 +46,7 @@ import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kios
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
+import { type SunAirAir, type SunAirInlineItem, type SunAirTone, type SunAirUv, type SunAirView, sunAirView } from "@/lib/kiosk-sun-air";
 import { briefingRefreshMs } from "@/lib/briefing-poll";
 import { type WeatherViewStatus, weatherViewStatus } from "@/lib/kiosk/view-status";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -168,6 +169,9 @@ interface WeatherOk {
   rain?: WeatherRain;
   /** Same payload as KioskWeatherOk.sun; only the night glyph reads it here. */
   sun?: KioskWeatherOk["sun"];
+  /** UV and air for the sun-air view (kiosk-sun-air.ts); absent on a payload cached before they existed. */
+  uv?: SunAirUv | null;
+  air?: SunAirAir | null;
 }
 
 type WeatherResponse =
@@ -296,7 +300,29 @@ function SectionLabel({ icon: Icon, label }: { icon: LucideIcon; label: string }
   );
 }
 
-function MicroDatum({ icon: Icon, label, value }: { icon?: LucideIcon; label: string; value: string }) {
+/** The UV and air view, recomputed as the wall clock passes the peak and sunset (shared by the Standard inline and the glance pane). */
+export function useSunAirView(ok: WeatherOk | null) {
+  // Minute ticks: the view changes only at the peak time and sunset. 0 is "not yet known" (hydration), so no view then.
+  const now = useNow(true, true);
+  return useMemo(() => (now === 0 ? null : sunAirView(ok, new Date(now))), [ok, now]);
+}
+
+/** MicroDatum values are `text-ink` by default; only a tone changes that. */
+const microTone = (t: SunAirTone) => (t === "none" ? "text-ink" : SUN_AIR_TONE_CLASS[t]);
+
+export const SUN_AIR_TONE_CLASS: Record<SunAirTone, string> = { none: "text-ink-dim", warn: "text-warn", bad: "text-bad" };
+
+/** One inline UV or air item in the weather line: the label stays faint, the value takes the tone. */
+function SunAirInline({ item }: { item: SunAirInlineItem }) {
+  const sr = useKioskTheme() === "sunroom";
+  return (
+    <span data-sun-inline="" key={sr ? item.text : undefined} className={sr ? "whitespace-nowrap font-mono text-sm text-ink-faint sr-fade-in" : "whitespace-nowrap font-mono text-sm text-ink-faint"}>
+      {item.label} <span className={SUN_AIR_TONE_CLASS[item.tone]}>{item.text.slice(item.label.length + 1)}</span>
+    </span>
+  );
+}
+
+function MicroDatum({ icon: Icon, label, value, toneClass = "text-ink" }: { icon?: LucideIcon; label: string; value: string; toneClass?: string }) {
   // Sunroom: a changed reading cross-fades in over 180 ms (keyed on the value), it never rolls.
   const sr = useKioskTheme() === "sunroom";
   return (
@@ -305,7 +331,7 @@ function MicroDatum({ icon: Icon, label, value }: { icon?: LucideIcon; label: st
         {Icon && <Icon size={11} aria-hidden />}
         <span className="microlabel">{label}</span>
       </div>
-      <span key={sr ? value : undefined} className={sr ? "font-mono text-sm text-ink sr-fade-in" : "font-mono text-sm text-ink"}>
+      <span key={sr ? value : undefined} className={sr ? `font-mono text-sm ${toneClass} sr-fade-in` : `font-mono text-sm ${toneClass}`}>
         {value}
       </span>
     </div>
@@ -348,12 +374,14 @@ function CurrentWeatherLarge({
   place,
   stale,
   rain,
+  sunAir,
 }: {
   current: WeatherCurrent;
   today: WeatherDay;
   place: string;
   stale: boolean;
   rain?: WeatherRain;
+  sunAir: SunAirView | null;
 }) {
   // No icon/temp/label here (redesign-06 follow-up, 2026-08-03): the shared
   // header (kiosk-surface.tsx's TempNode) already states the current reading
@@ -367,11 +395,13 @@ function CurrentWeatherLarge({
           {place && <span className="text-xs">{place}</span>}
           {stale && <StaleTag />}
         </div>
-        <div className="flex flex-wrap items-center gap-4">
+        <div data-weather-datums="" className="flex flex-wrap items-center gap-4">
           <MicroDatum label="feels" value={`${Math.round(current.feelsC)}°`} />
           <MicroDatum icon={Droplets} label="rain" value={`${current.precipMm.toFixed(1)} mm`} />
           <MicroDatum icon={Wind} label="wind" value={`${Math.round(current.windKmh)} km/h`} />
           <MicroDatum label="humidity" value={`${Math.round(current.humidityPct)}%`} />
+          {sunAir?.inline.uv && <MicroDatum label={sunAir.inline.uv.label} value={sunAir.inline.uv.value} toneClass={microTone(sunAir.inline.uv.tone)} />}
+          {sunAir?.inline.air && <MicroDatum label={sunAir.inline.air.label} value={sunAir.inline.air.value} toneClass={microTone(sunAir.inline.air.tone)} />}
           <MicroDatum icon={Sunrise} label="sunrise" value={clockOf(today.sunrise)} />
         </div>
       </div>
@@ -387,12 +417,14 @@ function CurrentWeatherCompact({
   mode,
   stale,
   rain,
+  sunAir,
 }: {
   current: WeatherCurrent;
   today: WeatherDay;
   mode: "day" | "evening";
   stale: boolean;
   rain?: WeatherRain;
+  sunAir: SunAirView | null;
 }) {
   // No icon/temp/label here either — same duplicate-reading fix as
   // CurrentWeatherLarge above. Feels-like joins the day row (it wasn't shown
@@ -400,7 +432,7 @@ function CurrentWeatherCompact({
   // once the current reading itself moves out.
   const sr = useKioskTheme() === "sunroom";
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+    <div data-weather-line="" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {mode === "day" ? (
         <span
           key={sr ? `${Math.round(current.feelsC)}|${Math.round(today.maxC)}|${Math.round(today.minC)}|${today.rainPct}` : undefined}
@@ -416,6 +448,8 @@ function CurrentWeatherCompact({
         </span>
       )}
       {rain?.summary && <RainSummaryText summary={rain.summary} className="text-xs text-ink-dim" />}
+      {sunAir?.inline.uv && <SunAirInline item={sunAir.inline.uv} />}
+      {sunAir?.inline.air && <SunAirInline item={sunAir.inline.air} />}
       {stale && <StaleTag />}
     </div>
   );
@@ -528,6 +562,7 @@ function RainHourlyRibbon({ hours }: { hours: WeatherRain["hours"] }) {
 /* ── weather band ────────────────────────────────────────────────────────── */
 
 function WeatherBand({ period, weather }: { period: KioskPeriod; weather: WeatherView }) {
+  const sunAir = useSunAirView(weather.ok);
   if (weather.status === "unconfigured") return <WeatherUnconfigured />;
   if (weather.status === "unreachable-empty") return <WeatherUnreachable detail={weather.detail} />;
   if (weather.status === "loading" || !weather.ok) return <WeatherSkeleton />;
@@ -548,7 +583,7 @@ function WeatherBand({ period, weather }: { period: KioskPeriod; weather: Weathe
   return (
     <section>
       {period === "morning" ? (
-        <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} rain={rain} />
+        <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} rain={rain} sunAir={sunAir} />
       ) : (
         <CurrentWeatherCompact
           current={current}
@@ -556,6 +591,7 @@ function WeatherBand({ period, weather }: { period: KioskPeriod; weather: Weathe
           mode={period === "evening" ? "evening" : "day"}
           stale={stale}
           rain={rain}
+          sunAir={sunAir}
         />
       )}
     </section>

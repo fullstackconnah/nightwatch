@@ -30,7 +30,8 @@ import { Container, Newspaper, Thermometer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KioskAssistant } from "@/components/kiosk/kiosk-assistant";
 import { KioskForecastRail } from "@/components/kiosk/kiosk-forecast";
-import { useKioskBriefing, useWeatherView, type KioskPeriod } from "@/components/kiosk/kiosk-display";
+import { KioskSunAir } from "@/components/kiosk/kiosk-sun-air";
+import { useKioskBriefing, useSunAirView, useWeatherView, type KioskPeriod } from "@/components/kiosk/kiosk-display";
 import { useKioskHa } from "@/components/kiosk/kiosk-hub";
 import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -42,6 +43,7 @@ import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk/kio
 
 export type KioskWidgetId =
   | "forecast"
+  | "sun-air"
   | "assistant"
   | "news"
   | "briefing"
@@ -161,6 +163,19 @@ function ForecastWidget({ period, reportEmpty }: { period: KioskPeriod; reportEm
       <KioskForecastRail days={days} emphasizeIndex={period === "evening" ? 1 : null} size="glance" />
     </div>
   );
+}
+
+/* ── sun-air (peak UV and air quality) ───────────────────────────────────── */
+
+/* Present only when there is something to act on (UV 3+ needs cover, air
+   Moderate or worse); otherwise it reports empty and the carousel drops the
+   pane and its dot. kiosk-sun-air.ts owns that rule and every word. */
+function SunAirWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void }) {
+  const weather = useWeatherView();
+  const view = useSunAirView(weather.ok);
+  useEmptyReport(!view?.glance, reportEmpty);
+  if (!view?.glance) return null;
+  return <KioskSunAir glance={view.glance} sr={view.sr} stale={weather.status === "ready-stale"} />;
 }
 
 function WeatherOutlookWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
@@ -450,6 +465,15 @@ export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
     render: (ctx) => <ForecastWidget period={ctx.period} reportEmpty={ctx.reportEmpty} />,
   },
   {
+    id: "sun-air",
+    label: "UV and air",
+    blurb: "Today's peak UV and the air quality; shown only when one needs action.",
+    // Band-only: Standard carries the same two readings inline in the weather line.
+    allow: ["glance"],
+    requires: "weather",
+    render: (ctx) => <SunAirWidget reportEmpty={ctx.reportEmpty} />,
+  },
+  {
     id: "assistant",
     label: "Assistant",
     blurb: "Ask a question or control the house in plain words.",
@@ -547,17 +571,21 @@ export const KIOSK_WIDGET_MAP: ReadonlyMap<KioskWidgetId, KioskWidgetDef> = new 
   KIOSK_WIDGETS.map((w) => [w.id, w]),
 );
 
-/** Reproduces today's glance content exactly (weather sentence, the morning
+/** Reproduces today's glance content (weather sentence, the morning
  *  briefing digest line, and the lights/scenes tiles GlanceTiles used to pick
  *  from) — see kiosk-widgets.tsx's THESIS and the carousel's own THESIS for
  *  why `news`/`containers`/`vitals`/etc. are shipped as available widgets but
  *  NOT defaulted on: an untouched device must look unchanged after this
- *  lands, and the new content is one visit to the Widgets tab away. Full's
+ *  lands, and the new content is one visit to the Widgets tab away. The one
+ *  addition is `sun-air`, straight after `forecast`: it shows only when UV
+ *  needs sun cover or the air is Moderate or worse, so most days an untouched
+ *  device still looks unchanged. A device with a saved layout is not
+ *  migrated; it adds the pane from the Widgets tab. Full's
  *  default is empty — KioskDisplay + KioskHub already show everything full
  *  mode showed before this feature existed, unmanaged by widgets (see
  *  FullContent in kiosk-surface.tsx). */
 export const DEFAULT_WIDGET_LAYOUT: KioskWidgetLayout = {
-  glance: ["forecast", "news", "climate", "containers"],
+  glance: ["forecast", "sun-air", "news", "climate", "containers"],
   full: [],
 };
 

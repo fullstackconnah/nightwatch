@@ -55,13 +55,18 @@ function getSnapshot(): number {
   return Math.floor(Date.now() / TICK_MS) * TICK_MS;
 }
 
+function getMinuteSnapshot(): number {
+  return Math.floor(Date.now() / 60_000) * 60_000;
+}
+
 /** There is no "now" that survives to hydration; callers treat 0 as "not yet known". */
 function getServerSnapshot(): number {
   return 0;
 }
 
-export function useNow(live: boolean): number {
-  return useSyncExternalStore(live ? subscribe : subscribeIdle, getSnapshot, getServerSnapshot);
+/** `minute`: whole minutes, for a caller that shows nothing finer, so it re-renders once a minute, not every second. */
+export function useNow(live: boolean, minute = false): number {
+  return useSyncExternalStore(live ? subscribe : subscribeIdle, minute ? getMinuteSnapshot : getSnapshot, getServerSnapshot);
 }
 
 /** Below this, the displayed value changes every second and needs the shared timer. */

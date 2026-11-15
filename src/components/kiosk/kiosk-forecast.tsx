@@ -88,7 +88,7 @@ type RailSize = "full" | "glance";
    on `full`'s floor, since 390px is the phone regression check and glance's
    bigger glyphs have no room to spare there. Each size carries its own column
    reveal points, offset to where its own type actually fits. */
-const SIZE: Record<
+export const SIZE: Record<
   RailSize,
   { day: string; temp: string; low: string; icon: string; gap: string; revealFourth: string; revealFifth: string }
 > = {
