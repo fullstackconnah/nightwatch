@@ -6,6 +6,7 @@ export const vikunja: WidgetFetcher = async (w) => {
   if (!w.key) throw new WidgetError("no API token");
   const specs = w.fields?.length ? w.fields.slice(0, 4) : [{ label: "Open", path: "done = false" }]; // a card shows 4
   const base = w.url.replace(/\/+$/, "");
+  if (specs.some((f) => !f.path?.trim())) throw new WidgetError("empty filter"); // an empty filter counts every task or gets a 400
   return Promise.all(
     specs.map(async (f): Promise<WidgetField> => {
       const { headers } = await fetchJsonWithHeaders(`${base}/api/v1/tasks?per_page=1&filter=${encodeURIComponent(f.path)}`, {

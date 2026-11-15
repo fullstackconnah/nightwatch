@@ -25,7 +25,7 @@ import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import { DAY_NAMES, MAX_BINS, MAX_NAME, binLine, checkBins, nextBinNight, nightLabel, type BinsConfig } from "@/lib/bin-night";
 import { localDateString } from "@/lib/local-time";
-import { checkRestoreDate, drillAge, drillAgeText, drillDateText } from "@/lib/backup-status";
+import { checkRestoreDate, drillAge, drillAgeText, drillDateText, validStoredDrill } from "@/lib/backup-status";
 import type { AppConfig } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
 import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar-status";
@@ -652,7 +652,7 @@ export function CalendarCard({ data, mutate }: PanelProps) {
 // Restore drill: the one day the owner last restored a backup by hand. Blank plus Save clears it, so there is no ClearAction.
 
 export function RestoreDrillCard({ data, mutate }: PanelProps) {
-  const stored = data?.config.restoreTestedOn ?? "";
+  const stored = validStoredDrill(data?.config.restoreTestedOn) ?? ""; // a hand-edited bad date reads as not recorded
   const today = localDateString(data?.config.display?.timezone);
   const [typed, setTyped] = useState("");
   const [seeded, setSeeded] = useState(false);
@@ -661,7 +661,7 @@ export function RestoreDrillCard({ data, mutate }: PanelProps) {
 
   useEffect(() => {
     if (data && !seeded) {
-      setTyped(data.config.restoreTestedOn ?? "");
+      setTyped(stored);
       setSeeded(true);
     }
   }, [data, seeded]);

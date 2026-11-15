@@ -55,6 +55,8 @@ export interface ProbeDef {
   label: string;
   /** `isLate()` is true once this probe's deadline fired: skip any state write, the result is dropped. */
   run: (isLate: () => boolean) => RawHit[] | typeof PENDING | Promise<RawHit[] | typeof PENDING>;
+  /** Hits still reported when `run` throws (the status stays `failed`). */
+  hitsOnFail?: RawHit[];
 }
 export interface ProbeOutcome {
   status: ProbeStatus;
@@ -75,7 +77,7 @@ export const clipError = (e: unknown): string => {
  */
 export function runProbes(defs: ProbeDef[], deadlineMs: number): Promise<ProbeOutcome[]> {
   return Promise.all(
-    defs.map(async ({ id, label, run }): Promise<ProbeOutcome> => {
+    defs.map(async ({ id, label, run, hitsOnFail }): Promise<ProbeOutcome> => {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let late = false;
       const deadline = new Promise<typeof PENDING>((resolve) => {
@@ -86,7 +88,7 @@ export function runProbes(defs: ProbeDef[], deadlineMs: number): Promise<ProbeOu
         if (found === PENDING) return { status: { id, label, state: "pending" }, hits: [] };
         return { status: { id, label, state: "answered", hits: found.length }, hits: found };
       } catch (e) {
-        return { status: { id, label, state: "failed", error: clipError(e) }, hits: [] };
+        return { status: { id, label, state: "failed", error: clipError(e) }, hits: hitsOnFail ?? [] };
       } finally {
         clearTimeout(timer);
       }

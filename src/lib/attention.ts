@@ -361,14 +361,18 @@ async function probeDiskCapacity(): Promise<RawHit[]> {
  * missing or unreadable status file throws, so the report shows the backup
  * probe as failed rather than quiet; the kiosk still says nothing for it.
  */
+/** The owner's own restore drill rides after the backup hit (also when the status file can't be read), and is Home-only (firstHit skips it for the kiosk). */
+function drillHits(drill: RestoreDrill | null): RawHit[] {
+  const due = drill ? drillHit(drill) : null;
+  return due ? [hit(due.subject, due.severity, due)] : [];
+}
+
 function probeBackup(status: BackupStatus | null, readError: unknown, drill: RestoreDrill | null): RawHit[] {
   if (!status) throw readError;
   if (status.status === "missing") throw new Error("the backup status file is missing");
   if (status.status === "unreadable") throw new Error(`the backup status file is unreadable: ${status.reason}`);
 
-  // The owner's own restore drill rides after the backup hit, and is Home-only (firstHit skips it for the kiosk).
-  const drillDue = drill ? drillHit(drill) : null;
-  const extra = drillDue ? [hit(drillDue.subject, drillDue.severity, drillDue)] : [];
+  const extra = drillHits(drill);
 
   const summary = summarizeBackup(status, Date.now());
   if (summary.worst === "OK") return extra;
@@ -540,7 +544,7 @@ async function computeReport(): Promise<Computed> {
     { id: "mounts", label: "Mounts", run: () => probeMountReadable() },
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.
-    { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure, drill) },
+    { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure, drill), hitsOnFail: drillHits(drill) },
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),

@@ -378,6 +378,7 @@ test("restore drill strip sits after calendar, not counted as an integration", (
 test("restore drill strip state: never recorded, then the saved day", () => {
   assert.deepEqual(strip(model(), "restore"), { id: "restore", title: "Restore drill", state: "Not recorded", tone: null });
   assert.equal(strip(model({ d: { restore: "2026-10-12" } }), "restore").state, "Last drill 12 Oct 2026");
+  for (const bad of ["garbage", "2026-13-45"]) assert.equal(strip(model({ d: { restore: bad } }), "restore").state, "Not recorded");
 });
 
 test("a failed restore drill save names the date", () => {
