@@ -1791,11 +1791,19 @@ async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 
   const page = await context.newPage();
   page.on("pageerror", (e) => { pageErrors++; BN.failed.push(`settings ${name} pageerror ${String(e?.message ?? e).slice(0, 120)}`); });
   await page.route((u) => u.pathname === "/api/settings", (r) => (r.request().method() === "GET" ? r.fulfill({ json: settingsFullFor(rule) }) : r.fallback()));
-  await page.goto(`${BASE_URL}/settings#bins`, { waitUntil: "domcontentloaded" });
   const intro = page.getByText("The wall kiosk shows a line from 5 pm to 10 pm");
+  const consoleErrs = []; page.on("console", (m) => { if (m.type() === "error" && consoleErrs.length < 3) consoleErrs.push(m.text().slice(0, 120)); });
+  try {
+  await page.goto(`${BASE_URL}/settings#bins`, { waitUntil: "domcontentloaded" });
   await intro.waitFor({ state: "attached", timeout: 20_000 });
   if (!(await intro.isVisible().catch(() => false))) await page.getByRole("button", { name: /Bin night/ }).first().click().catch(() => {});
   await intro.waitFor({ state: "visible", timeout: 10_000 });
+  } catch (err) { // diagnostics: say what the page showed instead of the card
+    await page.screenshot({ path: join(OUT_DIR, `bins-settings-${name}-FAILED.png`), fullPage: true }).catch(() => {});
+    const body = await page.evaluate(() => document.body.innerText).catch(() => "");
+    BN.failed.push(`settings ${name} FAILED ${page.url()} body=${JSON.stringify(String(body).slice(0, 300))} console=${JSON.stringify(consoleErrs)}`);
+    throw err;
+  }
   await page.waitForTimeout(600);
   if (drive) await drive(page);
   await page.waitForTimeout(300);
