@@ -206,3 +206,53 @@ export const SUN_AIR_STD = {
   "air-missing-uv-9": { want: ["UV 9 Very high"], not: ["Air"] },
   quiet: { want: ["UV 2 Low"], not: ["Air"] },
 };
+
+/** Bin night (kiosk-bins). ONE date: the fake clock (binInstant) and every `night.date` below come from BIN_TODAY (a Monday), so a mocked
+ *  "tonight" cannot drift off the clock. The evening states assert the line IS there, so the absence checks cannot pass with the feature broken.
+ *  `at` is the local time in ZONE; `crowded` borrows the sun-air crowded weather (UV 12, the busiest below-band stack). */
+export const BIN_TODAY = "2026-06-15";
+export const BIN_PAST = "2026-06-14";
+export const binInstant = (hhmm) => `${BIN_TODAY}T${hhmm}:00+10:00`;
+const binsOk = (date, ...bins) => ({ status: "ok", night: { date, bins } });
+export const BIN_STATES = {
+  evening: { at: "19:00", body: binsOk(BIN_TODAY, "Recycling"), want: "Recycling goes out tonight" },
+  crowded: { at: "18:30", body: binsOk(BIN_TODAY, "Recycling"), want: "Recycling goes out tonight", crowded: true },
+  "two-bin-fallback": { at: "19:00", body: binsOk(BIN_TODAY, "Garden organics", "General waste"), want: "Garden organics and General waste tonight" },
+  // absent: the same moment and the same data as a present state, minus the thing that switches the line on
+  quiet: { at: "19:00", body: { status: "ok", night: null } },
+  ordinary: { at: "11:00", body: binsOk(BIN_TODAY, "Recycling") },
+  morning: { at: "07:30", body: binsOk(BIN_TODAY, "Recycling") },
+  "crowded-am": { at: "07:30", body: binsOk(BIN_TODAY, "Recycling"), crowded: true },
+  "fail-bins": { at: "19:00", body: { status: "error" } },
+  "stale-bins": { at: "19:00", body: binsOk(BIN_PAST, "Recycling") }, // a payload whose date has passed
+  unconf: { at: "19:00", body: { status: "unconfigured" } },
+  "unconf-crowded": { at: "18:30", body: { status: "unconfigured" }, crowded: true }, // the baseline for the crowded Standard row (same weather, no rule)
+  "night-wake": { at: "23:00", body: binsOk(BIN_TODAY, "Recycling") },
+};
+export const binWeatherFor = (state) => sunAirWeatherFor(BIN_STATES[state].crowded ? "crowded" : "ordinary");
+
+/** The Bin night card's saved rules (Tuesday trucks; Garden's anchor is a Tuesday on the same week as 2026-06-16) and GET /api/settings around them. */
+export const BIN_RULE_TWO = {
+  collections: [
+    { name: "Recycling", weekday: 2, every: 1 },
+    { name: "Garden organics", weekday: 2, every: 2, anchor: "2026-11-03" },
+  ],
+};
+/** Wednesday trucks: "Garden organics, General waste and Cans" would be a 47-character night (the card-level refusal). */
+export const BIN_RULE_WED = {
+  collections: [
+    { name: "Garden organics", weekday: 3, every: 1 },
+    { name: "General waste", weekday: 3, every: 1 },
+  ],
+};
+export const settingsFullFor = (bins) => ({
+  config: { widgets: [], display: { timezone: ZONE }, ...(bins ? { bins } : {}) },
+  versions: { tiles: "1", widgets: "1" },
+  meta: { widgetTypes: ["generic"], publicHost: "nightwatch.example", dockgeUrl: "http://dockge.example.invalid", authConfigured: true, dataDir: "/data", hermesModelUpdatedAt: null, mcpEnabled: false, mcpEndpoint: "", kioskPinConfigured: false },
+  integrations: {
+    homeassistant: { configured: false }, npm: { configured: false }, forgejo: { configured: false }, github: { configured: false },
+    minecraft: { configured: false }, media: { configured: false }, hermes: { openrouterConfigured: false, anthropicConfigured: false },
+  },
+  system: { mcpTokenConfigured: false, kioskPinConfigured: false, hermesApiConfigured: false, voiceConfigured: false, oidcClientSecretConfigured: false },
+  hermesDaemon: { discordWebhookConfigured: false, discordBotTokenConfigured: false, discordAllowedUserIds: [], updatedAt: null },
+});

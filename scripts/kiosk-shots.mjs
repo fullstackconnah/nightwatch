@@ -18,6 +18,7 @@
  * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
  * UV and air (kiosk-uv): sunAir.N1..N8 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
+ * Bin night (kiosk-bins): bins.N1..N9,N11 (true/false; the run exits 1 if any is false), bins.entries.<Nx>[], bins.states, bins.settings.<state>, bins.failed[]. Shots bins-*.png. N10 is src/lib/bin-night.test.ts.
  * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
@@ -26,6 +27,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { uvContrast } from "./kiosk-uv-contrast.mjs";
 import { AUTO_OFF, LIST_EMPTY, LIST_STATES, LONG_NAMES, listBody, longNamesBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { BIN_RULE_TWO, BIN_RULE_WED, BIN_STATES, binInstant, binWeatherFor, settingsFullFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -1593,6 +1595,261 @@ for (const n of LNS) {
   if (e.length < L_NEED[n]) LS.failed.push(`${n} has ${e.length} entries, needs ${L_NEED[n]}`);
 }
 if (LS.failed.length) process.exitCode = 1;
+
+// ---- kiosk bin night: numeric checks N1-N9 and N11 (N10 is src/lib/bin-night.test.ts) and the capture states ----
+// results.bins.{N1..N9,N11}: true | false (each needs its entries; a missing entry fails it), results.bins.entries.<Nx>[] the numbers,
+// results.bins.states.<key> the measurements, results.bins.settings.<state> {ok, missing[], present[], ...}, results.bins.failed[] (one line each).
+// Shots: bins-<key>.png (+ -crop.png) and bins-settings-<state>.png. The run exits 1 when any N is false or any state fails.
+// ONE date: binInstant() pins the clock and every mocked night.date is BIN_TODAY (fixtures.mjs). The evening states assert the line IS there with its exact
+// sentence, so the absence checks (N9) cannot pass with the feature broken. /kiosk/api/bins is answered per state through visit()'s `routes`.
+const BN = (results.bins = { entries: {}, states: {}, settings: {}, failed: [] });
+const BNS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N11"];
+for (const n of BNS) BN.entries[n] = [];
+const bnRecord = (n, key, ok, detail = {}) => { BN.entries[n].push({ key, ok, ...detail }); if (!ok) BN.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
+const bnRun = (name, fn) => guarded(`bins ${name}`, async () => { try { await fn(); } catch (e) { BN.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const bnNear = (a, b, tol = 0.5) => typeof a === "number" && typeof b === "number" && Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= tol;
+// the clock's date and every mocked night.date are one value; only stale-bins is meant to differ, and it must
+for (const [k, s] of Object.entries(BIN_STATES)) {
+  const same = !s.body.night || s.body.night.date === binInstant(s.at).slice(0, 10);
+  if (same === (k === "stale-bins")) BN.failed.push(`fixture ${k}: night.date ${same ? "matches" : "differs from"} the fake clock's date`);
+}
+const BIN_THEME_URL = (theme, std = false) => `${BASE_URL}/kiosk?theme=${theme}&wx=overcast&wxsun=day${std ? "&layout=standard" : ""}`;
+const binsVisit = (state, url, size) => visit(url, { viewport: size.viewport, weather: binWeatherFor(state), fixedTime: true, instant: binInstant(BIN_STATES[state].at), routes: { "/kiosk/api/bins": BIN_STATES[state].body } });
+
+/** Glance: the line, the stack around it and the probes the checks compare against. Every number is read from the house class it measures. */
+const BIN_GLANCE = () => {
+  const probe = (cls) => {
+    const el = Object.assign(document.createElement("span"), { className: cls, textContent: "x" });
+    document.body.append(el);
+    const cs = getComputedStyle(el);
+    const o = { lineHeight: parseFloat(cs.lineHeight), fontSize: parseFloat(cs.fontSize), maxWidth: parseFloat(cs.maxWidth) };
+    el.remove();
+    return o;
+  };
+  const shown = [...document.querySelectorAll('[data-rain-zone="sentence"] p')].filter((p) => { const r = p.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+  const line = document.querySelector('[data-bin-night="line"]');
+  const out = { nodes: document.querySelectorAll("[data-bin-night]").length, prose: shown.length, proseTexts: shown.map((p) => p.textContent.trim()), rendered: !!document.querySelector("[data-kiosk-theme]") };
+  if (!line) return out;
+  const r = line.getBoundingClientRect();
+  const wrap = line.parentElement;
+  const wr = wrap.getBoundingClientRect();
+  const next = wrap.nextElementSibling;
+  const nr = next ? next.getBoundingClientRect() : null;
+  const stack = wrap.parentElement;
+  const kids = [...stack.children].map((c) => c.getBoundingClientRect()).filter((k) => k.height > 0);
+  const cluster = document.querySelector('[data-rain-zone="tiles"]');
+  const svg = line.querySelector("svg")?.getBoundingClientRect();
+  const base = probe("text-base");
+  const top = Math.max(0, Math.min(wr.top, ...(nr ? [nr.top] : [])) - 16);
+  return {
+    ...out, text: line.textContent, h: r.height, scrollW: line.scrollWidth, clientW: line.clientWidth, w: r.width,
+    lineHeight: base.lineHeight, fontSize: base.fontSize, maxW: probe("max-w-xl").maxWidth,
+    gapToNext: nr ? nr.top - wr.bottom : null, nextText: next ? next.textContent.trim() : null, rowGap: parseFloat(getComputedStyle(stack).rowGap),
+    glyph: svg ? { w: svg.width, h: svg.height } : null,
+    stackBottom: Math.max(...kids.map((k) => k.bottom)), clusterTop: cluster ? cluster.getBoundingClientRect().top : null, stackOverflow: stack.scrollHeight - stack.clientHeight,
+    clip: { x: Math.max(0, wr.left - 16), y: top, width: wr.width + 32, height: (nr ? nr.bottom : wr.bottom) - top + 16 },
+  };
+};
+
+/** Standard: the row, its neighbours, the header and the hub's top. */
+const BIN_STD = () => {
+  const probe = (cls) => {
+    const el = Object.assign(document.createElement("span"), { className: cls, textContent: "x" });
+    document.body.append(el);
+    const v = parseFloat(getComputedStyle(el).lineHeight);
+    el.remove();
+    return v;
+  };
+  const row = document.querySelector('[data-bin-night="row"]');
+  const anchor = document.querySelector("[data-weather-line]") ?? document.querySelector("[data-weather-datums]");
+  const root = anchor ? anchor.closest(".max-w-6xl") : null;
+  const out = {
+    nodes: document.querySelectorAll("[data-bin-night]").length, rendered: !!document.querySelector("[data-kiosk-theme]"),
+    header: document.querySelector("header")?.getBoundingClientRect().height ?? null,
+    hubTop: root && root.lastElementChild ? root.lastElementChild.getBoundingClientRect().top : null,
+  };
+  if (!row) return out;
+  const r = row.getBoundingClientRect();
+  const prev = row.previousElementSibling ? row.previousElementSibling.getBoundingClientRect() : null;
+  const svg = row.querySelector("svg")?.getBoundingClientRect();
+  const sunset = document.querySelector("[data-weather-line] svg.lucide-sunset")?.getBoundingClientRect();
+  return {
+    ...out, text: row.textContent, h: r.height, lineHeight: probe("text-sm"), gap: prev ? r.top - prev.bottom : null, margin: parseFloat(getComputedStyle(row).marginTop),
+    scrollW: row.scrollWidth, clientW: row.clientWidth, glyph: svg ? { w: svg.width, h: svg.height } : null, sunsetW: sunset ? sunset.width : null,
+    clip: { x: Math.max(0, r.left - 16), y: Math.max(0, (prev ? prev.top : r.top) - 8), width: r.width + 32, height: r.bottom - (prev ? prev.top : r.top) + 24 },
+  };
+};
+
+// glance: present states first (N1-N5, N11), then absent ones (N9, N11)
+const BIN_GLANCE_PRESENT = [
+  { key: "evening-1180-sunroom", state: "evening", theme: "sunroom", size: SIZES[0] },
+  { key: "evening-1024-sunroom", state: "evening", theme: "sunroom", size: SIZES[1] },
+  { key: "evening-folio", state: "evening", theme: "folio", size: SIZES[1] },
+  { key: "evening-default", state: "evening", theme: "default", size: SIZES[1] },
+  { key: "crowded-glance-1024", state: "crowded", theme: "sunroom", size: SIZES[1] },
+  { key: "two-bin-fallback", state: "two-bin-fallback", theme: "sunroom", size: SIZES[1] },
+];
+const BIN_ABSENT = ["quiet", "ordinary", "morning", "crowded-am", "fail-bins", "stale-bins", "unconf", "night-wake"];
+const binWake = async (page, state) => {
+  if (state !== "night-wake") return;
+  await page.mouse.click(SIZES[1].viewport.width / 2, SIZES[1].viewport.height / 2); // a wake tap: Standard then runs as "day"
+  await page.waitForTimeout(800);
+};
+for (const g of BIN_GLANCE_PRESENT) {
+  await bnRun(`glance ${g.key}`, async () => {
+    const { context, page } = await binsVisit(g.state, BIN_THEME_URL(g.theme), g.size);
+    const m = await page.evaluate(BIN_GLANCE);
+    BN.states[g.key] = m;
+    const want = BIN_STATES[g.state].want;
+    // the defining text first: a state without its exact sentence fails every check below it
+    const has = m.nodes === 1 && m.text === want;
+    bnRecord("N11", g.key, has && m.prose <= 2, { prose: m.prose, texts: m.proseTexts, want, text: m.text ?? null });
+    bnRecord("N1", g.key, has && bnNear(m.h, m.lineHeight), { h: m.h, lineHeight: m.lineHeight });
+    bnRecord("N2", g.key, has && m.scrollW <= m.clientW && m.w <= m.maxW + 0.5, { scrollW: m.scrollW, clientW: m.clientW, w: m.w, maxW: m.maxW });
+    bnRecord("N3", g.key, has && /^tomorrow /.test(m.nextText ?? "") && bnNear(m.gapToNext, m.rowGap), { gapToNext: m.gapToNext, rowGap: m.rowGap, next: m.nextText });
+    bnRecord("N4", g.key, has && m.clusterTop !== null && m.stackBottom < m.clusterTop && m.stackOverflow <= 1, { stackBottom: m.stackBottom, clusterTop: m.clusterTop, stackOverflow: m.stackOverflow });
+    bnRecord("N5", g.key, has && !!m.glyph && m.glyph.w === 16 && m.glyph.h === 16 && m.glyph.w === m.fontSize, { glyph: m.glyph, fontSize: m.fontSize });
+    await page.screenshot({ path: join(OUT_DIR, `bins-${g.key}.png`) });
+    if (has) await page.screenshot({ path: join(OUT_DIR, `bins-${g.key}-crop.png`), clip: m.clip });
+    await context.close();
+  });
+}
+for (const state of BIN_ABSENT) {
+  await bnRun(`glance absent ${state}`, async () => {
+    const { context, page } = await binsVisit(state, BIN_THEME_URL("sunroom"), SIZES[1]);
+    await binWake(page, state);
+    const m = await page.evaluate(BIN_GLANCE);
+    const key = `glance-${state}`;
+    BN.states[key] = m;
+    bnRecord("N9", key, m.nodes === 0 && m.rendered && !(await crashed(page)), { nodes: m.nodes, rendered: m.rendered });
+    bnRecord("N11", key, m.prose <= 2, { prose: m.prose, texts: m.proseTexts });
+    if (["morning", "fail-bins", "unconf"].includes(state)) await page.screenshot({ path: join(OUT_DIR, `bins-${state}.png`) });
+    await context.close();
+  });
+}
+
+// standard: the row, then the same moment (same clock, same weather) with no rule, for N7 and N8
+const BIN_STD_PRESENT = [
+  { key: "evening-std-1180", state: "evening", size: SIZES[0], base: "unconf" },
+  { key: "evening-std-1024", state: "evening", size: SIZES[1], base: "unconf" },
+  { key: "crowded-standard-1024", state: "crowded", size: SIZES[1], base: "unconf-crowded" },
+];
+const stdVisit = async (state, size) => {
+  const v = await binsVisit(state, BIN_THEME_URL("sunroom", true), size);
+  return { ...v, m: await v.page.evaluate(BIN_STD) };
+};
+const baseline = {};
+for (const [state, size] of [["unconf", SIZES[0]], ["unconf", SIZES[1]], ["unconf-crowded", SIZES[1]]]) {
+  await bnRun(`standard baseline ${state} ${size.name}`, async () => {
+    const { context, m } = await stdVisit(state, size);
+    baseline[`${state}|${size.name}`] = m;
+    BN.states[`std-${state}-${size.name}`] = m;
+    bnRecord("N9", `std-${state}-${size.name}`, m.nodes === 0 && m.rendered, { nodes: m.nodes, rendered: m.rendered });
+    await context.close();
+  });
+}
+for (const s of BIN_STD_PRESENT) {
+  await bnRun(`standard ${s.key}`, async () => {
+    const { context, page, m } = await stdVisit(s.state, s.size);
+    BN.states[s.key] = m;
+    const has = m.nodes === 1 && m.text === BIN_STATES[s.state].want;
+    const base = baseline[`${s.base}|${s.size.name}`];
+    bnRecord("N5", s.key, has && !!m.glyph && m.glyph.w === 12 && m.glyph.h === 12 && (m.sunsetW === null || m.glyph.w === m.sunsetW), { glyph: m.glyph, sunsetW: m.sunsetW });
+    bnRecord("N6", s.key, has && bnNear(m.h, m.lineHeight) && bnNear(m.gap, m.margin) && bnNear(m.gap, 12) && m.scrollW <= m.clientW, { h: m.h, lineHeight: m.lineHeight, gap: m.gap, margin: m.margin, scrollW: m.scrollW, clientW: m.clientW });
+    // a missing baseline leaves N7 and N8 one entry short, which fails them
+    if (base) {
+      bnRecord("N7", s.key, has && bnNear(m.hubTop - base.hubTop, m.h + m.gap, 1), { hubTop: m.hubTop, baseHubTop: base.hubTop, rowH: m.h, gap: m.gap });
+      bnRecord("N8", s.key, has && bnNear(m.header, base.header, 1), { header: m.header, baseHeader: base.header });
+    }
+    await page.screenshot({ path: join(OUT_DIR, `bins-${s.key}.png`) });
+    if (has) await page.screenshot({ path: join(OUT_DIR, `bins-${s.key}-crop.png`), clip: m.clip });
+    await context.close();
+  });
+}
+for (const state of BIN_ABSENT) {
+  await bnRun(`standard absent ${state}`, async () => {
+    const { context, page } = await binsVisit(state, BIN_THEME_URL("sunroom", true), SIZES[1]);
+    await binWake(page, state);
+    const m = await page.evaluate(BIN_STD);
+    BN.states[`std-${state}`] = m;
+    bnRecord("N9", `std-${state}`, m.nodes === 0 && m.rendered && !(await crashed(page)), { nodes: m.nodes, rendered: m.rendered });
+    await context.close();
+  });
+}
+
+// ---- the Settings card: GET /api/settings is answered here, so only the page itself is real ----
+// The dashboard page needs no login on a test stack with no password set; a redirect to /login fails every state on its intro text.
+async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 }, drive = null, want = [], not = [], mark = null } = {}) {
+  const context = await browser.newContext({ viewport, timezoneId: ZONE });
+  await context.clock.setFixedTime(new Date(binInstant("19:00")));
+  const page = await context.newPage();
+  page.on("pageerror", (e) => { pageErrors++; BN.failed.push(`settings ${name} pageerror ${String(e?.message ?? e).slice(0, 120)}`); });
+  await page.route((u) => u.pathname === "/api/settings", (r) => (r.request().method() === "GET" ? r.fulfill({ json: settingsFullFor(rule) }) : r.fallback()));
+  await page.goto(`${BASE_URL}/settings#bins`, { waitUntil: "domcontentloaded" });
+  const intro = page.getByText("The wall kiosk shows a line from 5 pm to 10 pm");
+  await intro.waitFor({ state: "attached", timeout: 20_000 });
+  if (!(await intro.isVisible().catch(() => false))) await page.getByRole("button", { name: /Bin night/ }).first().click().catch(() => {});
+  await intro.waitFor({ state: "visible", timeout: 10_000 });
+  await page.waitForTimeout(600);
+  if (drive) await drive(page);
+  await page.waitForTimeout(300);
+  const t = textHas(await page.evaluate(() => document.body.innerText), want, not);
+  const extra = mark ? await mark(page) : {};
+  const textOk = t.missing.length === 0 && t.present.length === 0;
+  BN.settings[name] = { ...t, ...extra, ok: textOk && extra.ok !== false };
+  if (!textOk) BN.failed.push(`settings ${name} ${JSON.stringify(t)}`);
+  if (extra.ok === false) BN.failed.push(`settings ${name} ${JSON.stringify(extra)}`);
+  await page.screenshot({ path: join(OUT_DIR, `bins-settings-${name}.png`), fullPage: true });
+  await context.close();
+}
+const BIN_ERRORS = ["Name this bin, or remove it.", "Bin names are 20 characters at most.", "Use letters or numbers in the bin name.", "Another bin already has this name.", "Pick any date this bin is collected.", "Pick a date between 2000 and 2099."];
+const saveDisabled = (page) => page.getByRole("button", { name: "Save" }).last().isDisabled();
+await bnRun("settings empty", () => binsSettings("settings-empty", null, {
+  want: ["Nothing saved yet. The wall shows no bin line."], not: [...BIN_ERRORS, "Pick the day the truck comes."],
+  mark: async (page) => ({ ok: await saveDisabled(page) }), // nothing typed, nothing to save, nothing flagged
+}));
+await bnRun("settings two bins", () => binsSettings("settings-two-bins", BIN_RULE_TWO, {
+  want: ['Next on the wall: Monday 15 Jun, 5 pm to 10 pm. "Recycling and Garden organics go out tonight"', "A collection date"], not: BIN_ERRORS,
+  mark: async (page) => ({ ok: !(await saveDisabled(page)) }),
+}));
+await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TWO, {
+  drive: async (page) => {
+    await page.getByRole("button", { name: "Add a bin" }).click(); // a third row copies Tuesday and every second week, name blank
+    await page.locator('input[placeholder="Recycling"]').nth(2).fill("recycling"); // the first row's name in another case
+    await page.locator('input[type="date"]').nth(1).fill("2026-11-18"); // a Wednesday on a Tuesday bin
+    await page.getByRole("button", { name: "Add a bin" }).click(); // a fourth, blank row; the button then goes
+  },
+  want: ["Another bin already has this name.", "18 Nov 2026 is a Wednesday. Pick a Tuesday, or change the collection day.", "Name this bin, or remove it."],
+  mark: async (page) => ({ ok: (await saveDisabled(page)) && (await page.getByRole("button", { name: "Add a bin" }).count()) === 0 }),
+}));
+await bnRun("settings night too long", () => binsSettings("settings-night-long", BIN_RULE_WED, {
+  drive: async (page) => {
+    await page.getByRole("button", { name: "Add a bin" }).click(); // copies Wednesday and weekly
+    await page.locator('input[placeholder="Recycling"]').nth(2).fill("Cans");
+  },
+  want: ["Tuesday night's line is too long for the wall (47 of 44 characters). Shorten a bin name."],
+  mark: async (page) => ({ ok: await saveDisabled(page) }),
+}));
+await bnRun("settings 390", () => binsSettings("settings-390", BIN_RULE_TWO, {
+  viewport: { width: 390, height: 844 },
+  want: ["Collection day", "Every second week"],
+  // Vision principle 7: each of the seven day buttons is at least 44 px wide, and the page does not scroll sideways
+  mark: async (page) => page.evaluate(() => {
+    const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const w = [...document.querySelectorAll("button[aria-label]")].filter((b) => days.includes(b.getAttribute("aria-label")) && b.getBoundingClientRect().width > 0).map((b) => Math.round(b.getBoundingClientRect().width * 10) / 10);
+    return { ok: w.length >= 14 && Math.min(...w) >= 44 && document.documentElement.scrollWidth <= 390, narrowestDay: w.length ? Math.min(...w) : null, dayButtons: w.length, pageScrollW: document.documentElement.scrollWidth };
+  }),
+}));
+
+// every N needs its entries (a missing one fails it): N1-N4 six glance states, N5 six glance + three Standard, N6-N8 three Standard, N9 eight glance + three baselines + eight Standard, N11 six present + eight absent
+const BN_NEED = { N1: 6, N2: 6, N3: 6, N4: 6, N5: 9, N6: 3, N7: 3, N8: 3, N9: 19, N11: 14 };
+for (const n of BNS) {
+  const e = BN.entries[n];
+  BN[n] = e.length >= BN_NEED[n] && e.every((x) => x.ok);
+  if (e.length < BN_NEED[n]) BN.failed.push(`${n} has ${e.length} entries, needs ${BN_NEED[n]}`);
+}
+for (const s of ["settings-empty", "settings-two-bins", "settings-errors", "settings-night-long", "settings-390"]) if (!BN.settings[s]) BN.failed.push(`settings ${s} never ran`);
+if (BN.failed.length) process.exitCode = 1;
 
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
