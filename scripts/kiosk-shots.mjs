@@ -1618,9 +1618,10 @@ const binsVisit = (state, url, size) => visit(url, { viewport: size.viewport, we
 
 /** Glance: the line, the stack around it and the probes the checks compare against. Every number is read from the house class it measures. */
 const BIN_GLANCE = () => {
-  const probe = (cls) => {
+  // probes sit inside the measured stack, so the kiosk scope's type rules apply to them as to the line
+  const probe = (cls, host) => {
     const el = Object.assign(document.createElement("span"), { className: cls, textContent: "x" });
-    document.body.append(el);
+    host.append(el);
     const cs = getComputedStyle(el);
     const o = { lineHeight: parseFloat(cs.lineHeight), fontSize: parseFloat(cs.fontSize), maxWidth: parseFloat(cs.maxWidth) };
     el.remove();
@@ -1636,14 +1637,15 @@ const BIN_GLANCE = () => {
   const next = wrap.nextElementSibling;
   const nr = next ? next.getBoundingClientRect() : null;
   const stack = wrap.parentElement;
-  const kids = [...stack.children].map((c) => c.getBoundingClientRect()).filter((k) => k.height > 0);
+  // in-flow children only: the fixed corner cluster is a sibling of the stack's own content (KioskGlance returns a fragment)
+  const kids = [...stack.children].filter((c) => getComputedStyle(c).position !== "fixed").map((c) => c.getBoundingClientRect()).filter((k) => k.height > 0);
   const cluster = document.querySelector('[data-rain-zone="tiles"]');
   const svg = line.querySelector("svg")?.getBoundingClientRect();
-  const base = probe("text-base");
+  const base = probe("text-base", wrap);
   const top = Math.max(0, Math.min(wr.top, ...(nr ? [nr.top] : [])) - 16);
   return {
     ...out, text: line.textContent, h: r.height, scrollW: line.scrollWidth, clientW: line.clientWidth, w: r.width,
-    lineHeight: base.lineHeight, fontSize: base.fontSize, maxW: probe("max-w-xl").maxWidth,
+    lineHeight: base.lineHeight, fontSize: base.fontSize, maxW: probe("max-w-xl", wrap).maxWidth,
     gapToNext: nr ? nr.top - wr.bottom : null, nextText: next ? next.textContent.trim() : null, rowGap: parseFloat(getComputedStyle(stack).rowGap),
     glyph: svg ? { w: svg.width, h: svg.height } : null,
     stackBottom: Math.max(...kids.map((k) => k.bottom)), clusterTop: cluster ? cluster.getBoundingClientRect().top : null, stackOverflow: stack.scrollHeight - stack.clientHeight,
@@ -1653,9 +1655,9 @@ const BIN_GLANCE = () => {
 
 /** Standard: the row, its neighbours, the header and the hub's top. */
 const BIN_STD = () => {
-  const probe = (cls) => {
+  const probe = (cls, host) => {
     const el = Object.assign(document.createElement("span"), { className: cls, textContent: "x" });
-    document.body.append(el);
+    host.append(el);
     const v = parseFloat(getComputedStyle(el).lineHeight);
     el.remove();
     return v;
@@ -1674,7 +1676,9 @@ const BIN_STD = () => {
   const svg = row.querySelector("svg")?.getBoundingClientRect();
   const sunset = document.querySelector("[data-weather-line] svg.lucide-sunset")?.getBoundingClientRect();
   return {
-    ...out, text: row.textContent, h: r.height, lineHeight: probe("text-sm"), gap: prev ? r.top - prev.bottom : null, margin: parseFloat(getComputedStyle(row).marginTop),
+    ...out, text: row.textContent, h: r.height, lineHeight: probe("text-sm", row.parentElement), gap: prev ? r.top - prev.bottom : null,
+    // space-y-3 is a margin between siblings: top of this row on Tailwind 3, bottom of the previous sibling on 4
+    margin: parseFloat(getComputedStyle(row).marginTop) + (row.previousElementSibling ? parseFloat(getComputedStyle(row.previousElementSibling).marginBottom) : 0),
     scrollW: row.scrollWidth, clientW: row.clientWidth, glyph: svg ? { w: svg.width, h: svg.height } : null, sunsetW: sunset ? sunset.width : null,
     clip: { x: Math.max(0, r.left - 16), y: Math.max(0, (prev ? prev.top : r.top) - 8), width: r.width + 32, height: r.bottom - (prev ? prev.top : r.top) + 24 },
   };
@@ -1803,7 +1807,8 @@ async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 
   await context.close();
 }
 const BIN_ERRORS = ["Name this bin, or remove it.", "Bin names are 20 characters at most.", "Use letters or numbers in the bin name.", "Another bin already has this name.", "Pick any date this bin is collected.", "Pick a date between 2000 and 2099."];
-const saveDisabled = (page) => page.getByRole("button", { name: "Save" }).last().isDisabled();
+const binCard = (page) => page.getByText("The wall kiosk shows a line from 5 pm to 10 pm").locator(".."); // the intro is the card root's first child
+const saveDisabled = (page) => binCard(page).getByRole("button", { name: "Save" }).isDisabled();
 await bnRun("settings empty", () => binsSettings("settings-empty", null, {
   want: ["Nothing saved yet. The wall shows no bin line."], not: [...BIN_ERRORS, "Pick the day the truck comes."],
   mark: async (page) => ({ ok: await saveDisabled(page) }), // nothing typed, nothing to save, nothing flagged
@@ -1820,7 +1825,7 @@ await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TW
     await page.getByRole("button", { name: "Add a bin" }).click(); // a fourth, blank row; the button then goes
   },
   want: ["Another bin already has this name.", "18 Nov 2026 is a Wednesday. Pick a Tuesday, or change the collection day.", "Name this bin, or remove it."],
-  mark: async (page) => ({ ok: (await saveDisabled(page)) && (await page.getByRole("button", { name: "Add a bin" }).count()) === 0 }),
+  mark: async (page) => ({ ok: (await saveDisabled(page)) && (await binCard(page).getByRole("button", { name: "Add a bin" }).count()) === 0 }),
 }));
 await bnRun("settings night too long", () => binsSettings("settings-night-long", BIN_RULE_WED, {
   drive: async (page) => {

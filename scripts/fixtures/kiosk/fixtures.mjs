@@ -157,6 +157,7 @@ export const ROUTES = {
   "/kiosk/api/nowplaying": { status: "idle" },
   "/kiosk/api/downloads": { status: "unconfigured" },
   "/kiosk/api/briefing": { status: "unconfigured" },
+  "/kiosk/api/bins": { status: "unconfigured" }, // bin night (evening only); the bins section answers its own states
   "/kiosk/api/weather/radar": { status: "unconfigured" },
   "/kiosk/api/list": LIST_EMPTY, // every other capture sees an empty list: the pane drops and the button reads "Shopping 0"
 };
