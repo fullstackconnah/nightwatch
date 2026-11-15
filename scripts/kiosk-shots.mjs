@@ -1820,7 +1820,7 @@ async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 
   if (!textOk) BN.failed.push(`settings ${name} ${JSON.stringify(t)}`);
   if (extra.ok === false) BN.failed.push(`settings ${name} ${JSON.stringify(extra)}`);
   // The fixed bottom tab bar would float over the first name field in a full-page 390 shot; hide it for this capture only.
-  if (viewport.width === 390) await page.addStyleTag({ content: "nav.fixed.bottom-0 { display: none !important; }" });
+  if (viewport.width === 390) await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
   await page.screenshot({ path: join(OUT_DIR, `bins-settings-${name}.png`), fullPage: true });
   await context.close();
 }
