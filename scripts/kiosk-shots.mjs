@@ -25,7 +25,7 @@ import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { uvContrast } from "./kiosk-uv-contrast.mjs";
-import { AUTO_OFF, HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, LIST_EMPTY, LIST_STATES, LONG_NAMES, listBody, longNamesBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -73,7 +73,7 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false, instant = PINNED_ISO, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, instant = PINNED_ISO, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null, setup = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   // "flow" and "ticking": start at the pinned instant but keep time passing (SWR's focus throttle and dedupe read Date.now; ticking is also fast-forwarded)
   if (fixedTime === "flow" || fixedTime === "ticking") await context.clock.install({ time: new Date(instant) });
@@ -125,6 +125,7 @@ async function visit(url, { viewport, weather, fixedTime = false, reduced = fals
               : (ROUTES[path] ?? QUIET);
     return route.fulfill({ json });
   });
+  if (setup) await setup(page); // per-state routes registered last, so they win over the generic answer above
   await page.goto(url, { waitUntil: "domcontentloaded" });
   // Hide the Next dev indicator (the round "N" badge) from every capture; next.config is untouched.
   await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
@@ -1047,6 +1048,551 @@ for (const n of NS) {
   if (e.length < NEED[n]) SA.failed.push(`${n} has ${e.length} entries, needs ${NEED[n]}`);
 }
 if (SA.failed.length) process.exitCode = 1;
+
+// ---- kiosk shared list: numeric checks L1-L16 (plan "Numeric checks" 1-14, fix round 1: L15 the full list fits, L16 long names) and the capture states ----
+// results.lists.{L1..L14}: true | false (each needs its entries; a missing entry fails it), results.lists.entries.<Lx>[] the numbers,
+// results.lists.states.<state> {ok, missing[], present[]} (every state first asserts its own defining text), results.lists.registry (test 25),
+// results.lists.failed[] (one line each). Shots: list-<state>-<size>.png. The run exits 1 when any L is false or any state or registry check fails.
+// Writes are answered by listFake (per-state `cfg`): it applies add/done/clear to cfg.body and does not re-implement dedupe or the cap; a state that
+// needs another answer sets cfg.post.<action> = {status, json} | "abort". Only placeholder PIN digits are typed, and /api/auth/kiosk is mocked.
+const LS = (results.lists = { entries: {}, states: {}, registry: {}, failed: [] });
+const LNS = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12", "L13", "L14", "L15", "L16"];
+for (const n of LNS) LS.entries[n] = [];
+const lRecord = (n, key, ok, detail = {}) => { LS.entries[n].push({ key, ok, ...detail }); if (!ok) LS.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
+const lRun = (name, fn) => guarded(`lists ${name}`, async () => { try { await fn(); } catch (e) { LS.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+/** A state's defining text must be present (and `not` absent); a miss is a failure, never a skip. */
+const lWant = (name, text, want = [], not = []) => {
+  const t = textHas(text, want, not);
+  const ok = t.missing.length === 0 && t.present.length === 0;
+  LS.states[name] = { ok, ...t };
+  if (!ok) LS.failed.push(`state ${name} ${JSON.stringify(t)}`);
+  return ok;
+};
+const LIST_RE = /\/kiosk\/api\/list(\/|\?|$)/;
+const SHEET = "[data-list-sheet]";
+const L_STD = CONTROLS_URL; // the header button only renders in the pinned standard layout
+const L_SIZE = SIZES[1]; // 1024x768 is the sheet's reference size (design rule 16)
+const ELEVATION_MS = 120_000;
+
+function listFake(cfg) {
+  return async (route) => {
+    try {
+      const req = route.request();
+      if (req.method() === "GET") {
+        if (cfg.hold) await cfg.hold;
+        cfg.gets = (cfg.gets ?? 0) + 1;
+        const status = typeof cfg.getStatus === "function" ? cfg.getStatus(cfg.gets) : (cfg.getStatus ?? 200);
+        return await (status >= 400 ? route.fulfill({ status, json: { error: "store" } }) : route.fulfill({ json: cfg.body }));
+      }
+      const action = new URL(req.url()).pathname.split("/").pop();
+      const b = req.postDataJSON() ?? {};
+      (cfg.posts ??= []).push({ action, body: b });
+      const o = cfg.post?.[action];
+      if (o === "abort") return await route.abort("internetdisconnected");
+      if (o) return await route.fulfill({ status: o.status, json: o.json ?? {} });
+      const items = cfg.body.items;
+      const set = (next) => { cfg.body = { ...cfg.body, items: next }; };
+      if (action === "add") {
+        const item = { id: b.id, listId: "shopping", text: b.text, done: false, createdAt: Date.now(), doneAt: null, updatedAt: Date.now() };
+        set([item, ...items]);
+        return await route.fulfill({ json: { result: "added", item } });
+      }
+      if (action === "done") {
+        const item = items.find((i) => i.id === b.id);
+        if (!item) return await route.fulfill({ status: 404, json: { error: "missing" } });
+        const next = { ...item, done: b.done, doneAt: b.done ? Date.now() : null };
+        set(items.map((i) => (i.id === b.id ? next : i)));
+        return await route.fulfill({ json: { item: next } });
+      }
+      if (action === "clear-ticked" || action === "clear-all") {
+        if (action === "clear-all" && !cfg.elevated) return await route.fulfill({ status: 403, json: { error: "elevation" } });
+        const removed = items.filter((i) => action === "clear-all" || i.done);
+        cfg.removed = removed;
+        set(items.filter((i) => !removed.includes(i)));
+        return await route.fulfill({ json: { removed } });
+      }
+      if (action === "restore") {
+        const back = (cfg.removed ?? []).filter((i) => b.ids?.includes(i.id));
+        set([...items, ...back]);
+        return await route.fulfill({ json: { restored: back, skipped: [] } });
+      }
+      return await route.fulfill({ status: 404, json: { error: "unknown_action" } });
+    } catch {
+      // the page closed while a held answer was still pending: nothing left to answer
+    }
+  };
+}
+
+/** Opens one list page: the list fake and the PIN mocks are registered before the first request, on a real clock (SWR dedupe reads Date.now). */
+async function listVisit(cfg, { url = L_STD, size = L_SIZE, ...o } = {}) {
+  cfg.body ??= LIST_EMPTY;
+  return visit(url, {
+    viewport: size.viewport, weather: weatherFor("midday"), fixedTime: false, ...o,
+    setup: async (page) => {
+      await page.route(LIST_RE, listFake(cfg));
+      await page.route("**/api/auth/kiosk", (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        cfg.elevated = true;
+        return route.fulfill({ json: { ok: true, expiresAt: Date.now() + ELEVATION_MS } });
+      });
+      await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: cfg.elevated ? { elevated: true, expiresAt: Date.now() + ELEVATION_MS } : { elevated: false } }));
+    },
+  });
+}
+async function withList(name, cfg, opts, fn) {
+  await lRun(name, async () => {
+    const v = await listVisit(cfg, opts);
+    try { await fn(v); } finally { await v.context.close(); }
+  });
+}
+const lButton = (page) => page.locator('button[aria-label^="Shopping list"]').first();
+async function openSheet(page) {
+  await lButton(page).click();
+  await seen(page, SHEET, 5000);
+  await page.waitForTimeout(700);
+}
+const sheetText = (page) => page.locator(SHEET).innerText();
+const lShot = async (page, name, locator) => {
+  const b = await locator.boundingBox();
+  if (b) await page.screenshot({ path: join(OUT_DIR, `list-${name}.png`), clip: { x: Math.max(0, b.x - 8), y: Math.max(0, b.y - 8), width: b.width + 16, height: b.height + 16 } });
+};
+const typeAdd = async (page, text) => {
+  await page.locator(`${SHEET} input`).fill(text);
+  await page.locator(SHEET).getByRole("button", { name: "Add", exact: true }).click();
+  await page.waitForTimeout(500);
+};
+const enterPin = async (page) => { for (const d of "0000") await page.getByRole("button", { name: `digit ${d}` }).click(); await page.waitForTimeout(900); };
+const lQueue = (page) => page.evaluate(() => JSON.parse(localStorage.getItem("kiosk-list-queue") ?? "[]"));
+
+/** The glance pane's measurements: L1 (size, type floor), L10 (alignment), L11 (one stale tag in the caption), and the dot count. */
+const LIST_PANE = () => {
+  const root = document.querySelector("[data-lists-pane]");
+  const track = document.querySelector("div.relative.w-full.overflow-hidden > div.flex.h-full.w-full");
+  const panes = track ? [...track.children].filter((c) => !/200%/.test(c.style.transform)).length : null;
+  const dots = document.querySelectorAll('button[aria-label^="Show "]').length;
+  if (!root) return { present: false, panes, dots };
+  const band = root.closest(".overflow-hidden").getBoundingClientRect();
+  const carousel = root.parentElement.closest(".max-w-xl");
+  const r = root.getBoundingClientRect();
+  const cap = root.querySelector(".microlabel");
+  const body = root.querySelector("[data-lists-body]");
+  const cs = getComputedStyle(body);
+  const probe = Object.assign(document.createElement("span"), { className: "text-xl" });
+  root.append(probe);
+  const floor = parseFloat(getComputedStyle(probe).fontSize);
+  probe.remove();
+  const small = [];
+  for (const el of [...root.querySelectorAll("[aria-hidden]")].flatMap((v) => [v, ...v.querySelectorAll("*")])) {
+    const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
+  }
+  const bb = body.getBoundingClientRect();
+  return {
+    present: true, panes, dots,
+    text: [...root.querySelectorAll("[aria-hidden]")].map((v) => v.textContent).join(" | "),
+    paneH: Math.round(r.height * 10) / 10, bandH: Math.round(band.height * 10) / 10, paneW: Math.round(r.width * 10) / 10, carouselW: Math.round(carousel.getBoundingClientRect().width * 10) / 10,
+    bodyH: Math.round(bb.height * 10) / 10, lineH: parseFloat(cs.lineHeight), floor, small,
+    capLeft: cap.getBoundingClientRect().left, bodyLeft: bb.left, textAlign: cs.textAlign,
+    staleTags: root.querySelectorAll(".sr-stale").length, staleInCaption: [...root.querySelectorAll(".sr-stale")].filter((t) => t.parentElement?.querySelector(":scope > .microlabel")).length,
+    clip: { x: Math.max(0, band.left - 8), y: Math.max(0, band.top - 8), width: band.width + 16, height: band.height + 52 },
+  };
+};
+
+/** The sheet's measurements: L3 (no scroll, inside the scrim, rows = items), L4 (>= 44 px, row widths), L5 (chips), L6 (field position), L10 (left edges), L13 (focus). */
+const LIST_SHEET = () => {
+  const dlg = document.querySelector("[data-list-sheet]");
+  if (!dlg) return { present: false };
+  const r = (e) => e.getBoundingClientRect();
+  const px = (v) => Math.round(v * 10) / 10;
+  const scrim = dlg.parentElement;
+  const scroll = [dlg, ...dlg.querySelectorAll("*")].filter((e) => e.clientHeight > 0 && e.scrollHeight > e.clientHeight + 1).map((e) => `${e.tagName.toLowerCase()}${e.hasAttribute("data-sr-sheet-body") ? "[body]" : ""}`);
+  const rows = [...dlg.querySelectorAll("[role=checkbox]")];
+  const controls = [...dlg.querySelectorAll("button, input")];
+  const small = controls.filter((c) => r(c).height < 43.5).map((c) => `${c.getAttribute("aria-label") ?? c.textContent.trim().slice(0, 16)} ${px(r(c).height)}`);
+  const header = dlg.querySelector(".border-b");
+  const field = dlg.querySelector("input");
+  const chipRow = dlg.querySelector("[data-list-chips]");
+  const chips = chipRow ? [...chipRow.children] : [];
+  const gap = parseFloat(getComputedStyle(dlg).rowGap);
+  const group = rows[0]?.closest("[role=group]");
+  const gridW = group ? r(group).width : 0;
+  const lefts = [...new Set(rows.map((x) => Math.round(r(x).left)))];
+  const wraps = rows.map((x) => r(x.parentElement).width);
+  const a = document.activeElement;
+  const as = a ? getComputedStyle(a) : null;
+  const sp = scrim ? parseFloat(getComputedStyle(scrim).paddingTop) : 24;
+  return {
+    present: true, scroll, rowCount: rows.length, small,
+    panelTop: px(r(dlg).top), panelBottom: px(r(dlg).bottom), scrimPad: sp, vh: innerHeight,
+    fieldGap: field && header ? px(r(field).top - r(header).bottom) : null, panelGap: gap,
+    chipCount: chips.length, chipTops: [...new Set(chips.map((c) => Math.round(r(c).top)))].length, chipH: chips.length ? px(r(chips[0]).height) : null,
+    gridW: px(gridW), rowWraps: [...new Set(wraps.map(px))], lefts,
+    fieldLeft: field ? px(r(field).left) : null, chipLeft: chips.length ? px(r(chips[0]).left) : null, rowLeft: rows.length ? px(r(rows[0]).left) : null,
+    rects: rows.map((x) => { const q = r(x); return [px(q.left), px(q.top), px(q.width), px(q.height)].join(","); }),
+    active: a ? (a.getAttribute("aria-label") ?? a.tagName) : null, activeInSheet: !!a && dlg.contains(a),
+    ring: as ? (as.boxShadow !== "none" || (as.outlineStyle !== "none" && parseFloat(as.outlineWidth) > 0)) : null,
+  };
+};
+
+// ---- the glance pane ----
+const paneState = async (name, cfg, { stale = false, size = SIZES[1] } = {}) => {
+  await withList(`pane ${name}-${size.name}`, cfg, { url: MAIN_URL, size, fixedTime: stale ? "ticking" : false, instant: PINNED_ISO }, async ({ page }) => {
+    if (stale) {
+      cfg.getStatus = (n) => (n === 1 ? 200 : 500); // the first answer was good; every later one fails
+      for (let k = 0; k < 4 && !(await seen(page, "[data-lists-pane] .sr-stale", 3000)); k++) {
+        await page.clock.fastForward(31_000);
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      }
+    }
+    await page.locator('button[aria-label="Show Shopping list"]').first().click({ timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    const m = await page.evaluate(LIST_PANE);
+    const key = `pane-${name}-${size.name}`;
+    if (name.endsWith("dropped")) {
+      LS.states[key] = { ok: !m.present && m.panes === m.dots, present: m.present, panes: m.panes, dots: m.dots };
+      if (!LS.states[key].ok) LS.failed.push(`state ${key} ${JSON.stringify(LS.states[key])}`);
+      return;
+    }
+    const want = { ordinary: LIST_STATES.ordinary.want, crowded: LIST_STATES.crowded.want, stale: LIST_STATES.ordinary.want }[name];
+    if (!m.present) return void lWant(key, "", want);
+    lWant(key, m.text, want);
+    lRecord("L1", key, m.paneH <= 132 && m.paneW <= m.carouselW + 0.5 && m.bodyH <= 2 * m.lineH + 1 && m.small.length === 0, { paneH: m.paneH, bandH: m.bandH, paneW: m.paneW, carouselW: m.carouselW, bodyH: m.bodyH, lineH: m.lineH, small: m.small });
+    lRecord("L10", key, Math.abs(m.capLeft - m.bodyLeft) <= 0.5 && /^(start|left)$/.test(m.textAlign), { capLeft: m.capLeft, bodyLeft: m.bodyLeft, textAlign: m.textAlign });
+    if (name === "stale") lRecord("L11", key, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
+    await page.screenshot({ path: join(OUT_DIR, `list-${key}.png`), clip: m.clip });
+  });
+};
+for (const size of SIZES) {
+  await paneState("ordinary", { body: LIST_STATES.ordinary.body }, { size });
+  await paneState("crowded", { body: LIST_STATES.crowded.body }, { size });
+}
+await paneState("stale", { body: LIST_STATES.ordinary.body }, { stale: true });
+await paneState("empty-dropped", { body: LIST_EMPTY });
+await paneState("failed-dropped", { body: LIST_EMPTY, getStatus: 500 });
+
+// ---- the header button (L2 size, L14 copy) ----
+for (const [name, cfg, label, aria] of [
+  ["button-count", { body: LIST_STATES.crowded.body }, "Shopping 9", "Shopping list, 9 to get"],
+  ["button-zero", { body: LIST_EMPTY }, "Shopping 0", "Shopping list, empty"],
+  ["button-failed", { body: LIST_EMPTY, getStatus: 500 }, "Shopping", "Shopping list, not loaded"],
+]) {
+  await withList(name, cfg, {}, async ({ page }) => {
+    await page.waitForTimeout(800);
+    const m = await page.evaluate(() => {
+      const b = document.querySelector('button[aria-label^="Shopping list"]');
+      const header = document.querySelector("header");
+      if (!b || !header) return { present: false };
+      const h1 = header.getBoundingClientRect().height;
+      b.style.display = "none";
+      const h0 = header.getBoundingClientRect().height;
+      b.style.display = "";
+      return { present: true, label: b.innerText.replace(/\s+/g, " ").trim(), aria: b.getAttribute("aria-label"), h: b.getBoundingClientRect().height, headerWith: h1, headerWithout: h0 };
+    });
+    lWant(name, m.present ? `${m.label} | ${m.aria}` : "", [label, aria]);
+    if (!m.present) return;
+    lRecord("L14", name, m.label === label && m.aria === aria, { label: m.label, aria: m.aria, want: [label, aria] });
+    if (name === "button-count") {
+      lRecord("L2", name, Math.abs(m.h - 44) <= 0.5 && m.label.length <= 16 && Math.abs(m.headerWith - m.headerWithout) <= 1, { h: m.h, label: m.label.length, headerWith: m.headerWith, headerWithout: m.headerWithout });
+      await lShot(page, name, page.locator("header").first());
+    }
+  });
+}
+
+// ---- the sheet at every count (L3 no scroll and rows = items, L4, L5, L6, L10; shots for the named states) ----
+const COUNTS = [[0, listBody(0), "sheet-empty-with-chips"], [3, LIST_STATES.ordinary.body, "sheet-ordinary"], [6, listBody(6), null], [7, listBody(7), null], [9, LIST_STATES.crowded.body, "sheet-crowded"], [13, LIST_STATES.full.body, null]];
+for (const [n, body, shot] of COUNTS) {
+  await withList(`sheet count ${n}`, { body }, {}, async ({ page }) => {
+    await page.waitForTimeout(600);
+    await openSheet(page);
+    const m = await page.evaluate(LIST_SHEET);
+    const key = `n${n}`;
+    lRecord("L3", key, m.present && m.scroll.length === 0 && m.panelTop >= m.scrimPad - 0.5 && m.panelBottom <= m.vh - m.scrimPad + 0.5 && m.rowCount === n, { scroll: m.scroll, panelTop: m.panelTop, panelBottom: m.panelBottom, pad: m.scrimPad, rows: m.rowCount, want: n });
+    const twoCol = n > 6;
+    const rowsOk = n === 0 || (twoCol ? m.rowWraps.every((w) => Math.abs(w - (m.gridW - 16) / 2) <= 1.5) : m.rowWraps.every((w) => Math.abs(w - m.gridW) <= 1));
+    lRecord("L4", key, m.small.length === 0 && rowsOk, { small: m.small, rowWraps: m.rowWraps, gridW: m.gridW, twoCol });
+    lRecord("L5", key, m.chipCount <= 4 && m.chipTops === 1 && m.chipH === 44, { chips: m.chipCount, rowsOfChips: m.chipTops, chipH: m.chipH });
+    lRecord("L6", key, m.fieldGap !== null && Math.abs(m.fieldGap - m.panelGap) <= 1, { fieldGap: m.fieldGap, panelGap: m.panelGap });
+    lRecord("L10", `sheet ${key}`, m.lefts.length <= (twoCol ? 2 : 1) && m.fieldLeft === m.chipLeft && (n === 0 || m.chipLeft === m.rowLeft), { lefts: m.lefts, fieldLeft: m.fieldLeft, chipLeft: m.chipLeft, rowLeft: m.rowLeft });
+    const text = await sheetText(page);
+    if (n === 0) lWant("sheet-empty-with-chips", text, LIST_STATES.emptyChips.want);
+    if (n === 3) lWant("sheet-ordinary", text, ["Often added", "Clear list", "Add an item"]);
+    if (n === 9) lWant("sheet-crowded", text, ["Clear list"]);
+    if (n === 13) lWant("sheet-full", text, LIST_STATES.full.want);
+    if (shot) await lShot(page, shot, page.locator(SHEET));
+  });
+}
+
+// ---- L15: the full list (11 open + 2 ticked) fits at both sizes: the last ticked row ends above the footer and the body does not scroll ----
+const LIST_FIT = () => {
+  const d = document.querySelector("[data-list-sheet]");
+  const body = d?.querySelector("[data-sr-sheet-body]");
+  const foot = d?.querySelector("[data-list-footer]");
+  if (!d || !body || !foot) return { present: false };
+  const ticked = [...d.querySelectorAll('[role=group][aria-label="Ticked"] [role=checkbox]')];
+  const px = (v) => Math.round(v * 10) / 10;
+  return { present: true, ticked: ticked.length, lastBottom: px(Math.max(...ticked.map((x) => x.getBoundingClientRect().bottom))), footTop: px(foot.getBoundingClientRect().top), scrollH: body.scrollHeight, clientH: body.clientHeight };
+};
+for (const size of SIZES) {
+  await withList(`sheet-full ${size.name}`, { body: LIST_STATES.full.body }, { size }, async ({ page }) => {
+    await openSheet(page);
+    const text = await sheetText(page);
+    const ok = lWant(`sheet-full-${size.name}`, text, LIST_STATES.full.want);
+    const m = await page.evaluate(LIST_FIT);
+    lRecord("L15", size.name, ok && m.present && m.ticked === 2 && m.lastBottom <= m.footTop && m.scrollH <= m.clientH, m);
+    await lShot(page, `sheet-full-${size.name}`, page.locator(SHEET));
+  });
+}
+
+// ---- L16: two 60-character names. Design rule 16 (kiosk-lists.md line 65): each row is one line and the name is truncated, the button keeps the full name; the pane names are max-w-[45%] truncate ----
+const LIST_LONG = (scope) => {
+  const root = document.querySelector(scope);
+  if (!root) return { present: false };
+  const names = [...root.querySelectorAll("span.truncate")];
+  const bad = [];
+  let truncated = 0;
+  for (const el of names) {
+    const cs = getComputedStyle(el);
+    const box = (el.closest("[role=checkbox]")?.parentElement ?? root).getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const cut = el.scrollWidth > el.clientWidth + 1;
+    if (cut) truncated++;
+    const ellipsis = cs.textOverflow === "ellipsis" && cs.overflow.startsWith("hidden") && cs.whiteSpace === "nowrap";
+    if (r.right > box.right + 0.5 || r.height > parseFloat(cs.lineHeight) * 1.5 || !ellipsis) bad.push(`${el.textContent.slice(0, 18)} right ${Math.round(r.right)} box ${Math.round(box.right)} h ${Math.round(r.height)} ellipsis ${ellipsis}`);
+  }
+  const full = [...root.querySelectorAll("span.truncate")].filter((e) => e.textContent.length === 60).length;
+  return { present: true, names: names.length, truncated, long60: full, bad };
+};
+for (const [name, n, scope] of [["sheet-long-names-1col", 3, "[data-list-sheet]"], ["sheet-long-names-2col", 9, "[data-list-sheet]"]]) {
+  await withList(name, { body: longNamesBody(n) }, {}, async ({ page }) => {
+    await openSheet(page);
+    const ok = lWant(name, await sheetText(page), [...LONG_NAMES]);
+    const m = await page.evaluate(LIST_LONG, scope);
+    lRecord("L16", name, ok && m.present && m.long60 === 2 && m.bad.length === 0, m);
+    await lShot(page, name === "sheet-long-names-1col" ? "sheet-long-names" : "sheet-long-names-2col", page.locator(SHEET));
+  });
+}
+await withList("pane-long-names", { body: longNamesBody(3) }, { url: MAIN_URL, instant: PINNED_ISO }, async ({ page }) => {
+  await page.locator('button[aria-label="Show Shopping list"]').first().click({ timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(700);
+  const m = await page.evaluate(LIST_LONG, "[data-lists-body]");
+  const pane = page.locator("[data-lists-pane]");
+  const ok = lWant("pane-long-names", m.present ? await pane.innerText() : "", [LONG_NAMES[0]]);
+  lRecord("L16", "pane", ok && m.present && m.long60 === 2 && m.truncated >= 1 && m.bad.length === 0, m);
+  await lShot(page, "pane-long-names-1024x768", pane);
+});
+
+// ---- states that need their own fixture or a write ----
+await withList("sheet-empty-no-chips", { body: LIST_STATES.emptyNoChips.body }, {}, async ({ page }) => {
+  await openSheet(page);
+  lWant("sheet-empty-no-chips", await sheetText(page), LIST_STATES.emptyNoChips.want, LIST_STATES.emptyNoChips.not);
+  await lShot(page, "sheet-empty-no-chips", page.locator(SHEET));
+});
+
+await withList("sheet-with-ticked", { body: LIST_STATES.ticked.body }, {}, async ({ page }) => {
+  await openSheet(page);
+  lWant("sheet-with-ticked", await sheetText(page), LIST_STATES.ticked.want);
+  const before = (await page.evaluate(LIST_SHEET)).rects;
+  await page.locator(`${SHEET} [role=checkbox]`).first().click(); // tick the newest open row
+  await page.waitForTimeout(500);
+  const after = await page.evaluate(LIST_SHEET);
+  lRecord("L9", "tick moves no row", before.length > 0 && before.length === after.rects.length && before.every((q, i) => q === after.rects[i]), { before, after: after.rects });
+  // L7: the check mark's transition is the house fade and ease; the reduced-motion context below shows it gone
+  const t = await page.evaluate(() => {
+    const el = document.querySelector("[data-list-sheet] [role=checkbox] svg");
+    const dlg = document.querySelector("[data-list-sheet]");
+    const cs = getComputedStyle(el);
+    return { dur: cs.transitionDuration.split(",")[0].trim(), ease: cs.transitionTimingFunction.split(/,(?![^(]*\))/)[0].replace(/\s+/g, ""), prop: cs.transitionProperty, fade: getComputedStyle(dlg).getPropertyValue("--kiosk-fade-ms").trim(), easeVar: getComputedStyle(dlg).getPropertyValue("--kiosk-ease-out").replace(/\s+/g, "") };
+  });
+  lRecord("L7", "tick transition", Math.round(parseFloat(t.dur) * 1000) === parseFloat(t.fade) && t.ease === t.easeVar && /transform/.test(t.prop), t);
+  await lShot(page, "sheet-with-ticked", page.locator(SHEET));
+});
+await withList("sheet-reduced-motion", { body: LIST_STATES.ticked.body }, { reduced: true }, async ({ page }) => {
+  await openSheet(page);
+  const t = await page.evaluate(() => ({ dur: getComputedStyle(document.querySelector("[data-list-sheet] [role=checkbox] svg")).transitionDuration.split(",")[0].trim() }));
+  lRecord("L7", "reduced motion: no transform transition", parseFloat(t.dur) === 0, t);
+});
+
+await withList("sheet-loading", { body: LIST_STATES.ordinary.body, hold: new Promise((res) => setTimeout(res, 9000)) }, {}, async ({ page }) => {
+  await openSheet(page);
+  lWant("sheet-loading", await sheetText(page), ["Loading the list…"]);
+  if (!(await page.locator(`${SHEET} input`).isDisabled())) LS.failed.push("state sheet-loading: the field is not disabled");
+  await lShot(page, "sheet-loading", page.locator(SHEET));
+});
+await withList("sheet-failed", { body: LIST_EMPTY, getStatus: 500 }, {}, async ({ page }) => {
+  await openSheet(page);
+  lWant("sheet-failed", await sheetText(page), ["Couldn't load the shopping list.", "Try again"]);
+  if (!(await page.locator(`${SHEET} input`).isDisabled())) LS.failed.push("state sheet-failed: the field is not disabled");
+  await lShot(page, "sheet-failed", page.locator(SHEET));
+  await page.locator(SHEET).getByRole("button", { name: "Try again" }).click();
+  await page.waitForTimeout(900);
+  lWant("sheet-failed-retry", await sheetText(page), ["Still no answer from the server."]);
+  await lShot(page, "sheet-failed-retry", page.locator(SHEET));
+});
+await withList("sheet-stale", { body: LIST_STATES.ordinary.body, getStatus: (n) => (n === 1 ? 200 : 500) }, {}, async ({ page }) => {
+  await page.waitForTimeout(800);
+  await openSheet(page); // opening revalidates: the second answer fails, so the cached list is marked stale
+  await page.waitForTimeout(800);
+  const m = await page.evaluate(() => { const tags = [...document.querySelectorAll("[data-list-sheet] .sr-stale")]; return { tags: tags.length, inTitle: tags.filter((t) => t.parentElement?.querySelector(":scope > [data-sr-title]")).length }; });
+  lWant("sheet-stale", await sheetText(page), ["Oat milk", "Stale"]);
+  lRecord("L11", "sheet title", m.tags === 1 && m.inTitle === 1, m);
+  await lShot(page, "sheet-stale", page.locator(SHEET));
+});
+
+// ---- writes: save failed, offline queue, hints ----
+await withList("sheet-save-failed", { body: LIST_STATES.ordinary.body, post: { add: { status: 500, json: { error: "store" } } } }, {}, async ({ page }) => {
+  await openSheet(page);
+  await typeAdd(page, "Tea");
+  lWant("sheet-save-failed", await sheetText(page), ["Tea", "Not saved"]);
+  const retry = await page.locator(SHEET).getByRole("button", { name: "Retry saving Tea" }).count();
+  const q = await lQueue(page);
+  if (retry !== 1 || q.length !== 1 || q[0].op !== "add") LS.failed.push(`state sheet-save-failed: retry buttons ${retry}, queue ${JSON.stringify(q)}`);
+  await lShot(page, "sheet-save-failed", page.locator(SHEET));
+});
+{
+  const cfg = { body: LIST_STATES.ordinary.body, post: { add: "abort" } };
+  await withList("sheet-offline-queued", cfg, {}, async ({ page }) => {
+    await openSheet(page);
+    await typeAdd(page, "Tea");
+    lWant("sheet-offline-queued", await sheetText(page), ["Tea", "Not saved"]);
+    const q = await lQueue(page);
+    if (q.length !== 1) LS.failed.push(`state sheet-offline-queued: queue ${JSON.stringify(q)}`);
+    await lShot(page, "sheet-offline-queued", page.locator(SHEET));
+    delete cfg.post.add; // the network is back: a reload flushes the queue
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2500);
+    const after = await lQueue(page);
+    await openSheet(page);
+    const t = await sheetText(page);
+    if (after.length !== 0 || !t.includes("Tea") || t.includes("Not saved")) LS.failed.push(`state sheet-offline-queued: after reload queue ${after.length}, text has Tea ${t.includes("Tea")}, still unsaved ${t.includes("Not saved")}`);
+  });
+}
+for (const [name, body, typed, want] of [
+  ["sheet-hint-dupe", LIST_STATES.ordinary.body, "oat   MILK", ["Oat milk is already on the list."]],
+  ["sheet-hint-revive", LIST_STATES.ticked.body, "eggs", ["Eggs is back on the list."]],
+  ["sheet-hint-60", LIST_STATES.ordinary.body, "a".repeat(70), ["60 characters at most."]],
+]) {
+  await withList(name, { body }, {}, async ({ page }) => {
+    await openSheet(page);
+    if (name === "sheet-hint-60") {
+      await page.locator(`${SHEET} input`).fill(typed);
+      const len = await page.locator(`${SHEET} input`).evaluate((i) => i.value.length);
+      if (len !== 60) LS.failed.push(`state ${name}: the field holds ${len} characters, not 60`);
+    } else await typeAdd(page, typed);
+    lWant(name, await sheetText(page), want);
+    await lShot(page, name, page.locator(SHEET));
+  });
+}
+
+// ---- the PIN gate (only "Clear list") ----
+await withList("sheet-confirm", { body: LIST_STATES.crowded.body }, {}, async ({ page }) => {
+  await openSheet(page);
+  await page.locator(SHEET).getByRole("button", { name: "Clear list" }).click();
+  await page.waitForTimeout(400);
+  lWant("sheet-confirm-needs-pin", await sheetText(page), ["Clear all 9 items? This needs the PIN.", "Cancel", "Enter PIN"]);
+  await lShot(page, "sheet-confirm-needs-pin", page.locator(SHEET));
+  await page.locator(SHEET).getByRole("button", { name: "Enter PIN" }).click();
+  await seen(page, "[role=dialog]:not([data-list-sheet])", 5000);
+  await page.waitForTimeout(700);
+  const pin = await page.evaluate(() => {
+    const pads = [...document.querySelectorAll("[role=dialog]")].filter((d) => !d.hasAttribute("data-list-sheet"));
+    const pad = pads[pads.length - 1];
+    if (!pad) return { present: false };
+    const q = pad.getBoundingClientRect();
+    const hit = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+    return { present: true, inside: !!hit && pad.contains(hit) };
+  });
+  lRecord("L12", "pin pad above the sheet", pin.present && pin.inside, pin);
+  LS.states["sheet-pin-over-sheet"] = { ok: pin.present && pin.inside };
+  await page.screenshot({ path: join(OUT_DIR, "list-sheet-pin-over-sheet.png") });
+  await enterPin(page);
+  lWant("sheet-confirm-elevated", await sheetText(page), ["Clear all 9 items?", "Clear 9 items"], ["This needs the PIN."]);
+  await lShot(page, "sheet-confirm-elevated", page.locator(SHEET));
+  // the elevation lapsed on the server: the clear answers 403 and the row goes back to the first form
+  await page.unroute(LIST_RE);
+  await page.route(LIST_RE, (route) => (route.request().method() === "POST" ? route.fulfill({ status: 403, json: { error: "elevation" } }) : route.fulfill({ json: LIST_STATES.crowded.body })));
+  await page.locator(SHEET).getByRole("button", { name: "Clear 9 items" }).click();
+  await page.waitForTimeout(700);
+  lWant("sheet-confirm-403-lapse", await sheetText(page), ["Clear all 9 items? This needs the PIN."]);
+  await lShot(page, "sheet-confirm-403-lapse", page.locator(SHEET));
+});
+
+// ---- undo ----
+await withList("sheet-undo-ticked", { body: LIST_STATES.ticked.body }, {}, async ({ page }) => {
+  await openSheet(page);
+  await page.locator(SHEET).getByRole("button", { name: "Clear 2 ticked" }).click();
+  await page.waitForTimeout(600);
+  lWant("sheet-undo-ticked", await sheetText(page), ["Cleared 2 ticked items.", "Undo"]);
+  const undoH = await page.locator(SHEET).getByRole("button", { name: "Undo" }).evaluate((b) => b.getBoundingClientRect().height);
+  lRecord("L4", "undo button", undoH >= 43.5, { undoH });
+  await lShot(page, "sheet-undo-ticked", page.locator(SHEET));
+});
+await withList("sheet-undo-all", { body: LIST_STATES.crowded.body, elevated: true }, {}, async ({ page }) => {
+  await openSheet(page);
+  await page.locator(SHEET).getByRole("button", { name: "Clear list" }).click();
+  await page.waitForTimeout(400);
+  lWant("sheet-undo-all already elevated", await sheetText(page), ["Clear all 9 items?", "Clear 9 items"], ["This needs the PIN."]);
+  await page.locator(SHEET).getByRole("button", { name: "Clear 9 items" }).click();
+  await page.waitForTimeout(700);
+  lWant("sheet-undo-all", await sheetText(page), ["Cleared 9 items.", "Undo"]);
+  await lShot(page, "sheet-undo-all", page.locator(SHEET));
+  await page.locator(SHEET).getByRole("button", { name: "Undo" }).click();
+  await page.waitForTimeout(800);
+  const back = await page.locator(`${SHEET} [role=checkbox]`).count();
+  if (back !== 9) LS.failed.push(`state sheet-undo-all: ${back} rows after Undo, want 9`);
+});
+
+// ---- L13 initial focus ----
+await withList("sheet-focus", { body: LIST_STATES.ordinary.body }, {}, async ({ page }) => {
+  await openSheet(page);
+  const m = await page.evaluate(LIST_SHEET);
+  lRecord("L13", "on open", m.active === "Close" && m.activeInSheet && m.ring === false, { active: m.active, ring: m.ring });
+  await page.keyboard.press("Tab");
+  await page.waitForTimeout(150);
+  const k = await page.evaluate(LIST_SHEET);
+  lRecord("L13", "after a key", k.activeInSheet && k.active !== "Close" && k.ring === true, { active: k.active, ring: k.ring });
+});
+
+// ---- night: nothing (the overlay owns the screen) ----
+await withList("night-none", { body: LIST_STATES.ordinary.body }, { url: `${L_STD}&period=night` }, async ({ page }) => {
+  await page.waitForTimeout(800);
+  const n = await page.evaluate(() => ({ pane: document.querySelectorAll("[data-lists-pane]").length, button: document.querySelectorAll('button[aria-label^="Shopping list"]').length }));
+  LS.states["night-none"] = { ok: n.pane === 0 && n.button === 0, ...n };
+  if (!LS.states["night-none"].ok) LS.failed.push(`state night-none ${JSON.stringify(n)}`);
+});
+
+// ---- test 25: the widget registry (a fresh layout shows the pane right after UV and air; a saved layout without `lists` shows none) ----
+await lRun("registry", async () => {
+  const labels = (page) => page.evaluate(() => [...document.querySelectorAll('button[aria-label^="Show "]')].map((b) => b.getAttribute("aria-label")));
+  const o = { url: MAIN_URL, size: SIZES[1], weather: sunAirWeatherFor("ordinary"), fixedTime: true, instant: sunAirInstant("ordinary") };
+  const a = await listVisit({ body: LIST_STATES.ordinary.body }, o);
+  await a.page.waitForTimeout(800);
+  const fresh = await labels(a.page);
+  await a.context.close();
+  const i = fresh.indexOf("Show UV and air");
+  LS.registry.fresh = { labels: fresh, ok: i >= 0 && fresh[i + 1] === "Show Shopping list" };
+  const saved = JSON.stringify({ glance: ["forecast", "sun-air", "news", "climate", "containers"], full: [] });
+  const b = await listVisit({ body: LIST_STATES.ordinary.body }, { ...o, initScript: `localStorage.setItem("kiosk-widgets", ${JSON.stringify(saved)})` });
+  await b.page.waitForTimeout(800);
+  const old = await labels(b.page);
+  await b.context.close();
+  LS.registry.saved = { labels: old, ok: old.length > 0 && !old.includes("Show Shopping list") };
+  for (const [k, v] of Object.entries(LS.registry)) if (!v.ok) LS.failed.push(`registry ${k} ${JSON.stringify(v.labels)}`);
+});
+
+// L8 runs in node (no page): ink, ink-dim and ink-faint on bg, panel and panel-2 in every theme and sunroom stop
+await lRun("L8 contrast", async () => {
+  const c = await uvContrast(["ink", "ink-dim", "ink-faint"]);
+  lRecord("L8", "contrast", c.pass && c.unresolved.length === 0, { checked: c.checked, lowest: c.lowest, failures: c.failures, unresolved: c.unresolved });
+});
+
+// every L needs its entries (a missing one fails it): L1 five pane states, L3-L6 six counts, L10 five panes + six counts, L11 stale pane and sheet
+const L_NEED = { L1: 5, L2: 1, L3: 6, L4: 7, L5: 6, L6: 6, L7: 2, L8: 1, L9: 1, L10: 11, L11: 2, L12: 1, L13: 2, L14: 3, L15: 2, L16: 3 };
+for (const n of LNS) {
+  const e = LS.entries[n];
+  LS[n] = e.length >= L_NEED[n] && e.every((x) => x.ok);
+  if (e.length < L_NEED[n]) LS.failed.push(`${n} has ${e.length} entries, needs ${L_NEED[n]}`);
+}
+if (LS.failed.length) process.exitCode = 1;
 
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;

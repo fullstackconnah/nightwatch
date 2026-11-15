@@ -106,6 +106,12 @@
   cursor: grab;
   user-select: none;
 }
+/* The list sheet is the tallest one (13 rows, design rule 16): its grabber sits in the panel's own top padding instead of taking a 44 px row. */
+[data-kiosk-theme="sunroom"] [data-list-sheet] > .sr-sheet-head {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--sr-space-4);
+}
 [data-kiosk-theme="sunroom"] .sr-grabber {
   width: 40px;
   height: 5px;

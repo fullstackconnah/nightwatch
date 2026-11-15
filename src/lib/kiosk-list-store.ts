@@ -59,8 +59,8 @@ async function load(): Promise<ListFile> {
   }
   const parsed = parseListFile(raw);
   if (parsed) return (s.file = parsed);
-  console.warn("[kiosk-list] unparsable list file, kept as .corrupt, starting empty");
   try { await fs.rename(listPath(), `${listPath()}.corrupt`); } catch { throw new StoreError("corrupt file not kept"); } // never write over an unreadable file we could not keep
+  console.warn("[kiosk-list] unparsable list file, kept as .corrupt, starting empty");
   return (s.file = { v: 1, items: [], history: [] });
 }
 

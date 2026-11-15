@@ -31,6 +31,8 @@ import { cn } from "@/lib/utils";
 import { KioskAssistant } from "@/components/kiosk/kiosk-assistant";
 import { KioskForecastRail } from "@/components/kiosk/kiosk-forecast";
 import { KioskSunAir } from "@/components/kiosk/kiosk-sun-air";
+import { KioskListPane, useKioskList } from "@/components/kiosk/kiosk-list";
+import { listPaneView } from "@/lib/kiosk-list";
 import { useKioskBriefing, useSunAirView, useWeatherView, type KioskPeriod } from "@/components/kiosk/kiosk-display";
 import { useKioskHa } from "@/components/kiosk/kiosk-hub";
 import { useFreshness, useKioskHealth, useKioskVitals } from "@/lib/kiosk-client";
@@ -44,6 +46,7 @@ import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk/kio
 export type KioskWidgetId =
   | "forecast"
   | "sun-air"
+  | "lists"
   | "assistant"
   | "news"
   | "briefing"
@@ -176,6 +179,17 @@ function SunAirWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void 
   useEmptyReport(!view?.glance, reportEmpty);
   if (!view?.glance) return null;
   return <KioskSunAir glance={view.glance} sr={view.sr} stale={weather.status === "ready-stale"} />;
+}
+
+/* ── lists (the shared shopping list) ─────────────────────────────────────── */
+
+/* Present only when something is left to get; ticked items neither show nor count. Not loaded and nothing cached
+   drops the pane too (kiosk-list.ts's listPaneView owns that rule and every word). */
+function ListsWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void }) {
+  const list = useKioskList();
+  const view = listPaneView(list.items, list.status === "ready-stale");
+  useEmptyReport(!view, reportEmpty);
+  return view ? <KioskListPane view={view} /> : null;
 }
 
 function WeatherOutlookWidget({ period, reportEmpty }: { period: KioskPeriod; reportEmpty?: (empty: boolean) => void }) {
@@ -474,6 +488,13 @@ export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
     render: (ctx) => <SunAirWidget reportEmpty={ctx.reportEmpty} />,
   },
   {
+    id: "lists",
+    label: "Shopping list",
+    blurb: "What to buy; shown only when something is on the list.",
+    allow: ["glance"],
+    render: (ctx) => <ListsWidget reportEmpty={ctx.reportEmpty} />,
+  },
+  {
     id: "assistant",
     label: "Assistant",
     blurb: "Ask a question or control the house in plain words.",
@@ -585,7 +606,7 @@ export const KIOSK_WIDGET_MAP: ReadonlyMap<KioskWidgetId, KioskWidgetDef> = new 
  *  mode showed before this feature existed, unmanaged by widgets (see
  *  FullContent in kiosk-surface.tsx). */
 export const DEFAULT_WIDGET_LAYOUT: KioskWidgetLayout = {
-  glance: ["forecast", "sun-air", "news", "climate", "containers"],
+  glance: ["forecast", "sun-air", "lists", "news", "climate", "containers"],
   full: [],
 };
 
