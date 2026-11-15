@@ -1913,8 +1913,8 @@ const CAL_PANE = () => {
   const small = [];
   const cut = [];
   const inner = [];
-  for (const el of [root, ...root.querySelectorAll("*")]) if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0) inner.push(el.textContent.trim().slice(0, 30));
   for (const el of visible.flatMap((v) => [v, ...v.querySelectorAll("*")])) {
+    if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0) inner.push(el.textContent.trim().slice(0, 30)); // the sr-only sentence is skipped: it is 1 px high by design
     if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) cut.push({ text: el.textContent.trim().slice(0, 30), ellipsis: getComputedStyle(el).textOverflow === "ellipsis" });
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
@@ -2008,11 +2008,11 @@ const calWake = async (page, size, state) => {
   await page.mouse.click(size.viewport.width / 2, size.viewport.height / 2); // a wake tap: Standard then runs as "day"
   await page.waitForTimeout(800);
 };
-const calBaseline = async (state, size) => {
+const calBaseline = async (state, size, theme) => {
   const def = CAL_STATES[state];
-  const key = `${def.at}|${def.crowded ? 1 : 0}|${size.name}`;
+  const key = `${def.at}|${def.crowded ? 1 : 0}|${size.name}|${theme}`;
   if (!calBase[key]) {
-    const { context, page } = await calVisit(state, CAL_URL("sunroom", true), size, { status: "unconfigured" });
+    const { context, page } = await calVisit(state, CAL_URL(theme, true), size, { status: "unconfigured" });
     await calWake(page, size, state);
     calBase[key] = await page.evaluate(CAL_STD);
     await context.close();
@@ -2037,7 +2037,7 @@ const calStd = async (key, state, theme, size) => {
     }
     const t = textHas(m.text ?? "", def.failedLine ? ["Calendar unavailable."] : def.std, def.failedLine ? [] : ["Calendar unavailable."]);
     if (m.nodes !== 1 || t.missing.length || t.present.length) CL.failed.push(`std ${key} text ${JSON.stringify({ nodes: m.nodes, ...t })}`);
-    const base = await calBaseline(state, size);
+    const base = await calBaseline(state, size, theme);
     const n = m.rows + m.more;
     const allowance = 97 + 24 * (n - 2); // P3 S3: 2 rows 97 px, 4 rows 145 px (a row is text-sm 20 + space-y-1 4)
     const shift = typeof m.hubTop === "number" && typeof base.hubTop === "number" ? m.hubTop - base.hubTop : null;
@@ -2098,14 +2098,15 @@ async function calSettings(name, status, { viewport = { width: 1024, height: 768
   await page.screenshot({ path: join(OUT_DIR, `calendar-settings-${name}.png`), fullPage: true });
   await context.close();
 }
-const calField = (page) => page.getByLabel("Private calendar link");
-const calSave = (page) => page.getByRole("button", { name: "Save" }).last();
+// every helper is scoped to the card (its intro's parent), as binCard is: the page holds other Save buttons, fields and Test buttons
+const calCard = (page) => page.getByText(CAL_INTRO).locator("..");
+const calField = (page) => calCard(page).getByLabel("Private calendar link");
+const calSave = (page) => calCard(page).getByRole("button", { name: "Save" });
 const calFieldFacts = (page) => calField(page).evaluate((i) => ({ placeholder: i.placeholder, maxLength: i.maxLength, type: i.type, value: i.value, describedBy: i.getAttribute("aria-describedby") }));
 const calTypeAndSave = async (page) => { await calField(page).fill(CAL_DRAFT); await calSave(page).click(); await page.waitForTimeout(500); };
 /** The error span the field points at: shown whole (not cut to an ellipsis) and in the bad tone. */
-const calErrorFacts = (page) => page.evaluate(() => {
-  const i = document.querySelector("input[aria-describedby]");
-  const e = i ? document.getElementById(i.getAttribute("aria-describedby")) : null;
+const calErrorFacts = (page) => calField(page).evaluate((i) => {
+  const e = i.getAttribute("aria-describedby") ? document.getElementById(i.getAttribute("aria-describedby")) : null;
   return e ? { text: e.textContent, whole: e.scrollWidth <= e.clientWidth + 1, tone: getComputedStyle(e).color } : null;
 });
 const CAL_SET_STATES = ["settings-empty", "settings-configured", "settings-error", "settings-warn", "settings-replace", "settings-390"];
@@ -2115,7 +2116,7 @@ await cRun("settings empty", () => calSettings("settings-empty", CAL_SETTINGS.em
 }));
 await cRun("settings configured", () => calSettings("settings-configured", CAL_SETTINGS.configured, {
   want: ["configured · last saved", "Calendar connected · 14 events this week", "Replace", "Clear"], not: ["Not syncing", CAL_LONGEST_ERROR],
-  mark: async (page) => { const n = await page.getByRole("button", { name: /^Test/ }).count(); return { ok: n === 0, testButtons: n }; }, // Save is the test
+  mark: async (page) => { const n = await calCard(page).getByRole("button", { name: /^Test/ }).count(); return { ok: n === 0, testButtons: n }; }, // Save is the test
 }));
 await cRun("settings error", () => calSettings("settings-error", CAL_SETTINGS.empty, {
   saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],

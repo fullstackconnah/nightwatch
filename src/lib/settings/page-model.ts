@@ -1,4 +1,4 @@
-/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the eleven strips in a fixed
+/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the twelve strips in a fixed
  * order, which strip the answer names, and whether writes are on. It claims nothing about reachability: only
  * configured flags, updatedAt stamps and the forms' own reports (R1). Type-only imports so node:test can load it.
  * Section 5 of the settings shape brief is the spec; page-model.test.ts has a case per row. */
