@@ -534,7 +534,7 @@ export function KioskListSheet({
             </div>
           )}
 
-          <div data-sr-sheet-body className="min-h-0 flex-1 overflow-y-auto">
+          <div data-sr-sheet-body className="min-h-0 flex-1">
             {status === "loading" && <p className="text-sm text-ink-faint">Loading the list…</p>}
             {status === "unreachable-empty" && (
               <div className="flex flex-col items-start gap-2">

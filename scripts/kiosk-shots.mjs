@@ -1338,7 +1338,8 @@ const LIST_FIT = () => {
   if (!d || !body || !foot) return { present: false };
   const ticked = [...d.querySelectorAll('[role=group][aria-label="Ticked"] [role=checkbox]')];
   const px = (v) => Math.round(v * 10) / 10;
-  return { present: true, ticked: ticked.length, lastBottom: px(Math.max(...ticked.map((x) => x.getBoundingClientRect().bottom))), footTop: px(foot.getBoundingClientRect().top), scrollH: body.scrollHeight, clientH: body.clientHeight };
+  const scroll = [d, ...d.querySelectorAll("*")].filter((e) => e.clientHeight > 0 && e.scrollHeight > e.clientHeight + 1).map((e) => e.tagName.toLowerCase()); // any element in the sheet, as L3 does
+  return { present: true, ticked: ticked.length, lastBottom: px(Math.max(...ticked.map((x) => x.getBoundingClientRect().bottom))), footTop: px(foot.getBoundingClientRect().top), scrollH: body.scrollHeight, clientH: body.clientHeight, scroll };
 };
 for (const size of SIZES) {
   await withList(`sheet-full ${size.name}`, { body: LIST_STATES.full.body }, { size }, async ({ page }) => {
@@ -1346,7 +1347,7 @@ for (const size of SIZES) {
     const text = await sheetText(page);
     const ok = lWant(`sheet-full-${size.name}`, text, LIST_STATES.full.want);
     const m = await page.evaluate(LIST_FIT);
-    lRecord("L15", size.name, ok && m.present && m.ticked === 2 && m.lastBottom <= m.footTop && m.scrollH <= m.clientH, m);
+    lRecord("L15", size.name, ok && m.present && m.ticked === 2 && m.lastBottom <= m.footTop && m.scrollH <= m.clientH && m.scroll.length === 0, m);
     await lShot(page, `sheet-full-${size.name}`, page.locator(SHEET));
   });
 }

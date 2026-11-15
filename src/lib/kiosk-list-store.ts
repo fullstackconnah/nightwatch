@@ -246,7 +246,7 @@ export async function handleListAction(action: string, input: ListActionInput): 
         for (const rid of restoreIds) {
           const held = s.buffer.find((x) => x.item.id === rid)?.item;
           const dupe = held && items.some((i) => !i.done && fold(i.text) === fold(held.text));
-          const reason = items.some((i) => i.id === rid) ? "present" : !held ? "expired" : dupe ? "exists" : (held.done ? items.length >= MAX_ROWS : isFull(items)) ? "full" : "";
+          const reason = items.some((i) => i.id === rid) ? "present" : !held ? "expired" : dupe ? "exists" : isFull(items) ? "full" : "";
           if (reason) skipped.push({ id: rid, reason });
           else { items.unshift(held as ListItem); restored.push(held as ListItem); }
         }
