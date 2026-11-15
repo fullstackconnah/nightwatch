@@ -120,6 +120,28 @@ export const HEALTH = { total: 10, running: 9, paused: 0, restarting: 0, stopped
 /** /kiosk/api/doorbell as the unconfigured HaDoorbellSnapshot (ha-doorbell.ts:329): kiosk-doorbell.tsx:257 reads data.cameras.length, so QUIET threw there. */
 export const DOORBELL = { status: "unconfigured", cameras: [], triggers: [], latest: null, autoOpen: true, viewCamera: null, lastSeenAt: null };
 
+/** /kiosk/api/list for the shared shopping list. Invented names only. `n` open items and `t` ticked ones, in the server's order
+ *  (open newest first, then ticked newest first). The shots fake answers writes itself; each state carries the answer it needs. */
+const LIST_NAMES = ["Oat milk", "Bread", "Apples", "Eggs", "Tea", "Rice", "Jam", "Salt", "Soap", "Figs", "Pears", "Basil", "Honey"];
+const listId = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+export const LIST_SUGGEST = ["Bananas", "Butter", "Coffee", "Pasta"];
+export function listBody(n, t = 0, suggestions = LIST_SUGGEST) {
+  const mk = (i, extra = {}) => ({ id: listId(i + 1), listId: "shopping", text: LIST_NAMES[i], done: false, createdAt: 1000 + i, doneAt: null, updatedAt: 1000 + i, ...extra });
+  const open = Array.from({ length: n }, (_, i) => mk(i)).reverse();
+  const ticked = Array.from({ length: t }, (_, i) => mk(n + i, { done: true, doneAt: 5000 + i })).reverse();
+  return { listId: "shopping", items: [...open, ...ticked], suggestions, serverTime: 10_000 };
+}
+export const LIST_EMPTY = listBody(0);
+/** One entry per capture state: the body, plus `want` (text the state must show) and `not`. Counts for the no-scroll check use listBody directly. */
+export const LIST_STATES = {
+  ordinary: { body: listBody(3), want: ["Shopping · 3 to get", "Apples", "Bread", "Oat milk"] },
+  crowded: { body: listBody(9), want: ["Shopping · 9 to get", "and 6 more"] },
+  ticked: { body: listBody(3, 2), want: ["Ticked", "Clears at 4 am", "Clear 2 ticked"] },
+  full: { body: listBody(11, 2), want: ["List is full. Clear ticked items or clear the list to add more.", "Clear 2 ticked"] },
+  emptyChips: { body: listBody(0), want: ["Nothing on the list.", "Type above, or tap something you often buy.", "Often added"] },
+  emptyNoChips: { body: listBody(0, 0, []), want: ["Nothing on the list.", "Type above to add the first item."], not: ["Often added"] },
+};
+
 /** Every /kiosk/api/* path the glance and standard layouts fetch, with its real-shaped body. Anything not listed (or weather and
  *  attention, which visit() answers itself) gets QUIET. */
 export const ROUTES = {
@@ -130,6 +152,7 @@ export const ROUTES = {
   "/kiosk/api/downloads": { status: "unconfigured" },
   "/kiosk/api/briefing": { status: "unconfigured" },
   "/kiosk/api/weather/radar": { status: "unconfigured" },
+  "/kiosk/api/list": LIST_EMPTY, // every other capture sees an empty list: the pane drops and the button reads "Shopping 0"
 };
 
 /** UV and air states for the sun-air shots (kiosk-uv). Invented values. `at` pins the clock (Sydney, June, +10:00); `want` is

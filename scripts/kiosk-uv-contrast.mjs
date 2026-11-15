@@ -40,12 +40,15 @@ function blockVars(css, sel) {
   const out = {};
   const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   for (const m of css.matchAll(new RegExp(`(?:^|\\n)${esc}\\s*\\{([^}]*)\\}`, "g"))) {
-    for (const d of m[1].matchAll(/(--color-(?:bg|panel|panel-2|warn|bad))\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
+    for (const d of m[1].matchAll(/(--color-(?:bg|panel|panel-2|warn|bad|ink|ink-dim|ink-faint))\s*:\s*([^;]+);/g)) out[d[1]] = d[2].trim();
   }
   return out;
 }
 
-export async function uvContrast() {
+const camel = (s) => s.replace(/-(\w)/g, (_, c) => c.toUpperCase());
+
+/** `tones`: the text colours to check (default the UV pane's warn and bad; the list sheet passes ink, ink-dim and ink-faint). */
+export async function uvContrast(tones = ["warn", "bad"]) {
   const css = cssFiles(join(ROOT, "src/app")).map((p) => readFileSync(p, "utf8")).join("\n");
   const themes = [...readFileSync(join(ROOT, "src/components/kiosk/kiosk-theme.tsx"), "utf8").match(/KIOSK_THEMES[^=]*=\s*\[([^\]]*)\]/)[1].matchAll(/"([a-z-]+)"/g)].map((m) => m[1]);
   const base = { ...blockVars(css, "@theme"), ...blockVars(css, ":root") };
@@ -53,7 +56,7 @@ export async function uvContrast() {
   const unresolved = [];
   for (const t of themes.filter((n) => n !== "sunroom")) {
     const v = { ...base, ...blockVars(css, `[data-kiosk-theme="${t}"]`) };
-    for (const tone of ["--color-warn", "--color-bad"]) {
+    for (const tone of tones.map((n) => `--color-${n}`)) {
       for (const ground of ["--color-bg", "--color-panel", "--color-panel-2"]) {
         if (!isHex(v[tone]) || !isHex(v[ground])) unresolved.push(`${t} ${tone} on ${ground}`);
         else rows.push({ where: `${t} ${tone.slice(8)} on ${ground.slice(8)}`, ratio: ratio(v[tone], v[ground]) });
@@ -63,8 +66,8 @@ export async function uvContrast() {
   const src = stripTypeScriptTypes(readFileSync(join(ROOT, "src/lib/sunroom-light.ts"), "utf8"));
   const { SUNROOM_STOPS } = await import(`data:text/javascript;base64,${Buffer.from(src).toString("base64")}`);
   for (const s of SUNROOM_STOPS) {
-    for (const tone of ["warn", "bad"]) {
-      for (const ground of ["bg", "panel", "panel2"]) rows.push({ where: `sunroom ${s.name} ${tone} on ${ground}`, ratio: ratio(s.palette[tone], s.palette[ground]) });
+    for (const tone of tones) {
+      for (const ground of ["bg", "panel", "panel2"]) rows.push({ where: `sunroom ${s.name} ${tone} on ${ground}`, ratio: ratio(s.palette[camel(tone)], s.palette[ground]) });
     }
   }
   const failures = rows.filter((r) => r.ratio < MIN);

@@ -99,7 +99,10 @@ export async function flush() {
       }
       sent = true;
       let queue = state.queue.filter((o) => o !== op);
-      const served = (res.json?.item as { id?: string } | undefined)?.id;
+      const item = res.json?.item as ListItem | undefined;
+      const served = item?.id;
+      // Fold the answer into the cache before the op leaves the queue, so the row never blinks out while the refetch is in flight.
+      if (out === "ok" && item) await globalMutate(KEY, (d: ListResponse | undefined) => (d ? { ...d, items: d.items.some((i) => i.id === item.id) ? d.items.map((i) => (i.id === item.id ? item : i)) : [item, ...d.items] } : d), { revalidate: false });
       if (out === "ok" && op.op === "add" && served && served !== id) queue = repoint(queue, id, served); // exists / revived: ticks follow the server's item
       const wasFailed = state.failed.includes(id);
       setState({ queue, failed: state.failed.filter((f) => f !== id) });
@@ -504,7 +507,7 @@ export function KioskListSheet({
           {suggestions.length > 0 && (
             <div>
               <div className="microlabel mb-2">Often added</div>
-              <div className="flex flex-wrap gap-2">
+              <div data-list-chips="" className="flex flex-wrap gap-2">
                 {suggestions.map((s) => (
                   <button key={s} type="button" disabled={disabled} onClick={() => submit(s)} className="h-11 rounded-tile border border-line px-3 text-xs text-ink-dim outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-40">
                     {s}
