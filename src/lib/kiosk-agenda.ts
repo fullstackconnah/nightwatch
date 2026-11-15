@@ -100,7 +100,8 @@ export function agendaView(events: CalendarEvent[], now: number, zone?: string):
       period: showTime ? time[1] : null,
       ...title(lead.e),
       till: on ? till(lead) : null,
-      more: moreLine(todayItems.length - (leadToday ? 1 : 0), tomorrowItems.length - (leadToday ? 0 : 1)),
+      // the lead is not "other", even when a multi-day lead also sits on tomorrow
+      more: moreLine(todayItems.filter((i) => i !== lead).length, tomorrowItems.filter((i) => i !== lead).length),
     },
     rows: shown,
     more,

@@ -693,7 +693,7 @@ function CalendarSection() {
   const { view, stale, failed } = useKioskAgenda();
   if (!view && !failed) return null;
   return (
-    <section className="border-t border-line pt-3">
+    <section data-calendar-section="" className="border-t border-line pt-3">
       <div className="flex items-center gap-2">
         <SectionLabel icon={CalendarDays} label="Calendar" />
         {stale && <StaleTag />}
@@ -702,14 +702,14 @@ function CalendarSection() {
       {view && (
         <ul className="mt-2 space-y-1 text-sm">
           {view.rows.map((r) => (
-            <li key={r.id} className="flex items-baseline gap-2">
+            <li key={r.id} data-agenda-row="" className="flex items-baseline gap-2">
               <span className="w-16 shrink-0 text-xs text-ink-faint">{r.day}</span>
               <span className={`w-20 shrink-0 font-mono ${r.now ? "text-ink" : "text-ink-dim"}`}>{r.time}</span>
               <span className={`min-w-0 truncate ${r.dim ? "text-ink-dim" : "text-ink"}`}>{r.title}</span>
               {r.till && <span className="shrink-0 text-xs text-ink-faint">{r.till}</span>}
             </li>
           ))}
-          {view.more && <li className="pl-[4.5rem] text-ink-dim">{view.more}</li>}
+          {view.more && <li data-agenda-more="" className="pl-[4.5rem] text-ink-dim">{view.more}</li>}
         </ul>
       )}
     </section>

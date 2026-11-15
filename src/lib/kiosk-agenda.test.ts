@@ -93,6 +93,7 @@ describe("kiosk agenda: event rules", () => {
     assert.match(v.rows[0].till ?? "", /^till (Mon|Tue|Wed|Thu|Fri|Sat|Sun)$/);
     assert.equal(v.rows[1].time, "All day");
     assert.equal(v.rows[1].day, "Tomorrow");
+    assert.equal(v.pane.more, null); // the lead is not counted again on tomorrow
     const ends = ev("Conference", at(D - 1, 10), at(D, 11));
     assert.equal(view([ends], at(D, 8)).rows[0].till, "till 11:00 am");
     assert.equal(view([ends], at(D, 8)).rows.length, 1);

@@ -19,6 +19,7 @@
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
  * UV and air (kiosk-uv): sunAir.N1..N8 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
  * Bin night (kiosk-bins): bins.N1..N9,N11 (true/false; the run exits 1 if any is false), bins.entries.<Nx>[], bins.states, bins.settings.<state>, bins.failed[]. Shots bins-*.png. N10 is src/lib/bin-night.test.ts.
+ * Calendar (kiosk-calendar): calendar.{C1..C6,C8} (true/false; the run exits 1 if any is false), calendar.entries.<Cx>[], calendar.states, calendar.settings.<state>, calendar.failed[]. Shots calendar-*.png. C7 is src/lib/kiosk-agenda.test.ts.
  * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
@@ -27,7 +28,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { uvContrast } from "./kiosk-uv-contrast.mjs";
 import { AUTO_OFF, LIST_EMPTY, LIST_STATES, LONG_NAMES, listBody, longNamesBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
-import { BIN_RULE_TWO, BIN_RULE_WED, BIN_STATES, binInstant, binWeatherFor, settingsFullFor } from "./fixtures/kiosk/fixtures.mjs";
+import { BIN_RULE_TWO, BIN_RULE_WED, BIN_STATES, CAL_DRAFT, CAL_LONGEST_ERROR, CAL_SETTINGS, CAL_STATES, binInstant, binWeatherFor, calInstant, calWeatherFor, settingsFullFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -1869,6 +1870,278 @@ for (const n of BNS) {
 }
 for (const s of ["settings-empty", "settings-two-bins", "settings-errors", "settings-night-long", "settings-390"]) if (!BN.settings[s]) BN.failed.push(`settings ${s} never ran`);
 if (BN.failed.length) process.exitCode = 1;
+
+// ---- Kiosk calendar (kiosk-calendar): the Glance pane `agenda`, the Standard section and the Settings card ----
+// results.calendar.{C1..C6,C8} true | false (each needs every entry it was scheduled for; a run that threw leaves it short), results.calendar.entries.<Cx>[],
+// results.calendar.states.<key> the measurements, results.calendar.settings.<state> {ok, missing[], present[], ...}, results.calendar.failed[] (one line each).
+// Checks (shape brief section 9): C1 pane height <= the band and no inner overflow; C2 pane width <= the carousel's max-w-xl and every cut title ends in an ellipsis;
+// C3 pane text >= text-xl (caption and stale tag excepted) and the lead figure = the rail's figure size; C4 Standard: <= 3 rows + 1 more row, section height within P3's allowance,
+// no inner scroll (S1), header unchanged (S2), the hub's top moved by no more than the allowance (S3), the hub still starts in the first viewport on the crowded states (S4);
+// C5 the section's top border = `border-t border-line`; C6 quiet and unconf leave no node and the dots equal the panes; C8 contrast of the three ink tokens. Check 7 (time strings) is a unit test.
+// Shots: calendar-<state>-<size>.png (the band), calendar-std-<state>-<size>.png (the section), calendar-full-<state>-<size>.png, calendar-settings-<state>.png.
+// The route is answered per state through visit()'s `routes`; no link, address or host exists in any fixture, and nothing is fetched out.
+const CL = (results.calendar = { entries: {}, states: {}, settings: {}, failed: [] });
+const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8"];
+const cExpected = {};
+for (const n of CNS) CL.entries[n] = [];
+const cPlan = (n) => { cExpected[n] = (cExpected[n] ?? 0) + 1; };
+const cRecord = (n, key, ok, detail = {}) => { CL.entries[n].push({ key, ok, ...detail }); if (!ok) CL.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
+const cRun = (name, fn) => guarded(`calendar ${name}`, async () => { try { await fn(); } catch (e) { CL.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const cNear = (a, b, tol = 1) => typeof a === "number" && typeof b === "number" && Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= tol;
+const CAL_URL = (theme, std = false) => `${BASE_URL}/kiosk?theme=${theme}&wx=overcast&wxsun=day${std ? "&layout=standard" : ""}`;
+// `body` overrides the state's route answer (the Standard baselines ask the same moment with the calendar unset)
+const calVisit = (state, url, size, body = CAL_STATES[state].body) => visit(url, {
+  viewport: size.viewport, weather: calWeatherFor(state), fixedTime: true, instant: calInstant(CAL_STATES[state].at), ha: true,
+  routes: { "/kiosk/api/calendar": body, ...(CAL_STATES[state].crowded ? { "/kiosk/api/bins": BIN_STATES.crowded.body } : {}) },
+});
+
+/** The pane's measurements, every number read from the house class it measures (the band, the carousel, `text-xl`, the rail's figure). */
+const CAL_PANE = () => {
+  const root = document.querySelector("[data-agenda-pane]");
+  const track = document.querySelector("div.relative.w-full.overflow-hidden > div.flex.h-full.w-full");
+  const panes = track ? [...track.children].filter((c) => !/200%/.test(c.style.transform)).length : null;
+  const dots = document.querySelectorAll('button[aria-label^="Show "]').length;
+  if (!root) return { present: false, panes, dots };
+  const band = root.closest(".overflow-hidden").getBoundingClientRect();
+  const carousel = root.parentElement.closest(".max-w-xl");
+  const r = root.getBoundingClientRect();
+  const probe = Object.assign(document.createElement("span"), { className: "text-xl" });
+  root.append(probe);
+  const floor = parseFloat(getComputedStyle(probe).fontSize);
+  probe.remove();
+  const visible = [...root.querySelectorAll("[aria-hidden]")];
+  const small = [];
+  const cut = [];
+  const inner = [];
+  for (const el of [root, ...root.querySelectorAll("*")]) if (el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0) inner.push(el.textContent.trim().slice(0, 30));
+  for (const el of visible.flatMap((v) => [v, ...v.querySelectorAll("*")])) {
+    if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) cut.push({ text: el.textContent.trim().slice(0, 30), ellipsis: getComputedStyle(el).textOverflow === "ellipsis" });
+    const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
+  }
+  const fig = root.querySelector("[data-agenda-figure]");
+  const railHi = document.querySelector('[data-testid="kiosk-forecast-rail"] .sr-fc-hi');
+  return {
+    present: true, panes, dots,
+    text: visible.map((v) => v.textContent).join(" | "),
+    bandH: Math.round(band.height * 10) / 10, paneH: Math.round(r.height * 10) / 10,
+    carouselW: Math.round(carousel.getBoundingClientRect().width * 10) / 10, paneW: Math.round(r.width * 10) / 10,
+    cut, small, inner, floor,
+    figurePx: fig ? parseFloat(getComputedStyle(fig).fontSize) : null,
+    railPx: railHi ? parseFloat(getComputedStyle(railHi).fontSize) : null,
+    staleTags: root.querySelectorAll(".sr-stale").length, staleInCaption: [...root.querySelectorAll(".sr-stale")].filter((t) => t.parentElement?.querySelector(":scope > .microlabel")).length,
+    clip: { x: Math.max(0, band.left - 8), y: Math.max(0, band.top - 8), width: band.width + 16, height: band.height + 52 },
+  };
+};
+
+/** The Standard section and what it pushes: the hub's top (as the bins checks read it), the header, the border. */
+const CAL_STD = () => {
+  const sec = document.querySelector("[data-calendar-section]");
+  const anchor = document.querySelector("[data-weather-line]") ?? document.querySelector("[data-weather-datums]");
+  const root = anchor ? anchor.closest(".max-w-6xl") : null;
+  const out = {
+    nodes: document.querySelectorAll("[data-calendar-section]").length, rendered: !!document.querySelector("[data-kiosk-theme]"), vh: innerHeight,
+    header: document.querySelector("header")?.getBoundingClientRect().height ?? null,
+    hubTop: root && root.lastElementChild ? root.lastElementChild.getBoundingClientRect().top : null,
+  };
+  if (!sec) return out;
+  const r = sec.getBoundingClientRect();
+  const cs = getComputedStyle(sec);
+  const ref = Object.assign(document.createElement("div"), { className: "border-t border-line" });
+  sec.parentElement.append(ref);
+  const rs = getComputedStyle(ref);
+  const border = { w: cs.borderTopWidth, color: cs.borderTopColor, refW: rs.borderTopWidth, refColor: rs.borderTopColor };
+  ref.remove();
+  const inner = [];
+  for (let el = sec; el && el.tagName !== "MAIN" && el !== document.body; el = el.parentElement) {
+    if (el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== "visible") inner.push(el.tagName);
+  }
+  for (const el of sec.querySelectorAll("*")) if (el.scrollHeight > el.clientHeight + 1 && getComputedStyle(el).overflowY !== "visible") inner.push(el.tagName);
+  const clipped = [...sec.querySelectorAll("[data-agenda-row] > span")].filter((s) => s.scrollWidth > s.clientWidth + 1).map((s) => ({ text: s.textContent.slice(0, 30), ellipsis: getComputedStyle(s).textOverflow === "ellipsis" }));
+  return {
+    ...out, text: sec.innerText, h: r.height, rows: sec.querySelectorAll("[data-agenda-row]").length, more: sec.querySelectorAll("[data-agenda-more]").length,
+    heading: sec.querySelector("h2")?.tagName ?? null, staleTags: sec.querySelectorAll(".sr-stale").length, border, inner, clipped,
+    clip: { x: Math.max(0, r.left - 16), y: Math.max(0, r.top + scrollY - 8), width: r.width + 32, height: r.height + 24 },
+  };
+};
+
+// ---- the glance pane ----
+const CAL_PANE_STATES = ["ordinary", "on-now", "tomorrow-only", "crowded", "six-four", "long-title", "mixed", "gaps", "stale"];
+const CAL_PANE_ABSENT = ["quiet", "unconf", "failed"];
+const CAL_THEMES = [{ theme: "folio", state: "ordinary" }, { theme: "default", state: "ordinary" }];
+const calPane = async (key, state, theme, size) => {
+  const def = CAL_STATES[state];
+  const present = def.pane !== false;
+  if (present) for (const n of ["C1", "C2", "C3"]) cPlan(n);
+  else cPlan("C6");
+  if (present && def.stale && theme === "sunroom") cPlan("C1"); // the one-stale-tag entry
+  await cRun(`pane ${key}`, async () => {
+    const { context, page } = await calVisit(state, CAL_URL(theme), size);
+    await page.locator('button[aria-label="Show Calendar"]').first().click({ timeout: 4000 }).catch(() => {});
+    await page.waitForTimeout(700);
+    const m = await page.evaluate(CAL_PANE);
+    CL.states[`pane-${key}`] = m;
+    if (!present) {
+      cRecord("C6", `pane-${key}`, !m.present && m.panes === m.dots && !(await crashed(page)), { present: m.present, panes: m.panes, dots: m.dots, expect: "no pane, dots equal panes" });
+      await context.close();
+      return;
+    }
+    const t = textHas(m.text ?? "", def.want, def.not);
+    if (!m.present || t.missing.length || t.present.length) CL.failed.push(`pane ${key} text ${JSON.stringify({ present: m.present, ...t })}`);
+    if (m.present) {
+      cRecord("C1", `pane-${key}`, m.paneH <= m.bandH && m.inner.length === 0, { paneH: m.paneH, bandH: m.bandH, inner: m.inner });
+      cRecord("C2", `pane-${key}`, m.paneW <= m.carouselW + 0.5 && m.cut.every((c) => c.ellipsis), { paneW: m.paneW, carouselW: m.carouselW, cut: m.cut });
+      cRecord("C3", `pane-${key}`, m.small.length === 0 && m.figurePx !== null && m.figurePx === m.railPx, { floor: m.floor, small: m.small, figurePx: m.figurePx, railPx: m.railPx });
+      if (def.stale && theme === "sunroom") cRecord("C1", `pane-${key} one stale tag`, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
+      await page.screenshot({ path: join(OUT_DIR, `calendar-${key}.png`), clip: m.clip });
+    }
+    await context.close();
+  });
+};
+for (const size of SIZES) for (const state of [...CAL_PANE_STATES, ...CAL_PANE_ABSENT]) await calPane(`${state}-${size.name}`, state, "sunroom", size);
+for (const t of CAL_THEMES) await calPane(`${t.state}-${t.theme}`, t.state, t.theme, SIZES[1]);
+
+// ---- Standard ----
+const calBase = {};
+const calWake = async (page, size, state) => {
+  if (state !== "woken-night") return;
+  await page.mouse.click(size.viewport.width / 2, size.viewport.height / 2); // a wake tap: Standard then runs as "day"
+  await page.waitForTimeout(800);
+};
+const calBaseline = async (state, size) => {
+  const def = CAL_STATES[state];
+  const key = `${def.at}|${def.crowded ? 1 : 0}|${size.name}`;
+  if (!calBase[key]) {
+    const { context, page } = await calVisit(state, CAL_URL("sunroom", true), size, { status: "unconfigured" });
+    await calWake(page, size, state);
+    calBase[key] = await page.evaluate(CAL_STD);
+    await context.close();
+  }
+  return calBase[key];
+};
+const calStd = async (key, state, theme, size) => {
+  const def = CAL_STATES[state];
+  const absent = ["quiet", "unconf"].includes(state);
+  if (absent) cPlan("C6");
+  else for (const n of ["C4", "C5"]) cPlan(n);
+  if (def.stale && theme === "sunroom") cPlan("C4"); // the one-stale-tag entry
+  await cRun(`standard ${key}`, async () => {
+    const { context, page } = await calVisit(state, CAL_URL(theme, true), size);
+    await calWake(page, size, state);
+    const m = await page.evaluate(CAL_STD);
+    CL.states[`std-${key}`] = m;
+    if (absent) {
+      cRecord("C6", `std-${key}`, m.nodes === 0 && m.rendered && !(await crashed(page)), { nodes: m.nodes, rendered: m.rendered });
+      await context.close();
+      return;
+    }
+    const t = textHas(m.text ?? "", def.failedLine ? ["Calendar unavailable."] : def.std, def.failedLine ? [] : ["Calendar unavailable."]);
+    if (m.nodes !== 1 || t.missing.length || t.present.length) CL.failed.push(`std ${key} text ${JSON.stringify({ nodes: m.nodes, ...t })}`);
+    const base = await calBaseline(state, size);
+    const n = m.rows + m.more;
+    const allowance = 97 + 24 * (n - 2); // P3 S3: 2 rows 97 px, 4 rows 145 px (a row is text-sm 20 + space-y-1 4)
+    const shift = typeof m.hubTop === "number" && typeof base.hubTop === "number" ? m.hubTop - base.hubTop : null;
+    const rowsOk = def.failedLine ? m.rows === 0 && m.more === 0 : m.rows === def.rows && m.more === (def.more ? 1 : 0) && m.rows <= 3 && m.more <= 1;
+    cRecord("C4", `std-${key}`,
+      rowsOk && m.heading === "H2" && m.inner.length === 0 && m.clipped.every((c) => c.ellipsis) && cNear(m.header, base.header, 1)
+        && (def.failedLine || (shift !== null && shift <= allowance + 1)) && (!def.crowded || size.name !== "1024x768" || (typeof m.hubTop === "number" && m.hubTop < m.vh)),
+      { rows: m.rows, more: m.more, want: { rows: def.rows ?? 0, more: def.more ? 1 : 0 }, heading: m.heading, inner: m.inner, clipped: m.clipped, header: m.header, baseHeader: base.header, shift, allowance, hubTop: m.hubTop, vh: m.vh });
+    cRecord("C5", `std-${key}`, m.border.w === m.border.refW && m.border.color === m.border.refColor && parseFloat(m.border.w) > 0, m.border);
+    if (def.stale && theme === "sunroom") cRecord("C4", `std-${key} one stale tag`, m.staleTags === 1, { staleTags: m.staleTags });
+    await page.screenshot({ path: join(OUT_DIR, `calendar-std-${key}.png`), fullPage: true, clip: m.clip });
+    if (theme === "sunroom" && ["crowded", "six-four", "ordinary"].includes(state)) await page.screenshot({ path: join(OUT_DIR, `calendar-full-${key}.png`), fullPage: true });
+    await context.close();
+  });
+};
+for (const size of SIZES) for (const state of Object.keys(CAL_STATES)) await calStd(`${state}-${size.name}`, state, "sunroom", size);
+for (const t of CAL_THEMES) await calStd(`${t.state}-${t.theme}`, t.state, t.theme, SIZES[1]);
+
+// C8 runs in node (no page): the three ink tokens on bg, panel and panel-2 in every theme and sunroom stop
+cPlan("C8");
+await cRun("C8 contrast", async () => {
+  const c = await uvContrast(["ink", "ink-dim", "ink-faint"]);
+  cRecord("C8", "contrast", c.pass && c.unresolved.length === 0, { checked: c.checked, lowest: c.lowest, failures: c.failures, unresolved: c.unresolved });
+});
+
+// ---- the Settings card: GET /api/settings is answered here and the save is mocked, so no link is typed or stored anywhere ----
+// The settings page sits behind the login: each state signs in on its own context (the test stack takes any password).
+const CAL_INTRO = "The private link from your calendar's sharing settings";
+async function calSettings(name, status, { viewport = { width: 1024, height: 768 }, drive = null, saveReply = { status: 200, json: { ok: true } }, want = [], not = [], mark = null } = {}) {
+  const context = await browser.newContext({ viewport, timezoneId: ZONE });
+  const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
+  if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
+  await context.clock.setFixedTime(new Date(calInstant("19:00")));
+  const page = await context.newPage();
+  page.on("pageerror", (e) => { pageErrors++; CL.failed.push(`settings ${name} pageerror ${String(e?.message ?? e).slice(0, 120)}`); });
+  await page.route((u) => u.pathname === "/api/settings", (r) => (r.request().method() === "GET" ? r.fulfill({ json: settingsFullFor(null, status) }) : r.fallback()));
+  await page.route((u) => u.pathname === "/api/settings/integrations", (r) => (r.request().method() === "POST" ? r.fulfill(saveReply) : r.fallback()));
+  const intro = page.getByText(CAL_INTRO);
+  try {
+    await page.goto(`${BASE_URL}/settings#calendar`, { waitUntil: "domcontentloaded" });
+    await intro.waitFor({ state: "attached", timeout: 20_000 });
+    if (!(await intro.isVisible().catch(() => false))) await page.getByRole("button", { name: /Calendar/ }).first().click().catch(() => {});
+    await intro.waitFor({ state: "visible", timeout: 10_000 });
+  } catch (err) {
+    await page.screenshot({ path: join(OUT_DIR, `calendar-settings-${name}-FAILED.png`), fullPage: true }).catch(() => {});
+    CL.failed.push(`settings ${name} FAILED ${page.url()}`);
+    throw err;
+  }
+  await page.waitForTimeout(600);
+  if (drive) await drive(page);
+  await page.waitForTimeout(300);
+  const t = textHas(await page.evaluate(() => document.body.innerText), want, not);
+  const extra = mark ? await mark(page) : {};
+  const textOk = t.missing.length === 0 && t.present.length === 0;
+  CL.settings[name] = { ...t, ...extra, ok: textOk && extra.ok !== false };
+  if (!textOk) CL.failed.push(`settings ${name} ${JSON.stringify(t)}`);
+  if (extra.ok === false) CL.failed.push(`settings ${name} ${JSON.stringify(extra)}`);
+  await page.screenshot({ path: join(OUT_DIR, `calendar-settings-${name}.png`), fullPage: true });
+  await context.close();
+}
+const calField = (page) => page.getByLabel("Private calendar link");
+const calSave = (page) => page.getByRole("button", { name: "Save" }).last();
+const calFieldFacts = (page) => calField(page).evaluate((i) => ({ placeholder: i.placeholder, maxLength: i.maxLength, type: i.type, value: i.value, describedBy: i.getAttribute("aria-describedby") }));
+const calTypeAndSave = async (page) => { await calField(page).fill(CAL_DRAFT); await calSave(page).click(); await page.waitForTimeout(500); };
+/** The error span the field points at: shown whole (not cut to an ellipsis) and in the bad tone. */
+const calErrorFacts = (page) => page.evaluate(() => {
+  const i = document.querySelector("input[aria-describedby]");
+  const e = i ? document.getElementById(i.getAttribute("aria-describedby")) : null;
+  return e ? { text: e.textContent, whole: e.scrollWidth <= e.clientWidth + 1, tone: getComputedStyle(e).color } : null;
+});
+const CAL_SET_STATES = ["settings-empty", "settings-configured", "settings-error", "settings-warn", "settings-replace", "settings-390"];
+await cRun("settings empty", () => calSettings("settings-empty", CAL_SETTINGS.empty, {
+  want: ["PRIVATE CALENDAR LINK"], not: [CAL_LONGEST_ERROR, "Calendar connected", "Not syncing"], // innerText gives a Label as the CSS upper-cases it
+  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "Paste the private calendar link" && f.maxLength === 2048 && f.type === "password" && (await calSave(page).isDisabled()), ...f }; },
+}));
+await cRun("settings configured", () => calSettings("settings-configured", CAL_SETTINGS.configured, {
+  want: ["configured · last saved", "Calendar connected · 14 events this week", "Replace", "Clear"], not: ["Not syncing", CAL_LONGEST_ERROR],
+  mark: async (page) => { const n = await page.getByRole("button", { name: /^Test/ }).count(); return { ok: n === 0, testButtons: n }; }, // Save is the test
+}));
+await cRun("settings error", () => calSettings("settings-error", CAL_SETTINGS.empty, {
+  saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
+  mark: async (page) => { const e = await calErrorFacts(page); const f = await calFieldFacts(page); return { ok: !!e && e.text === CAL_LONGEST_ERROR && e.whole && f.value === CAL_DRAFT && !!f.describedBy, error: e, draftKept: f.value === CAL_DRAFT }; },
+}));
+await cRun("settings warn", () => calSettings("settings-warn", CAL_SETTINGS.warn, {
+  want: ["Not syncing since Thu 2:40 pm: the calendar refused the link (copy a fresh private link and Replace)."], not: ["Calendar connected"],
+  mark: async (page) => page.getByText(/^Not syncing since/).evaluate((el) => ({ ok: el.className.includes("text-warn"), className: el.className })),
+}));
+await cRun("settings replace", () => calSettings("settings-replace", CAL_SETTINGS.replace, {
+  drive: (page) => page.getByRole("button", { name: "Replace" }).click(), want: ["Cancel", "Clear", "Calendar connected · 14 events this week"],
+  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "leave blank to keep the current value" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
+}));
+await cRun("settings 390", () => calSettings("settings-390", CAL_SETTINGS.empty, {
+  viewport: { width: 390, height: 844 }, saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
+  // the longest error wraps whole, and the page does not scroll sideways
+  mark: async (page) => { const e = await calErrorFacts(page); const w = await page.evaluate(() => document.documentElement.scrollWidth); return { ok: !!e && e.whole && w <= 390, error: e, pageScrollW: w }; },
+}));
+for (const s of CAL_SET_STATES) if (!CL.settings[s]) CL.failed.push(`settings ${s} never ran`);
+
+for (const n of CNS) {
+  const e = CL.entries[n];
+  CL[n] = e.length >= (cExpected[n] ?? 0) && e.every((x) => x.ok);
+  if (e.length < (cExpected[n] ?? 0)) CL.failed.push(`${n} has ${e.length} entries, needs ${cExpected[n]}`);
+}
+if (CL.failed.length) process.exitCode = 1;
 
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
