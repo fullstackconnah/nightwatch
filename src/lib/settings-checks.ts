@@ -4,6 +4,7 @@
 export const MCP_TOKEN_MIN = 24;
 export const MAX_PINS = 50;
 export const MAX_PIN_PATH = 4096;
+export const MAX_CALENDAR_LINK = 2048;
 export const MAX_RCON_HOST = 253;
 export const MAX_BUDGET_USD = 1000;
 
@@ -30,6 +31,27 @@ export function httpUrlError(code: string, value: string | undefined): string | 
     ? `${field} must be a plain http(s) address, with no login, ?query or #fragment.`
     : null;
 }
+
+/** The private calendar link as it is fetched and saved: trimmed, the calendar-app scheme turned into the secure one. */
+export function normalizeCalendarLink(raw: string): string {
+  return raw.trim().replace(/^webcal:/i, "https:");
+}
+
+/**
+ * The private calendar link is a secret that carries its token in the query, so unlike httpUrlError a ?query is fine here.
+ * Messages are fixed copy and never repeat the link.
+ */
+export function calendarLinkError(raw: string): string | null {
+  const text = raw.trim();
+  if (text.length > MAX_CALENDAR_LINK) return "That link is too long for a calendar link.";
+  const url = normalizeCalendarLink(text);
+  if (!URL.canParse(url)) return NOT_A_LINK;
+  const u = new URL(url);
+  if (u.protocol === "http:") return "Use the secure version of the link. Your calendar's sharing settings show it.";
+  if (u.protocol !== "https:") return NOT_A_LINK;
+  return u.username || u.password ? "Paste the link without a username or password in it." : null;
+}
+const NOT_A_LINK = "That isn't a link. Paste the whole private link from your calendar's sharing settings.";
 
 const DISCORD_ID = /^\d{17,20}$/;
 // No leading "-", space, "=" or newline: the Hermes daemon may pass this to a CLI argument or env file.

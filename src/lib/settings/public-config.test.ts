@@ -39,6 +39,7 @@ const FULL = {
   npm: { url: "http://npm.test", email: "a@b.test", password: "" },
   forgejo: { url: "http://fg.test", token: "" },
   github: { token: "" },
+  calendar: { url: "", updatedAt: "2026-11-01T00:00:00.000Z" },
   minecraft: { managerUrl: "http://mc.test", managerToken: "", rconHost: "h", rconPassword: "", rconPort: 1, curseforgeKey: "" },
   media: { workerUrl: "http://m.test", workerToken: "" },
   hermes: { tier: "local", model: "m", openrouterApiKey: "", anthropicApiKey: "" },
@@ -64,6 +65,14 @@ describe("sanitizeConfig", () => {
     const declared = new Set([...body.matchAll(/(\w+)\??:/g)].map((m) => m[1]).filter((k) => SECRET.test(k) && !NOT_SECRET.has(k)));
     const seeded = JSON.stringify(FULL);
     for (const k of declared) assert.ok(seeded.includes(`"${k}"`), `${k} is declared in AppConfig but not seeded in FULL`);
+  });
+
+  it("drops the calendar block whole: its link is the secret", () => {
+    // Built from words at run time, so no link is written whole in this repo.
+    const link = ["https://", "calendar", ".", "example", "/", "private", "-", "token", ".ics?key=", "wordsonly"].join("");
+    const out = sanitizeConfig({ ...FULL, calendar: { url: link, updatedAt: "2026-11-01T00:00:00.000Z" } } as AppConfig);
+    assert.ok(!("calendar" in JSON.parse(JSON.stringify(out))));
+    assert.ok(!JSON.stringify(out).includes("wordsonly"));
   });
 
   it("keeps the non-secret jellyfin fields", () => {

@@ -114,6 +114,8 @@ export interface AppConfig {
   forgejo?: { url?: string; token?: string; updatedAt?: string };
   /** GitHub PAT (read-only) for the local→cloud mirror sync visualizer. */
   github?: { token?: string; updatedAt?: string };
+  /** The kiosk calendar's private feed link. The link itself is the secret, so it never leaves the server (sanitizeConfig drops this block). */
+  calendar?: { url: string; updatedAt: string };
   /** Minecraft stack: mc-manager API + RCON + CurseForge search key. */
   minecraft?: {
     managerUrl?: string;
