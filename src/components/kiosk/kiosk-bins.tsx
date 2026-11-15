@@ -2,8 +2,7 @@
 
 /* Bin night on the wall: one plain sentence ("Recycling goes out tonight") from 17:00 to 22:00 on the evening before a
    collection, nowhere else. The server decides which evening (GET /kiosk/api/bins, a date plus names); this file only
-   decides whether that date is today on this device's clock inside the evening period, the same clock computePeriod
-   already trusts. Outside the window, on any other status, or while loading, both components return null: not an
+   decides whether that date is the server's `today` (the display zone's date) inside the evening period. Outside the window, on any other status, or while loading, both components return null: not an
    empty wrapper, because an empty child of the Glance stack's gap-6 or Standard's space-y-3 still costs 24 or 12 px.
    No motion: the line arrives with the period change that already re-renders the surface. No tone: a chore is not a
    crossed threshold, so it never goes warn. */
@@ -11,8 +10,7 @@
 import useSWR from "swr";
 import { Trash } from "lucide-react";
 import { fetcher } from "@/lib/client";
-import { binLineSegments, type BinsResponse } from "@/lib/bin-night";
-import { localStamp } from "@/lib/local-time";
+import { binLineSegments, binsTonight, type BinsResponse } from "@/lib/bin-night";
 import type { KioskPeriod } from "@/components/kiosk/kiosk-display";
 
 const BINS_REFRESH_MS = 30 * 60_000;
@@ -20,8 +18,7 @@ const BINS_REFRESH_MS = 30 * 60_000;
 /** The bin names due tonight, or null. Fetches only in the evening window (a null key stops SWR outright); focus (a wake) revalidates. */
 export function useBinNight(period: KioskPeriod): string[] | null {
   const { data } = useSWR<BinsResponse>(period === "evening" ? "/kiosk/api/bins" : null, fetcher, { refreshInterval: BINS_REFRESH_MS });
-  if (period !== "evening" || data?.status !== "ok" || !data.night) return null;
-  return data.night.date === localStamp(Date.now()).slice(0, 10) ? data.night.bins : null;
+  return period === "evening" ? binsTonight(data) : null;
 }
 
 /** The sentence: names in ink, medium weight; the rest dim. */

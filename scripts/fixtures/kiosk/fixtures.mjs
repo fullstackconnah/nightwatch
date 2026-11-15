@@ -214,13 +214,13 @@ export const SUN_AIR_STD = {
 export const BIN_TODAY = "2026-06-15";
 export const BIN_PAST = "2026-06-14";
 export const binInstant = (hhmm) => `${BIN_TODAY}T${hhmm}:00+10:00`;
-const binsOk = (date, ...bins) => ({ status: "ok", night: { date, bins } });
+const binsOk = (date, ...bins) => ({ status: "ok", today: BIN_TODAY, night: { date, bins } });
 export const BIN_STATES = {
   evening: { at: "19:00", body: binsOk(BIN_TODAY, "Recycling"), want: "Recycling goes out tonight" },
   crowded: { at: "18:30", body: binsOk(BIN_TODAY, "Recycling"), want: "Recycling goes out tonight", crowded: true },
   "two-bin-fallback": { at: "19:00", body: binsOk(BIN_TODAY, "Garden organics", "General waste"), want: "Garden organics and General waste tonight" },
   // absent: the same moment and the same data as a present state, minus the thing that switches the line on
-  quiet: { at: "19:00", body: { status: "ok", night: null } },
+  quiet: { at: "19:00", body: { status: "ok", today: BIN_TODAY, night: null } },
   ordinary: { at: "11:00", body: binsOk(BIN_TODAY, "Recycling") },
   morning: { at: "07:30", body: binsOk(BIN_TODAY, "Recycling") },
   "crowded-am": { at: "07:30", body: binsOk(BIN_TODAY, "Recycling"), crowded: true },
