@@ -36,6 +36,7 @@ const FEED = cal(
   ev("NextWeek", "20261120T090000", "20261120T100000"),
   ev("TooFar", "20261123T090000", "20261123T100000"),
 );
+const settle = async () => { for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r)); }; // lets a background refresh finish
 
 type Call = { url: string; init: RequestInit };
 let calls: Call[] = [];
@@ -114,7 +115,7 @@ describe("fetchCalendar", () => {
     if ("problem" in r) return assert.fail(r.problem);
     assert.equal(r.week, 7);
     assert.equal(r.at, NOW);
-    assert.equal(r.end, Date.parse("2026-11-19T00:00:00+11:00"));
+    assert.equal(r.end, Date.parse("2026-11-20T00:00:00+11:00"));
     assert.deepEqual(r.kept.map((e) => e.title).sort(), ["Alpha", "Birthday", "Dentist", "Late", "Later", "Standup"]);
   });
 });
@@ -126,9 +127,9 @@ describe("getCalendarResponse", () => {
     assert.deepEqual(await getCalendarResponse(NOW), { status: "unconfigured" });
     assert.equal(calls.length, 0);
   });
-  it("serves exactly [today 00:00, day after tomorrow 00:00): all-day first, then start, then title", async () => {
+  it("serves exactly [today 00:00, three days on 00:00): all-day first, then start, then title", async () => {
     const r = ok(await getCalendarResponse(NOW));
-    assert.deepEqual(r.events.map((e) => e.title), ["Birthday", "Late", "Alpha", "Standup", "Dentist"]);
+    assert.deepEqual(r.events.map((e) => e.title), ["Birthday", "Late", "Alpha", "Standup", "Dentist", "Later"]);
     assert.equal(r.stale, false);
     assert.equal(r.fetchedAt, new Date(NOW).toISOString());
     assert.deepEqual([r.events[0].allDay, r.events[0].start, r.events[0].end], [true, "2026-11-16T00:00:00+11:00", "2026-11-17T00:00:00+11:00"]);
@@ -145,13 +146,16 @@ describe("getCalendarResponse", () => {
     await getCalendarResponse(NOW);
     handler = reject(new Error("down"));
     const t1 = NOW + 16 * MIN;
-    const stale = ok(await getCalendarResponse(t1));
+    assert.equal(ok(await getCalendarResponse(t1)).stale, false); // served at once; the refresh runs behind it
+    await settle();
+    const stale = ok(await getCalendarResponse(t1 + 1000));
     assert.equal(stale.stale, true);
-    assert.deepEqual(stale.events.map((e) => e.title), ["Birthday", "Late", "Alpha", "Standup", "Dentist"]);
+    assert.deepEqual(stale.events.map((e) => e.title), ["Birthday", "Late", "Alpha", "Standup", "Dentist", "Later"]);
     assert.equal(calls.length, 2);
     await getCalendarResponse(t1 + 30_000);
     assert.equal(calls.length, 2);
     await getCalendarResponse(t1 + 61_000);
+    await settle();
     assert.equal(calls.length, 3);
   });
   it("never fetched OK is an error, and it is not hammered", async () => {
@@ -165,8 +169,38 @@ describe("getCalendarResponse", () => {
   it("answers error once the last good list no longer covers tomorrow (the second local midnight after the fetch)", async () => {
     await getCalendarResponse(NOW);
     handler = reject(new Error("down"));
-    assert.equal(ok(await getCalendarResponse(Date.parse("2026-11-17T10:00:00+11:00"))).stale, true);
+    await getCalendarResponse(Date.parse("2026-11-17T10:00:00+11:00"));
+    await settle();
+    assert.equal(ok(await getCalendarResponse(Date.parse("2026-11-17T10:00:01+11:00"))).stale, true);
     assert.deepEqual(await getCalendarResponse(Date.parse("2026-11-18T10:00:00+11:00")), { status: "error" });
+  });
+  it("waits for the running fetch when the saved copy no longer covers the served days", async () => {
+    await getCalendarResponse(NOW);
+    const later = Date.parse("2026-11-18T10:00:00+11:00");
+    assert.deepEqual(titles(await getCalendarResponse(later)), ["Later", "NextWeek"]); // fresh feed, not an error
+    handler = reject(new Error("down"));
+    assert.deepEqual(await getCalendarResponse(Date.parse("2026-11-20T10:00:00+11:00")), { status: "error" });
+  });
+  it("a wall left open over midnight already has its new tomorrow", async () => {
+    handler = async () => new Response(cal(ev("Today", "20261116T120000", "20261116T130000"), ev("Wed", "20261118T090000", "20261118T100000"), ev("Thu", "20261119T090000", "20261119T100000")));
+    assert.deepEqual(titles(await getCalendarResponse(NOW)), ["Today", "Wed"]);
+    handler = reject(new Error("down"));
+    const next = Date.parse("2026-11-17T00:05:00+11:00");
+    assert.deepEqual(titles(await getCalendarResponse(next)), ["Wed", "Thu"]);
+  });
+  it("a good copy is served at once while a due refresh runs in the background, one at a time", async () => {
+    await getCalendarResponse(NOW);
+    let release: (r: Response) => void = () => {};
+    handler = () => new Promise<Response>((r) => { release = r; });
+    const t = NOW + 16 * MIN;
+    const timeout = new Promise<never>((_, rej) => setTimeout(() => rej(new Error("waited for the refresh")), 500));
+    const first = ok(await Promise.race([getCalendarResponse(t), timeout]));
+    assert.ok(first.events.length > 0);
+    await Promise.race([getCalendarResponse(t + 1), timeout]);
+    assert.equal(calls.length, 2); // one refresh, not two
+    release(new Response(cal(ev("Fresh", "20261116T120000", "20261116T130000"))));
+    await settle();
+    assert.deepEqual(titles(await getCalendarResponse(t + 2)), ["Fresh"]);
   });
   it("is bound to the link: a changed or cleared link never serves the old list", async () => {
     await getCalendarResponse(NOW);
@@ -187,6 +221,7 @@ describe("calendarMeta", () => {
     assert.deepEqual([good.lastSyncAt, good.eventsThisWeek, good.problem], [new Date(NOW).toISOString(), 7, null]);
     handler = reply("", 403);
     await getCalendarResponse(NOW + 16 * MIN);
+    await settle();
     const bad = calendarMeta(loadConfigForSave());
     assert.deepEqual([bad.lastSyncAt, bad.eventsThisWeek, bad.problem], [new Date(NOW).toISOString(), 7, "refused"]);
     assert.deepEqual(calendarMeta({ ...loadConfigForSave(), calendar: undefined }), { configured: false, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null });
@@ -300,7 +335,7 @@ describe("fix round: shared state, bounded list, unread bodies", () => {
     if ("problem" in fetched) return assert.fail(fetched.problem);
     calls = [];
     other.commitCalendar({ kind: "set", url: LINK, fetched });
-    assert.equal(ok(await getCalendarResponse(NOW)).events.length, 5);
+    assert.equal(ok(await getCalendarResponse(NOW)).events.length, 6);
     assert.equal(calls.length, 0);
   });
   it("the kiosk list is cut to MAX_CALENDAR_EVENTS in agenda order; the week count stays whole", async () => {
