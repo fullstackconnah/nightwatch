@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { KioskSurface } from "@/components/kiosk/kiosk-surface";
 import { KioskNightOverlay, useKioskPeriod } from "@/components/kiosk/kiosk-display";
+import { KioskListSheet } from "@/components/kiosk/kiosk-list";
 import { KioskPinPad } from "@/components/kiosk/kiosk-pin-pad";
 import { KioskDoorbellModal, useDoorbellWatch } from "@/components/kiosk/kiosk-doorbell";
 import { doorLinkDecision, hasDoorParam, withoutDoorParam } from "@/lib/kiosk-door-link";
@@ -69,6 +70,9 @@ function KioskPageInner() {
     setPinOrigin(rect ?? null);
     setPinOpen(true);
   }, []);
+  // The shopping list sheet lives here, like the doorbell modal, so it survives the header re-shaping when the PIN
+  // succeeds, and so the PIN pad (rendered after it) paints above it. originRect = the List button it grows from.
+  const [listSheet, setListSheet] = useState<{ originRect: DOMRect | null } | null>(null);
   const [expiresAt, setExpiresAt] = useState<number | null>(null);
   const lastSlideRef = useRef(0);
   const period = useKioskPeriod();
@@ -274,6 +278,7 @@ function KioskPageInner() {
           onLock={lock}
           initialMode={nightWoken ? "full" : "glance"}
           onDoorbellClick={doorbell.openManually}
+          onListClick={(rect) => setListSheet({ originRect: rect ?? null })}
         />
       )}
 
@@ -286,6 +291,15 @@ function KioskPageInner() {
           trigger={doorbell.trigger}
           onClose={doorbell.close}
           originRect={doorbell.originRect}
+        />
+      )}
+
+      {listSheet && !showNightOverlay && (
+        <KioskListSheet
+          originRect={listSheet.originRect}
+          expiresAt={expiresAt}
+          onNeedPin={openPinPad}
+          onClose={() => setListSheet(null)}
         />
       )}
 

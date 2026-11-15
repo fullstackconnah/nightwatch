@@ -1,6 +1,6 @@
 // Offline queue for the wall's list: adds and ticks only (clears are retried by the user). Pure; the store that
 // owns localStorage lives in components/kiosk/kiosk-list.tsx.
-import { MAX_LEN, UUID_RE, isListId, sortItems, type ListItem } from "./kiosk-list.ts";
+import { MAX_LEN, UUID_RE, fold, isListId, norm, sortItems, type ListItem } from "./kiosk-list.ts";
 
 export type QueueOp =
   | { op: "add"; body: { listId: "shopping"; id: string; text: string } }
@@ -55,8 +55,10 @@ export const repoint = (q: QueueOp[], from: string, to: string): QueueOp[] =>
 export function applyQueue(items: ListItem[], q: QueueOp[], now: number): ListItem[] {
   let out = items;
   q.forEach((o, i) => {
-    if (o.op === "add" && !out.some((x) => x.id === o.body.id)) {
-      out = [...out, { id: o.body.id, listId: "shopping", text: o.body.text, done: false, createdAt: now + i, doneAt: null, updatedAt: now }];
+    if (o.op === "add") {
+      const hit = out.find((x) => fold(x.text) === fold(o.body.text));
+      if (hit) out = hit.done ? out.map((x) => (x === hit ? { ...x, done: false, doneAt: null, createdAt: now + i } : x)) : out; // same rule as the server: ticked name revives, open name is a no-op
+      else if (!out.some((x) => x.id === o.body.id)) out = [...out, { id: o.body.id, listId: "shopping", text: norm(o.body.text), done: false, createdAt: now + i, doneAt: null, updatedAt: now }];
     } else if (o.op === "done") {
       out = out.map((x) => (x.id === o.body.id ? { ...x, done: o.body.done, doneAt: o.body.done ? now : null } : x));
     }

@@ -59,6 +59,7 @@ import { KioskAlerts } from "@/components/kiosk/kiosk-alerts";
 import { KioskDownloads } from "@/components/kiosk/kiosk-downloads";
 import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
 import { KioskDoorbellButton } from "@/components/kiosk/kiosk-doorbell";
+import { KioskListButton } from "@/components/kiosk/kiosk-list";
 import { KioskStatusStripExtras } from "@/components/kiosk/kiosk-status-strip";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
@@ -512,6 +513,7 @@ export function KioskSurface({
   onLock,
   initialMode,
   onDoorbellClick,
+  onListClick,
 }: {
   period: KioskPeriod;
   layout: KioskLayoutChoice;
@@ -530,6 +532,8 @@ export function KioskSurface({
    *  Same rect pass-through as onAdminClick, for the doorbell modal's own
    *  container transform. */
   onDoorbellClick: (rect?: DOMRect) => void;
+  /** Opens the shared shopping list sheet; like the doorbell modal it is owned by page.tsx (the PIN pad must sit above it). */
+  onListClick: (rect?: DOMRect) => void;
   /** Seeds the very first render only (a night wake tap enters full — see
    *  page.tsx's wakeNight/nightWoken — everything else always rests in
    *  glance on mount, per the contract). */
@@ -795,6 +799,7 @@ export function KioskSurface({
                 wanted in a hurry, and unlike Admin it hides itself entirely
                 when Home Assistant has no door camera to show. */}
             <KioskDoorbellButton onClick={onDoorbellClick} />
+            <KioskListButton onClick={onListClick} />
             <KioskStatusStripExtras
               elevated={elevated}
               onAdminClick={onAdminClick}

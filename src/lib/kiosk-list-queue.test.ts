@@ -51,3 +51,11 @@ test("22f applyQueue shows a pending add on top and a pending tick as done; unkn
   assert.equal(out.find((i) => i.id === ID(1))?.doneAt, 1000);
   assert.equal(applyQueue([item(5, { text: "Tea" })], [add(5, "Tea")], 1000).length, 1, "an add already on the server is not doubled");
 });
+
+test("22g applyQueue: an add of a ticked item's name revives it in place; of an open item's name changes nothing", () => {
+  const items = [item(1, { text: "Oat milk", done: true, doneAt: 4 }), item(2, { text: "Bread" })];
+  const out = applyQueue(items, [add(7, "  oat MILK "), add(8, "bread")], 1000);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map((i) => [i.id, i.done]), [[ID(1), false], [ID(2), false]]);
+  assert.equal(out[0].doneAt, null);
+});
