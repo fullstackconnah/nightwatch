@@ -96,7 +96,8 @@ export function BackupTile({ stacked = false }: { stacked?: boolean }) {
         {body}
         {drill && data?.drill && (
           // Your own hand test, not the automatic weekly one above; same row markup so nothing shifts.
-          <div className="mt-2 flex items-center gap-2 min-w-0 text-xs">
+          // Without a badge (never recorded) min-h-5 holds the badge's row height.
+          <div className={cn("mt-2 flex items-center gap-2 min-w-0 text-xs", drill.state === "none" && "min-h-5")}>
             <span className={cn("dot", drill.state === "none" ? "dot-stopped" : drillTone.dot)} aria-hidden />
             <span className="truncate text-ink">Restore drill</span>
             <span

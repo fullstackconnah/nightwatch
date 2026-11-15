@@ -28,6 +28,7 @@ const calm = () => ({
     github: { configured: true, updatedAt: ago(9) },
     media: { configured: true, updatedAt: ago(9) },
     minecraft: { configured: true, updatedAt: ago(5), curseforgeKeySet: true, rconPasswordSet: true },
+    calendar: { configured: false, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null },
     hermes: { openrouterConfigured: true, anthropicConfigured: true },
   },
   system: { mcpTokenConfigured: true, kioskPinConfigured: true, hermesApiConfigured: true, voiceConfigured: true, oidcClientSecretConfigured: true, updatedAt: ago(7) },
