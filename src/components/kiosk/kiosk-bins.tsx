@@ -44,7 +44,7 @@ export function BinNightLine({ period }: { period: KioskPeriod }) {
   return (
     // Same rain-mask zone as the rest of the centre column (same-named rects union).
     <div data-rain-zone="sentence" className="[@media(max-height:700px)]:hidden">
-      <p data-bin-night="line" className="max-w-xl truncate text-center text-base text-ink-dim">
+      <p data-bin-night="line" className="max-w-xl truncate text-center text-xl text-ink-dim">
         <Trash size={16} aria-hidden className="mr-2 inline-block align-middle" />
         <Sentence names={names} />
       </p>

@@ -612,15 +612,11 @@ export const KIOSK_WIDGET_MAP: ReadonlyMap<KioskWidgetId, KioskWidgetDef> = new 
   KIOSK_WIDGETS.map((w) => [w.id, w]),
 );
 
-/** Reproduces today's glance content (weather sentence, the morning
- *  briefing digest line, and the lights/scenes tiles GlanceTiles used to pick
- *  from) — see kiosk-widgets.tsx's THESIS and the carousel's own THESIS for
- *  why `news`/`containers`/`vitals`/etc. are shipped as available widgets but
- *  NOT defaulted on: an untouched device must look unchanged after this
- *  lands, and the new content is one visit to the Widgets tab away. The one
- *  addition is `sun-air`, straight after `forecast`: it shows only when UV
- *  needs sun cover or the air is Moderate or worse, so most days an untouched
- *  device still looks unchanged. A device with a saved layout is not
+/** The default glance layout: forecast, sun-air, agenda, lists, news,
+ *  climate, containers. Widgets outside it (`vitals` and the rest) are shipped
+ *  as available widgets but NOT defaulted on: the new content is one visit to
+ *  the Widgets tab away. `sun-air` sits straight after `forecast`: it shows
+ *  only when UV needs sun cover or the air is Moderate or worse. A device with a saved layout is not
  *  migrated; it adds the pane from the Widgets tab. Full's
  *  default is empty — KioskDisplay + KioskHub already show everything full
  *  mode showed before this feature existed, unmanaged by widgets (see

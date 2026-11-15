@@ -17,9 +17,9 @@
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
  * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
- * UV and air (kiosk-uv): sunAir.N1..N8 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
- * Bin night (kiosk-bins): bins.N1..N9,N11 (true/false; the run exits 1 if any is false), bins.entries.<Nx>[], bins.states, bins.settings.<state>, bins.failed[]. Shots bins-*.png. N10 is src/lib/bin-night.test.ts.
- * Calendar (kiosk-calendar): calendar.{C1..C6,C8} (true/false; the run exits 1 if any is false), calendar.entries.<Cx>[], calendar.states, calendar.settings.<state>, calendar.failed[]. Shots calendar-*.png. C7 is src/lib/kiosk-agenda.test.ts.
+ * UV and air (kiosk-uv): sunAir.N1..N11 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
+ * Bin night (kiosk-bins): bins.N1..N9,N11,P3 (true/false; the run exits 1 if any is false), bins.entries.<Nx>[], bins.states, bins.settings.<state>, bins.failed[]. Shots bins-*.png. N10 is src/lib/bin-night.test.ts.
+ * Calendar (kiosk-calendar): calendar.{C1..C6,C8,C9} (true/false; the run exits 1 if any is false), calendar.entries.<Cx>[], calendar.states, calendar.settings.<state>, calendar.failed[]. Shots calendar-*.png. C7 is src/lib/kiosk-agenda.test.ts.
  * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
@@ -899,12 +899,12 @@ for (const size of SIZES) {
 }
 
 // ---- kiosk UV and air: N1-N8 (glance pane `sun-air` and the Standard inline) ----
-// results.sunAir.{N1..N8}: true | false (each needs every one of its entries; a missing entry fails it), results.sunAir.entries.<Nx>[] the numbers,
+// results.sunAir.{N1..N11}: true | false (each needs every one of its entries; a missing entry fails it), results.sunAir.entries.<Nx>[] the numbers,
 // results.sunAir.states.<state>-<size> (glance) and .std.<state>-<size> (Standard), results.sunAir.failed[] (why, one line each).
 // Shots: sunair-<state>-<size>.png (the band and its dots) and sunair-std-<state>-<size>.png (the weather line). The run exits 1 when any N is false.
 // The URLs keep ?wx=overcast: applyWxPreview must keep uv and air, or every pane check below fails on an empty pane (a dropped field shows as `want` missing).
 const SA = (results.sunAir = { entries: {}, states: {}, std: {}, failed: [] });
-const NS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"];
+const NS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N10", "N11"];
 for (const n of NS) SA.entries[n] = [];
 const saRecord = (n, key, ok, detail) => { SA.entries[n].push({ key, ok, ...detail }); if (!ok) SA.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
 const saRun = (name, fn) => guarded(`sunAir ${name}`, async () => { try { await fn(); } catch (e) { SA.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
@@ -931,10 +931,35 @@ const SUN_AIR_PANE = () => {
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
   }
+  // N9-N11 (worst state): each column's text boxes against the column's centre, the band word's colour against the pane's ink token, one baseline for the UV figure and the air word
+  const mid = (b) => (b.left + b.right) / 2;
+  const rowMid = (el) => { const k = [...el.children].map((c) => c.getBoundingClientRect()).filter((b) => b.width > 0); return k.length ? (Math.min(...k.map((b) => b.left)) + Math.max(...k.map((b) => b.right))) / 2 : null; };
+  const textMid = (el) => { const g = document.createRange(); g.selectNodeContents(el); return mid(g.getBoundingClientRect()); };
+  const cols = [...root.querySelectorAll("[data-sun-col]")].map((col) => {
+    const [cap, row, sub] = [...col.children];
+    return { col: col.dataset.sunCol, centre: mid(col.getBoundingClientRect()), caption: rowMid(cap), row: rowMid(row), sub: textMid(sub) };
+  });
+  const inkProbe = Object.assign(document.createElement("span"), { className: "text-ink", textContent: "x" });
+  root.append(inkProbe);
+  const ink = getComputedStyle(inkProbe).color;
+  inkProbe.remove();
+  const colourOf = (sel) => { const e = root.querySelector(sel); return e ? getComputedStyle(e).color : null; };
+  // a zero-size inline-block sits on its line's baseline: its bottom is that baseline
+  const baselineOf = (sel) => {
+    const e = root.querySelector(sel);
+    if (!e) return null;
+    const p = Object.assign(document.createElement("span"), { style: "display:inline-block;width:0;height:0" });
+    e.append(p);
+    const y = p.getBoundingClientRect().bottom;
+    p.remove();
+    return y;
+  };
+  const tone = { ink, band: colourOf("[data-sun-band]"), figure: colourOf("[data-sun-figure]"), air: colourOf("[data-sun-air-word]") };
+  const baseline = { figure: baselineOf("[data-sun-figure]"), air: baselineOf("[data-sun-air-word]") };
   const fig = root.querySelector("[data-sun-figure]");
   const railHi = document.querySelector('[data-testid="kiosk-forecast-rail"] .sr-fc-hi');
   return {
-    present: true, panes, dots,
+    present: true, panes, dots, cols, tone, baseline,
     text: visible.map((v) => v.textContent).join(" | "),
     bandH: Math.round(band.height * 10) / 10, paneH: Math.round(r.height * 10) / 10,
     bandW: Math.round(band.width * 10) / 10, paneW: Math.round(r.width * 10) / 10,
@@ -977,6 +1002,12 @@ for (const size of SIZES) {
         if (["ordinary", "crowded", "stale", "worst"].includes(state)) saRecord("N1", key, m.paneH <= m.bandH, { paneH: m.paneH, bandH: m.bandH });
         saRecord("N2", key, m.paneW <= m.bandW + 0.5 && m.clipped.length === 0, { paneW: m.paneW, bandW: m.bandW, clipped: m.clipped });
         if (def.uv) saRecord("N3", key, m.figurePx !== null && m.figurePx === m.railPx, { figurePx: m.figurePx, railPx: m.railPx }); // no figure on an air-only pane
+        if (state === "worst") {
+          const near = (a, b) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= 1; // 1 px rounding tolerance
+          saRecord("N9", key, m.cols.length === 2 && m.cols.every((c) => near(c.caption, c.centre) && near(c.row, c.centre) && near(c.sub, c.centre)), { cols: m.cols });
+          saRecord("N10", key, m.tone.band === m.tone.ink && m.tone.band !== m.tone.figure && m.tone.band !== m.tone.air, m.tone);
+          saRecord("N11", key, near(m.baseline.figure, m.baseline.air), m.baseline); // zero-size baseline probes in both spans, not line-box bottoms
+        }
         saRecord("N4", key, m.small.length === 0, { floor: m.floor, small: m.small });
         if (stale) saRecord("N5", `${key} one stale tag`, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
         await page.locator('button[aria-label="Show UV and air"]').first().click().catch(() => {});
@@ -1045,7 +1076,7 @@ await saRun("N7 contrast", async () => {
 });
 
 // every N needs its entries: N1 4 states x 2 sizes, N2-N5 each pane state x size (N3 not air-only), N6 and N8 the Standard states (1024 all 11, 1180 four), N7 one
-const NEED = { N1: 8, N2: 22, N3: 20, N4: 22, N5: 22, N6: 30, N7: 1, N8: 15 };
+const NEED = { N1: 8, N2: 22, N3: 20, N4: 22, N5: 22, N6: 30, N7: 1, N8: 15, N9: 2, N10: 2, N11: 2 }; // N9-N11: the worst state at both sizes
 for (const n of NS) {
   const e = SA.entries[n];
   SA[n] = e.length >= NEED[n] && e.every((x) => x.ok);
@@ -1610,7 +1641,7 @@ if (LS.failed.length) process.exitCode = 1;
 // ONE date: binInstant() pins the clock and every mocked night.date is BIN_TODAY (fixtures.mjs). The evening states assert the line IS there with its exact
 // sentence, so the absence checks (N9) cannot pass with the feature broken. /kiosk/api/bins is answered per state through visit()'s `routes`.
 const BN = (results.bins = { entries: {}, states: {}, settings: {}, failed: [] });
-const BNS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N11"];
+const BNS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "N9", "N11", "P3"];
 for (const n of BNS) BN.entries[n] = [];
 const bnRecord = (n, key, ok, detail = {}) => { BN.entries[n].push({ key, ok, ...detail }); if (!ok) BN.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
 const bnRun = (name, fn) => guarded(`bins ${name}`, async () => { try { await fn(); } catch (e) { BN.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
@@ -1648,11 +1679,12 @@ const BIN_GLANCE = () => {
   const kids = [...stack.children].filter((c) => getComputedStyle(c).position !== "fixed").map((c) => c.getBoundingClientRect()).filter((k) => k.height > 0);
   const cluster = document.querySelector('[data-rain-zone="tiles"]');
   const svg = line.querySelector("svg")?.getBoundingClientRect();
-  const base = probe("text-base", wrap);
+  const base = probe("text-base", wrap); // the 16 px glyph reference (N5)
+  const lead = probe("text-xl", wrap); // the band panes' lead class, which the line now uses (N1, P3)
   const top = Math.max(0, Math.min(wr.top, ...(nr ? [nr.top] : [])) - 16);
   return {
     ...out, text: line.textContent, h: r.height, scrollW: line.scrollWidth, clientW: line.clientWidth, w: r.width,
-    lineHeight: base.lineHeight, fontSize: base.fontSize, maxW: probe("max-w-xl", wrap).maxWidth,
+    lineHeight: lead.lineHeight, leadPx: lead.fontSize, linePx: parseFloat(getComputedStyle(line).fontSize), fontSize: base.fontSize, maxW: probe("max-w-xl", wrap).maxWidth,
     gapToNext: nr ? nr.top - wr.bottom : null, nextText: next ? next.textContent.trim() : null, rowGap: parseFloat(getComputedStyle(stack).rowGap),
     glyph: svg ? { w: svg.width, h: svg.height } : null,
     stackBottom: Math.max(...kids.map((k) => k.bottom)), clusterTop: cluster ? cluster.getBoundingClientRect().top : null, stackOverflow: stack.scrollHeight - stack.clientHeight,
@@ -1716,6 +1748,8 @@ for (const g of BIN_GLANCE_PRESENT) {
     const has = m.nodes === 1 && m.text === want;
     bnRecord("N11", g.key, has && m.prose <= 2, { prose: m.prose, texts: m.proseTexts, want, text: m.text ?? null });
     bnRecord("N1", g.key, has && bnNear(m.h, m.lineHeight), { h: m.h, lineHeight: m.lineHeight });
+    // P3: the bin line is the band panes' lead size (text-xl): its computed size equals the text-xl probe the calendar lead uses (see calendar P1)
+    bnRecord("P3", g.key, has && bnNear(m.linePx, m.leadPx, 0.01), { linePx: m.linePx, leadPx: m.leadPx });
     bnRecord("N2", g.key, has && m.scrollW <= m.clientW && m.w <= m.maxW + 0.5, { scrollW: m.scrollW, clientW: m.clientW, w: m.w, maxW: m.maxW });
     bnRecord("N3", g.key, has && /^tomorrow /.test(m.nextText ?? "") && bnNear(m.gapToNext, m.rowGap), { gapToNext: m.gapToNext, rowGap: m.rowGap, next: m.nextText });
     bnRecord("N4", g.key, has && m.clusterTop !== null && m.stackBottom < m.clusterTop && m.stackOverflow <= 1, { stackBottom: m.stackBottom, clusterTop: m.clusterTop, stackOverflow: m.stackOverflow });
@@ -1870,7 +1904,7 @@ await bnRun("settings 390", () => binsSettings("settings-390", BIN_RULE_TWO, {
 }));
 
 // every N needs its entries (a missing one fails it): N1-N4 six glance states, N5 six glance + three Standard, N6-N8 three Standard, N9 eight glance + three baselines + eight Standard, N11 six present + eight absent
-const BN_NEED = { N1: 6, N2: 6, N3: 6, N4: 6, N5: 9, N6: 3, N7: 3, N8: 3, N9: 19, N11: 14 };
+const BN_NEED = { N1: 6, N2: 6, N3: 6, N4: 6, N5: 9, N6: 3, N7: 3, N8: 3, N9: 19, N11: 14, P3: 6 };
 for (const n of BNS) {
   const e = BN.entries[n];
   BN[n] = e.length >= BN_NEED[n] && e.every((x) => x.ok);
@@ -1880,7 +1914,7 @@ for (const s of ["settings-empty", "settings-two-bins", "settings-errors", "sett
 if (BN.failed.length) process.exitCode = 1;
 
 // ---- Kiosk calendar (kiosk-calendar): the Glance pane `agenda`, the Standard section and the Settings card ----
-// results.calendar.{C1..C6,C8} true | false (each needs every entry it was scheduled for; a run that threw leaves it short), results.calendar.entries.<Cx>[],
+// results.calendar.{C1..C6,C8,C9} true | false (each needs every entry it was scheduled for; a run that threw leaves it short), results.calendar.entries.<Cx>[],
 // results.calendar.states.<key> the measurements, results.calendar.settings.<state> {ok, missing[], present[], ...}, results.calendar.failed[] (one line each).
 // Checks (shape brief section 9): C1 pane height <= the band and no inner overflow; C2 pane width <= the carousel's max-w-xl and every cut title ends in an ellipsis;
 // C3 pane text >= text-xl (caption and stale tag excepted) and the lead figure = the rail's figure size; C4 Standard: <= 3 rows + 1 more row, section height within P3's allowance,
@@ -1889,7 +1923,7 @@ if (BN.failed.length) process.exitCode = 1;
 // Shots: calendar-<state>-<size>.png (the band), calendar-std-<state>-<size>.png (the section), calendar-full-<state>-<size>.png, calendar-settings-<state>.png.
 // The route is answered per state through visit()'s `routes`; no link, address or host exists in any fixture, and nothing is fetched out.
 const CL = (results.calendar = { entries: {}, states: {}, settings: {}, failed: [] });
-const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8"];
+const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"];
 const cExpected = {};
 for (const n of CNS) CL.entries[n] = [];
 const cPlan = (n) => { cExpected[n] = (cExpected[n] ?? 0) + 1; };
@@ -1928,10 +1962,18 @@ const CAL_PANE = () => {
     const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
   }
+  // C9: the horizontal centre of each row's text box (a row's children for the two flex rows; the text range for the count line, its box when it is cut) against the pane's
+  const mid = (b) => (b.left + b.right) / 2;
+  const rowMid = (row) => { const k = [...row.children].map((c) => c.getBoundingClientRect()).filter((b) => b.width > 0); return k.length ? (Math.min(...k.map((b) => b.left)) + Math.max(...k.map((b) => b.right))) / 2 : null; };
+  const [capRow, leadRow, moreRow] = [...root.children].filter((c) => c.hasAttribute("aria-hidden"));
+  const textMid = (el) => { if (el.scrollWidth > el.clientWidth + 1) return mid(el.getBoundingClientRect()); const g = document.createRange(); g.selectNodeContents(el); return mid(g.getBoundingClientRect()); };
+  const lead = leadRow ? [...leadRow.children].find((c) => c.className.includes("truncate")) : null;
+  const align = { pane: mid(r), caption: capRow ? rowMid(capRow) : null, lead: leadRow ? rowMid(leadRow) : null, more: moreRow ? textMid(moreRow) : null,
+    leadCut: lead ? lead.scrollWidth > lead.clientWidth + 1 : false, leadEllipsis: lead ? getComputedStyle(lead).textOverflow === "ellipsis" : null, leadPx: lead ? parseFloat(getComputedStyle(lead).fontSize) : null };
   const fig = root.querySelector("[data-agenda-figure]");
   const railHi = document.querySelector('[data-testid="kiosk-forecast-rail"] .sr-fc-hi');
   return {
-    present: true, panes, dots,
+    present: true, panes, dots, align,
     text: visible.map((v) => v.textContent).join(" | "),
     bandH: Math.round(band.height * 10) / 10, paneH: Math.round(r.height * 10) / 10,
     carouselW: Math.round(carousel.getBoundingClientRect().width * 10) / 10, paneW: Math.round(r.width * 10) / 10,
@@ -1984,6 +2026,7 @@ const calPane = async (key, state, theme, size) => {
   if (present) for (const n of ["C1", "C2", "C3"]) cPlan(n);
   else cPlan("C6");
   if (present && def.stale && theme === "sunroom") cPlan("C1"); // the one-stale-tag entry
+  if (present && state === "crowded") cPlan("C9");
   await cRun(`pane ${key}`, async () => {
     const { context, page } = await calVisit(state, CAL_URL(theme), size);
     await page.locator('button[aria-label="Show Calendar"]').first().click({ timeout: 4000 }).catch(() => {});
@@ -2001,6 +2044,11 @@ const calPane = async (key, state, theme, size) => {
       cRecord("C1", `pane-${key}`, m.paneH <= m.bandH && m.inner.length === 0, { paneH: m.paneH, bandH: m.bandH, inner: m.inner });
       cRecord("C2", `pane-${key}`, m.paneW <= m.carouselW + 0.5 && m.cut.every((c) => c.ellipsis), { paneW: m.paneW, carouselW: m.carouselW, cut: m.cut });
       cRecord("C3", `pane-${key}`, m.small.length === 0 && m.figurePx !== null && m.figurePx === m.railPx, { floor: m.floor, small: m.small, figurePx: m.figurePx, railPx: m.railPx });
+      if (state === "crowded") {
+        const a = m.align;
+        const centred = [a.caption, a.lead, a.more].every((x) => cNear(x, a.pane, 1)); // 1 px rounding tolerance
+        cRecord("C9", `pane-${key}`, centred && (!a.leadCut || a.leadEllipsis === true), a);
+      }
       if (def.stale && theme === "sunroom") cRecord("C1", `pane-${key} one stale tag`, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
       await page.screenshot({ path: join(OUT_DIR, `calendar-${key}.png`), clip: m.clip });
     }

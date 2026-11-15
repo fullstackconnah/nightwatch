@@ -42,17 +42,17 @@ export function KioskAgendaPane({ pane, stale }: { pane: AgendaView["pane"]; sta
   const lead = `${pane.figure}${pane.period ? ` ${pane.period}` : ""}`;
   const ink = pane.dim ? "text-ink-dim" : "text-ink";
   return (
-    <div data-agenda-pane="" className="flex w-full max-w-xl flex-col gap-1 text-left">
+    <div data-agenda-pane="" className="flex w-full max-w-xl flex-col gap-1 text-center">
       <span className="sr-only">
         {[pane.caption, lead, pane.title, pane.till, pane.more].filter(Boolean).join(", ")}
         {stale ? ". Not updated recently." : ""}
       </span>
       {/* h-6 holds the row so the sunroom stale pill (24 px) shifts nothing. */}
-      <div aria-hidden className="flex h-6 items-center gap-2">
+      <div aria-hidden className="flex h-6 items-center justify-center gap-2">
         <span className="microlabel">{pane.caption}</span>
         {stale && <StaleTag />}
       </div>
-      <div aria-hidden className="flex min-h-8 items-baseline gap-2">
+      <div aria-hidden className="flex min-h-8 items-baseline justify-center gap-2">
         <span data-agenda-figure="" className={`shrink-0 font-mono leading-none tabular-nums text-ink ${SIZE.glance.temp}`}>{pane.figure}</span>
         {pane.period && <span className="shrink-0 text-xl text-ink-dim">{pane.period}</span>}
         <span className={`min-w-0 truncate text-xl ${ink}`}>{pane.title}</span>
