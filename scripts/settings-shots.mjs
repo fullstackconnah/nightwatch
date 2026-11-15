@@ -308,7 +308,7 @@ await guarded("C1", () =>
         return { bottom: Math.round(list?.bottom ?? 0), barTop: Math.round(bar?.top ?? innerHeight), scrollHeight: document.documentElement.scrollHeight };
       });
       record("C1 list above the bottom bar", "390", { ...m, ok: m.bottom <= m.barTop });
-      record("C1 page scrollHeight", "390", { value: m.scrollHeight, ok: m.scrollHeight <= 940 });
+      record("C1 page scrollHeight", "390", { value: m.scrollHeight, ok: m.scrollHeight <= 1080 }); // 940 before the Calendar and Restore drill strips (about 66 px each)
       record("C5s calm opens nothing", "390", (await Promise.all(STRIPS.map((id) => isOpen(page, id)))).every((v) => !v));
     } else {
       record("C5s calm opens Access", "1440", await isOpen(page, "access"));
