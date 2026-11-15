@@ -24,6 +24,7 @@ import {
   NpmPanel,
   VoiceCard,
   BinNightCard,
+  CalendarCard,
   useSettingsFull,
 } from "@/components/settings/settings-integrations";
 import { LabelConventionPanel } from "@/components/settings/settings-reference";
@@ -145,6 +146,7 @@ export default function SettingsPage() {
     media: <MediaPanel {...panel} />,
     voice: <VoiceCard {...panel} />,
     bins: <BinNightCard {...panel} />,
+    calendar: <CalendarCard {...panel} />,
     hermes: (
       <div className="space-y-5">
         <SettingsHermes />

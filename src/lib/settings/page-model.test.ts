@@ -37,6 +37,7 @@ function data(o: Over = {}): SettingsFullResponse {
       homeassistant: st("homeassistant"), npm: st("npm"), forgejo: st("forgejo"), github: st("github"),
       minecraft: { ...st("minecraft"), curseforgeKeySet: true, ...o.minecraft },
       media: st("media"),
+      calendar: { configured: true, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null },
       hermes: o.hermesKeys ?? { openrouterConfigured: true, anthropicConfigured: true },
     },
     system: { voiceConfigured: o.voice ?? true, updatedAt: o.sys, mcpTokenConfigured: true, kioskPinConfigured: true, ...o.system },
@@ -49,7 +50,7 @@ function input(o: Partial<ModelInput> & { d?: Over } = {}): ModelInput {
 }
 const model = (o: Partial<ModelInput> & { d?: Over } = {}) => settingsModel(input(o));
 const strip = (m: ReturnType<typeof model>, id: StripId) => m.strips.find((s) => s.id === id)!;
-const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "hermes", "dashboard"];
+const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "calendar", "hermes", "dashboard"];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 
 // ---- C8: one case per section 5 row ----
@@ -81,7 +82,7 @@ test("refresh failed: the data's own chip and answer, a notice with the age, wri
   assert.equal(m.notice, "Couldn’t refresh: showing what loaded 2 min ago.");
   assert.equal(m.writable, true);
   assert.equal(m.autoTarget, "keep");
-  assert.equal(m.strips.length, 11);
+  assert.equal(m.strips.length, 12);
 });
 
 test("save failed: warn, names the form, keeps the changes, opens that form's strip", () => {
@@ -174,15 +175,15 @@ test("none set up: neutral, each strip says what it needs, nothing required is n
 test("optional things are never problems: no SSO, PIN, Orchestra or daemon is still calm", () => {
   const m = model({ d: { meta: { ssoConfigured: false, kioskPinConfigured: false }, daemon: { updatedAt: null } } });
   assert.equal(m.chip.tone, "ok");
-  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null]);
+  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null, null]);
 });
 
 // ---- order, last change, strip lines ----
 
-test("the eleven strips come in a fixed order with titles", () => {
+test("the twelve strips come in a fixed order with titles", () => {
   const m = model();
   assert.deepEqual(m.strips.map((s) => s.id), NINE);
-  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Hermes", "Dashboard"]);
+  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Calendar", "Hermes", "Dashboard"]);
   // priority states never reorder them (D3)
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
 });
@@ -209,6 +210,19 @@ test("the Bin night strip says how many bins are saved, and stays out of the int
   assert.equal(draft.answer, "Unsaved changes in Bin night. They stay while this page is open.");
   const failed = model({ forms: { bins: { dirty: true, error: "Four bins at most." } } });
   assert.equal(strip(failed, "bins").state, "Couldn’t save: Four bins at most");
+});
+
+test("the Calendar strip says whether a link is saved, and stays out of the integrations count", () => {
+  const withCalendar = (configured: boolean) => {
+    const d = data();
+    d.integrations.calendar = { configured, updatedAt: configured ? iso(2 * DAY) : null, lastSyncAt: null, eventsThisWeek: null, problem: null };
+    return settingsModel({ ...input(), data: d });
+  };
+  assert.equal(strip(withCalendar(false), "calendar").state, "Not set up");
+  assert.equal(strip(withCalendar(true), "calendar").state, "Set up · changed 2 d ago");
+  assert.match(withCalendar(true).answer, /^All 7 integrations are set up/);
+  const failed = model({ forms: { calendar: { dirty: true, error: "That link opened, but it isn't a calendar. Copy the private calendar link, not the calendar's page." } } });
+  assert.equal(strip(failed, "calendar").state, "Couldn’t save: the server refused it");
 });
 
 test("last change is the newest updatedAt, named by its source", () => {

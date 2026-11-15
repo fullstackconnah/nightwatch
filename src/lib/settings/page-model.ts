@@ -5,10 +5,10 @@
 import { ageText } from "../home.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
 
-export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "hermes" | "dashboard";
+export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar" | "hermes" | "dashboard";
 export type FormId =
   | "password" | "system" | "sso" | "orchestra" | "outside"
-  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins"
+  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar"
   | "hermes-model" | "hermes-daemon" | "widgets" | "tiles";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 
@@ -50,18 +50,18 @@ export interface Model {
 
 const TITLES: Record<StripId, string> = {
   access: "Access", homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub",
-  minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "Bin night", hermes: "Hermes", dashboard: "Dashboard",
+  minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "Bin night", calendar: "Calendar", hermes: "Hermes", dashboard: "Dashboard",
 };
 const ORDER = Object.keys(TITLES) as StripId[];
 /** Each form's strip, in the order a save failure is looked for. */
 const FORMS: Record<FormId, StripId> = {
   password: "access", system: "access", sso: "access", orchestra: "access", outside: "access",
-  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice", bins: "bins",
+  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice", bins: "bins", calendar: "calendar",
   "hermes-model": "hermes", "hermes-daemon": "hermes", widgets: "dashboard", tiles: "dashboard",
 };
 const FORM_TITLE: Record<FormId, string> = {
   password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra", outside: "the outside check",
-  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "the bin schedule",
+  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "the bin schedule", calendar: "the calendar link",
   "hermes-model": "the Hermes model", "hermes-daemon": "the Hermes daemon", widgets: "the widgets", tiles: "the tiles",
 };
 const FORM_IDS = Object.keys(FORMS) as FormId[];
@@ -161,6 +161,7 @@ export function settingsModel(i: ModelInput): Model {
     media: { state: integration(ig.media), tone: null },
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
     bins: { state: savedBins ? plural(savedBins, "bin") : "Not set up", tone: null },
+    calendar: { state: integration({ configured: ig.calendar.configured, updatedAt: ig.calendar.updatedAt ?? undefined }), tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }
       : {
