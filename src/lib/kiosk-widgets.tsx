@@ -31,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { KioskAssistant } from "@/components/kiosk/kiosk-assistant";
 import { KioskForecastRail } from "@/components/kiosk/kiosk-forecast";
 import { KioskSunAir } from "@/components/kiosk/kiosk-sun-air";
+import { KioskAgendaPane, useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { KioskListPane, useKioskList } from "@/components/kiosk/kiosk-list";
 import { listPaneView } from "@/lib/kiosk-list";
 import { useKioskBriefing, useSunAirView, useWeatherView, type KioskPeriod } from "@/components/kiosk/kiosk-display";
@@ -46,6 +47,7 @@ import { KioskDoorbellButton, useDoorbellSnapshot } from "@/components/kiosk/kio
 export type KioskWidgetId =
   | "forecast"
   | "sun-air"
+  | "agenda"
   | "lists"
   | "assistant"
   | "news"
@@ -179,6 +181,16 @@ function SunAirWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void 
   useEmptyReport(!view?.glance, reportEmpty);
   if (!view?.glance) return null;
   return <KioskSunAir glance={view.glance} sr={view.sr} stale={weather.status === "ready-stale"} />;
+}
+
+/* ── agenda (today's and tomorrow's events) ──────────────────────────────── */
+
+/* Present only when an event is left today or tomorrow; unconfigured, loading, failed with no list and quiet all drop the
+   pane (kiosk-agenda.ts owns every word). The Standard section shows the failed line. */
+function AgendaWidget({ reportEmpty }: { reportEmpty?: (empty: boolean) => void }) {
+  const { view, stale } = useKioskAgenda();
+  useEmptyReport(!view, reportEmpty);
+  return view ? <KioskAgendaPane pane={view.pane} stale={stale} /> : null;
 }
 
 /* ── lists (the shared shopping list) ─────────────────────────────────────── */
@@ -488,6 +500,14 @@ export const KIOSK_WIDGETS: readonly KioskWidgetDef[] = [
     render: (ctx) => <SunAirWidget reportEmpty={ctx.reportEmpty} />,
   },
   {
+    id: "agenda",
+    label: "Calendar",
+    blurb: "The next event today or tomorrow; shown only when one is left.",
+    // Band-only: Standard has its own Calendar section.
+    allow: ["glance"],
+    render: (ctx) => <AgendaWidget reportEmpty={ctx.reportEmpty} />,
+  },
+  {
     id: "lists",
     label: "Shopping list",
     blurb: "What to buy; shown only when something is on the list.",
@@ -606,7 +626,7 @@ export const KIOSK_WIDGET_MAP: ReadonlyMap<KioskWidgetId, KioskWidgetDef> = new 
  *  mode showed before this feature existed, unmanaged by widgets (see
  *  FullContent in kiosk-surface.tsx). */
 export const DEFAULT_WIDGET_LAYOUT: KioskWidgetLayout = {
-  glance: ["forecast", "sun-air", "lists", "news", "climate", "containers"],
+  glance: ["forecast", "sun-air", "agenda", "lists", "news", "climate", "containers"],
   full: [],
 };
 
