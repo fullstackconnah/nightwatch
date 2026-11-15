@@ -1126,11 +1126,12 @@ function listFake(cfg) {
   };
 }
 
-/** Opens one list page: the list fake and the PIN mocks are registered before the first request, on a real clock (SWR dedupe reads Date.now). */
+/** Opens one list page: the list fake and the PIN mocks are registered before the first request, on a moving clock (SWR dedupe reads Date.now)
+ *  that starts at the pinned instant: on the real clock a run after 22:00 met the night overlay and could not press the list button. */
 async function listVisit(cfg, { url = L_STD, size = L_SIZE, ...o } = {}) {
   cfg.body ??= LIST_EMPTY;
   return visit(url, {
-    viewport: size.viewport, weather: weatherFor("midday"), fixedTime: false, ...o,
+    viewport: size.viewport, weather: weatherFor("midday"), fixedTime: "flow", ...o,
     setup: async (page) => {
       await page.route(LIST_RE, listFake(cfg));
       await page.route("**/api/auth/kiosk", (route) => {
