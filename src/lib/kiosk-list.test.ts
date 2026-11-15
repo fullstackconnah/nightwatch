@@ -74,3 +74,56 @@ test("5 parseListFile", () => {
   assert.equal(g?.items.length, MAX_ITEMS);
   assert.equal(g?.items[0].text, "n15"); // newest kept
 });
+
+// ── slice 2: pane and button views, row order ────────────────────────────────
+import { listPaneView, listButtonView, settleRows } from "./kiosk-list.ts";
+
+const open = (n: number) => Array.from({ length: n }, (_, i) => item(i + 1, ["Oat milk", "Bread", "Apples", "Eggs", "Tea", "Rice", "Jam", "Salt", "Soap", "Figs"][i % 10] + (i >= 10 ? ` ${i}` : "")));
+
+test("23a listPaneView: 0 open (or not loaded) drops the pane", () => {
+  assert.equal(listPaneView([], false), null);
+  assert.equal(listPaneView(null, false), null);
+  assert.equal(listPaneView([item(1, "Tea", { done: true, doneAt: 5 })], false), null);
+});
+
+test("23b listPaneView: 3 open shows the caption and 3 names, newest first", () => {
+  const v = listPaneView(open(3), false);
+  assert.equal(v?.caption, "Shopping \u00b7 3 to get");
+  assert.deepEqual(v?.names, ["Apples", "Bread", "Oat milk"]);
+  assert.equal(v?.more, 0);
+  assert.equal(v?.sr, "Shopping, 3 to get: Apples, Bread, Oat milk");
+});
+
+test("23c listPaneView: exactly 4 open shows all 4; 9 open shows 3 and 'and 6 more'; ticked never count", () => {
+  assert.equal(listPaneView(open(4), false)?.names.length, 4);
+  assert.equal(listPaneView(open(4), false)?.more, 0);
+  const nine = [...open(9), item(20, "Old", { done: true, doneAt: 9 })];
+  const v = listPaneView(nine, false);
+  assert.equal(v?.caption, "Shopping \u00b7 9 to get");
+  assert.equal(v?.names.length, 3);
+  assert.equal(v?.more, 6);
+  assert.equal(v?.sr, "Shopping, 9 to get: Soap, Salt, Jam and 6 more");
+});
+
+test("23d listPaneView passes stale through", () => {
+  assert.equal(listPaneView(open(1), true)?.stale, true);
+  assert.equal(listPaneView(open(1), false)?.stale, false);
+});
+
+test("24 listButtonView: count, zero, failed and the accessible names", () => {
+  assert.deepEqual(listButtonView(open(9)), { label: "Shopping", count: 9, aria: "Shopping list, 9 to get" });
+  assert.deepEqual(listButtonView([]), { label: "Shopping", count: 0, aria: "Shopping list, empty" });
+  assert.deepEqual(listButtonView(null), { label: "Shopping", count: null, aria: "Shopping list, not loaded" });
+  assert.equal(listButtonView([...open(2), item(30, "Old", { done: true, doneAt: 1 })]).count, 2);
+});
+
+test("24b settleRows: first call splits open and ticked; a tick does not move a row; an add goes on top; a clear drops the id", () => {
+  const items = [item(1, "A"), item(2, "B"), item(3, "C", { done: true, doneAt: 5 })];
+  const a = settleRows(null, items);
+  assert.deepEqual(a, { open: [ID(2), ID(1)], ticked: [ID(3)] });
+  const ticked = items.map((i) => (i.id === ID(1) ? { ...i, done: true, doneAt: 9 } : i));
+  assert.deepEqual(settleRows(a, ticked), a); // ticked row 1 stays where it was
+  const added = [...ticked, item(4, "D")];
+  assert.deepEqual(settleRows(a, added).open, [ID(4), ID(2), ID(1)]);
+  assert.deepEqual(settleRows(a, ticked.filter((i) => i.id !== ID(3))).ticked, []);
+});
