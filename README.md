@@ -44,6 +44,10 @@ labels:
 Widget instances with secrets (API keys) live in `data/config.json`
 (gitignored, volume-mounted in prod) — editable from Settings.
 
+The `vikunja` widget type shows task counts: each field's path is a Vikunja
+filter (e.g. `done = false`), and the key is a Vikunja API token with read
+access to tasks. Fields are written to the config, not edited in Settings.
+
 ## Local dev
 
 ```sh
