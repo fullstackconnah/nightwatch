@@ -30,7 +30,7 @@ export function KioskSunAir({ glance, sr, stale }: { glance: NonNullable<SunAirV
   const fade = sunroom ? "sr-fade-in" : "";
   const [airLead, airNum] = air?.sub.split(" ") ?? [];
   return (
-    <div data-sun-air="" className="flex w-full max-w-xl items-start justify-center gap-12">
+    <div data-sun-air="" className="flex w-full max-w-xl items-start justify-center gap-12 text-left">
       <span className="sr-only">
         {sr}
         {stale ? " Not updated recently." : ""}
