@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { BinsConfig } from "./bin-night.ts";
 
 /**
  * User-editable dashboard config, persisted as JSON under DATA_DIR (a volume
@@ -125,6 +126,8 @@ export interface AppConfig {
   };
   /** Media manager: the PC-side media worker's address and bearer token (server-side only). */
   media?: { workerUrl?: string; workerToken?: string; updatedAt?: string };
+  /** Bin night: what the wall kiosk's "goes out tonight" line is built from. Nothing secret; see bin-night.ts. */
+  bins?: BinsConfig;
   /** Hermes model routing, set from the settings page's "Hermes · model"
    *  panel. This copy is the settings UI's own read model (so GET
    *  /api/settings has something to show); it is NOT what the hermes daemon

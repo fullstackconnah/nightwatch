@@ -34,10 +34,15 @@ test("C11: nothing points at the removed #integrations section", () => {
 
 test("S1/S2: a save or clear reloads the fields from the stored values", () => {
   const integ = readFileSync(join(SRC, "components/settings/settings-integrations.tsx"), "utf8");
-  assert.equal([...integ.matchAll(/useIntegrationWrite\(mutate, \(\) => setSeeded\(false\)\)/g)].length, 4);
+  assert.equal([...integ.matchAll(/useIntegrationWrite\(mutate, \(\) => setSeeded\(false\)\)/g)].length, 5);
   assert.match(integ, /await mutate\(\);\s*reseed\?\.\(\);[\s\S]*await mutate\(\);\s*reseed\?\.\(\);/);
   const access = readFileSync(join(SRC, "components/settings/settings-access.tsx"), "utf8");
   assert.equal([...access.matchAll(/await mutate\(\);\s*setSeeded\(false\);/g)].length, 3);
+});
+
+test("an unreachable server reads as such in every integrations save, not as fetch's own words", () => {
+  const integ = readFileSync(join(SRC, "components/settings/settings-integrations.tsx"), "utf8");
+  assert.match(integ, /e instanceof TypeError \? "Couldn't reach the server\. Nothing was saved\."/);
 });
 
 test("N3: the confirm sentences are the spec's words", () => {

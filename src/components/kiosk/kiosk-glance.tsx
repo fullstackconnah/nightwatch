@@ -36,6 +36,7 @@ import { Lightbulb } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KIOSK_WIDGET_MAP, type KioskWidgetCtx, type KioskWidgetId } from "@/lib/kiosk-widgets";
 import { type KioskPeriod } from "@/components/kiosk/kiosk-display";
+import { BinNightLine } from "@/components/kiosk/kiosk-bins";
 import { KioskTimersButton } from "@/components/kiosk/kiosk-timers";
 import { useKioskHa } from "@/components/kiosk/kiosk-hub";
 
@@ -158,6 +159,9 @@ export function KioskGlance({
           purpose. A control that rotates away mid-reach is hostile — you go to
           press the floodlight and the pane has moved — so the things you TOUCH
           stay put, and only the things you READ rotate. */}
+      {/* Bin night leads the stack (priority bin > briefing > outlook). It shows only on the evening before a collection,
+          when the briefing (morning only) is absent, so the stack holds at most two prose lines; it renders no wrapper at all otherwise. */}
+      <BinNightLine period={period} />
       {BELOW_BAND_WIDGETS.map((id) => {
         const def = KIOSK_WIDGET_MAP.get(id);
         if (!def) return null;

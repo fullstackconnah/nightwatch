@@ -424,6 +424,7 @@ describe("kiosk-shots fixtures", () => {
     "/kiosk/api/nowplaying", // kiosk-client.ts useKioskNowPlaying
     "/kiosk/api/downloads", // kiosk-downloads.tsx
     "/kiosk/api/briefing", // kiosk-display.tsx useKioskBriefing
+    "/kiosk/api/bins", // kiosk-bins.tsx useBinNight (evening only)
     "/kiosk/api/weather/radar", // kiosk-radar.tsx:251
   ];
   it("has a fixture for every fetched path", () => {

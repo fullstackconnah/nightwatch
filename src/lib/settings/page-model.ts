@@ -1,14 +1,14 @@
-/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the ten strips in a fixed
+/* /settings' whole story in one pure function: the head (chip, answer, evidence, notice), the eleven strips in a fixed
  * order, which strip the answer names, and whether writes are on. It claims nothing about reachability: only
  * configured flags, updatedAt stamps and the forms' own reports (R1). Type-only imports so node:test can load it.
  * Section 5 of the settings shape brief is the spec; page-model.test.ts has a case per row. */
 import { ageText } from "../home.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
 
-export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "hermes" | "dashboard";
+export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "hermes" | "dashboard";
 export type FormId =
   | "password" | "system" | "sso" | "orchestra" | "outside"
-  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice"
+  | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins"
   | "hermes-model" | "hermes-daemon" | "widgets" | "tiles";
 export type Tone = "ok" | "neutral" | "warn" | "bad";
 
@@ -50,18 +50,18 @@ export interface Model {
 
 const TITLES: Record<StripId, string> = {
   access: "Access", homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub",
-  minecraft: "Minecraft", media: "Media", voice: "Voice", hermes: "Hermes", dashboard: "Dashboard",
+  minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "Bin night", hermes: "Hermes", dashboard: "Dashboard",
 };
 const ORDER = Object.keys(TITLES) as StripId[];
 /** Each form's strip, in the order a save failure is looked for. */
 const FORMS: Record<FormId, StripId> = {
   password: "access", system: "access", sso: "access", orchestra: "access", outside: "access",
-  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice",
+  homeassistant: "homeassistant", npm: "npm", forgejo: "forgejo", github: "github", minecraft: "minecraft", media: "media", voice: "voice", bins: "bins",
   "hermes-model": "hermes", "hermes-daemon": "hermes", widgets: "dashboard", tiles: "dashboard",
 };
 const FORM_TITLE: Record<FormId, string> = {
   password: "the password", system: "System settings", sso: "SSO", orchestra: "Orchestra", outside: "the outside check",
-  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice",
+  homeassistant: "Home Assistant", npm: "NPM", forgejo: "Forgejo", github: "GitHub", minecraft: "Minecraft", media: "Media", voice: "Voice", bins: "the bin schedule",
   "hermes-model": "the Hermes model", "hermes-daemon": "the Hermes daemon", widgets: "the widgets", tiles: "the tiles",
 };
 const FORM_IDS = Object.keys(FORMS) as FormId[];
@@ -95,6 +95,8 @@ export function settingsModel(i: ModelInput): Model {
 
   // ---- facts ----
   const { integrations: ig, system, hermesDaemon: hd, meta } = data;
+  // a hand-edited rule may lack the array or hold junk entries: count only object rows
+  const savedBins = (Array.isArray(data.config.bins?.collections) ? data.config.bins.collections : []).filter((c) => c && typeof c === "object").length;
   const hermes = data.config.hermes;
   const setUp = [ig.homeassistant, ig.npm, ig.forgejo, ig.github, ig.minecraft, ig.media].filter((x) => x.configured).length + (system.voiceConfigured ? 1 : 0);
   const stamps: [string, string | null | undefined][] = [
@@ -158,6 +160,7 @@ export function settingsModel(i: ModelInput): Model {
     minecraft: { state: integration(ig.minecraft, ig.minecraft.curseforgeKeySet ? "" : " · no CurseForge key"), tone: null },
     media: { state: integration(ig.media), tone: null },
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
+    bins: { state: savedBins ? plural(savedBins, "bin") : "Not set up", tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }
       : {
