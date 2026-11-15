@@ -770,8 +770,8 @@ await guarded("ambient rest", async () => {
 });
 // a stale weather pane: the first poll answers, the next says unreachable, so the view keeps the last good data and shows the tag
 await guarded("ambient stale", async () => {
-  // fixedTime "ticking": midday, but Date.now() advances (setFixedTime never does, and the real 2 am clock shows the night overlay). STOP_URL has wx=off, so the mocked outage is not overridden by a preview preset.
-  const { context, page, state } = await visit(STOP_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: "ticking" });
+  // fixedTime "ticking": midday, but Date.now() advances (setFixedTime never does, and the real 2 am clock shows the night overlay). no ?wx=: every preset, wx=off included, replaces the weather with a fresh ok payload (WX_PRESETS), which would mask the mocked outage.
+  const { context, page, state } = await visit(SA_STALE_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: "ticking" });
   state.weather = { status: "unreachable", detail: "mocked outage" };
   await page.clock.fastForward(6000); // SWR ignores focus for 5 s after mount
   let tag = false;
@@ -784,6 +784,7 @@ await guarded("ambient stale", async () => {
   await page.screenshot({ path: join(OUT_DIR, "ambient-stale-1180x820.png") });
   results.ambient.stale = { ...(await AMBIENT_CHECKS(page)), tagSeen: tag, tagCount: await page.locator(".sr-stale").count(), tagText: await page.locator(".sr-stale").first().textContent().catch(() => null) };
   await context.close();
+  if (!tag) throw new Error("the stale tag never showed (.sr-stale)"); // lands in results.errors via guarded
 });
 // now playing: the pill carries a pip and the word, no icon
 await guarded("ambient now playing", async () => {
