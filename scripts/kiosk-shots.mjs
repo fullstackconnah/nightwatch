@@ -1064,8 +1064,10 @@ for (const n of LNS) LS.entries[n] = [];
 const lRecord = (n, key, ok, detail = {}) => { LS.entries[n].push({ key, ok, ...detail }); if (!ok) LS.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
 const lRun = (name, fn) => guarded(`lists ${name}`, async () => { try { await fn(); } catch (e) { LS.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
 /** A state's defining text must be present (and `not` absent); a miss is a failure, never a skip. */
+// innerText applies text-transform, so the uppercase microlabels ("Often added", "Ticked", "Stale") only match with case folded.
 const lWant = (name, text, want = [], not = []) => {
-  const t = textHas(text, want, not);
+  const low = text.toLowerCase();
+  const t = { missing: want.filter((w) => !low.includes(w.toLowerCase())), present: not.filter((w) => low.includes(w.toLowerCase())) };
   const ok = t.missing.length === 0 && t.present.length === 0;
   LS.states[name] = { ok, ...t };
   if (!ok) LS.failed.push(`state ${name} ${JSON.stringify(t)}`);
@@ -1155,7 +1157,8 @@ async function openSheet(page) {
   await seen(page, SHEET, 5000);
   await page.waitForTimeout(700);
 }
-const sheetText = (page) => page.locator(SHEET).innerText();
+/** The sheet's visible text plus its input placeholders (a placeholder is not in innerText). */
+const sheetText = (page) => page.locator(SHEET).evaluate((el) => [el.innerText, ...[...el.querySelectorAll("input")].map((i) => i.placeholder)].join("\n"));
 const lShot = async (page, name, locator) => {
   const b = await locator.boundingBox();
   if (b) await page.screenshot({ path: join(OUT_DIR, `list-${name}.png`), clip: { x: Math.max(0, b.x - 8), y: Math.max(0, b.y - 8), width: b.width + 16, height: b.height + 16 } });
@@ -1412,8 +1415,9 @@ await withList("sheet-with-ticked", { body: LIST_STATES.ticked.body }, {}, async
 });
 await withList("sheet-reduced-motion", { body: LIST_STATES.ticked.body }, { reduced: true }, async ({ page }) => {
   await openSheet(page);
-  const t = await page.evaluate(() => ({ dur: getComputedStyle(document.querySelector("[data-list-sheet] [role=checkbox] svg")).transitionDuration.split(",")[0].trim() }));
-  lRecord("L7", "reduced motion: no transform transition", parseFloat(t.dur) === 0, t);
+  // motion-reduce:transition-none sets the property to none and leaves the duration, so either one counts.
+  const t = await page.evaluate(() => { const cs = getComputedStyle(document.querySelector("[data-list-sheet] [role=checkbox] svg")); return { prop: cs.transitionProperty, dur: cs.transitionDuration.split(",")[0].trim() }; });
+  lRecord("L7", "reduced motion: no transform transition", t.prop === "none" || parseFloat(t.dur) === 0, t);
 });
 
 await withList("sheet-loading", { body: LIST_STATES.ordinary.body, hold: new Promise((res) => setTimeout(res, 9000)) }, {}, async ({ page }) => {
