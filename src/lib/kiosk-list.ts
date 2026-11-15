@@ -13,7 +13,7 @@ export const isListId = (v: unknown): v is ListId => v === "shopping";
 
 export const norm = (s: string): string =>
   // strip first, then NFC, so the result is idempotent; zero-width/format chars (incl. ZWJ in emoji) go too
-  String(s).replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁠-⁤﻿]/g, "").normalize("NFC").replace(/\s+/g, " ").trim();
+  String(s).replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, "").normalize("NFC").replace(/\s+/g, " ").trim();
 export const fold = (s: string): string => norm(s).toLocaleLowerCase();
 
 export type AddCheck =

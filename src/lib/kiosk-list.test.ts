@@ -32,8 +32,8 @@ test("2 checkAdd NFC and control characters", () => {
   const it = { id: "00000000-0000-4000-8000-000000000001", listId: "shopping", text: norm("Cafe\u0001́"), done: false, createdAt: 1, doneAt: null, updatedAt: 1 };
   assert.equal(parseListFile(JSON.stringify({ v: 1, items: [it], history: [] }))?.items.length, 1);
   // zero-width and format characters are stripped
-  assert.equal(checkAdd("​​", []).kind, "blank");
-  assert.equal(norm("milk​"), "milk");
+  assert.equal(checkAdd("\u200b\u200b", []).kind, "blank");
+  assert.equal(norm("milk\u200b"), "milk");
 });
 
 test("3 sweepBoundary in Australia/Sydney", () => {
