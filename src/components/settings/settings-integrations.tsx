@@ -15,13 +15,16 @@
 
 import { useEffect, useId, useState, type ReactNode } from "react";
 import useSWR from "swr";
-import { Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label } from "@/components/ui/input";
+import { SegmentButton } from "@/components/ui/segment-button";
 import { fetcher, postJson } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
+import { DAY_NAMES, MAX_BINS, MAX_NAME, binLine, checkBins, nextBinNight, nightLabel, type BinsConfig } from "@/lib/bin-night";
+import { localDateString } from "@/lib/local-time";
 import type { AppConfig } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
 import { rconPortFieldError } from "@/lib/settings-field-checks";
@@ -263,7 +266,8 @@ function useIntegrationWrite(mutate: () => Promise<unknown>, reseed?: () => void
       reseed?.(); // the server trims and defaults values, so reload the fields from what it stored
       return true;
     } catch (e) {
-      setError(e instanceof Error && e.message ? plainReason(e.message) : "Couldn't save — check the values and try again");
+      // fetch rejects with a TypeError when the server is unreachable; its own text ("Failed to fetch") says nothing to the owner
+      setError(e instanceof TypeError ? "Couldn't reach the server. Nothing was saved." : e instanceof Error && e.message ? plainReason(e.message) : "Couldn't save — check the values and try again");
       return false;
     } finally {
       setSaving(false);
@@ -861,6 +865,168 @@ export function VoiceCard({ data, mutate }: PanelProps) {
         <Button size="sm" disabled={saving} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bin night: the schedule behind the wall kiosk's "goes out tonight" line. Plain values, nothing secret, so no
+// SecretField; the same checker the route runs (bin-night.ts) runs live here, so every refusal is worded once.
+// A row is a draft until Save; a failed save keeps the draft (no reseed), a good one reloads it from what the server stored.
+
+type BinRow = { id: number; name: string; weekday: number | null; every: 1 | 2; anchor: string; saved: boolean };
+let binRowId = 0;
+const blankBinRow = (over: Partial<BinRow> = {}): BinRow => ({ id: ++binRowId, name: "", weekday: null, every: 1, anchor: "", saved: false, ...over });
+const seedBinRows = (bins: BinsConfig | undefined): BinRow[] =>
+  bins?.collections.length ? bins.collections.map((c) => blankBinRow({ ...c, anchor: c.anchor ?? "", saved: true })) : [blankBinRow()];
+/** The untouched first row of an empty card: nothing to check, nothing to save, nothing to nag about. */
+const binRowIdle = (r: BinRow) => !r.saved && !r.name.trim() && r.weekday === null && r.every === 1 && !r.anchor;
+const binRowsKey = (rows: BinRow[]) => JSON.stringify(rows.map((r) => [r.name, r.weekday, r.every, r.every === 2 ? r.anchor : ""]));
+// Monday first, as a wall calendar reads; the index is the stored weekday (0 = Sunday).
+const BIN_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+
+type BinRowErrors = Partial<Record<"name" | "weekday" | "every" | "anchor", string>>;
+
+function BinRowEditor({
+  row, errors, removable, onChange, onRemove,
+}: {
+  row: BinRow;
+  errors: BinRowErrors;
+  removable: boolean;
+  onChange: (patch: Partial<BinRow>) => void;
+  onRemove: () => void;
+}) {
+  const uid = useId();
+  const dayLabel = `${uid}-day`;
+  const dayNote = `${uid}-day-note`;
+  const everyLabel = `${uid}-every`;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <Field label="Bin" required error={errors.name}>
+        <Input placeholder="Recycling" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
+      </Field>
+      <div>
+        <Label id={everyLabel}>Repeats</Label>
+        <div role="group" aria-labelledby={everyLabel} className="flex gap-1">
+          <SegmentButton fill active={row.every === 1} onClick={() => onChange({ every: 1 })}>Every week</SegmentButton>
+          <SegmentButton fill active={row.every === 2} onClick={() => onChange({ every: 2 })}>Every second week</SegmentButton>
+        </div>
+      </div>
+      <div className="sm:col-span-2">
+        <Label id={dayLabel}>
+          Collection day<span className="text-ink-dim"> *</span>
+        </Label>
+        <div role="group" aria-labelledby={dayLabel} aria-describedby={dayNote} className="flex gap-0.5">
+          {BIN_DAY_ORDER.map((d) => (
+            <SegmentButton key={d} fill active={row.weekday === d} label={DAY_NAMES[d]} onClick={() => onChange({ weekday: d })}>
+              {DAY_NAMES[d].slice(0, 3)}
+            </SegmentButton>
+          ))}
+        </div>
+        <p id={dayNote} className={errors.weekday ? "mt-1 text-[0.7rem] text-warn/80" : "mt-1 text-[0.7rem] text-ink-dim"}>
+          {errors.weekday ?? "The day the truck comes."}
+        </p>
+      </div>
+      {row.every === 2 && (
+        <Field
+          label="A collection date"
+          required
+          error={errors.anchor}
+          hint="Any past or coming date this bin is collected. It sets which week."
+          className="sm:col-span-2"
+        >
+          <Input type="date" min="2000-01-01" max="2099-12-31" value={row.anchor} onChange={(e) => onChange({ anchor: e.target.value })} />
+        </Field>
+      )}
+      {removable && (
+        <div className="sm:col-span-2 flex justify-end">
+          <Button variant="ghost" size="sm" aria-label={`Remove ${row.name.trim() || "this bin"}`} onClick={onRemove}>
+            Remove
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function BinNightCard({ data, mutate }: PanelProps) {
+  const stored = data?.config.bins;
+  const [rows, setRows] = useState<BinRow[]>(() => seedBinRows(undefined));
+  const [seeded, setSeeded] = useState(false);
+  const { saving, error, save, clear } = useIntegrationWrite(mutate, () => setSeeded(false));
+
+  useEffect(() => {
+    if (data && !seeded) {
+      setRows(seedBinRows(data.config.bins));
+      setSeeded(true);
+    }
+  }, [data, seeded]);
+  useFormReport("bins", { dirty: seeded && binRowsKey(rows) !== binRowsKey(seedBinRows(stored)), error });
+
+  const check = rows.length === 1 && binRowIdle(rows[0]) ? null : checkBins({ collections: rows.map(({ name, weekday, every, anchor }) => ({ name, weekday, every, anchor })) });
+  const errors = check && !check.ok ? check.errors : [];
+  const cardError = errors.find((e) => e.row === undefined)?.message;
+  const patch = (id: number, p: Partial<BinRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
+
+  // The preview is the saved rule, never the draft: the exact sentence the wall would show, so a fallback is visible.
+  const savedCheck = stored ? checkBins(stored) : null;
+  const night = savedCheck?.ok ? nextBinNight(savedCheck.value, localDateString(data?.config.display?.timezone)) : null;
+  const preview = !stored
+    ? "Nothing saved yet. The wall shows no bin line."
+    : night
+      ? `Next on the wall: ${nightLabel(night.date)}, 5 pm to 10 pm. "${binLine(night.bins)}"`
+      : "The saved schedule isn't valid, so the wall shows no bin line.";
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[0.7rem] text-ink-dim">
+        The wall kiosk shows a line from 5 pm to 10 pm on the evening before a collection. Nothing shows on other days.
+      </p>
+      {rows.map((r, i) => (
+        <div key={r.id} className={i > 0 ? "border-t border-line pt-3" : undefined}>
+          <BinRowEditor
+            row={r}
+            errors={Object.fromEntries(errors.filter((e) => e.row === i).map((e) => [e.field, e.message])) as BinRowErrors}
+            removable={rows.length > 1}
+            onChange={(p) => patch(r.id, p)}
+            onRemove={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
+          />
+        </div>
+      ))}
+      {rows.length < MAX_BINS && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setRows((rs) => [...rs, blankBinRow({ weekday: rs[rs.length - 1].weekday, every: rs[rs.length - 1].every })])}
+        >
+          <Plus size={13} /> Add a bin
+        </Button>
+      )}
+      {cardError && <p className="text-[0.7rem] text-warn/80">{cardError}</p>}
+      {data && <p className="text-[0.7rem] text-ink-dim">{preview}</p>}
+      <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+        {stored ? (
+          <ClearAction
+            say="Removes the bin schedule. The wall stops showing bin night until you set it again."
+            failure="Couldn't remove the bin schedule"
+            run={() => clear("bins")}
+          />
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          <Button
+            size="sm"
+            disabled={saving || !check || !check.ok}
+            onClick={() => {
+              if (check && check.ok) void save("bins", check.value);
+            }}
+          >
+            <Save size={13} /> Save
+          </Button>
+        </div>
       </div>
     </div>
   );

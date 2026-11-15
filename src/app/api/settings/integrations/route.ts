@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfigForSave, saveConfig, saveErrorText, type AppConfig } from "@/lib/config";
+import { mergeBins } from "@/lib/bin-night";
 import { mergeMedia } from "@/lib/media/settings";
 import { rconPasswordForHost, secretForUrl } from "@/lib/settings/dash-put";
 import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
@@ -10,13 +11,14 @@ export const dynamic = "force-dynamic";
 // Auth: gated by src/middleware.ts, same as every other /api/* route.
 
 /**
- * Dedicated read-modify-write route for the four Integrations panels
- * (Home Assistant / Nginx Proxy Manager / Forgejo / GitHub), mirroring the
+ * Dedicated read-modify-write route for the Integrations panels
+ * (Home Assistant / Nginx Proxy Manager / Forgejo / GitHub / Minecraft / Media)
+ * and the Bin night card, mirroring the
  * reasoning in src/app/api/resources/pins/route.ts: routing this through the
  * general /api/settings PUT would round-trip the whole (sanitized, secret-
  * stripped) AppConfig from client state and either drop these blocks or
  * silently blank out their real secrets. This route only ever reads/writes
- * its own four keys, spreading the rest of `current` through unchanged.
+ * its own keys, spreading the rest of `current` through unchanged.
  *
  * Body: one or more of homeassistant/npm/forgejo/github. Each value is either
  * `null` (delete the whole block — the panel's "Clear" action) or a partial
@@ -46,6 +48,8 @@ type Body = {
   github?: Patch | null;
   minecraft?: Patch | null;
   media?: { workerUrl?: unknown; workerToken?: unknown } | null;
+  /** Bin night: the whole rule (checked by bin-night.ts's checkBins) or null to remove it. Nothing secret. */
+  bins?: unknown;
 };
 
 function str(v: unknown): string | undefined {
@@ -76,7 +80,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
-  const next: AppConfig = { ...current };
+  let next: AppConfig = { ...current };
   const now = new Date().toISOString();
 
   if ("homeassistant" in body) {
@@ -158,6 +162,12 @@ export async function POST(req: NextRequest) {
       if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
       next.media = merged.media;
     }
+  }
+
+  if ("bins" in body) {
+    const merged = mergeBins(next, body.bins);
+    if ("error" in merged) return NextResponse.json({ error: merged.error }, { status: 400 });
+    next = merged.next;
   }
 
   if ("github" in body) {

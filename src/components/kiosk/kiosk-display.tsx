@@ -42,6 +42,7 @@ import {
   Wind,
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
+import { BinNightRow } from "@/components/kiosk/kiosk-bins";
 import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
@@ -697,6 +698,7 @@ export function KioskDisplay({ period }: { period: KioskPeriod }) {
   return (
     <div className="space-y-3">
       <WeatherBand period={period} weather={weather} />
+      <BinNightRow period={period} />
       {period === "morning" && <BriefingCard briefing={briefing} />}
     </div>
   );

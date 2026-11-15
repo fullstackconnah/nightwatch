@@ -49,7 +49,7 @@ function input(o: Partial<ModelInput> & { d?: Over } = {}): ModelInput {
 }
 const model = (o: Partial<ModelInput> & { d?: Over } = {}) => settingsModel(input(o));
 const strip = (m: ReturnType<typeof model>, id: StripId) => m.strips.find((s) => s.id === id)!;
-const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "hermes", "dashboard"];
+const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "hermes", "dashboard"];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 
 // ---- C8: one case per section 5 row ----
@@ -81,7 +81,7 @@ test("refresh failed: the data's own chip and answer, a notice with the age, wri
   assert.equal(m.notice, "Couldn’t refresh: showing what loaded 2 min ago.");
   assert.equal(m.writable, true);
   assert.equal(m.autoTarget, "keep");
-  assert.equal(m.strips.length, 10);
+  assert.equal(m.strips.length, 11);
 });
 
 test("save failed: warn, names the form, keeps the changes, opens that form's strip", () => {
@@ -174,17 +174,33 @@ test("none set up: neutral, each strip says what it needs, nothing required is n
 test("optional things are never problems: no SSO, PIN, Orchestra or daemon is still calm", () => {
   const m = model({ d: { meta: { ssoConfigured: false, kioskPinConfigured: false }, daemon: { updatedAt: null } } });
   assert.equal(m.chip.tone, "ok");
-  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null]);
+  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null]);
 });
 
 // ---- order, last change, strip lines ----
 
-test("the ten strips come in a fixed order with titles", () => {
+test("the eleven strips come in a fixed order with titles", () => {
   const m = model();
   assert.deepEqual(m.strips.map((s) => s.id), NINE);
-  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Hermes", "Dashboard"]);
+  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Hermes", "Dashboard"]);
   // priority states never reorder them (D3)
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
+});
+
+test("the Bin night strip says how many bins are saved, and stays out of the integrations count", () => {
+  const withBins = (n: number) => {
+    const d = data();
+    if (n) d.config.bins = { collections: Array.from({ length: n }, (_, i) => ({ name: `Bin ${i}`, weekday: 2, every: 1 as const })) };
+    return settingsModel({ ...input(), data: d });
+  };
+  assert.equal(strip(withBins(0), "bins").state, "Not set up");
+  assert.equal(strip(withBins(1), "bins").state, "1 bin");
+  assert.equal(strip(withBins(3), "bins").state, "3 bins");
+  assert.match(withBins(3).answer, /^All 7 integrations are set up/);
+  const draft = model({ forms: { bins: { dirty: true, error: null } } });
+  assert.equal(draft.answer, "Unsaved changes in Bin night. They stay while this page is open.");
+  const failed = model({ forms: { bins: { dirty: true, error: "Four bins at most." } } });
+  assert.equal(strip(failed, "bins").state, "Couldn’t save: Four bins at most");
 });
 
 test("last change is the newest updatedAt, named by its source", () => {
