@@ -47,6 +47,9 @@ export function outcome(status: number | null): Outcome {
   return status === 400 || status === 404 ? "drop" : "keep";
 }
 
+/** The ids of every write still waiting, once each: those rows show "Not saved" until the queue drains. */
+export const queuedIds = (q: QueueOp[]): string[] => [...new Set(q.map((o) => o.body.id))];
+
 /** After the server answers an add with another item's id (exists/revived), queued ticks follow it. */
 export const repoint = (q: QueueOp[], from: string, to: string): QueueOp[] =>
   q.map((o) => (o.op === "done" && o.body.id === from ? { ...o, body: { ...o.body, id: to } } : o));

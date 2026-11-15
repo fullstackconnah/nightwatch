@@ -25,7 +25,7 @@ import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { uvContrast } from "./kiosk-uv-contrast.mjs";
-import { AUTO_OFF, LIST_EMPTY, LIST_STATES, listBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { AUTO_OFF, LIST_EMPTY, LIST_STATES, LONG_NAMES, listBody, longNamesBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -1049,14 +1049,14 @@ for (const n of NS) {
 }
 if (SA.failed.length) process.exitCode = 1;
 
-// ---- kiosk shared list: numeric checks L1-L14 (plan "Numeric checks" 1-14) and the capture states ----
+// ---- kiosk shared list: numeric checks L1-L16 (plan "Numeric checks" 1-14, fix round 1: L15 the full list fits, L16 long names) and the capture states ----
 // results.lists.{L1..L14}: true | false (each needs its entries; a missing entry fails it), results.lists.entries.<Lx>[] the numbers,
 // results.lists.states.<state> {ok, missing[], present[]} (every state first asserts its own defining text), results.lists.registry (test 25),
 // results.lists.failed[] (one line each). Shots: list-<state>-<size>.png. The run exits 1 when any L is false or any state or registry check fails.
 // Writes are answered by listFake (per-state `cfg`): it applies add/done/clear to cfg.body and does not re-implement dedupe or the cap; a state that
 // needs another answer sets cfg.post.<action> = {status, json} | "abort". Only placeholder PIN digits are typed, and /api/auth/kiosk is mocked.
 const LS = (results.lists = { entries: {}, states: {}, registry: {}, failed: [] });
-const LNS = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12", "L13", "L14"];
+const LNS = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12", "L13", "L14", "L15", "L16"];
 for (const n of LNS) LS.entries[n] = [];
 const lRecord = (n, key, ok, detail = {}) => { LS.entries[n].push({ key, ok, ...detail }); if (!ok) LS.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
 const lRun = (name, fn) => guarded(`lists ${name}`, async () => { try { await fn(); } catch (e) { LS.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
@@ -1299,7 +1299,7 @@ for (const [name, cfg, label, aria] of [
 }
 
 // ---- the sheet at every count (L3 no scroll and rows = items, L4, L5, L6, L10; shots for the named states) ----
-const COUNTS = [[0, listBody(0), "sheet-empty-with-chips"], [3, LIST_STATES.ordinary.body, "sheet-ordinary"], [6, listBody(6), null], [7, listBody(7), null], [9, LIST_STATES.crowded.body, "sheet-crowded"], [13, LIST_STATES.full.body, "sheet-full"]];
+const COUNTS = [[0, listBody(0), "sheet-empty-with-chips"], [3, LIST_STATES.ordinary.body, "sheet-ordinary"], [6, listBody(6), null], [7, listBody(7), null], [9, LIST_STATES.crowded.body, "sheet-crowded"], [13, LIST_STATES.full.body, null]];
 for (const [n, body, shot] of COUNTS) {
   await withList(`sheet count ${n}`, { body }, {}, async ({ page }) => {
     await page.waitForTimeout(600);
@@ -1321,6 +1321,65 @@ for (const [n, body, shot] of COUNTS) {
     if (shot) await lShot(page, shot, page.locator(SHEET));
   });
 }
+
+// ---- L15: the full list (11 open + 2 ticked) fits at both sizes: the last ticked row ends above the footer and the body does not scroll ----
+const LIST_FIT = () => {
+  const d = document.querySelector("[data-list-sheet]");
+  const body = d?.querySelector("[data-sr-sheet-body]");
+  const foot = d?.querySelector("[data-list-footer]");
+  if (!d || !body || !foot) return { present: false };
+  const ticked = [...d.querySelectorAll('[role=group][aria-label="Ticked"] [role=checkbox]')];
+  const px = (v) => Math.round(v * 10) / 10;
+  return { present: true, ticked: ticked.length, lastBottom: px(Math.max(...ticked.map((x) => x.getBoundingClientRect().bottom))), footTop: px(foot.getBoundingClientRect().top), scrollH: body.scrollHeight, clientH: body.clientHeight };
+};
+for (const size of SIZES) {
+  await withList(`sheet-full ${size.name}`, { body: LIST_STATES.full.body }, { size }, async ({ page }) => {
+    await openSheet(page);
+    const text = await sheetText(page);
+    const ok = lWant(`sheet-full-${size.name}`, text, LIST_STATES.full.want);
+    const m = await page.evaluate(LIST_FIT);
+    lRecord("L15", size.name, ok && m.present && m.ticked === 2 && m.lastBottom <= m.footTop && m.scrollH <= m.clientH, m);
+    await lShot(page, `sheet-full-${size.name}`, page.locator(SHEET));
+  });
+}
+
+// ---- L16: two 60-character names. Design rule 16 (kiosk-lists.md line 65): each row is one line and the name is truncated, the button keeps the full name; the pane names are max-w-[45%] truncate ----
+const LIST_LONG = (scope) => {
+  const root = document.querySelector(scope);
+  if (!root) return { present: false };
+  const names = [...root.querySelectorAll("span.truncate")];
+  const bad = [];
+  let truncated = 0;
+  for (const el of names) {
+    const cs = getComputedStyle(el);
+    const box = (el.closest("[role=checkbox]")?.parentElement ?? root).getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const cut = el.scrollWidth > el.clientWidth + 1;
+    if (cut) truncated++;
+    const ellipsis = cs.textOverflow === "ellipsis" && cs.overflow.startsWith("hidden") && cs.whiteSpace === "nowrap";
+    if (r.right > box.right + 0.5 || r.height > parseFloat(cs.lineHeight) * 1.5 || !ellipsis) bad.push(`${el.textContent.slice(0, 18)} right ${Math.round(r.right)} box ${Math.round(box.right)} h ${Math.round(r.height)} ellipsis ${ellipsis}`);
+  }
+  const full = [...root.querySelectorAll("span.truncate")].filter((e) => e.textContent.length === 60).length;
+  return { present: true, names: names.length, truncated, long60: full, bad };
+};
+for (const [name, n, scope] of [["sheet-long-names-1col", 3, "[data-list-sheet]"], ["sheet-long-names-2col", 9, "[data-list-sheet]"]]) {
+  await withList(name, { body: longNamesBody(n) }, {}, async ({ page }) => {
+    await openSheet(page);
+    const ok = lWant(name, await sheetText(page), [...LONG_NAMES]);
+    const m = await page.evaluate(LIST_LONG, scope);
+    lRecord("L16", name, ok && m.present && m.long60 === 2 && m.bad.length === 0, m);
+    await lShot(page, name === "sheet-long-names-1col" ? "sheet-long-names" : "sheet-long-names-2col", page.locator(SHEET));
+  });
+}
+await withList("pane-long-names", { body: longNamesBody(3) }, { url: MAIN_URL, instant: PINNED_ISO }, async ({ page }) => {
+  await page.locator('button[aria-label="Show Shopping list"]').first().click({ timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(700);
+  const m = await page.evaluate(LIST_LONG, "[data-lists-body]");
+  const pane = page.locator("[data-lists-pane]");
+  const ok = lWant("pane-long-names", m.present ? await pane.innerText() : "", [LONG_NAMES[0]]);
+  lRecord("L16", "pane", ok && m.present && m.long60 === 2 && m.truncated >= 1 && m.bad.length === 0, m);
+  await lShot(page, "pane-long-names-1024x768", pane);
+});
 
 // ---- states that need their own fixture or a write ----
 await withList("sheet-empty-no-chips", { body: LIST_STATES.emptyNoChips.body }, {}, async ({ page }) => {
@@ -1527,7 +1586,7 @@ await lRun("L8 contrast", async () => {
 });
 
 // every L needs its entries (a missing one fails it): L1 five pane states, L3-L6 six counts, L10 five panes + six counts, L11 stale pane and sheet
-const L_NEED = { L1: 5, L2: 1, L3: 6, L4: 7, L5: 6, L6: 6, L7: 2, L8: 1, L9: 1, L10: 11, L11: 2, L12: 1, L13: 2, L14: 3 };
+const L_NEED = { L1: 5, L2: 1, L3: 6, L4: 7, L5: 6, L6: 6, L7: 2, L8: 1, L9: 1, L10: 11, L11: 2, L12: 1, L13: 2, L14: 3, L15: 2, L16: 3 };
 for (const n of LNS) {
   const e = LS.entries[n];
   LS[n] = e.length >= L_NEED[n] && e.every((x) => x.ok);

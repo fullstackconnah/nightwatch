@@ -132,6 +132,12 @@ export function listBody(n, t = 0, suggestions = LIST_SUGGEST) {
   return { listId: "shopping", items: [...open, ...ticked], suggestions, serverTime: 10_000 };
 }
 export const LIST_EMPTY = listBody(0);
+/** Two invented names at the 60-character maximum, on the two newest open rows (the sheet's and the pane's first slots). */
+export const LONG_NAMES = ["Organic wholegrain sourdough bread from the corner bakery x2", "Family size pack of unscented dishwasher tablets with aid x4"];
+export function longNamesBody(n) {
+  const b = listBody(n);
+  return { ...b, items: b.items.map((it, i) => (i < 2 ? { ...it, text: LONG_NAMES[i] } : it)) };
+}
 /** One entry per capture state: the body, plus `want` (text the state must show) and `not`. Counts for the no-scroll check use listBody directly. */
 export const LIST_STATES = {
   ordinary: { body: listBody(3), want: ["Shopping · 3 to get", "Apples", "Bread", "Oat milk"] },

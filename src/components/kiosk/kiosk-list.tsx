@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 import { useFreshness, type FreshnessStatus } from "@/lib/kiosk-client";
 import { MAX_ITEMS, MAX_LEN, checkAdd, fold, listButtonView, newItemId, settleRows, type ListItem, type ListPaneView, type RowOrder } from "@/lib/kiosk-list";
-import { QUEUE_KEY, applyQueue, enqueue, outcome, parseQueue, repoint, type QueueOp } from "@/lib/kiosk-list-queue";
+import { QUEUE_KEY, applyQueue, enqueue, outcome, parseQueue, queuedIds, repoint, type QueueOp } from "@/lib/kiosk-list-queue";
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
 import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
@@ -22,14 +22,15 @@ import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 const KEY = "/kiosk/api/list";
 const SYNC_MS = 30_000;
 const UNDO_MS = 8_000;
+const UNDO_FAILED = "Couldn't put them back. Try again.";
 const FULL_HINT = "List is full. Clear ticked items or clear the list to add more.";
 
 interface ListResponse { listId: "shopping"; items: ListItem[]; suggestions: string[]; serverTime: number }
 
 /* ── store: the unsent writes, shared by the button, the pane and the sheet ───────────────────────────────── */
 
-interface StoreState { queue: QueueOp[]; failed: string[]; say: { n: number; text: string } }
-const EMPTY: StoreState = { queue: [], failed: [], say: { n: 0, text: "" } };
+interface StoreState { queue: QueueOp[]; failed: string[]; say: { n: number; text: string }; rejected: number }
+const EMPTY: StoreState = { queue: [], failed: [], say: { n: 0, text: "" }, rejected: 0 };
 let state: StoreState = EMPTY;
 const subs = new Set<() => void>();
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -94,7 +95,7 @@ export async function flush() {
       const out = outcome(res.status);
       const id = op.body.id;
       if (out === "keep") {
-        setState({ failed: state.failed.includes(id) ? state.failed : [...state.failed, id] });
+        setState({ failed: queuedIds(state.queue) }); // every waiting row says "Not saved", not only the first
         return;
       }
       sent = true;
@@ -105,8 +106,13 @@ export async function flush() {
       if (out === "ok" && item) await globalMutate(KEY, (d: ListResponse | undefined) => (d ? { ...d, items: d.items.some((i) => i.id === item.id) ? d.items.map((i) => (i.id === item.id ? item : i)) : [item, ...d.items] } : d), { revalidate: false });
       if (out === "ok" && op.op === "add" && served && served !== id) queue = repoint(queue, id, served); // exists / revived: ticks follow the server's item
       const wasFailed = state.failed.includes(id);
-      setState({ queue, failed: state.failed.filter((f) => f !== id) });
+      const waiting = queuedIds(queue);
+      setState({ queue, failed: state.failed.filter((f) => waiting.includes(f)) });
       if (wasFailed && out === "ok" && op.op === "add") announce(`Saved ${op.body.text}.`);
+      if (out === "full" && op.op === "add") {
+        setState({ rejected: state.rejected + 1 }); // an open sheet shows the full hint; the row is already gone with the queue entry
+        announce(FULL_HINT);
+      }
     }
   } finally {
     flushing = false;
@@ -128,6 +134,7 @@ export interface KioskListData {
   suggestions: string[];
   failed: string[];
   say: { n: number; text: string };
+  rejected: number;
   refresh: () => Promise<boolean>;
 }
 
@@ -144,7 +151,7 @@ export function useKioskList(): KioskListData {
       return false;
     }
   }, [mutate]);
-  return { status: fr.status, items, suggestions: fr.data?.suggestions ?? [], failed: snap.failed, say: snap.say, refresh };
+  return { status: fr.status, items, suggestions: fr.data?.suggestions ?? [], failed: snap.failed, say: snap.say, rejected: snap.rejected, refresh };
 }
 
 /* ── the header button ─────────────────────────────────────────────────────────────────────────────────────── */
@@ -160,7 +167,7 @@ export function KioskListButton({ onClick }: { onClick: (rect: DOMRect) => void 
         onClick(e.currentTarget.getBoundingClientRect());
       }}
       aria-label={v.aria}
-      className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none kiosk-press hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+      className="flex h-11 shrink-0 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-ink outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
     >
       <ShoppingBasket size={14} aria-hidden />
       <span>{v.label}</span>
@@ -260,6 +267,11 @@ export function KioskListSheet({
   const [hint, setHint] = useState<string | null>(null);
   const [footer, setFooter] = useState<Footer>(IDLE);
   const [needPin, setNeedPin] = useState(false);
+  const seenRejected = useRef(list.rejected);
+  useEffect(() => {
+    if (list.rejected !== seenRejected.current) setHint(FULL_HINT); // a queued add met 409 full on replay
+    seenRejected.current = list.rejected;
+  }, [list.rejected]);
 
   // Focus the close button on open (never the field: that raises the keyboard unasked); give it back on unmount.
   useEffect(() => {
@@ -404,6 +416,7 @@ export function KioskListSheet({
     const res = await post(kind === "all" ? "clear-all" : "clear-ticked", { listId: "shopping" });
     const removed = res.status === 200 ? ((res.json?.removed as ListItem[] | undefined) ?? []) : null;
     if (removed) {
+      if (kind === "all") setState({ queue: [], failed: [] }); // waiting adds would bring the cleared items back
       const label = kind === "all" ? plural(removed.length, "item") : `${plural(removed.length, "ticked item")}`;
       const text = `Cleared ${label}.`;
       setFooter({ k: "undo", text, ids: removed.map((i) => i.id) });
@@ -420,8 +433,12 @@ export function KioskListSheet({
   async function undo(ids: string[]) {
     setFooter(IDLE);
     const res = await post("restore", { listId: "shopping", ids });
-    if (res.status === 200) announce(`Put back ${plural((res.json?.restored as unknown[] | undefined)?.length ?? 0, "item")}.`);
-    else setFooter({ k: "error", text: "Couldn't put them back. Try again." });
+    const back = (res.json?.restored as unknown[] | undefined)?.length ?? 0;
+    if (res.status === 200 && back > 0) announce(`Put back ${plural(back, "item")}.`);
+    else {
+      setFooter({ k: "error", text: UNDO_FAILED });
+      announce(UNDO_FAILED);
+    }
     void refresh();
   }
 
@@ -458,7 +475,7 @@ export function KioskListSheet({
           onKeyDown={onDialogKeyDown}
           data-sr-face="float"
           data-list-sheet=""
-          className="panel flex max-h-full w-full max-w-2xl flex-col gap-3 overflow-hidden p-4"
+          className="panel relative flex max-h-full w-full max-w-2xl flex-col gap-3 overflow-hidden p-4"
           onClick={(e) => e.stopPropagation()}
         >
           <SunSheetGrabber panelRef={dialogRef} onDismiss={requestClose} />
@@ -502,7 +519,7 @@ export function KioskListSheet({
             />
             <button type="submit" disabled={disabled || !text.trim()} className={ACCENT_BTN}>Add</button>
           </form>
-          <p role="status" className="min-h-[22px] text-xs text-ink-dim">{shownHint}</p>
+          <p role="status" className="min-h-[22px] text-sm text-ink-dim">{shownHint}</p>
 
           {suggestions.length > 0 && (
             <div>
@@ -517,7 +534,7 @@ export function KioskListSheet({
             </div>
           )}
 
-          <div data-sr-sheet-body className="min-h-0 flex-1">
+          <div data-sr-sheet-body className="min-h-0 flex-1 overflow-y-auto">
             {status === "loading" && <p className="text-sm text-ink-faint">Loading the list…</p>}
             {status === "unreachable-empty" && (
               <div className="flex flex-col items-start gap-2">
@@ -547,7 +564,7 @@ export function KioskListSheet({
             )}
           </div>
 
-          {ready && (total > 0 || footer.k === "undo") && (
+          {ready && (total > 0 || footer.k !== "idle") && (
             <div className="flex items-center gap-2 border-t border-line pt-3" data-list-footer="">
               {footer.k === "undo" && (
                 <>
@@ -569,8 +586,8 @@ export function KioskListSheet({
               {(footer.k === "idle" || footer.k === "error") && (
                 <>
                   <span className="min-w-0 flex-1 text-xs text-warn">{footer.k === "error" ? footer.text : ""}</span>
-                  {tickedCount > 0 && <button type="button" onClick={() => void clear("ticked")} className={BTN}>{`Clear ${tickedCount} ticked`}</button>}
-                  <button type="button" onClick={() => setFooter({ k: "confirm" })} className={BTN}>Clear list</button>
+                  {total > 0 && tickedCount > 0 && <button type="button" onClick={() => void clear("ticked")} className={BTN}>{`Clear ${tickedCount} ticked`}</button>}
+                  {total > 0 && <button type="button" onClick={() => setFooter({ k: "confirm" })} className={BTN}>Clear list</button>}
                 </>
               )}
             </div>

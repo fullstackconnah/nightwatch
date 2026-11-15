@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyQueue, enqueue, outcome, parseQueue, repoint, QUEUE_CAP, type QueueOp } from "./kiosk-list-queue.ts";
+import { applyQueue, enqueue, outcome, parseQueue, queuedIds, repoint, QUEUE_CAP, type QueueOp } from "./kiosk-list-queue.ts";
 import type { ListItem } from "./kiosk-list.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
@@ -58,4 +58,14 @@ test("22g applyQueue: an add of a ticked item's name revives it in place; of an 
   assert.equal(out.length, 2);
   assert.deepEqual(out.map((i) => [i.id, i.done]), [[ID(1), false], [ID(2), false]]);
   assert.equal(out[0].doneAt, null);
+});
+
+test("22h queuedIds: every waiting write marks its row, once per id, so each shows Not saved (fix item 2)", () => {
+  assert.deepEqual(queuedIds([]), []);
+  assert.deepEqual(queuedIds([add(1), add(2), done(1, true), done(3, false)]), [ID(1), ID(2), ID(3)]);
+});
+
+test("22i a 409 full is told apart from a saved write, so the caller can say so (fix item 1)", () => {
+  assert.notEqual(outcome(409), outcome(201));
+  assert.equal(outcome(409), "full");
 });
