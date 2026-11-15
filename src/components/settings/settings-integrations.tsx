@@ -910,13 +910,6 @@ function BinRowEditor({
         <Input placeholder="Recycling" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
       </Field>
       <div>
-        <Label id={everyLabel}>Repeats</Label>
-        <div role="group" aria-labelledby={everyLabel} className="flex gap-1">
-          <SegmentButton fill active={row.every === 1} onClick={() => onChange({ every: 1 })}>Every week</SegmentButton>
-          <SegmentButton fill active={row.every === 2} onClick={() => onChange({ every: 2 })}>Every second week</SegmentButton>
-        </div>
-      </div>
-      <div>
         <Label id={dayLabel}>
           Collection day<span className="text-ink-dim"> *</span>
         </Label>
@@ -930,6 +923,13 @@ function BinRowEditor({
         <p id={dayNote} className={errors.weekday ? "mt-1 text-[0.7rem] text-warn/80" : "mt-1 text-[0.7rem] text-ink-dim"}>
           {errors.weekday ?? "The day the truck comes."}
         </p>
+      </div>
+      <div>
+        <Label id={everyLabel}>Repeats</Label>
+        <div role="group" aria-labelledby={everyLabel} className="flex gap-1">
+          <SegmentButton fill active={row.every === 1} onClick={() => onChange({ every: 1 })}>Every week</SegmentButton>
+          <SegmentButton fill active={row.every === 2} onClick={() => onChange({ every: 2 })}>Every second week</SegmentButton>
+        </div>
       </div>
       {row.every === 2 && (
         <Field
