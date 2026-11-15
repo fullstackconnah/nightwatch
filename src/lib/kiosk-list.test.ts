@@ -143,3 +143,9 @@ test("4 restoreGone puts back only the cleared rows that are missing", () => {
   assert.deepEqual(restoreGone([c], [a, b], new Set([a.id])).map((i) => i.id), [c.id, a.id]);
   assert.deepEqual(restoreGone([a, c], [a, b], new Set([a.id])).map((i) => i.id), [a.id, c.id]);
 });
+
+test("52d settleRows: a fresh ticked row lands in ticked, a fresh open row on top of open", () => {
+  const prev = { open: [ID(2), ID(1)], ticked: [] as string[] };
+  const items = [item(1, "A"), item(2, "B"), item(5, "T", { done: true, doneAt: 9 }), item(6, "N")];
+  assert.deepEqual(settleRows(prev, items), { open: [ID(6), ID(2), ID(1)], ticked: [ID(5)] });
+});
