@@ -17,13 +17,15 @@
  * floor band (bottom edge below 0.75 x height, the ring spawn band) outside every [data-rain-zone] rect. Must be [].
  * PR 4 (ambient): ambient.radarGap.<size> (px, >= 16), ambient.<state>.{n11Small,n12LiveTransitions,n18ToneWithoutWord} for main-<midday|night>-<size>, rest (plus n17Running), stale (tagSeen,tagCount,tagText),
  * nowPlaying (seen,word,pip), carousel and carousel-1180x820 (before,after,pillBox,pillOffset{before,after,within1px}). Shots ambient-<state>-<size>.png.
+ * UV and air (kiosk-uv): sunAir.N1..N8 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
  * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AUTO_OFF, HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, ZONE, rainWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
+import { uvContrast } from "./kiosk-uv-contrast.mjs";
+import { AUTO_OFF, HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -69,11 +71,11 @@ async function seen(page, selector, timeout = 30_000) {
 }
 
 /** A page with every /kiosk/api/* mocked; `weather` is read per request so a run can swap the sun. */
-async function visit(url, { viewport, weather, fixedTime = false, reduced = false, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
+async function visit(url, { viewport, weather, fixedTime = false, reduced = false, instant = PINNED_ISO, ha = false, nowPlaying = false, rain = false, climateMode = null, routes = null, initScript = null }) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE, reducedMotion: reduced ? "reduce" : "no-preference" });
   // "flow" and "ticking": start at the pinned instant but keep time passing (SWR's focus throttle and dedupe read Date.now; ticking is also fast-forwarded)
-  if (fixedTime === "flow" || fixedTime === "ticking") await context.clock.install({ time: new Date(PINNED_ISO) });
-  else if (fixedTime) await context.clock.setFixedTime(new Date(PINNED_ISO));
+  if (fixedTime === "flow" || fixedTime === "ticking") await context.clock.install({ time: new Date(instant) });
+  else if (fixedTime) await context.clock.setFixedTime(new Date(instant));
   if (initScript) await context.addInitScript(initScript);
   const page = await context.newPage();
   const state = { weather };
@@ -888,6 +890,160 @@ for (const size of SIZES) {
     await context.close();
   });
 }
+
+// ---- kiosk UV and air: N1-N8 (glance pane `sun-air` and the Standard inline) ----
+// results.sunAir.{N1..N8}: true | false (each needs every one of its entries; a missing entry fails it), results.sunAir.entries.<Nx>[] the numbers,
+// results.sunAir.states.<state>-<size> (glance) and .std.<state>-<size> (Standard), results.sunAir.failed[] (why, one line each).
+// Shots: sunair-<state>-<size>.png (the band and its dots) and sunair-std-<state>-<size>.png (the weather line). The run exits 1 when any N is false.
+// The URLs keep ?wx=overcast: applyWxPreview must keep uv and air, or every pane check below fails on an empty pane (a dropped field shows as `want` missing).
+const SA = (results.sunAir = { entries: {}, states: {}, std: {}, failed: [] });
+const NS = ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"];
+for (const n of NS) SA.entries[n] = [];
+const saRecord = (n, key, ok, detail) => { SA.entries[n].push({ key, ok, ...detail }); if (!ok) SA.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
+const saRun = (name, fn) => guarded(`sunAir ${name}`, async () => { try { await fn(); } catch (e) { SA.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const textHas = (text, want = [], not = []) => ({ missing: want.filter((w) => !text.includes(w)), present: not.filter((w) => text.includes(w)) });
+
+/** The pane's measurements: N1 (height in the band), N2 (width, no clipped word), N3 (figure size = the rail's), N4 (type floor), N5 (dots = panes). */
+const SUN_AIR_PANE = () => {
+  const root = document.querySelector("[data-sun-air]");
+  const track = document.querySelector("div.relative.w-full.overflow-hidden > div.flex.h-full.w-full");
+  const panes = track ? [...track.children].filter((c) => !/200%/.test(c.style.transform)).length : null;
+  const dots = document.querySelectorAll('button[aria-label^="Show "]').length;
+  if (!root) return { present: false, panes, dots };
+  const band = root.closest(".overflow-hidden").getBoundingClientRect();
+  const r = root.getBoundingClientRect();
+  const probe = Object.assign(document.createElement("span"), { className: "text-xl" });
+  root.append(probe);
+  const floor = parseFloat(getComputedStyle(probe).fontSize);
+  probe.remove();
+  const visible = [...root.querySelectorAll("[aria-hidden]")];
+  const small = [];
+  const clipped = [];
+  for (const el of visible.flatMap((v) => [v, ...v.querySelectorAll("*")])) {
+    if (el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0) clipped.push(el.textContent.trim().slice(0, 30));
+    const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+    if (own && !el.closest(".microlabel, .sr-stale") && parseFloat(getComputedStyle(el).fontSize) < floor - 0.01) small.push(`${el.textContent.trim().slice(0, 20)} ${getComputedStyle(el).fontSize}`);
+  }
+  const fig = root.querySelector("[data-sun-figure]");
+  const railHi = document.querySelector('[data-testid="kiosk-forecast-rail"] .sr-fc-hi');
+  return {
+    present: true, panes, dots,
+    text: visible.map((v) => v.textContent).join(" | "),
+    bandH: Math.round(band.height * 10) / 10, paneH: Math.round(r.height * 10) / 10,
+    bandW: Math.round(band.width * 10) / 10, paneW: Math.round(r.width * 10) / 10,
+    clipped, small, floor,
+    figurePx: fig ? parseFloat(getComputedStyle(fig).fontSize) : null,
+    railPx: railHi ? parseFloat(getComputedStyle(railHi).fontSize) : null,
+    staleTags: root.querySelectorAll(".sr-stale").length,
+    clip: { x: Math.max(0, band.left - 8), y: Math.max(0, band.top - 8), width: band.width + 16, height: band.height + 52 },
+  };
+};
+
+const SA_STALE_STATE = "stale";
+for (const size of SIZES) {
+  for (const state of Object.keys(SUN_AIR_STATES)) {
+    const key = `${state}-${size.name}`;
+    await saRun(`glance ${key}`, async () => {
+      const def = SUN_AIR_STATES[state];
+      const stale = state === SA_STALE_STATE;
+      // stale needs an outage after a good poll, which ?wx= would paper over: wx=off with the real fixture days (sunset 19:42)
+      const { context, page, state: st } = await visit(stale ? STOP_URL : MAIN_URL, { viewport: size.viewport, weather: sunAirWeatherFor(state), fixedTime: stale ? "ticking" : true, instant: sunAirInstant(state) });
+      if (stale) {
+        st.weather = { status: "unreachable", detail: "mocked outage" };
+        await page.clock.fastForward(6000);
+        for (let k = 0; k < 4 && !(await seen(page, "[data-sun-air] .sr-stale", 3000)); k++) {
+          await page.clock.fastForward(6000);
+          await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        }
+      }
+      const m = await page.evaluate(SUN_AIR_PANE);
+      SA.states[key] = m;
+      if (def.quiet) {
+        saRecord("N5", key, !m.present && m.panes === m.dots, { present: m.present, panes: m.panes, dots: m.dots, expect: "no pane, dots equal panes" });
+        await context.close();
+        return;
+      }
+      const t = textHas(m.text ?? "", def.want, def.not);
+      saRecord("N5", key, m.present && t.missing.length === 0 && t.present.length === 0 && m.panes === m.dots, { present: m.present, panes: m.panes, dots: m.dots, ...t });
+      if (m.present) {
+        if (["ordinary", "crowded", "stale", "worst"].includes(state)) saRecord("N1", key, m.paneH <= m.bandH, { paneH: m.paneH, bandH: m.bandH });
+        saRecord("N2", key, m.paneW <= m.bandW + 0.5 && m.clipped.length === 0, { paneW: m.paneW, bandW: m.bandW, clipped: m.clipped });
+        if (def.uv) saRecord("N3", key, m.figurePx !== null && m.figurePx === m.railPx, { figurePx: m.figurePx, railPx: m.railPx }); // no figure on an air-only pane
+        saRecord("N4", key, m.small.length === 0, { floor: m.floor, small: m.small });
+        if (stale) saRecord("N5", `${key} one stale tag`, m.staleTags === 1, { staleTags: m.staleTags });
+        await page.locator('button[aria-label="Show UV and air"]').first().click().catch(() => {});
+        await page.waitForTimeout(700);
+        await page.screenshot({ path: join(OUT_DIR, `sunair-${key}.png`), clip: m.clip });
+      }
+      await context.close();
+    });
+  }
+}
+
+/** Standard: the weather line (day, evening) or the datum row (morning). N6 sizes against the same moment without UV or air; N8 no item overlaps another. */
+const STD_LINE = () => {
+  const header = document.querySelector("header")?.getBoundingClientRect().height ?? null;
+  const line = document.querySelector("[data-weather-line]");
+  const datums = document.querySelector("[data-weather-datums]");
+  const el = line ?? datums;
+  if (!el) return { present: false, header };
+  const kids = [...el.children].map((c) => c.getBoundingClientRect());
+  const overlaps = [];
+  for (let i = 0; i < kids.length; i++) {
+    for (let j = i + 1; j < kids.length; j++) {
+      const w = Math.min(kids[i].right, kids[j].right) - Math.max(kids[i].left, kids[j].left);
+      const h = Math.min(kids[i].bottom, kids[j].bottom) - Math.max(kids[i].top, kids[j].top);
+      if (w > 0.5 && h > 0.5) overlaps.push([i, j]);
+    }
+  }
+  const r = el.getBoundingClientRect();
+  return { present: true, kind: line ? "line" : "datums", header, h: Math.round(r.height * 10) / 10, rowTops: [...new Set(kids.map((k) => Math.round(k.top)))].length, firstTop: kids[0] && Math.round(kids[0].top), lastTop: kids.length ? Math.round(kids[kids.length - 1].top) : null, overlaps, text: el.textContent, clip: { x: Math.max(0, r.left - 8), y: Math.max(0, r.top - 8), width: r.width + 16, height: r.height + 16 } };
+};
+for (const size of SIZES) {
+  for (const state of Object.keys(SUN_AIR_STD)) {
+    const key = `${state}-${size.name}`;
+    if (size.name !== SIZES[1].name && !["ordinary", "crowded", "worst", "morning"].includes(state)) continue; // 1024 is the tight width; 1180 covers the main four
+    await saRun(`standard ${key}`, async () => {
+      const at = sunAirInstant(state);
+      const withIt = await visit(CONTROLS_URL, { viewport: size.viewport, weather: sunAirWeatherFor(state), fixedTime: true, instant: at });
+      const a = await withIt.page.evaluate(STD_LINE);
+      await withIt.page.screenshot({ path: join(OUT_DIR, `sunair-std-${key}.png`), clip: a.clip });
+      await withIt.context.close();
+      const baseIt = await visit(CONTROLS_URL, { viewport: size.viewport, weather: sunAirWeatherFor(state, { base: true }), fixedTime: true, instant: at });
+      const b = await baseIt.page.evaluate(STD_LINE);
+      await baseIt.context.close();
+      SA.std[key] = { with: a, base: b };
+      const w = SUN_AIR_STD[state];
+      const t = textHas(a.text ?? "", w.want, w.not);
+      saRecord("N6", `${key} text`, a.present && t.missing.length === 0 && t.present.length === 0, t);
+      if (a.present && b.present) {
+        if (a.kind === "line") {
+          const grew = Math.round((a.h - b.h) * 10) / 10;
+          // 0 rows, or one `text-sm` line plus `gap-y-1.5` (about 20 + 6 px)
+          saRecord("N6", `${key} line`, (grew === 0 || (grew >= 20 && grew <= 30)) && a.header === b.header, { grewPx: grew, headerWith: a.header, headerBase: b.header });
+        } else {
+          saRecord("N6", `${key} datums`, a.rowTops === b.rowTops && a.firstTop === a.lastTop && a.header === b.header, { rowTopsWith: a.rowTops, rowTopsBase: b.rowTops, firstTop: a.firstTop, lastTop: a.lastTop, headerWith: a.header, headerBase: b.header });
+        }
+        saRecord("N8", key, a.overlaps.length === 0, { overlaps: a.overlaps });
+      }
+    });
+  }
+}
+
+// N7 runs in node (no page): warn and bad on bg, panel and panel-2 in every theme and sunroom stop
+await saRun("N7 contrast", async () => {
+  const c = await uvContrast();
+  saRecord("N7", "contrast", c.pass && c.unresolved.length === 0, { checked: c.checked, lowest: c.lowest, failures: c.failures, unresolved: c.unresolved });
+});
+
+// every N needs its entries: N1 4 states x 2 sizes, N2-N5 each pane state x size (N3 not air-only), N6 and N8 the Standard states (1024 all 11, 1180 four), N7 one
+const NEED = { N1: 8, N2: 22, N3: 20, N4: 22, N5: 22, N6: 30, N7: 1, N8: 15 };
+for (const n of NS) {
+  const e = SA.entries[n];
+  SA[n] = e.length >= NEED[n] && e.every((x) => x.ok);
+  if (e.length < NEED[n]) SA.failed.push(`${n} has ${e.length} entries, needs ${NEED[n]}`);
+}
+if (SA.failed.length) process.exitCode = 1;
 
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;

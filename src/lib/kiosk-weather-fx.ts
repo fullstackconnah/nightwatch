@@ -392,6 +392,8 @@ export function applyWxPreview(
     days,
     rain: { nowcast: [{ minutesFromNow: 0, precipMmHr: p.mmHr }], hours: [], summary: null },
     sun,
+    // UV and air are not weather-preset fields: keep the real ones so the sun-air pane still shows.
+    ...(data?.status === "ok" ? { uv: data.uv, air: data.air } : {}),
   };
   return preview;
 }

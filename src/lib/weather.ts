@@ -1,6 +1,7 @@
-import { loadConfig } from "@/lib/config";
-import { cachedByKey } from "./weather-cache";
-import { readJsonCapped } from "./read-capped";
+// Relative `.ts` imports (not "@/…") so the node test runner can load this module.
+import { loadConfig } from "./config.ts";
+import { cachedByKey } from "./weather-cache.ts";
+import { readJsonCapped } from "./read-capped.ts";
 
 /**
  * Server-only Open-Meteo client for the public /kiosk weather card.
@@ -85,6 +86,19 @@ export interface WeatherRain {
   summary: string | null;
 }
 
+/** Peak UV for `day` (today until sunset, then tomorrow). `peakAt` is solar noon
+ *  rounded to 15 min, en-AU 12-hour ("12:30 pm"), null without sunrise or sunset. */
+export interface WeatherUv {
+  day: "today" | "tomorrow";
+  peak: number;
+  peakAt: string | null;
+}
+
+/** European AQI, rounded. */
+export interface WeatherAir {
+  index: number;
+}
+
 export interface WeatherOk {
   status: "ok";
   place: string;
@@ -92,6 +106,9 @@ export interface WeatherOk {
   days: WeatherDay[];
   sun: WeatherSun;
   rain: WeatherRain;
+  /** Optional: a payload cached before these fields existed lacks them (null and undefined mean the same). */
+  uv?: WeatherUv | null;
+  air?: WeatherAir | null;
 }
 
 export interface WeatherProblem {
@@ -172,7 +189,14 @@ function displayConfig(): DisplayConfig | null {
 // valid cache — one Open-Meteo call feeds every kiosk tab/poll for 10 minutes
 // rather than one call per request.
 // Keyed on location and timezone, one shared in-flight fetch; a failed fetch is remembered for 30 s so a dead network is not hammered.
-const cachedWeather = cachedByKey<WeatherResponse>((w) => (w.status === "ok" ? CACHE_MS : 30_000));
+// The air call has its own cache so a failure there is retried after 30 s without touching the forecast.
+let clock = Date.now;
+/** Test seam: both caches read time through this. */
+export function setWeatherClock(fn: () => number) {
+  clock = fn;
+}
+const cachedWeather = cachedByKey<WeatherResponse>((w) => (w.status === "ok" ? CACHE_MS : 30_000), () => clock());
+const cachedAir = cachedByKey<WeatherAir | null>((a) => (a ? CACHE_MS : 30_000), () => clock());
 
 interface RawCurrent {
   time?: unknown;
@@ -193,6 +217,7 @@ interface RawDaily {
   precipitation_probability_max?: unknown[];
   sunrise?: unknown[];
   sunset?: unknown[];
+  uv_index_max?: unknown[];
 }
 
 interface RawMinutely15 {
@@ -448,10 +473,58 @@ function buildRain(minutely: RawMinutely15, hourly: RawHourly, nowIso: string | 
   };
 }
 
+// --- UV and air quality -------------------------------------------------------
+
+/** Minutes after midnight from the clock part of an Open-Meteo naive local timestamp. */
+function minutesOf(iso: string | null): number | null {
+  const m = iso?.match(/T(\d{2}):(\d{2})/);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** en-AU 12-hour, "12:30 pm". */
+function clock12(totalMin: number): string {
+  const h24 = Math.floor(totalMin / 60) % 24;
+  return `${h24 % 12 || 12}:${String(totalMin % 60).padStart(2, "0")} ${h24 >= 12 ? "pm" : "am"}`;
+}
+
+/** Solar noon (sunrise/sunset midpoint) rounded to 15 min: the UV peak, since the hourly block is only a 13-hour window. */
+function peakTime(day: WeatherDay | undefined): string | null {
+  const rise = minutesOf(day?.sunrise ?? null);
+  const set = minutesOf(day?.sunset ?? null);
+  return rise === null || set === null || set <= rise ? null : clock12(Math.round((rise + set) / 2 / 15) * 15);
+}
+
+/** The peak UV of today until today's sunset, then of tomorrow; null when the value is unusable. */
+function buildUv(raw: RawDaily, days: WeatherDay[], nowIso: string | null): WeatherUv | null {
+  const sunsetMs = Date.parse(days[0]?.sunset ?? "");
+  const nowMs = nowIso ? Date.parse(nowIso) : NaN;
+  const i = Number.isFinite(sunsetMs) && Number.isFinite(nowMs) && nowMs >= sunsetMs ? 1 : 0;
+  const v = raw.uv_index_max?.[i];
+  if (typeof v !== "number" || !(v >= 0 && v <= 25)) return null;
+  return { day: i === 1 ? "tomorrow" : "today", peak: Math.round(v), peakAt: peakTime(days[i]) };
+}
+
+/** Keyless second call; any failure is null (the forecast never depends on it). */
+async function fetchAir(cfg: DisplayConfig): Promise<WeatherAir | null> {
+  const url =
+    "https://air-quality-api.open-meteo.com/v1/air-quality" +
+    `?latitude=${cfg.lat}&longitude=${cfg.lon}&current=european_aqi&timezone=${encodeURIComponent(cfg.timezone)}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: "no-store" });
+    if (!res.ok) return null;
+    const v = (await readJsonCapped<{ current?: { european_aqi?: unknown } }>(res, 64 * 1024))?.current?.european_aqi;
+    return typeof v === "number" && Number.isFinite(v) && v >= 0 ? { index: Math.round(v) } : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getWeather(): Promise<WeatherResponse> {
   const cfg = displayConfig();
   if (!cfg) return { status: "unconfigured", detail: WEATHER_UNCONFIGURED_DETAIL };
-  return cachedWeather(`${cfg.lat},${cfg.lon},${cfg.timezone}`, () => fetchWeather(cfg));
+  const key = `${cfg.lat},${cfg.lon},${cfg.timezone}`;
+  const [w, air] = await Promise.all([cachedWeather(key, () => fetchWeather(cfg)), cachedAir(key, () => fetchAir(cfg))]);
+  return w.status === "ok" ? { ...w, air } : w;
 }
 
 async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
@@ -462,7 +535,7 @@ async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
     "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,precipitation,wind_speed_10m,cloud_cover" +
     "&minutely_15=precipitation" +
     "&hourly=precipitation_probability,precipitation" +
-    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset" +
+    "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max" +
     `&forecast_days=5&forecast_minutely_15=8&forecast_hours=13&timezone=${encodeURIComponent(cfg.timezone)}`;
 
   let res: Response;
@@ -496,6 +569,7 @@ async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
     days,
     sun: buildSun(cfg, nowIso, days[0]?.sunrise ?? null, days[0]?.sunset ?? null),
     rain: buildRain(b.minutely_15 ?? {}, b.hourly ?? {}, nowIso),
+    uv: buildUv(b.daily ?? {}, days, nowIso),
   };
   return data;
 }
