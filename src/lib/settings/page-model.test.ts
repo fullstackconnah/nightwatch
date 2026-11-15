@@ -24,13 +24,14 @@ type Over = {
   widgets?: number;
   calendar?: boolean;
   bins?: number;
+  restore?: string;
 };
 /** Nine of nine set up by default (six integrations, voice, the calendar link, one bin). */
 function data(o: Over = {}): SettingsFullResponse {
   const on = (k: keyof NonNullable<Over["set"]>) => o.set?.[k] ?? true;
   const st = (k: keyof NonNullable<Over["set"]>) => ({ configured: on(k), updatedAt: o.updated?.[k] });
   return {
-    config: { widgets: Array.from({ length: o.widgets ?? 2 }), bins: { collections: Array.from({ length: o.bins ?? 1 }, (_, i) => ({ name: `Bin ${i}`, weekday: 2, every: 1 as const })) }, hermes: o.hermes ?? { tier: "local", model: "qwen" } },
+    config: { restoreTestedOn: o.restore, widgets: Array.from({ length: o.widgets ?? 2 }), bins: { collections: Array.from({ length: o.bins ?? 1 }, (_, i) => ({ name: `Bin ${i}`, weekday: 2, every: 1 as const })) }, hermes: o.hermes ?? { tier: "local", model: "qwen" } },
     meta: {
       authConfigured: o.auth ?? true, mcpEnabled: true, kioskPinConfigured: true, ssoConfigured: false,
       hermesModelUpdatedAt: o.hermesModelUpdatedAt ?? null, ...o.meta,
@@ -52,7 +53,7 @@ function input(o: Partial<ModelInput> & { d?: Over } = {}): ModelInput {
 }
 const model = (o: Partial<ModelInput> & { d?: Over } = {}) => settingsModel(input(o));
 const strip = (m: ReturnType<typeof model>, id: StripId) => m.strips.find((s) => s.id === id)!;
-const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "calendar", "hermes", "dashboard"];
+const NINE: StripId[] = ["access", "homeassistant", "npm", "forgejo", "github", "minecraft", "media", "voice", "bins", "calendar", "restore", "hermes", "dashboard"];
 const CALM_EVIDENCE = "Saved on the server in config.json, never in git.";
 
 // ---- C8: one case per section 5 row ----
@@ -84,7 +85,7 @@ test("refresh failed: the data's own chip and answer, a notice with the age, wri
   assert.equal(m.notice, "Couldn’t refresh: showing what loaded 2 min ago.");
   assert.equal(m.writable, true);
   assert.equal(m.autoTarget, "keep");
-  assert.equal(m.strips.length, 12);
+  assert.equal(m.strips.length, 13);
 });
 
 test("save failed: warn, names the form, keeps the changes, opens that form's strip", () => {
@@ -183,15 +184,15 @@ test("only the calendar set up: counted, so the header is not the empty wording"
 test("optional things are never problems: no SSO, PIN, Orchestra or daemon is still calm", () => {
   const m = model({ d: { meta: { ssoConfigured: false, kioskPinConfigured: false }, daemon: { updatedAt: null } } });
   assert.equal(m.chip.tone, "ok");
-  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null, null]);
+  assert.deepEqual(m.strips.map((s) => s.tone), [null, null, null, null, null, null, null, null, null, null, null, null, null]);
 });
 
 // ---- order, last change, strip lines ----
 
-test("the twelve strips come in a fixed order with titles", () => {
+test("the thirteen strips come in a fixed order with titles", () => {
   const m = model();
   assert.deepEqual(m.strips.map((s) => s.id), NINE);
-  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Calendar", "Hermes", "Dashboard"]);
+  assert.deepEqual(m.strips.map((s) => s.title), ["Access", "Home Assistant", "NPM", "Forgejo", "GitHub", "Minecraft", "Media", "Voice", "Bin night", "Calendar", "Restore drill", "Hermes", "Dashboard"]);
   // priority states never reorder them (D3)
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
 });
@@ -363,4 +364,24 @@ test("3b: Hermes and Dashboard drafts and errors reach the strip line, the chip 
     assert.equal(failed.chip.label, "Not saved", form);
     assert.equal(strip(failed, id).tone, "warn", form);
   }
+});
+
+// ---- restore drill strip ----
+
+test("restore drill strip sits after calendar, not counted as an integration", () => {
+  const m = model();
+  const ids = m.strips.map((s) => s.id);
+  assert.equal(ids[ids.indexOf("calendar") + 1], "restore");
+  assert.match(m.answer, /^All 9 integrations are set up/);
+});
+
+test("restore drill strip state: never recorded, then the saved day", () => {
+  assert.deepEqual(strip(model(), "restore"), { id: "restore", title: "Restore drill", state: "Not recorded", tone: null });
+  assert.equal(strip(model({ d: { restore: "2026-10-12" } }), "restore").state, "Last drill 12 Oct 2026");
+});
+
+test("a failed restore drill save names the date", () => {
+  const m = model({ forms: { restore: { dirty: true, error: "boom" } } });
+  assert.match(m.answer, /^Couldn’t save the restore drill date: boom/);
+  assert.equal(m.autoTarget, "restore");
 });

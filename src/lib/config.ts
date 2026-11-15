@@ -130,6 +130,8 @@ export interface AppConfig {
   media?: { workerUrl?: string; workerToken?: string; updatedAt?: string };
   /** Bin night: what the wall kiosk's "goes out tonight" line is built from. Nothing secret; see bin-night.ts. */
   bins?: BinsConfig;
+  /** The day the owner last restored a backup by hand, YYYY-MM-DD in the display zone. Written only by the restoreDrill save. */
+  restoreTestedOn?: string;
   /** Hermes model routing, set from the settings page's "Hermes · model"
    *  panel. This copy is the settings UI's own read model (so GET
    *  /api/settings has something to show); it is NOT what the hermes daemon

@@ -13,6 +13,7 @@ import {
   id,
   integrityAlert,
   keepsRestarting,
+  restoreDrillDue,
   place,
   stuckRestarting,
 } from "./attention-copy.ts";
@@ -251,4 +252,12 @@ test("doorbellQuiet copy: with and without a day count, and it fits every surfac
     assert.ok(x.action!.length <= 70);
     assert.ok(!/ring|!/i.test(`${x.headline}${x.detail}${x.action}`.replace(/during|bring/gi, "")));
   }
+});
+
+test("restoreDrillDue names the days and fits the hit limits", () => {
+  const c = restoreDrillDue(91);
+  assert.equal(c.headline, "ODIP restore drill is due");
+  assert.equal(c.detail, "The last restore you tested by hand was 91 days ago.");
+  assert.equal(c.action, "Restore a backup by hand, then enter the date in Settings.");
+  assert.ok(c.headline.length <= 48 && c.detail!.length <= 140 && c.action!.length <= 70);
 });

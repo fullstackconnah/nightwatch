@@ -200,3 +200,9 @@ test("rconPasswordForHost keeps the password only while the host is the same (ca
   assert.equal(rconPasswordForHost("pw", "mc.example", "other.example"), undefined);
   assert.equal(rconPasswordForHost("pw", "mc.example", undefined), undefined);
 });
+
+test("restore drill date: a widget save and a tile save both keep restoreTestedOn", () => {
+  const withDrill = { ...current, restoreTestedOn: "2026-10-12" } as AppConfig;
+  assert.equal(ok(mergeDashPut(withDrill, { widgets: [] })).restoreTestedOn, "2026-10-12");
+  assert.equal(ok(mergeDashPut(withDrill, { groups: [], urls: {}, icons: {}, hidden: [] })).restoreTestedOn, "2026-10-12");
+});

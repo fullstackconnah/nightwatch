@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseBackupStatus, summarizeBackup, backupHeadline, type BackupStatus } from "./backup-status.ts";
+import { parseBackupStatus, summarizeBackup, backupHeadline, drillAge, checkRestoreDate, drillPayload, applyRestoreDrill, drillDateText, drillAgeText, type BackupStatus } from "./backup-status.ts";
+import { localDateString } from "./local-time.ts";
 
 const NOW = Date.parse("2026-10-15T12:00:00+11:00");
 const HOUR = 3_600_000;
@@ -134,5 +135,87 @@ describe("backupHeadline", () => {
   });
   it("names one item when only one is bad", () => {
     assert.equal(backupHeadline(summary(file({ backup: { state: "FAILED" } }))), "ODIP nightly backup failed");
+  });
+});
+
+describe("restore drill", () => {
+  const today = "2026-11-16";
+  const INVALID = "That isn't a real date. Pick one from the calendar.";
+
+  it("drillAge 90 days is ok", () => {
+    assert.deepEqual(drillAge({ testedOn: "2026-08-18", today }), { state: "ok", days: 90 });
+  });
+  it("drillAge 91 days is due", () => {
+    assert.deepEqual(drillAge({ testedOn: "2026-08-17", today }), { state: "due", days: 91 });
+  });
+  it("drillAge null is none", () => {
+    assert.deepEqual(drillAge({ testedOn: null, today }), { state: "none" });
+  });
+  it("drillAge future clamps to 0 ok", () => {
+    assert.deepEqual(drillAge({ testedOn: "2026-11-20", today }), { state: "ok", days: 0 });
+  });
+  it("drillAge across DST", () => {
+    assert.equal((drillAge({ testedOn: "2026-10-03", today: "2026-10-05" }) as { days: number }).days, 2);
+  });
+  it("zone decides today", () => {
+    const t = localDateString("Australia/Sydney", new Date("2026-11-15T14:30:00Z"));
+    assert.equal(t, "2026-11-16");
+    assert.deepEqual(drillAge({ testedOn: "2026-08-18", today: t }), { state: "ok", days: 90 });
+    assert.deepEqual(drillAge({ testedOn: "2026-08-18", today: "2026-11-15" }), { state: "ok", days: 89 });
+  });
+
+  it("checkRestoreDate blank clears, trims, saves today", () => {
+    assert.deepEqual(checkRestoreDate({ testedOn: "" }, today), { ok: true, value: null });
+    assert.deepEqual(checkRestoreDate({ testedOn: "   " }, today), { ok: true, value: null });
+    assert.deepEqual(checkRestoreDate({ testedOn: " 2026-10-12 " }, today), { ok: true, value: "2026-10-12" });
+    assert.deepEqual(checkRestoreDate({ testedOn: today }, today), { ok: true, value: today });
+  });
+  it("checkRestoreDate rejects bad shapes", () => {
+    for (const raw of [{ testedOn: "2026-13-01" }, { testedOn: "2026-02-30" }, { testedOn: "12/10/2026" }, { testedOn: "2026-10-12x" }, { testedOn: 20261012 }, {}, null, "2026-10-12", undefined]) {
+      assert.deepEqual(checkRestoreDate(raw, today), { ok: false, error: INVALID }, JSON.stringify(raw));
+    }
+  });
+  it("checkRestoreDate rejects too long, before 2000 and future", () => {
+    assert.deepEqual(checkRestoreDate({ testedOn: "2026-10-12" + "0".repeat(500) }, today), { ok: false, error: INVALID });
+    assert.deepEqual(checkRestoreDate({ testedOn: "1999-12-31" }, today), { ok: false, error: "Pick a date from 2000 on." });
+    assert.deepEqual(checkRestoreDate({ testedOn: "2026-11-17" }, today), { ok: false, error: "That date hasn't happened yet. Enter the day you last tested a restore." });
+  });
+
+  it("drillPayload drops an invalid stored value and keeps a future one", () => {
+    assert.deepEqual(drillPayload("garbage", today), { testedOn: null, today });
+    assert.deepEqual(drillPayload(undefined, today), { testedOn: null, today });
+    assert.deepEqual(drillPayload("2026-10-12", today), { testedOn: "2026-10-12", today });
+    assert.deepEqual(drillPayload("2026-11-20", today), { testedOn: "2026-11-20", today });
+  });
+});
+
+describe("restore drill save", () => {
+  const today = "2026-11-16";
+  const config = { widgets: [1, 2], bins: { collections: [] }, hermes: { tier: "local" }, nested: { a: [1, { b: 2 }] }, calendar: { url: "x" } };
+  const others = (c: object) => JSON.stringify(Object.fromEntries(Object.entries(c).filter(([k]) => k !== "restoreTestedOn")));
+
+  it("a save changes only restoreTestedOn", () => {
+    const r = applyRestoreDrill(config, { testedOn: " 2026-10-12 " }, today);
+    assert.ok("next" in r);
+    assert.equal(r.next.restoreTestedOn, "2026-10-12");
+    assert.equal(others(r.next), others(config));
+    assert.equal("restoreTestedOn" in config, false, "the input is not mutated");
+  });
+  it("a clear deletes only restoreTestedOn", () => {
+    const r = applyRestoreDrill({ ...config, restoreTestedOn: "2026-10-12" }, { testedOn: "" }, today);
+    assert.ok("next" in r);
+    assert.equal("restoreTestedOn" in r.next, false);
+    assert.equal(others(r.next), others(config));
+  });
+  it("a rejected value saves nothing and returns the field error", () => {
+    assert.deepEqual(applyRestoreDrill(config, { testedOn: "2026-11-17" }, today), { error: "That date hasn't happened yet. Enter the day you last tested a restore." });
+  });
+});
+
+describe("restore drill text", () => {
+  it("dates and ages read plainly", () => {
+    assert.equal(drillDateText("2026-10-12"), "12 Oct 2026");
+    assert.equal(drillDateText("2026-01-05"), "5 Jan 2026");
+    assert.deepEqual([0, 1, 35].map(drillAgeText), ["today", "1 day ago", "35 days ago"]);
   });
 });

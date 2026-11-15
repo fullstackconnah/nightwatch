@@ -2,7 +2,8 @@
  * so node:test can load it (no "@/" alias). attention.ts does the IO. */
 import type { RuntimeContainer } from "./docker.ts";
 import { countText, type Tally } from "./change-log.ts";
-import { BACKUP_KIND_LABEL, type BackupStatus } from "./backup-status.ts";
+import { BACKUP_KIND_LABEL, drillAge, type BackupStatus, type RestoreDrill } from "./backup-status.ts";
+import { restoreDrillDue } from "./attention-copy.ts";
 
 export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
@@ -137,9 +138,18 @@ export type KioskResult =
   | { status: "quiet" }
   | { status: "attention"; severity: "warn" | "bad"; headline: string; detail?: string; action?: string; since?: string };
 
+/** The owner's own restore drill is a Home reminder; the family wall never shows it. */
+const HOME_ONLY = new Set(["backup:restore-drill"]);
+
+/** A hit once the hand-run restore is 91 days old or more; none when it is recent or never recorded. */
+export function drillHit(d: RestoreDrill): RawHit | null {
+  const age = drillAge(d);
+  return age.state === "due" ? { subject: "restore-drill", severity: "warn", ...restoreDrillDue(age.days) } : null;
+}
+
 /** Today's kiosk answer: the first hit in probe order, with the same key order and the raw `since`. */
 export function firstHit(ordered: AttentionHit[]): KioskResult {
-  const h = ordered[0];
+  const h = ordered.find((x) => !HOME_ONLY.has(x.id));
   if (!h) return { status: "quiet" };
   return { status: "attention", severity: h.severity, headline: h.headline, detail: h.detail, action: h.action, since: h.since };
 }
