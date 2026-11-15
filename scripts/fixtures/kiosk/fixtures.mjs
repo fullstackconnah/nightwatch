@@ -247,7 +247,7 @@ export const BIN_RULE_WED = {
   ],
 };
 export const settingsFullFor = (bins) => ({
-  config: { widgets: [], display: { timezone: ZONE }, ...(bins ? { bins } : {}) },
+  config: { groups: [], urls: {}, icons: {}, hidden: [], widgets: [], display: { timezone: ZONE }, ...(bins ? { bins } : {}) },
   versions: { tiles: "1", widgets: "1" },
   meta: { widgetTypes: ["generic"], publicHost: "nightwatch.example", dockgeUrl: "http://dockge.example.invalid", authConfigured: true, dataDir: "/data", hermesModelUpdatedAt: null, mcpEnabled: false, mcpEndpoint: "", kioskPinConfigured: false },
   integrations: {
