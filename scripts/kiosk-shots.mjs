@@ -1240,7 +1240,7 @@ const LIST_SHEET = () => {
 
 // ---- the glance pane ----
 const paneState = async (name, cfg, { stale = false, size = SIZES[1] } = {}) => {
-  await withList(`pane ${name}-${size.name}`, cfg, { url: MAIN_URL, size, fixedTime: stale ? "ticking" : false, instant: PINNED_ISO }, async ({ page }) => {
+  await withList(`pane ${name}-${size.name}`, cfg, { url: MAIN_URL, size, fixedTime: stale ? "ticking" : "flow", instant: PINNED_ISO }, async ({ page }) => {
     if (stale) {
       cfg.getStatus = (n) => (n === 1 ? 200 : 500); // the first answer was good; every later one fails
       for (let k = 0; k < 4 && !(await seen(page, "[data-lists-pane] .sr-stale", 3000)); k++) {
