@@ -23,3 +23,11 @@ export const LABEL_URL_ERROR = "Widget label needs a full http(s) URL";
 export function labelUrlInvalid(w: { id: string; endpoint?: string }): boolean {
   return w.id.startsWith("label:") && !/^https?:\/\//i.test(w.endpoint || "");
 }
+
+/** Register an instance under its memo key and drop this map's other keys for the same widget id (older config edits). */
+export function registerPending(pending: Map<string, WidgetInstance>, w: WidgetInstance): string {
+  const key = widgetMemoKey(w);
+  for (const [k, v] of pending) if (k !== key && v.id === w.id) pending.delete(k);
+  pending.set(key, w);
+  return key;
+}

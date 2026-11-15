@@ -194,7 +194,8 @@ interface Ev {
 }
 
 /** At most MAX_TITLE code points; a cut title ends with an ellipsis. */
-const capTitle = (t: string) => { const c = Array.from(t); return c.length > MAX_TITLE ? c.slice(0, MAX_TITLE - 1).join("") + "…" : t; };
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" }); // never cut a joined emoji or surrogate pair in half
+const capTitle = (t: string) => { const c = Array.from(graphemes.segment(t), (s) => s.segment); return c.length > MAX_TITLE ? c.slice(0, MAX_TITLE - 1).join("") + "…" : t; };
 
 const first = (props: Props, name: string) => props.get(name)?.[0];
 

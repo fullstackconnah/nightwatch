@@ -370,3 +370,31 @@ test("52c with 13 open rows, a ticked row restores and an open row reports full"
   assert.deepEqual(back.json.restored.map((i: ListItem) => i.id), [ID(2)]);
   assert.deepEqual(back.json.skipped, [{ id: ID(1), reason: "full" }]);
 });
+
+test("52d the undo buffer trims to the newest 39 rows inside the restore window", async () => {
+  seed(rows(0, 39));
+  const el = await elevate();
+  await post("clear-all", { listId: "shopping" }, T, el);
+  const oldest = (globalThis as any).__kioskList.buffer[0].item.id as string;
+  const extra = ID(seq++);
+  await add("Extra", T, extra);
+  await post("done", { listId: "shopping", id: extra, done: true }, T);
+  await post("clear-all", { listId: "shopping" }, T, el);
+  const buf: ListItem[] = (globalThis as any).__kioskList.buffer.map((b: { item: ListItem }) => b.item);
+  assert.equal(buf.length, 39);
+  assert.ok(!buf.some((i) => i.id === oldest));
+  const gone = await post("restore", { listId: "shopping", ids: [oldest] }, T + 1000);
+  assert.deepEqual(gone.json.skipped, [{ id: oldest, reason: "expired" }]);
+  const back = await post("restore", { listId: "shopping", ids: buf.map((i) => i.id) }, T + 1000);
+  assert.equal(back.json.restored.length, 39);
+});
+
+test("52e a ticked row is refused as full when 39 rows are present", async () => {
+  seed([mk(1, "Gone tick", { done: true, doneAt: T - 500 })]);
+  await post("clear-all", { listId: "shopping" }, T, await elevate());
+  fs.writeFileSync(file(), JSON.stringify({ v: 1, items: rows(13, 26).map((r, i) => ({ ...r, id: ID(100 + i) })), history: [] }));
+  (globalThis as any).__kioskList.file = null;
+  const back = await post("restore", { listId: "shopping", ids: [ID(1)] }, T + 1000);
+  assert.deepEqual(back.json.skipped, [{ id: ID(1), reason: "full" }]);
+  assert.equal(back.json.restored.length, 0);
+});
