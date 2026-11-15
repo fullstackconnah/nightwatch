@@ -112,7 +112,7 @@ export function parseListFile(raw: string): ListFile | null {
   const o = j as { items?: unknown; history?: unknown };
   const items = (Array.isArray(o.items) ? o.items : []).map(parseItem).filter((i): i is ListItem => i !== null);
   const history = (Array.isArray(o.history) ? o.history : []).map(parseHistory).filter((h): h is AddHistory => h !== null);
-  return { v: 1, items: sortItems(items).slice(0, MAX_ITEMS), history };
+  return { v: 1, items: sortItems(items).slice(0, MAX_ROWS), history }; // rows, not open items: ticked rows must not push open ones out on a read
 }
 
 /** v4-layout id from getRandomValues: crypto.randomUUID needs a secure context and the wall is plain HTTP. */
