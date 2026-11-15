@@ -101,7 +101,7 @@ export async function flush() {
       const r = settle(state.queue, state.failed, op, out, item?.id);
       setState({ queue: r.queue, failed: r.failed });
       if (r.stop) return;
-      if (r.saved) announce(`Saved ${op.body.text}.`);
+      if (r.saved && op.op === "add") announce(`Saved ${op.body.text}.`);
       if (r.full) {
         setState({ rejected: state.rejected + 1 }); // the open sheet's hint line announces it; closed, the shared announcer does
         if (!sheetOpen) announce(FULL_HINT);
