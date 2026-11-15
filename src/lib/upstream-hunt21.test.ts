@@ -41,7 +41,7 @@ test("H21U F3: oidc bodies are deadline-covered and capped", () => {
 test("H21U F4: integration and widget helpers read capped", () => {
   assert.match(client, /^\s+body = await readJsonCapped\(res, /m);
   assert.doesNotMatch(client, /await res\.json\(\)/);
-  assert.match(widgetTypes, /^\s+return await readJsonCapped<T>\(res, /m);
+  assert.match(widgetTypes, /^\s+return \{ body: await readJsonCapped<T>\(res, /m);
   assert.doesNotMatch(widgetTypes, /await res\.json\(\)/);
 });
 

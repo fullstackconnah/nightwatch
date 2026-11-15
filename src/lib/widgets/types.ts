@@ -30,6 +30,14 @@ export async function fetchJson<T = unknown>(
   url: string,
   init?: RequestInit & { timeoutMs?: number },
 ): Promise<T> {
+  return (await fetchJsonWithHeaders<T>(url, init)).body;
+}
+
+/** Same guards as fetchJson, but also returns the response headers (Vikunja puts its counts there). */
+export async function fetchJsonWithHeaders<T = unknown>(
+  url: string,
+  init?: RequestInit & { timeoutMs?: number },
+): Promise<{ body: T; headers: Headers }> {
   const { timeoutMs = 5000, ...rest } = init || {};
   let res: Response;
   try {
@@ -45,7 +53,7 @@ export async function fetchJson<T = unknown>(
   }
   if (!res.ok) throw new WidgetError(`HTTP ${res.status}`);
   try {
-    return await readJsonCapped<T>(res, UPSTREAM_JSON_MAX);
+    return { body: await readJsonCapped<T>(res, UPSTREAM_JSON_MAX), headers: res.headers };
   } catch {
     throw new WidgetError("invalid JSON");
   }

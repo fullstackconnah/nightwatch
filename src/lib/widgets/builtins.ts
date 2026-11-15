@@ -4,6 +4,7 @@ import type { KioskDownloadItem, KioskDownloadsResult } from "@/lib/types/downlo
 import { resolvePath } from "./jsonpath";
 import { widgetTarget } from "./target";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
+import { vikunja } from "./vikunja";
 import { fetchJson, postAction, WidgetError, type WidgetFetcher, type WidgetField } from "./types";
 
 /**
@@ -364,6 +365,7 @@ export const BUILTIN_WIDGETS: Record<string, WidgetFetcher> = {
   seerr,
   jellyseerr: seerr,
   glances,
+  vikunja,
   generic,
 };
 
