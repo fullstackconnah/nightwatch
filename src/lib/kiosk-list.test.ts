@@ -1,0 +1,68 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { checkAdd, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
+
+const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const item = (n: number, text: string, o: Partial<ListItem> = {}): ListItem => ({
+  id: ID(n), listId: "shopping", text, done: false, createdAt: 1000 + n, doneAt: null, updatedAt: 1000 + n, ...o,
+});
+
+test("1 checkAdd port parity", () => {
+  const it = [{ text: "Oat milk", done: false }, { text: "Bread", done: true }];
+  const k = (raw: string, list: { text: string; done: boolean }[] = it) => checkAdd(raw, list).kind;
+  const full = Array.from({ length: MAX_ITEMS }, (_, i) => ({ text: "x" + i, done: false }));
+  assert.equal(k("   "), "blank");
+  assert.equal(k("\u0007"), "blank");
+  assert.equal(k("  oat   MILK "), "dupe");
+  assert.equal(k("bread"), "revive");
+  assert.equal(k("x".repeat(MAX_LEN + 1)), "long");
+  assert.equal(k("x".repeat(MAX_LEN)), "add");
+  assert.equal(k("Eggs", full), "full");
+  assert.equal(k("x3", full), "dupe");
+  const r = checkAdd(" Tea \u{1F375} ", it);
+  assert.deepEqual(r, { kind: "add", text: "Tea \u{1F375}" });
+});
+
+test("2 checkAdd NFC and control characters", () => {
+  assert.equal(checkAdd("Cafe\u0301", [{ text: "Caf\u00e9", done: false }]).kind, "dupe");
+  assert.deepEqual(checkAdd("Oat\u0000milk", []), { kind: "add", text: "Oatmilk" });
+});
+
+test("3 sweepBoundary in Australia/Sydney", () => {
+  const tz = "Australia/Sydney";
+  // 2026-07-10 is AEST (+10): 04:00 local = 18:00Z the day before
+  assert.equal(sweepBoundary(tz, Date.parse("2026-07-10T03:59:00+10:00")), Date.parse("2026-07-09T04:00:00+10:00"));
+  assert.equal(sweepBoundary(tz, Date.parse("2026-07-10T04:00:00+10:00")), Date.parse("2026-07-10T04:00:00+10:00"));
+  // DST starts 2026-10-04 at 02:00 local: 04:00 that day is +11:00
+  assert.equal(sweepBoundary(tz, Date.parse("2026-10-04T12:00:00+11:00")), Date.parse("2026-10-04T04:00:00+11:00"));
+  assert.equal(sweepBoundary(tz, Date.parse("2026-10-04T03:00:00+11:00")), Date.parse("2026-10-03T04:00:00+10:00"));
+  assert.equal(sweepBoundary("Not/AZone", Date.parse("2026-07-10T12:00:00+10:00")), Date.parse("2026-07-10T04:00:00+10:00"));
+});
+
+test("4 suggestions", () => {
+  const now = Date.parse("2026-07-10T12:00:00Z");
+  const day = 86400000;
+  const h = (key: string, count: number, lastAt: number) => ({ key, text: key.toUpperCase(), count, lastAt });
+  const history = [
+    h("a", 5, now - day), h("b", 5, now - 2 * day), h("c", 9, now - 3 * day), h("d", 1, now - 4 * day),
+    h("e", 2, now - 5 * day), h("old", 99, now - 91 * day), h("open", 50, now - day),
+  ];
+  const items = [item(1, "Open"), item(2, "A", { done: true, doneAt: 5 })];
+  assert.deepEqual(suggestions(history, items, now), ["C", "A", "B", "E"]);
+});
+
+test("5 parseListFile", () => {
+  assert.equal(parseListFile("{nope"), null);
+  assert.equal(parseListFile("[]"), null);
+  const good = item(1, "Bread");
+  const long = item(2, "x".repeat(61));
+  const bad = { ...item(3, "Tea"), done: "no" };
+  const badId = { ...item(4, "Eggs"), id: "1" };
+  const f = parseListFile(JSON.stringify({ v: 1, items: [good, long, bad, badId], history: [{ key: "bread", text: "Bread", count: 1, lastAt: 5 }, { nope: 1 }] }));
+  assert.deepEqual(f?.items, [good]);
+  assert.equal(f?.history.length, 1);
+  const many = Array.from({ length: 16 }, (_, i) => item(i + 1, "n" + i));
+  const g = parseListFile(JSON.stringify({ v: 1, items: many, history: [] }));
+  assert.equal(g?.items.length, MAX_ITEMS);
+  assert.equal(g?.items[0].text, "n15"); // newest kept
+});

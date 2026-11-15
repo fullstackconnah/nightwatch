@@ -91,7 +91,7 @@ ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
 
 `.env` and `data/` are never in the archive, so updates don't clobber them.
 
-The container change log lives in `data/history/changes-YYYY-MM-DD.jsonl` (30 days) and `changes-baseline.json`. Safe to delete both: the next tick reseeds and Home counts from then on.
+The container change log lives in `data/history/changes-YYYY-MM-DD.jsonl` (30 days) and `changes-baseline.json`. Safe to delete both: the next tick reseeds and Home counts from then on. `data/kiosk-list.json` is the wall's shared shopping list (13 items at most, plus a short add history); deleting it empties the list.
 
 ## Gotchas
 
