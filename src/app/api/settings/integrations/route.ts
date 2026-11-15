@@ -3,6 +3,7 @@ import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfigForSave, saveConfig, saveErrorText, type AppConfig } from "@/lib/config";
 import { mergeBins } from "@/lib/bin-night";
 import { mergeMedia } from "@/lib/media/settings";
+import { applyCalendar, calendarMeta, commitCalendar, prepareCalendar, type CalendarChange } from "@/lib/calendar-feed";
 import { rconPasswordForHost, secretForUrl } from "@/lib/settings/dash-put";
 import { httpUrlError, rconHostError, rconPortError } from "@/lib/settings-checks";
 
@@ -46,6 +47,8 @@ type Body = {
   npm?: Patch | null;
   forgejo?: Patch | null;
   github?: Patch | null;
+  /** `{ url }` (blank keeps the saved link) or null to remove it. The link is a secret and is never echoed. */
+  calendar?: { url?: unknown } | null;
   minecraft?: Patch | null;
   media?: { workerUrl?: unknown; workerToken?: unknown } | null;
   /** Bin night: the whole rule (checked by bin-night.ts's checkBins) or null to remove it. Nothing secret. */
@@ -72,6 +75,15 @@ export async function POST(req: NextRequest) {
   // A patch route has no required field, so a null, array or string body gets its own 400.
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "body must be a JSON object" }, { status: 400 });
+  }
+
+  // The calendar check fetches the feed (up to 10 s): finish it BEFORE the config is loaded, so a settings save made meanwhile
+  // by another request is not overwritten by this one's older copy.
+  let calendar: CalendarChange | undefined;
+  if ("calendar" in body) {
+    const prepared = await prepareCalendar(body.calendar);
+    if ("error" in prepared) return NextResponse.json({ error: prepared.error }, { status: 400 });
+    calendar = prepared;
   }
 
   let current: AppConfig;
@@ -180,6 +192,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (calendar) next = applyCalendar(next, calendar, now);
+
   try {
     saveConfig(next);
   } catch (e) {
@@ -190,6 +204,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  if (calendar) commitCalendar(calendar);
+
   return NextResponse.json({
     ok: true,
     integrations: {
@@ -197,6 +213,7 @@ export async function POST(req: NextRequest) {
       npm: { configured: Boolean(next.npm?.password), updatedAt: next.npm?.updatedAt },
       forgejo: { configured: Boolean(next.forgejo?.token), updatedAt: next.forgejo?.updatedAt },
       github: { configured: Boolean(next.github?.token), updatedAt: next.github?.updatedAt },
+      calendar: calendarMeta(next),
       minecraft: {
         configured: Boolean(next.minecraft?.managerToken),
         updatedAt: next.minecraft?.updatedAt,

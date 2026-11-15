@@ -26,6 +26,8 @@ export function sanitizeConfig(config: AppConfig): AppConfig {
       ? { url: config.forgejo.url, updatedAt: config.forgejo.updatedAt }
       : config.forgejo,
     github: config.github ? { updatedAt: config.github.updatedAt } : config.github,
+    // The link is the secret: the block never leaves the server (settings gets calendarMeta instead).
+    calendar: undefined,
     minecraft: config.minecraft
       ? {
           managerUrl: config.minecraft.managerUrl,

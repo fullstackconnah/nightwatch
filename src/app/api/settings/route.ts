@@ -17,6 +17,7 @@ import { sanitizeConfig } from "@/lib/settings/public-config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
+import { calendarMeta } from "@/lib/calendar-feed";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
 import { readCapped } from "@/lib/read-capped";
 
@@ -42,6 +43,7 @@ function integrationsMeta(config: AppConfig) {
     npm: status(config.npm, Boolean(config.npm?.password)),
     forgejo: status(config.forgejo, Boolean(config.forgejo?.token)),
     github: status(config.github, Boolean(config.github?.token)),
+    calendar: calendarMeta(config),
     minecraft: { ...status(config.minecraft, Boolean(config.minecraft?.managerToken)), ...mcSecretFlags(config.minecraft) },
     media: status(config.media, Boolean(config.media?.workerToken)),
     hermes: {
