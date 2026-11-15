@@ -114,3 +114,43 @@ export function newItemId(): string {
   const h = Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
+
+// ── views for the screen (slice 2) ───────────────────────────────────────────
+
+export const LIST_TITLE = "Shopping";
+const openItems = (items: ListItem[]): ListItem[] => sortItems(items).filter((i) => !i.done);
+
+export interface ListPaneView { caption: string; names: string[]; more: number; sr: string; stale: boolean }
+
+/** The glance pane: null drops it (nothing to get, or never loaded). Ticked items neither show nor count. */
+export function listPaneView(items: ListItem[] | null, stale: boolean): ListPaneView | null {
+  const open = items ? openItems(items) : [];
+  if (open.length === 0) return null;
+  const more = open.length > 4 ? open.length - 3 : 0;
+  const names = open.slice(0, more ? 3 : open.length).map((i) => i.text);
+  const caption = `${LIST_TITLE} \u00b7 ${open.length} to get`;
+  const sr = `${LIST_TITLE}, ${open.length} to get: ${names.join(", ")}${more ? ` and ${more} more` : ""}`;
+  return { caption, names, more, sr, stale };
+}
+
+/** The header button: count null = not loaded, shown without a number (never a fake 0). */
+export function listButtonView(items: ListItem[] | null): { label: string; count: number | null; aria: string } {
+  if (!items) return { label: LIST_TITLE, count: null, aria: "Shopping list, not loaded" };
+  const n = openItems(items).length;
+  return { label: LIST_TITLE, count: n, aria: n ? `Shopping list, ${n} to get` : "Shopping list, empty" };
+}
+
+export interface RowOrder { open: string[]; ticked: string[] }
+
+/** Row order for an open sheet: a tick never moves a row; new ids go on top; `top` (a revived name) moves to the top. */
+export function settleRows(prev: RowOrder | null, items: ListItem[], top?: string): RowOrder {
+  const ids = new Set(items.map((i) => i.id));
+  if (!prev) {
+    const s = sortItems(items);
+    return { open: s.filter((i) => !i.done).map((i) => i.id), ticked: s.filter((i) => i.done).map((i) => i.id) };
+  }
+  const known = new Set([...prev.open, ...prev.ticked]);
+  const fresh = sortItems(items.filter((i) => !known.has(i.id))).map((i) => i.id);
+  const keep = (a: string[]) => a.filter((id) => ids.has(id) && id !== top);
+  return { open: [...(top && ids.has(top) ? [top] : []), ...fresh, ...keep(prev.open)], ticked: keep(prev.ticked) };
+}
