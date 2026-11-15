@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkAdd, norm, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
+import { checkAdd, restoreGone, norm, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const item = (n: number, text: string, o: Partial<ListItem> = {}): ListItem => ({
@@ -126,4 +126,20 @@ test("24b settleRows: first call splits open and ticked; a tick does not move a 
   const added = [...ticked, item(4, "D")];
   assert.deepEqual(settleRows(a, added).open, [ID(4), ID(2), ID(1)]);
   assert.deepEqual(settleRows(a, ticked.filter((i) => i.id !== ID(3))).ticked, []);
+});
+
+test("3 checkAdd: ticked rows do not count towards the cap; a hard ceiling does", () => {
+  const ticked = Array.from({ length: MAX_ITEMS + 5 }, (_, i) => ({ text: "t" + i, done: true }));
+  assert.equal(checkAdd("Eggs", ticked).kind, "add");
+  const open = Array.from({ length: MAX_ITEMS }, (_, i) => ({ text: "o" + i, done: false }));
+  assert.equal(checkAdd("Eggs", [...open, ...ticked]).kind, "full");
+  const rows = Array.from({ length: MAX_ITEMS * 3 }, (_, i) => ({ text: "r" + i, done: true }));
+  assert.equal(checkAdd("Eggs", rows).kind, "full");
+  assert.equal(checkAdd("r1", rows).kind, "revive");
+});
+
+test("4 restoreGone puts back only the cleared rows that are missing", () => {
+  const a = item(1, "A"), b = item(2, "B"), c = item(3, "C");
+  assert.deepEqual(restoreGone([c], [a, b], new Set([a.id])).map((i) => i.id), [c.id, a.id]);
+  assert.deepEqual(restoreGone([a, c], [a, b], new Set([a.id])).map((i) => i.id), [a.id, c.id]);
 });

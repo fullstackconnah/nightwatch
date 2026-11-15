@@ -162,9 +162,9 @@ export function binsPayload(stored: unknown, today: string): BinsResponse {
   return c.ok ? { status: "ok", today, night: nextBinNight(c.value, today) } : { status: "error" };
 }
 
-/** The bin names due tonight in the display zone, or null. `today` is that zone's date from the server, so the device's own clock never decides; an answer without it shows nothing. */
-export function binsTonight(data: BinsResponse | undefined): string[] | null {
-  return data?.status === "ok" && data.night && data.night.date === data.today ? data.night.bins : null;
+/** The bin names due tonight in the display zone, or null. The server's `today` says which evening; `now` (the current date, from the clock the evening window uses) says the answer is not stale, so yesterday's cached night never shows again. */
+export function binsTonight(data: BinsResponse | undefined, now: string): string[] | null {
+  return data?.status === "ok" && data.night && data.night.date === data.today && data.today === now ? data.night.bins : null;
 }
 
 /** POST /api/settings/integrations { bins }: the config with the cleaned rule saved (or the key removed for null), every other key untouched. */

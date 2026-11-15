@@ -219,12 +219,14 @@ test("mergeBins: a BOM inside a bin name is removed, not turned into a space", (
 
 test("binsTonight: the server's today decides, never the device date", () => {
   const night = { date: "2026-11-17", bins: ["Recycling"] };
-  assert.deepEqual(binsTonight({ status: "ok", today: "2026-11-17", night }), ["Recycling"]);
-  assert.equal(binsTonight({ status: "ok", today: "2026-11-16", night }), null);
-  assert.equal(binsTonight({ status: "ok", night } as never), null); // an old cached answer without `today`
-  assert.equal(binsTonight({ status: "ok", today: "2026-11-17", night: null }), null);
-  assert.equal(binsTonight({ status: "error" }), null);
-  assert.equal(binsTonight(undefined), null);
+  const T = "2026-11-17";
+  assert.deepEqual(binsTonight({ status: "ok", today: T, night }, T), ["Recycling"]);
+  assert.equal(binsTonight({ status: "ok", today: "2026-11-16", night }, T), null);
+  assert.equal(binsTonight({ status: "ok", today: T, night }, "2026-11-18"), null); // yesterday's cache the next evening
+  assert.equal(binsTonight({ status: "ok", night } as never, T), null); // an old cached answer without `today`
+  assert.equal(binsTonight({ status: "ok", today: T, night: null }, T), null);
+  assert.equal(binsTonight({ status: "error" }, T), null);
+  assert.equal(binsTonight(undefined, T), null);
 });
 
 // ---- the public payload ----

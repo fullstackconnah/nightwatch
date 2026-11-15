@@ -2,7 +2,7 @@ import { loadConfig, type WidgetInstance } from "@/lib/config";
 import { parseDashboardLabels } from "@/lib/labels";
 import type { ContainerSummary } from "@/lib/docker";
 import { BUILTIN_WIDGETS } from "./builtins";
-import { LABEL_URL_ERROR, labelUrlInvalid, pickOwn } from "./target";
+import { LABEL_URL_ERROR, labelUrlInvalid, pickOwn, widgetMemoKey } from "./target";
 import { WidgetError, type WidgetData } from "./types";
 import { KeyedMemo } from "@/lib/cache";
 
@@ -48,7 +48,7 @@ export function resolveWidgetInstances(containers: ContainerSummary[]): WidgetIn
 
 const TTL_MS = 15_000;
 
-/** The instance each pending widget load applies to — keyed by instance.id,
+/** The instance each pending widget load applies to — keyed by widgetMemoKey(instance),
  *  which is what the memo keys on too. */
 const pendingInstances = new Map<string, WidgetInstance>();
 
@@ -66,8 +66,8 @@ const pendingInstances = new Map<string, WidgetInstance>();
 const widgetMemo = new KeyedMemo<WidgetData>({
   key: "widgets.instance",
   ttlMs: TTL_MS,
-  load: async (id) => {
-    const instance = pendingInstances.get(id)!;
+  load: async (memoKey) => {
+    const instance = pendingInstances.get(memoKey)!;
     const fetcher = pickOwn(BUILTIN_WIDGETS, instance.type, BUILTIN_WIDGETS.generic);
     try {
       if (labelUrlInvalid(instance)) throw new WidgetError(LABEL_URL_ERROR);
@@ -85,8 +85,9 @@ const widgetMemo = new KeyedMemo<WidgetData>({
 });
 
 export function fetchWidgetData(instance: WidgetInstance): Promise<WidgetData> {
-  pendingInstances.set(instance.id, instance);
-  return widgetMemo.get(instance.id);
+  const memoKey = widgetMemoKey(instance);
+  pendingInstances.set(memoKey, instance);
+  return widgetMemo.get(memoKey);
 }
 
 /** container name -> widget data, fetched concurrently with per-instance caching */

@@ -13,7 +13,7 @@ import { fetcher } from "@/lib/client";
 import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
 import { useFreshness, type FreshnessStatus } from "@/lib/kiosk-client";
-import { MAX_ITEMS, MAX_LEN, checkAdd, fold, listButtonView, newItemId, settleRows, type ListItem, type ListPaneView, type RowOrder } from "@/lib/kiosk-list";
+import { MAX_LEN, checkAdd, fold, isFull, listButtonView, newItemId, restoreGone, settleRows, type ListItem, type ListPaneView, type RowOrder } from "@/lib/kiosk-list";
 import { QUEUE_KEY, applyQueue, enqueue, outcome, parseQueue, queuedIds, removeIds, settle, type QueueOp } from "@/lib/kiosk-list-queue";
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
 import { SunSheetGrabber, slideSheetOut } from "@/components/kiosk/kiosk-sheet-grabber";
@@ -359,7 +359,7 @@ export function KioskListSheet({
   const byId = useMemo(() => new Map((items ?? []).map((i) => [i.id, i])), [items]);
   const total = items?.length ?? 0;
   const tickedCount = (items ?? []).filter((i) => i.done).length;
-  const full = total >= MAX_ITEMS;
+  const full = isFull(items ?? []);
   const ready = status === "ready" || status === "ready-stale";
 
   const touch = () => setFooter((f) => (f.k === "undo" || f.k === "error" ? IDLE : f));
@@ -424,6 +424,7 @@ export function KioskListSheet({
       setNeedPin(true);
       setFooter({ k: "confirm" });
     } else {
+      void globalMutate(KEY, (d: ListResponse | undefined) => (d ? { ...d, items: restoreGone(d.items, items, gone) } : d), { revalidate: false }); // the clear failed: the rows come back
       setFooter({ k: "error", text: kind === "all" ? "Couldn't clear the list. Try again." : "Couldn't clear. Try again." });
     }
     void refresh();

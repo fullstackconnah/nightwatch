@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { labelUrlInvalid, pickOwn, widgetTarget } from "./target.ts";
+import { labelUrlInvalid, pickOwn, widgetMemoKey, widgetTarget } from "./target.ts";
 
 describe("hunt 8 widget labels", () => {
   it("B1: inherited keys resolve to the fallback, own keys to themselves", () => {
@@ -23,5 +23,18 @@ describe("hunt 8 widget labels", () => {
     assert.equal(labelUrlInvalid({ id: "cfg1", endpoint: "/status" }), false);
     assert.equal(widgetTarget({ url: "http://x.test", endpoint: "/status" }), "http://x.test/status");
     assert.equal(widgetTarget({ url: "http://x.test" }), "http://x.test");
+  });
+});
+
+describe("widget memo key", () => {
+  const w = { id: "w1", container: "c", type: "generic", url: "http://x", key: "k1" };
+  it("is stable for an unchanged config and changes with key, url, type, headers or fields", () => {
+    assert.equal(widgetMemoKey({ ...w }), widgetMemoKey({ ...w }));
+    for (const over of [{ key: "k2" }, { url: "http://y" }, { type: "sonarr" }, { headers: { a: "b" } }, { fields: [{ label: "a", path: "b" }] }, { endpoint: "/e" }]) {
+      assert.notEqual(widgetMemoKey({ ...w, ...over }), widgetMemoKey(w), JSON.stringify(over));
+    }
+  });
+  it("holds no key material", () => {
+    assert.ok(!widgetMemoKey({ ...w, key: "supersecret" }).includes("supersecret"));
   });
 });

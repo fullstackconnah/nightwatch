@@ -6,6 +6,15 @@ export interface ListFile { v: 1; items: ListItem[]; history: AddHistory[] }
 
 export const MAX_LEN = 60;
 export const MAX_ITEMS = 13;
+/** Hard ceiling on all rows, ticked included, so the file cannot grow without bound between 04:00 sweeps. */
+export const MAX_ROWS = MAX_ITEMS * 3;
+/** Full: MAX_ITEMS open items (ticked rows don't count against the cap) or MAX_ROWS rows in all. */
+export const isFull = (items: { done: boolean }[]): boolean => items.filter((i) => !i.done).length >= MAX_ITEMS || items.length >= MAX_ROWS;
+/** After a failed optimistic clear: put back the `gone` rows of `before` that `current` lost; rows added meanwhile stay. */
+export const restoreGone = <T extends { id: string }>(current: T[], before: T[], gone: ReadonlySet<string>): T[] => {
+  const have = new Set(current.map((i) => i.id));
+  return [...current, ...before.filter((i) => gone.has(i.id) && !have.has(i.id))];
+};
 export const DEFAULT_TZ = "Australia/Sydney";
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -28,7 +37,7 @@ export function checkAdd<T extends { text: string; done: boolean }>(raw: string,
   if (text.length > MAX_LEN) return { kind: "long" };
   const hit = items.find((i) => fold(i.text) === fold(text));
   if (hit) return { kind: hit.done ? "revive" : "dupe", item: hit };
-  if (items.length >= MAX_ITEMS) return { kind: "full" };
+  if (isFull(items)) return { kind: "full" };
   return { kind: "add", text };
 }
 

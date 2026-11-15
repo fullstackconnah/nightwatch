@@ -36,7 +36,7 @@ test("22c a corrupt or malformed blob parses to an empty or filtered queue", () 
 
 test("22d outcome per status", () => {
   for (const s of [200, 201]) assert.equal(outcome(s), "ok");
-  for (const s of [400, 404]) assert.equal(outcome(s), "drop");
+  for (const s of [400, 403, 404, 413]) assert.equal(outcome(s), "drop");
   assert.equal(outcome(409), "full");
   for (const s of [429, 500, 503, null]) assert.equal(outcome(s), "keep");
 });

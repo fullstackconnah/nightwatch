@@ -13,6 +13,7 @@ let dir = "";
 let seq = 100;
 const file = () => path.join(dir, "kiosk-list.json");
 const bytes = () => fs.readFileSync(file(), "utf8");
+const corrupts = () => fs.readdirSync(dir).filter((n) => n.startsWith("kiosk-list.json.corrupt.")).sort();
 const stored = (): { items: ListItem[]; history: { key: string; count: number; lastAt: number }[] } => JSON.parse(bytes());
 const mk = (n: number, text: string, o: Partial<ListItem> = {}): ListItem => ({
   id: ID(n), listId: "shopping", text, done: false, createdAt: T - 1000 + n, doneAt: null, updatedAt: T - 1000 + n, ...o,
@@ -220,16 +221,17 @@ test("16 sweep at 04:00 local on read", async () => {
 test("17 missing, corrupt and unreadable store", async () => {
   const empty = await get();
   assert.deepEqual([empty.status, empty.json.items], [200, []]);
-  assert.equal(fs.existsSync(file() + ".corrupt"), false);
+  assert.deepEqual(corrupts(), []);
 
   resetKioskListState();
   fs.writeFileSync(file(), "{garbage");
   const r = await get();
   assert.deepEqual([r.status, r.json.items], [200, []]);
-  assert.equal(fs.readFileSync(file() + ".corrupt", "utf8"), "{garbage");
+  assert.equal(corrupts().length, 1);
+  assert.equal(fs.readFileSync(path.join(path.dirname(file()), corrupts()[0]), "utf8"), "{garbage");
 
   resetKioskListState();
-  fs.rmSync(file() + ".corrupt");
+  for (const n of corrupts()) fs.rmSync(path.join(path.dirname(file()), n));
   fs.rmSync(file(), { force: true });
   fs.mkdirSync(file());
   const bad = await get();
@@ -301,10 +303,32 @@ test("18 a body over 2048 bytes by byte count (short by string length) is refuse
 
 test("19 a corrupt file whose .corrupt rename fails is not overwritten", async () => {
   fs.writeFileSync(file(), "{garbage");
-  fs.mkdirSync(file() + ".corrupt");
-  fs.writeFileSync(path.join(file() + ".corrupt", "keep"), "x");
-  resetKioskListState();
-  const r = await add("Tea");
-  assert.deepEqual([r.status, r.json], [503, { error: "store" }]);
-  assert.equal(bytes(), "{garbage");
+  const realNow = Date.now;
+  const realIso = Date.prototype.toISOString;
+  Date.prototype.toISOString = () => "2026-07-10T00:00:00.000Z"; // pin the stamp so the target can be blocked
+  try {
+    fs.mkdirSync(file() + ".corrupt.20260710000000000");
+    fs.writeFileSync(path.join(file() + ".corrupt.20260710000000000", "keep"), "x");
+    resetKioskListState();
+    const r = await add("Tea");
+    assert.deepEqual([r.status, r.json], [503, { error: "store" }]);
+    assert.equal(bytes(), "{garbage");
+  } finally {
+    Date.now = realNow;
+    Date.prototype.toISOString = realIso;
+  }
+});
+
+test("19b a second corrupt file keeps the first copy; only the 3 newest stay", async () => {
+  const dir = path.dirname(file());
+  for (let i = 1; i <= 5; i++) {
+    resetKioskListState();
+    fs.writeFileSync(file(), `{garbage${i}`);
+    await new Promise((res) => setTimeout(res, 3)); // distinct millisecond stamps
+    assert.equal((await get()).status, 200);
+    fs.rmSync(file(), { force: true });
+  }
+  const kept = corrupts();
+  assert.equal(kept.length, 3);
+  assert.deepEqual(kept.map((n) => fs.readFileSync(path.join(dir, n), "utf8")), ["{garbage3", "{garbage4", "{garbage5"]);
 });
