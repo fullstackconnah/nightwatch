@@ -694,10 +694,10 @@ function CalendarSection() {
   if (!view && !failed) return null;
   return (
     <section data-calendar-section="" className="border-t border-line pt-3">
-      {/* h-5 = the non-stale line: the taller stale pill overflows it evenly, so the hub below never moves */}
-      <div className="flex h-5 items-center gap-2">
+      <div className="flex items-center gap-2">
         <SectionLabel icon={CalendarDays} label="Calendar" />
-        {stale && <StaleTag />}
+        {/* -my-1: the 24 px sunroom pill overflows the label's line evenly, so the hub below never moves */}
+        {stale && <span className="-my-1 flex"><StaleTag /></span>}
       </div>
       {failed && <p className="mt-2 text-xs text-ink-faint">Calendar unavailable.</p>}
       {view && (
