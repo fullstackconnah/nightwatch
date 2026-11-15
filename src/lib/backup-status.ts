@@ -166,8 +166,9 @@ export function applyRestoreDrill<T extends object>(config: T, raw: unknown, tod
 }
 
 /** What /api/backup sends for the stored date: a hand-edited bad value reads as never; a date after today is kept (drillAge clamps it to 0). */
+export const validStoredDrill = (stored: unknown): string | null => (typeof stored === "string" && realDay(stored) && stored >= "2000-01-01" ? stored : null);
 export function drillPayload(stored: unknown, today: string): RestoreDrill {
-  return { testedOn: typeof stored === "string" && realDay(stored) && stored >= "2000-01-01" ? stored : null, today };
+  return { testedOn: validStoredDrill(stored), today };
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

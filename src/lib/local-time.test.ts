@@ -15,3 +15,9 @@ test("localDateString with no zone falls back to Australia/Sydney, not UTC", () 
   assert.equal(localDateString(undefined, at), "2026-11-10");
   assert.equal(localDateString("America/New_York", at), "2026-11-09");
 });
+
+test("localDateString with an invalid zone falls back to Sydney instead of throwing", () => {
+  const at = new Date("2026-11-09T21:00:00Z");
+  assert.equal(localDateString("Not/AZone", at), "2026-11-10");
+  assert.equal(localDateString("garbage", at), "2026-11-10");
+});

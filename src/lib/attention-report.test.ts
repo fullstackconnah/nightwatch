@@ -378,3 +378,11 @@ test("a 91-day drill is a dashboard hit and no kiosk hit; 90 days and never rais
   assert.equal(firstHit(withOther).status, "attention");
   assert.equal((firstHit(withOther) as { headline: string }).headline, "backup h");
 });
+
+test("a failed probe stays failed and still reports its hitsOnFail (the drill rides a failed backup probe)", async () => {
+  const [o] = await runProbes([{ ...def("backup", () => { throw new Error("the backup status file is missing"); }), hitsOnFail: [raw("backup", "warn")] }], 50);
+  assert.equal(o.status.state, "failed");
+  assert.equal(o.hits.length, 1);
+  const [plain] = await runProbes([def("backup", () => { throw new Error("x"); })], 50);
+  assert.deepEqual(plain.hits, []);
+});

@@ -49,6 +49,15 @@ describe("vikunja widget", () => {
     stub({}, 401);
     await assert.rejects(run(w()), { message: "HTTP 401" });
   });
+  it("a blank or whitespace filter path is an error and sends nothing", async () => {
+    const calls = stub({ "X-Pagination-Total-Pages": "1", "X-Pagination-Result-Count": "1" });
+    for (const path of ["", "   "]) await assert.rejects(run(w({ fields: [{ label: "A", path }] })), { message: "empty filter" });
+    assert.equal(calls.length, 0);
+  });
+  it("a non-numeric total-pages header is no count header", async () => {
+    stub({ "X-Pagination-Total-Pages": "abc", "X-Pagination-Result-Count": "1" });
+    await assert.rejects(run(w()), { message: "no count header" });
+  });
   it("a missing token is an error and sends nothing", async () => {
     const calls = stub({});
     await assert.rejects(run(w({ key: undefined })), { message: "no API token" });

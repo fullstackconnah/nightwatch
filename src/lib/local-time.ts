@@ -8,5 +8,10 @@ export function localStamp(t: number): string {
 
 /** YYYY-MM-DD in `timezone` (en-CA formats it directly). An unset zone is the owner's, not the UTC server's. */
 export function localDateString(timezone: string | undefined, now: Date = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone || "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const fmt = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  try {
+    return fmt(timezone || "Australia/Sydney");
+  } catch {
+    return fmt("Australia/Sydney"); // a hand-edited bad zone (RangeError) reads as the unset one, like displayTimeZone
+  }
 }

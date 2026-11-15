@@ -3,7 +3,7 @@
  * configured flags, updatedAt stamps and the forms' own reports (R1). Type-only imports so node:test can load it.
  * Section 5 of the settings shape brief is the spec; page-model.test.ts has a case per row. */
 import { ageText } from "../home.ts";
-import { drillDateText } from "../backup-status.ts";
+import { drillDateText, validStoredDrill } from "../backup-status.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
 
 export type StripId = "access" | "homeassistant" | "npm" | "forgejo" | "github" | "minecraft" | "media" | "voice" | "bins" | "calendar" | "restore" | "hermes" | "dashboard";
@@ -97,7 +97,8 @@ export function settingsModel(i: ModelInput): Model {
   // ---- facts ----
   const { integrations: ig, system, hermesDaemon: hd, meta } = data;
   // a hand-edited rule may lack the array or hold junk entries: count only object rows
-  const savedBins = (Array.isArray(data.config.bins?.collections) ? data.config.bins.collections : []).filter((c) => c && typeof c === "object").length;
+  const drillStored = validStoredDrill(data.config.restoreTestedOn); // a hand-edited bad date reads as not recorded
+  const savedBins =(Array.isArray(data.config.bins?.collections) ? data.config.bins.collections : []).filter((c) => c && typeof c === "object").length;
   const hermes = data.config.hermes;
   const counted = [ig.homeassistant.configured, ig.npm.configured, ig.forgejo.configured, ig.github.configured, ig.minecraft.configured, ig.media.configured, system.voiceConfigured, ig.calendar.configured, savedBins > 0];
   const setUp = counted.filter(Boolean).length;
@@ -164,7 +165,7 @@ export function settingsModel(i: ModelInput): Model {
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
     bins: { state: savedBins ? plural(savedBins, "bin") : "Not set up", tone: null },
     calendar: { state: integration({ configured: ig.calendar.configured, updatedAt: ig.calendar.updatedAt ?? undefined }), tone: null },
-    restore: { state: data.config.restoreTestedOn ? `Last drill ${drillDateText(data.config.restoreTestedOn)}` : "Not recorded", tone: null },
+    restore: { state: drillStored ? `Last drill ${drillDateText(drillStored)}` : "Not recorded", tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }
       : {
