@@ -878,8 +878,11 @@ export function VoiceCard({ data, mutate }: PanelProps) {
 type BinRow = { id: number; name: string; weekday: number | null; every: 1 | 2; anchor: string; saved: boolean };
 let binRowId = 0;
 const blankBinRow = (over: Partial<BinRow> = {}): BinRow => ({ id: ++binRowId, name: "", weekday: null, every: 1, anchor: "", saved: false, ...over });
-const seedBinRows = (bins: BinsConfig | undefined): BinRow[] =>
-  bins?.collections.length ? bins.collections.map((c) => blankBinRow({ ...c, anchor: c.anchor ?? "", saved: true })) : [blankBinRow()];
+const seedBinRows = (bins: BinsConfig | undefined): BinRow[] => {
+  // a hand-edited rule may lack the array or hold junk entries: show empty rows, never crash
+  const saved = (Array.isArray(bins?.collections) ? bins.collections : []).filter((c) => c && typeof c === "object");
+  return saved.length ? saved.map((c) => blankBinRow({ ...c, anchor: c.anchor ?? "", saved: true })) : [blankBinRow()];
+};
 /** The untouched first row of an empty card: nothing to check, nothing to save, nothing to nag about. */
 const binRowIdle = (r: BinRow) => !r.saved && !r.name.trim() && r.weekday === null && r.every === 1 && !r.anchor;
 const binRowsKey = (rows: BinRow[]) => JSON.stringify(rows.map((r) => [r.name, r.weekday, r.every, r.every === 2 ? r.anchor : ""]));

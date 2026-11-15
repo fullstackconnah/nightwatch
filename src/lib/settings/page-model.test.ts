@@ -187,6 +187,14 @@ test("the eleven strips come in a fixed order with titles", () => {
   assert.deepEqual(model({ d: { auth: false } }).strips.map((s) => s.id), NINE);
 });
 
+test("a hand-edited bins rule never crashes the page model", () => {
+  for (const bad of [{}, { collections: "x" }, { collections: [null] }]) {
+    const d = data();
+    d.config.bins = bad as unknown as typeof d.config.bins;
+    assert.equal(strip(settingsModel({ ...input(), data: d }), "bins").state, "Not set up");
+  }
+});
+
 test("the Bin night strip says how many bins are saved, and stays out of the integrations count", () => {
   const withBins = (n: number) => {
     const d = data();

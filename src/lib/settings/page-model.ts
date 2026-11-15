@@ -95,6 +95,8 @@ export function settingsModel(i: ModelInput): Model {
 
   // ---- facts ----
   const { integrations: ig, system, hermesDaemon: hd, meta } = data;
+  // a hand-edited rule may lack the array or hold junk entries: count only object rows
+  const savedBins = (Array.isArray(data.config.bins?.collections) ? data.config.bins.collections : []).filter((c) => c && typeof c === "object").length;
   const hermes = data.config.hermes;
   const setUp = [ig.homeassistant, ig.npm, ig.forgejo, ig.github, ig.minecraft, ig.media].filter((x) => x.configured).length + (system.voiceConfigured ? 1 : 0);
   const stamps: [string, string | null | undefined][] = [
@@ -158,7 +160,7 @@ export function settingsModel(i: ModelInput): Model {
     minecraft: { state: integration(ig.minecraft, ig.minecraft.curseforgeKeySet ? "" : " · no CurseForge key"), tone: null },
     media: { state: integration(ig.media), tone: null },
     voice: { state: system.voiceConfigured ? "Set up" : "Not set up", tone: null },
-    bins: { state: data.config.bins ? plural(data.config.bins.collections.length, "bin") : "Not set up", tone: null },
+    bins: { state: savedBins ? plural(savedBins, "bin") : "Not set up", tone: null },
     hermes: keyMissing
       ? { state: `${keyMissing} · no key saved`, tone: "warn" }
       : {

@@ -1782,9 +1782,11 @@ for (const state of BIN_ABSENT) {
 }
 
 // ---- the Settings card: GET /api/settings is answered here, so only the page itself is real ----
-// The dashboard page needs no login on a test stack with no password set; a redirect to /login fails every state on its intro text.
+// The settings page sits behind the login: each state signs in on its own context (the test stack takes any password).
 async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 }, drive = null, want = [], not = [], mark = null } = {}) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE });
+  const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
+  if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
   await context.clock.setFixedTime(new Date(binInstant("19:00")));
   const page = await context.newPage();
   page.on("pageerror", (e) => { pageErrors++; BN.failed.push(`settings ${name} pageerror ${String(e?.message ?? e).slice(0, 120)}`); });
