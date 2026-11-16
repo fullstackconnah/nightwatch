@@ -2054,13 +2054,6 @@ const BIN_GLANCE = () => {
 
 /** Standard: the row, its neighbours, the header and the hub's top. */
 const BIN_STD = () => {
-  const probe = (cls, host) => {
-    const el = Object.assign(document.createElement("span"), { className: cls, textContent: "x" });
-    host.append(el);
-    const v = parseFloat(getComputedStyle(el).lineHeight);
-    el.remove();
-    return v;
-  };
   const row = document.querySelector('[data-bin-night="row"]');
   const anchor = document.querySelector("[data-weather-line]") ?? document.querySelector("[data-weather-datums]");
   const root = anchor ? document.querySelector(".max-w-6xl.grid-cols-12") : null; // the board grid (the weather line lives in the hero now)
@@ -2075,7 +2068,7 @@ const BIN_STD = () => {
   const svg = row.querySelector("svg")?.getBoundingClientRect();
   const sunset = document.querySelector("[data-weather-line] svg.lucide-sunset")?.getBoundingClientRect();
   return {
-    ...out, text: row.textContent, h: r.height, lineHeight: probe("text-sm", row.parentElement), gap: prev ? r.top - prev.bottom : null,
+    ...out, text: row.textContent, h: r.height, lineHeight: parseFloat(getComputedStyle(row).lineHeight), gap: prev ? r.top - prev.bottom : null,
     // space-y-3 is a margin between siblings: top of this row on Tailwind 3, bottom of the previous sibling on 4
     margin: parseFloat(getComputedStyle(row).marginTop) + (row.previousElementSibling ? parseFloat(getComputedStyle(row.previousElementSibling).marginBottom) : 0),
     scrollW: row.scrollWidth, clientW: row.clientWidth, glyph: svg ? { w: svg.width, h: svg.height } : null, sunsetW: sunset ? sunset.width : null,
