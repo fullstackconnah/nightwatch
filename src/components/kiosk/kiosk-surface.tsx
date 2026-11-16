@@ -543,6 +543,8 @@ export function KioskSurface({
   initialMode?: KioskViewMode;
 }) {
   const [alertOverlayOpen, setAlertOverlayOpen] = useState(false);
+  // The floating now-playing pill is on screen: it takes the bottom row, so the corner clusters and the Glance column sit above it.
+  const [npOn, setNpOn] = useState(false);
   const modalOpenDom = useDomModalOpen();
   // Elevation is handled as a pin (forces "full" outright, below) rather
   // than folded into `suspended`: the mode musn't just pause its return
@@ -621,6 +623,7 @@ export function KioskSurface({
                glance's own stack, and at 800×480 every 12px of rhythm is 12px
                the column either fits in or clips. */
             "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))] [@media(max-height:700px)]:gap-3",
+        npOn && !full && "pb-[calc(3rem+env(safe-area-inset-bottom))]",
       )}
     >
       {/* The rain radar, opened from the forecast rail's Today cell in either
@@ -657,7 +660,7 @@ export function KioskSurface({
           content) so it shows in BOTH glance and full, same reasoning as the
           shared header. Self-fetching, renders null when idle, stops its own
           pointer propagation. */}
-      {!full && <KioskNowPlaying />}
+      {!full && <KioskNowPlaying onVisibleChange={setNpOn} />}
 
       {/* THE shared container — same clock/temp/forecast/server-line nodes
           in both modes, only the wrapping classes (and the full-only extras
@@ -847,6 +850,8 @@ export function KioskSurface({
             <KioskGlance
               period={period}
               onDoorbellClick={onDoorbellClick}
+              lifted={npOn}
+              onMore={onInteraction}
             />
           </RevealBlock>
         )}
@@ -863,7 +868,9 @@ export function KioskSurface({
           bottom-left cluster. */}
       <div
         data-rain-zone="corner"
-        className="fixed z-(--z-sticky) flex items-end gap-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+        className="fixed z-(--z-sticky) flex items-end gap-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))] data-[lifted]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+        // Lifted over the now-playing pill at every width (a variant, so it beats the base row whatever the arbitrary-value order).
+        data-lifted={npOn || undefined}
       >
         <KioskDownloads />
         <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />

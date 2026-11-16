@@ -22,7 +22,7 @@ import { KIOSK_EASE_OUT, KIOSK_FADE_MS } from "@/lib/kiosk-motion";
 import type { NowPlayingActive } from "@/lib/types/nowplaying";
 
 /** `docked`: the Standard board's Today cell footer: in flow at the cell foot, full width, opacity fade only (the rise is for a floating pill). */
-export function KioskNowPlaying({ docked = false }: { docked?: boolean } = {}) {
+export function KioskNowPlaying({ docked = false, onVisibleChange }: { docked?: boolean; onVisibleChange?: (visible: boolean) => void } = {}) {
   // Ambient: what's playing is a glanceable nicety, not something anyone is
   // waiting on. Backed off while idle and overnight — see
   // useKioskPollInterval's note on which polls should NOT do this.
@@ -62,6 +62,13 @@ export function KioskNowPlaying({ docked = false }: { docked?: boolean } = {}) {
     if (node) void node.getBoundingClientRect();
     setEntered(true);
   }, [mounted, active]);
+
+  // The floating pill owns the bottom row: tell the surface so the corner clusters and the Glance column lift clear of it (it unmounts on Full, so cleanup resets).
+  const visible = Boolean(mounted && active);
+  useEffect(() => {
+    onVisibleChange?.(visible);
+    return () => onVisibleChange?.(false);
+  }, [visible, onVisibleChange]);
 
   if (!mounted || !active) return null;
 
