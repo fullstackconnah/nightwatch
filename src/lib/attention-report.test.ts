@@ -203,6 +203,22 @@ test("an exited container reads 'stopped (exit 137)'", () => {
   assert.equal(ev[0].text, "x stopped (exit 137)");
 });
 
+test("a stopped, restarted or removed test container gives no change event; a real one still does", () => {
+  const stopped = { state: "exited", finishedAt: SINCE + 10, exitCode: 1 };
+  const tests = [ctr({ name: "homelab-dashboard-test-proxy", composeProject: "homelab-dashboard-test", ...stopped }), ctr({ name: "hungry_leavitt", ...stopped }), ctr({ name: "vvtest-ship-1", startedAt: SINCE + 10, restartCount: 2 })];
+  assert.equal(deriveChanges([...tests, ctr({ name: "jellyfin", ...stopped })], null, SINCE, []).map((e) => e.subjects[0]).join(), "container:jellyfin");
+  const logged = new Map([["odip-pgtest-15432", { starts: 1, stops: 2, byItself: 0, lastStartAt: SINCE + 5, lastStopAt: SINCE + 9, lastCode: 1 }]]);
+  assert.equal(deriveChanges([], null, SINCE, [], logged).length, 0);
+});
+
+test("a removed real word_word service keeps its logged lines; removed test-token names give none", () => {
+  const row = { starts: 1, stops: 2, byItself: 0, lastStartAt: SINCE + 5, lastStopAt: SINCE + 9, lastCode: 1 };
+  const real = deriveChanges([], null, SINCE, [], new Map([["immich_server", row]]));
+  assert.ok(real.length > 0 && real.every((e) => e.subjects[0] === "container:immich_server"));
+  const gone = new Map([["odip-pgtest-15432", row], ["homelab-dashboard-test-proxy", row]]);
+  assert.equal(deriveChanges([], null, SINCE, [], gone).length, 0);
+});
+
 const backupOk: BackupStatus = {
   status: "ok",
   checkedAt: new Date(NOW).toISOString(),

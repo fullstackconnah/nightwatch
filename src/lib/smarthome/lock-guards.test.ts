@@ -28,7 +28,7 @@ test("SH write-action: auto-cancel timer, retry goes back to asking, Cancel take
 });
 
 test("SH write-action: the question line is a live region so the unlock hint is announced", () => {
-  assert.match(read("components", "strips", "write-action.tsx"), /<p className="st-say" role="status">\{say\}<\/p>/);
+  assert.match(read("components", "strips", "write-action.tsx"), /<p (?:id=\{sayId\} )?className="st-say" role="status">\{say\}<\/p>/);
 });
 
 test("SH smarthome page: the auto-opened lead note keeps a gap above the first row", () => {

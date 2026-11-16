@@ -175,8 +175,8 @@ test("exact key sets", async () => {
   assert.deepEqual(keys(h.lights!), ["lightsOn", "lightsTotal"]);
   assert.deepEqual(keys(h.climate!), ["currentC", "mode", "name", "targetC"]);
   const c = glanceContainers(await collectCounts(async () => [
-    { state: "running", health: "healthy" }, { state: "running", health: "unhealthy" }, { state: "running", health: null },
-    { state: "paused", health: null }, { state: "restarting", health: null }, { state: "dead", health: null }, { state: "exited", health: null },
+    { name: "svc", composeProject: "app", state: "running", health: "healthy" }, { name: "svc", composeProject: "app", state: "running", health: "unhealthy" }, { name: "svc", composeProject: "app", state: "running", health: null },
+    { name: "svc", composeProject: "app", state: "paused", health: null }, { name: "svc", composeProject: "app", state: "restarting", health: null }, { name: "svc", composeProject: "app", state: "dead", health: null }, { name: "svc", composeProject: "app", state: "exited", health: null },
   ]));
   assert.deepEqual(keys(c), ["dead", "restarting", "running", "total", "unhealthy"]);
   assert.deepEqual([c.dead, c.restarting, c.running, c.total, c.unhealthy], [1, 1, 3, 7, 1]);
