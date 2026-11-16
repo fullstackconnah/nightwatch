@@ -83,7 +83,11 @@ export function KioskStatusStripExtras({
       <div className={cn("flex items-center gap-3 max-lg:contents", revealClass)} style={revealStyle(1)}>
         {middle}
       </div>
-      <div className={cn("flex shrink-0 items-center gap-3 max-lg:contents", revealClass)} style={revealStyle(2)}>
+      {/* Elevated: the mark and vitals are text, not a button, so the group takes the dock's opaque panel itself (the page scrolls under the fixed dock). */}
+      <div
+        className={cn("flex shrink-0 items-center gap-3 max-lg:contents", elevated && "lg:h-14 lg:rounded-md lg:border lg:border-line lg:bg-panel lg:px-4", revealClass)}
+        style={revealStyle(2)}
+      >
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">
             {/* `dot-live` is excluded from the breathe on purpose: it's an
