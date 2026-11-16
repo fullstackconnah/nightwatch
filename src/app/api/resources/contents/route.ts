@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { scanDirectoryContents } from "@/lib/disk-usage";
+import { refreshAllowed } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   if (!path) {
     return NextResponse.json({ error: "missing path" }, { status: 400 });
   }
-  const refresh = searchParams.get("refresh") === "1";
+  const refresh = refreshAllowed(searchParams.get("refresh"), request.headers);
 
   try {
     const result = await scanDirectoryContents(path, { refresh });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { scanDiskUsage } from "@/lib/disk-usage";
+import { refreshAllowed } from "@/lib/same-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function GET(request: Request) {
   if (!label) {
     return NextResponse.json({ error: "missing disk label" }, { status: 404 });
   }
-  const refresh = searchParams.get("refresh") === "1";
+  const refresh = refreshAllowed(searchParams.get("refresh"), request.headers);
 
   try {
     const scan = await scanDiskUsage(label, { refresh });

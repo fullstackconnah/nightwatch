@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { crossSiteWriteRefused } from "./same-origin.ts";
+import { crossSiteWriteRefused, refreshAllowed } from "./same-origin.ts";
 
 const h = (o: Record<string, string>) => new Headers(o);
 const HOST = { host: "10.0.0.5:3005" };
@@ -70,4 +70,21 @@ test("upload route calls the guard before verifySessionToken", () => {
   assert.ok(guard > 0, "guard not called");
   assert.ok(guard < src.indexOf("await verifySessionToken("), "guard must precede verifySessionToken");
   assert.match(src, REFUSE);
+});
+
+test("refreshAllowed treats refresh=1 as a write", () => {
+  assert.equal(refreshAllowed("1", h({ ...HOST, "sec-fetch-site": "same-origin" })), true);
+  assert.equal(refreshAllowed("1", h({ ...HOST, "sec-fetch-site": "none" })), true);
+  assert.equal(refreshAllowed("1", h({ ...HOST, "sec-fetch-site": "cross-site" })), false);
+  assert.equal(refreshAllowed("1", h({ ...HOST, "sec-fetch-site": "same-site" })), false);
+  assert.equal(refreshAllowed("1", h(HOST)), true);
+  assert.equal(refreshAllowed("1", h({ ...HOST, origin: "http://evil.test" })), false);
+  assert.equal(refreshAllowed(null, h({ ...HOST, "sec-fetch-site": "same-origin" })), false);
+  assert.equal(refreshAllowed("0", h({ ...HOST, "sec-fetch-site": "same-origin" })), false);
+});
+
+test("both disk routes gate refresh through refreshAllowed", () => {
+  for (const p of ["../app/api/resources/contents/route.ts", "../app/api/resources/disk-usage/route.ts"]) {
+    assert.match(read(p), /refreshAllowed\(searchParams\.get\("refresh"\), request\.headers\)/, p);
+  }
 });
