@@ -2378,7 +2378,8 @@ const tpWidths = (page, jobs) => page.evaluate(async (list) => {
     let error = null;
     for (const s of samples) {
       el.textContent = s;
-      const spec = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      // the chosen face only: the list also holds next/font's "<Face> Fallback", whose local() source is absent in the capture browser and rejects the whole load
+      const spec = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily.split(",")[0]}`;
       // a NetworkError names no family: retry once, then report this family and go on
       try { await document.fonts.load(spec, s); } catch { try { await document.fonts.load(spec, s); } catch (e) { error = String(e?.message ?? e); break; } }
       widths.push(el.getBoundingClientRect().width);
