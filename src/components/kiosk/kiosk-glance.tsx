@@ -191,11 +191,9 @@ export function KioskGlance({
           under the alert and downloads cluster in the opposite corner. */}
       <div
         data-rain-zone="tiles"
-        className="fixed flex max-w-[calc(50vw-2rem)] items-center gap-3"
-        style={{
-          bottom: "calc(1rem + env(safe-area-inset-bottom))",
-          left: "calc(1.25rem + env(safe-area-inset-left))",
-        }}
+        /* Below 641px it takes the same lifted row as the alert and downloads cluster (kiosk-surface.tsx), because the
+           now-playing pill is centred and near full width there: no control may sit under it. */
+        className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-[calc(1.25rem+env(safe-area-inset-left))] flex max-w-[calc(50vw-2rem)] items-center gap-3 max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
         // KioskTimersButton lives in kiosk-timers.tsx (not owned here), so the
         // opt-out from the root promoter is applied on this wrapping div
         // instead of inside that component — same rule as the tiles above:

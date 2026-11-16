@@ -1566,6 +1566,10 @@ body {
 .kiosk-dense .microlabel {
   font-size: 0.6875rem;
   letter-spacing: 0.1em;
+  /* Tracking is added after the space glyph as well as after the letter before it, so a word gap carries two tracking units on top of the
+     face's own space, which a wide face makes a visible hole ("HOME ASSISTANT NOT CONNECTED"). Taking one back keeps every gap the
+     same in every face; single-word labels are untouched (word-spacing only acts on spaces). */
+  word-spacing: -0.1em;
 }
 
 /* Floor for any text node that doesn't carry its own Tailwind text-size

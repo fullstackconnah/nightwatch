@@ -334,8 +334,11 @@ function AccentChip({ theme, id, active }: { theme: KioskTheme; id: KioskAccentI
         className="h-5 w-5 shrink-0 rounded-full border border-line-bright"
         style={{ background: fill }}
       />
-      {swatch ? swatch.label : "Theme"}
-      {!swatch && <span className="text-ink-dim">· default</span>}
+      {/* One text run: the flex gap-2 above sits between children, so a separate "· default" span got 8 px before the dot and only a space after it. */}
+      <span>
+        {swatch ? swatch.label : "Theme"}
+        {!swatch && <span className="text-ink-dim"> · default</span>}
+      </span>
     </button>
   );
 }
@@ -369,8 +372,10 @@ function FontChip({
       )}
     >
       <SunCatch />
-      <span style={{ fontFamily: option.cssVar }}>{option.label}</span>
-      {isDefault && <span className="text-ink-dim">· default</span>}
+      <span>
+        <span style={{ fontFamily: option.cssVar }}>{option.label}</span>
+        {isDefault && <span className="text-ink-dim"> · default</span>}
+      </span>
     </button>
   );
 }

@@ -227,7 +227,7 @@ export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloads
           transitionTimingFunction: KIOSK_EASE_OUT,
         }}
         className={cn(
-          "flex min-h-14 min-w-14 items-center justify-center gap-1.5 rounded-tile border border-line px-3 py-2 text-ink-dim outline-none kiosk-press transition-opacity motion-reduce:transition-none hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent",
+          "flex h-14 min-w-14 items-center justify-center gap-1.5 rounded-tile border border-line px-3 text-ink-dim outline-none kiosk-press transition-opacity motion-reduce:transition-none hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent",
           entered ? "opacity-100" : "opacity-0 motion-reduce:opacity-100",
         )}
       >
@@ -324,7 +324,11 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
   useLayoutEffect(() => {
     if (!open) return;
     const node = nodeRef.current;
-    if (!node || prefersReducedMotion()) return;
+    if (!node) return;
+    // Keep the tray anchored to its pill but under the forecast rail: cap its height so its top sits one house gap (12 px) below the rail's bottom; it already scrolls inside.
+    const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
+    if (rail) node.style.maxHeight = `min(60vh, ${Math.max(128, node.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom - 12)}px)`;
+    if (prefersReducedMotion()) return;
     const anim = node.animate(
       [
         { opacity: 0, transform: "translateY(6px)" },

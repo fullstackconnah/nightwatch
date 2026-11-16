@@ -276,7 +276,7 @@ export function KioskPinPad({
                 // background-color/border-color, which is all the hover
                 // state here touches. These are the most-pressed controls on
                 // the whole surface, so this is where the new feel matters most.
-                className="sr-btn sr-btn-nudge h-14 rounded-md border border-line text-ink font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none kiosk-press"
+                className="sr-btn sr-btn-nudge h-14 rounded-md border border-line text-ink !font-mono text-lg hover:bg-panel-2 hover:border-line-bright disabled:opacity-40 disabled:pointer-events-none focus-visible:ring-1 focus-visible:ring-accent outline-none kiosk-press"
               >
                 {key === "back" ? <Delete size={18} className="mx-auto" /> : key}
               </button>

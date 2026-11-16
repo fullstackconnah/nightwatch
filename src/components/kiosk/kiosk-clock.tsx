@@ -11,6 +11,36 @@ const dateFormatter = new Intl.DateTimeFormat("en-AU", {
   month: "long",
 });
 
+const DIGIT_GLYPHS = [..."0123456789"];
+
+/** The time with every digit in a fixed-width cell, so the clock keeps one width all minute long in any face. A display face
+ *  (Orbitron, Silkscreen) draws "1" narrower than "8", so a plain string reflowed (11:11 sat 60 px under 88:88). Each cell stacks all
+ *  ten glyphs in one grid area and shows only its own: the cell is as wide as the widest digit in the face and tracking in force,
+ *  whatever they are, and a face with tabular digits measures what it did. The colon keeps its own width. The cells are
+ *  aria-hidden and one sr-only string carries the time, so a screen reader still reads it as one. */
+export function ClockDigits({ time }: { time: string }) {
+  return (
+    <>
+      <span className="sr-only">{time}</span>
+      <span aria-hidden>
+        {[...time].map((ch, i) =>
+          /\d/.test(ch) ? (
+            <span key={i} className="inline-grid justify-items-center">
+              {DIGIT_GLYPHS.map((g) => (
+                <span key={g} className={cn("[grid-area:1/1]", g !== ch && "invisible")}>
+                  {g}
+                </span>
+              ))}
+            </span>
+          ) : (
+            <span key={i}>{ch}</span>
+          ),
+        )}
+      </span>
+    </>
+  );
+}
+
 /** The one figure this whole surface exists to report from across a room —
  *  bigger than anything the logged-in dashboard ever sets, but still mono,
  *  tabular and built from the same DESIGN.md ramp (an arbitrary size, not a
@@ -53,7 +83,7 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
           !full && "[@media(max-height:700px)]:!text-[4.5rem]",
         )}
       >
-        {clock ? clock.time : "--:--"}
+        {clock ? <ClockDigits time={clock.time} /> : "--:--"}
         {/* Sized off the digits it trails rather than the ramp: the am/pm marker
             is a qualifier on the reading, and at the glance clock's scale it has
             to stay subordinate or it competes with the hour for the eye. `ml`
