@@ -62,6 +62,15 @@ describe("rain zones: floor-band controls", () => {
     assert.deepEqual([...text.matchAll(/i < (?:16|4).*/g)].map((m) => m[0]), []);
   });
 
+  it("the PIN pad's backdrop (z-50) sits above the corner cluster (z-sticky), and the shots check accepts that backdrop as the cover", () => {
+    assert.match(src("kiosk-pin-pad.tsx"), /data-sr-overlay="dialog"\s+className="fixed inset-0 z-50 /);
+    assert.match(src("kiosk-surface.tsx"), /data-rain-zone="corner"\s+className="fixed z-\(--z-sticky\) /);
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+    assert.match(css, /--z-sticky:\s*20;/);
+    const shots = readFileSync(join(process.cwd(), "scripts/kiosk-shots.mjs"), "utf8");
+    assert.ok(shots.includes(`closest('[data-sr-overlay="sheet"], [data-sr-overlay="dialog"], [role="dialog"]')`));
+  });
+
   it("every zone name used in kiosk source has a mask slot (readRects drops unknown names)", () => {
     const names = new Set<string>();
     for (const f of files) for (const m of src(f).matchAll(/data-rain-zone="([a-z-]+)"/g)) names.add(m[1]);

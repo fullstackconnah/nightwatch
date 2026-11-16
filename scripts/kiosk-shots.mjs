@@ -2407,7 +2407,7 @@ const CO_READ = () => {
     if (b.width > 0 && b.height > 0) texts.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom, t: n.textContent.trim().slice(0, 24) });
   }
   const tab = [...document.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((e) => !e.closest('[role="dialog"]'));
-  const hit = wrap ? (() => { const b = wrap.getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { area: b.width * b.height, within: !!e?.closest('[data-rain-zone="corner"]'), sheet: !!e?.closest('[data-sr-overlay="sheet"], [role="dialog"]') }; })() : null;
+  const hit = wrap ? (() => { const b = wrap.getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { area: b.width * b.height, within: !!e?.closest('[data-rain-zone="corner"]'), sheet: !!e?.closest('[data-sr-overlay="sheet"], [data-sr-overlay="dialog"], [role="dialog"]') }; })() : null;
   return {
     vw: innerWidth, vh: innerHeight, scrollH: document.documentElement.scrollHeight, wrap: r(wrap), dl: r(dl), al: r(al), dlCount: count(dl), alCount: count(al),
     ring: rr && db ? { inside: rr.left >= db.left && rr.right <= db.right && rr.top >= db.top && rr.bottom <= db.bottom } : null,
