@@ -166,10 +166,11 @@ const SCAN = () => {
 // Every number is read from the token or house class it measures (probes below); a failing check lands in results.fullview.failed with its number.
 const FV = (results.fullview = { checks: {}, failed: [], states: {}, notRun: [] });
 const fvRec = (key, ok, detail = {}) => { FV.checks[key] = { ok, ...detail }; if (!ok) FV.failed.push(`${key} ${JSON.stringify(detail)}`); };
-const fvNear = (a, b, tol = 1) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= tol;
+const lg0 = (size) => size.viewport.width >= 1024;
+const fvNear =(a, b, tol = 1) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= tol;
 const fvHits = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
 const FV_SIZES = [...SIZES, { name: "390x844", viewport: { width: 390, height: 844 } }];
-const FV_URL = (theme = "sunroom") => `${BASE_URL}/kiosk?theme=${theme}&wx=overcast&wxsun=day&layout=standard`;
+const FV_URL = (theme = "sunroom", layout = "standard") => `${BASE_URL}/kiosk?theme=${theme}&wx=overcast&wxsun=day&layout=${layout}`;
 const FV_LIGHT = ["Bedside", "Hallway ceiling lamp north", "Kitchen strip", "Reading light", "Porch", "Study desk", "Landing", "Wardrobe", "Garage", "Studio"];
 const FV_SWITCH = ["Fan", "Heater", "Kettle", "Dehumidifier", "Speaker", "Printer", "Router", "Radio", "Towel rail", "Pump"];
 /** An HA answer: `zones` climates, `lights` + `switches` toggles, `scenes`, `sensors` (names are invented, none share a prefix). */
@@ -193,9 +194,9 @@ const FV_DL = { status: "ok", items: Array.from({ length: 3 }, (_, i) => ({ hash
 const FV_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
 const FV_TIMER = (state) => `localStorage.setItem("kiosk-timers", JSON.stringify([{ id: "t1", name: "Roast", endsAt: ${new Date(calInstant(CAL_STATES[state].at)).getTime() + 5_025_000}, durationMs: 5025000, pausedRemainingMs: 5025000 }]));`; // 1:23:45
 /** A visit to the Standard view: the crowded evening by default (agenda 3 rows + more, bin night, now playing, alert, downloads, a camera, a timer, a list). */
-const fvVisit = (size, { state = "crowded", ha = fvHa(), extra = {}, theme = "sunroom", timer = true, setup = null } = {}) =>
-  visit(FV_URL(theme), {
-    viewport: size.viewport, weather: calWeatherFor(state), fixedTime: true, instant: calInstant(CAL_STATES[state].at), ha: true, nowPlaying: true, initScript: timer ? FV_TIMER(state) : null, setup,
+const fvVisit = (size, { state = "crowded", ha = fvHa(), extra = {}, theme = "sunroom", timer = true, setup = null, layout = "standard", np = true } = {}) =>
+  visit(FV_URL(theme, layout), {
+    viewport: size.viewport, weather: calWeatherFor(state), fixedTime: true, instant: calInstant(CAL_STATES[state].at), ha: true, nowPlaying: np, initScript: timer ? FV_TIMER(state) : null, setup,
     routes: { "/kiosk/api/calendar": CAL_STATES[state].body, "/kiosk/api/bins": BIN_STATES.crowded.body, "/kiosk/api/ha/states": ha, "/kiosk/api/doorbell": FV_DOOR, "/kiosk/api/downloads": FV_DL, "/kiosk/api/attention": FV_ALERT, "/kiosk/api/list": LIST_STATES.crowded.body, ...extra },
   });
 const fvWake = async (page, size, state) => { if (state === "woken-night") { await page.mouse.click(size.viewport.width / 2, size.viewport.height / 2); await page.waitForTimeout(800); } };
@@ -208,12 +209,18 @@ const FV_READ = () => {
   const tok = { hit: probe("width:var(--sr-hit)").w, hitMin: probe("width:var(--sr-hit-min)").w, sp2: probe("width:var(--sr-space-2)").w, sp3: probe("width:var(--sr-space-3)").w, sp4: probe("width:var(--sr-space-4)").w, sp6: probe("width:var(--sr-space-6)").w,
     reading: probe("font:var(--sr-type-reading);letter-spacing:var(--sr-track-reading)"), figure: probe("font:var(--sr-type-figure)"), body: probe("font:var(--sr-type-body)"), label: probe("font:var(--sr-type-label)"), meta: probe("font:var(--sr-type-meta)"), micro: probe("font:var(--sr-type-micro)") };
   const fs = (el) => (el ? parseFloat(getComputedStyle(el).fontSize) : null);
-  const header = document.querySelector("header.kiosk-hdr-grid");
+  // The chip name's size is the house `sr-chip-sm` name (`.sr-chip-name text-sm`), probed in a real chip, not `--sr-type-label` (which sets the chip's own font).
+  const chipProbe = document.createElement("button"); chipProbe.className = "sr-chip sr-chip-sm"; chipProbe.style.cssText = "position:absolute;visibility:hidden"; chipProbe.innerHTML = '<span class="sr-chip-name text-sm">x</span>'; scope.append(chipProbe);
+  const chipNameSize = fs(chipProbe.firstElementChild); chipProbe.remove();
+  // N5's cell radius is the computed `.panel` radius in Sunroom (1.25rem), probed from a real `.panel`.
+  const panelProbe = document.createElement("div"); panelProbe.className = "panel"; panelProbe.style.cssText = "position:absolute;visibility:hidden"; scope.append(panelProbe);
+  const panelRadius = parseFloat(getComputedStyle(panelProbe).borderTopLeftRadius); panelProbe.remove();
+  const header =document.querySelector("header.kiosk-hdr-grid");
   const board = document.querySelector(".max-w-6xl.grid-cols-12");
   const cells = board ? [...board.querySelectorAll(":scope > section.panel")].map((c) => ({ name: (c.querySelector("h2")?.textContent ?? "").trim(), rect: r(c), radius: parseFloat(getComputedStyle(c).borderTopLeftRadius), padL: parseFloat(getComputedStyle(c).paddingLeft), headSize: fs(c.querySelector("h2.microlabel")), headTrack: c.querySelector("h2.microlabel") ? getComputedStyle(c.querySelector("h2.microlabel")).letterSpacing : null })) : [];
-  const chipOf = (b) => { const name = b.querySelector(".sr-chip-name"), sub = b.querySelector(".sr-chip-sub"); return { label: b.getAttribute("aria-label"), rect: r(b), radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), nameText: name?.textContent ?? "", nameClipped: name ? name.scrollWidth > name.clientWidth + 1 : false, nameEllipsis: name ? getComputedStyle(name).textOverflow === "ellipsis" : false, nameSize: fs(name), title: b.getAttribute("title"), subClipped: sub ? sub.scrollWidth > sub.clientWidth + 1 : false }; };
+  const chipOf = (b) => { const name = b.querySelector(".sr-chip-name"), sub = b.querySelector(".sr-chip-sub"); return { label: b.getAttribute("aria-label"), rect: r(b), radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), nameText: name?.textContent ?? "", nameClipped: name ? name.scrollWidth > name.clientWidth + 1 : false, nameEllipsis: name ? getComputedStyle(name).textOverflow === "ellipsis" : false, nameSize: fs(name), title: b.getAttribute("title"), subClipped: sub ? sub.scrollWidth > sub.clientWidth + 1 : false, nameW: name ? name.clientWidth : 0, iconW: b.querySelector("svg")?.getBoundingClientRect().width ?? 0, hasWord: !!b.querySelector(".sr-state"), available: !b.disabled, lit: b.getAttribute("aria-checked") === "true", subText: sub?.textContent ?? "" }; };
   const chips = [...document.querySelectorAll('button[role="switch"]')].map(chipOf);
-  const scenes = [...document.querySelectorAll('button[aria-label^="Activate "]')].map((b) => ({ rect: r(b), radius: parseFloat(getComputedStyle(b).borderTopLeftRadius) }));
+  const scenes = [...document.querySelectorAll('button[aria-label^="Activate "]')].map((b) => ({ rect: r(b), radius: parseFloat(getComputedStyle(b).borderTopLeftRadius), nameText: b.querySelector(".sr-chip-name")?.textContent ?? "", nameW: b.querySelector(".sr-chip-name")?.clientWidth ?? 0, pip: r(b.querySelector(".sr-pip")), idleStatus: !!b.querySelector(".sr-chip-sub") }));
   const dock = document.querySelector('[data-rain-zone="dock"]');
   const cluster = document.querySelector('div[data-rain-zone="corner"]:not([role])');
   const buttonsIn = (root) => [...(root?.querySelectorAll("button") ?? [])].filter((b) => b.offsetParent !== null || getComputedStyle(b).position === "fixed").map((b) => ({ label: b.getAttribute("aria-label") ?? b.textContent.trim().slice(0, 16), rect: r(b) }));
@@ -227,7 +234,8 @@ const FV_READ = () => {
   const clipped = [...document.querySelectorAll("header.kiosk-hdr-grid *, .max-w-6xl.grid-cols-12 *")].filter((e) => { const cs = getComputedStyle(e); return e.children.length === 0 && (e.textContent ?? "").trim() && e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== "visible" && cs.textOverflow !== "ellipsis"; }).map((e) => (e.textContent ?? "").trim().slice(0, 24));
   const agTime = document.querySelector("[data-agenda-row] .font-mono"), agTitle = document.querySelector("[data-agenda-row] > span:nth-child(3)"), binRow = document.querySelector('[data-bin-night="row"]');
   return {
-    vw: innerWidth, vh: innerHeight, scrollH: document.scrollingElement.scrollHeight, scrollY: scrollY, tok, hero, board: r(board), cells, chips, scenes, scrollers, clipped, nudgeTiles,
+    hdrCols: header ? [...header.children].slice(0, 5).map((c) => r(c)) : [], lineKidsW: line ? [...line.children].map((k) => Math.round(k.scrollWidth)) : [],
+    vw: innerWidth, vh: innerHeight, scrollH: document.scrollingElement.scrollHeight, scrollY: scrollY, tok: { ...tok, chipName: chipNameSize, panelRadius }, hero, board: r(board), cells, chips, scenes, scrollers, clipped, nudgeTiles,
     time: time ? { rect: r(time), size: fs(time), track: getComputedStyle(time).letterSpacing } : null, date: date ? { rect: r(date), size: fs(date), lh: parseFloat(getComputedStyle(date).lineHeight) } : null,
     temp: fs(temp), tempRect: r(temp), cond: fs(cond), line: line ? { size: fs(line.firstElementChild), kids: [...line.children].map((k) => ({ ellipsis: getComputedStyle(k).textOverflow === "ellipsis", clipped: k.scrollWidth > k.clientWidth + 1 })), rect: r(line) } : null,
     dock: dock ? { rect: r(dock), position: getComputedStyle(dock).position, buttons: buttonsIn(dock) } : null, cluster: r(cluster), clusterButtons: buttonsIn(cluster),
@@ -253,12 +261,12 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
   // 3: type roles
   const agOk = d.agTime === null || (fvNear(d.agTime, d.tok.meta.size, 0.5) && fvNear(d.agTitle, d.tok.label.size, 0.5));
   const ell = !d.line || d.line.kids.every((q) => !q.clipped || q.ellipsis);
-  fvRec(k(3), fvNear(d.temp, d.tok.figure.size, 0.5) && fvNear(d.cond, d.tok.body.size, 0.5) && (!d.line || fvNear(d.line.size, d.tok.meta.size, 0.5)) && ell && d.cells.every((c) => c.headSize === null || fvNear(c.headSize, d.tok.micro.size, 0.5)) && d.chips.every((c) => fvNear(c.nameSize, d.tok.label.size, 0.5)) && agOk, { temp: d.temp, cond: d.cond, line: d.line && d.line.size, agTime: d.agTime, agTitle: d.agTitle, chipName: d.chips[0]?.nameSize, tok: { figure: d.tok.figure.size, body: d.tok.body.size, meta: d.tok.meta.size, label: d.tok.label.size, micro: d.tok.micro.size } });
+  fvRec(k(3), fvNear(d.temp, d.tok.figure.size, 0.5) && fvNear(d.cond, d.tok.body.size, 0.5) && (!d.line || fvNear(d.line.size, d.tok.meta.size, 0.5)) && ell && d.cells.every((c) => c.headSize === null || fvNear(c.headSize, d.tok.micro.size, 0.5)) && d.chips.every((c) => fvNear(c.nameSize, d.tok.chipName, 0.5)) && agOk, { temp: d.temp, cond: d.cond, line: d.line && d.line.size, agTime: d.agTime, agTitle: d.agTitle, chipName: d.chips[0]?.nameSize, tok: { figure: d.tok.figure.size, body: d.tok.body.size, meta: d.tok.meta.size, label: d.tok.label.size, micro: d.tok.micro.size, chipName: d.tok.chipName } });
   // 4: spacing: cell padding and board gaps --sr-space-3; page padding --sr-space-4; hero column gap --sr-space-6, hero padding-x --sr-space-6 (lg)
   const gapsOk = lg && today && climate ? fvNear(climate.rect.left - today.rect.right, d.tok.sp3, 0.6) && (!lights || fvNear(lights.rect.top - Math.max(today.rect.bottom, climate.rect.bottom), d.tok.sp3, 0.6)) : true;
-  fvRec(k(4), d.cells.every((c) => fvNear(c.padL, d.tok.sp3, 0.5)) && gapsOk && fvNear(d.board?.left, d.tok.sp4, 0.6) && (!lg || (fvNear(d.hero.colGap, d.tok.sp6, 0.5) && fvNear(d.hero.padL, d.tok.sp6, 0.5))), { padL: d.cells.map((c) => c.padL), boardLeft: d.board?.left, hero: d.hero && { colGap: d.hero.colGap, padL: d.hero.padL }, sp3: d.tok.sp3, sp4: d.tok.sp4, sp6: d.tok.sp6 });
-  // 5: cell radius is .panel's 1.25rem; chips are pills
-  fvRec(k(5), d.cells.every((c) => fvNear(c.radius, 20, 0.5)) && d.chips.every((c) => c.radius >= c.rect.h / 2 - 0.5), { radii: d.cells.map((c) => c.radius) });
+  fvRec(k(4), d.cells.every((c) => fvNear(c.padL, d.tok.sp3, 0.5)) && gapsOk && fvNear(d.board?.left, lg ? d.tok.sp4 : d.tok.sp3, 0.6) && (!lg || (fvNear(d.hero.colGap, d.tok.sp6, 0.5) && fvNear(d.hero.padL, d.tok.sp6, 0.5))), { padL: d.cells.map((c) => c.padL), boardLeft: d.board?.left, hero: d.hero && { colGap: d.hero.colGap, padL: d.hero.padL }, sp3: d.tok.sp3, sp4: d.tok.sp4, sp6: d.tok.sp6 });
+  // 5: cell radius is the computed `.panel` radius in Sunroom (1.25rem = 20px); chips are pills
+  fvRec(k(5), d.cells.every((c) => fvNear(c.radius, d.tok.panelRadius, 0.5)) && d.chips.every((c) => c.radius >= c.rect.h / 2 - 0.5), { radii: d.cells.map((c) => c.radius), panel: d.tok.panelRadius, chipRadii: [...new Set(d.chips.map((c) => c.radius))] });
   // 6: cells in one row have equal bottoms
   fvRec(k(6), !lg || ((!climate || fvNear(today.rect.bottom, climate.rect.bottom, 0.5)) && (!scenes || !lights || fvNear(lights.rect.bottom, scenes.rect.bottom, 0.5))), { today: today?.rect.bottom, climate: climate?.rect.bottom, lights: lights?.rect.bottom, scenes: scenes?.rect.bottom });
   // 7: dock to cluster gap >= --sr-space-6 (worst state); at any size no cluster rect meets a dock button or the hero temperature
@@ -274,6 +282,19 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
     const bed = d.chips.find((c) => c.nameText === "Bedside"), long = d.chips.find((c) => c.nameText.length > 14);
     fvRec(k(11), !!bed && !bed.nameClipped && (!long || (long.nameEllipsis && !!long.title)) && d.chips.every((c) => !c.subClipped), { bedside: bed && { clipped: bed.nameClipped }, long: long && { ellipsis: long.nameEllipsis, title: long.title }, subClipped: d.chips.filter((c) => c.subClipped).length });
   }
+  // 11b (fix 1): no plain ON/OFF word on a toggle chip; every chip icon >= 14 px; an unavailable chip shows its name; at 1024 (3 columns) a name of 12 characters or fewer shows in
+  // full, at 390 (2 columns) a name of 7 or fewer (the shortened name is what is measured; a 62% sub or "unavailable" gives way first); the name keeps 5 characters (min-w-[5ch]).
+  if (d.vw === 1024 || d.vw === 390) {
+    const fit = d.vw === 1024 ? 12 : 7;
+    const short = d.chips.filter((c) => c.nameText.length > 0 && c.nameText.length <= fit);
+    const bad = short.filter((c) => c.nameClipped).map((c) => c.nameText);
+    const unavail = d.chips.filter((c) => !c.available);
+    fvRec(k("11b chips"), d.chips.length > 0 && short.length > 0 && bad.length === 0 && d.chips.every((c) => !c.hasWord && c.iconW >= 14 - 0.5 && c.nameText.length > 0 && c.nameW > 0) && unavail.every((c) => c.nameW >= 5 * 7), { fit, shortChecked: short.length, clippedShort: bad, withWord: d.chips.filter((c) => c.hasWord).length, minIcon: Math.min(...d.chips.map((c) => c.iconW)), unavailable: unavail.map((c) => [c.nameText, c.nameW]) });
+  }
+  // 1b (fix 1): every scene chip shows its name (non-zero width, the fixture's scene name), no idle status text, and the pip sits inside the chip
+  if (d.scenes.length) fvRec(k("1b scene chips"), d.scenes.every((s) => s.nameW > 0 && ["Evening", "Movie", "Bright", "Night", "Away", "Dinner"].includes(s.nameText) && s.pip && s.pip.left >= s.rect.left - 0.5 && s.pip.right <= s.rect.right + 0.5 && !s.idleStatus), { scenes: d.scenes.map((s) => [s.nameText, Math.round(s.nameW), s.idleStatus, s.pip && Math.round(s.rect.right - s.pip.right)]) });
+  // 15 (fix 1): from lg the weather band uses the room between the clock column and the rail: each reading shows in full on one line (no ellipsis) with the crowded fixture
+  if (lg && d.line) fvRec(k(15), d.line.kids.every((q) => !q.clipped), { kidsScrollW: d.lineKidsW, lineW: Math.round(d.line.rect.w), cols: d.hdrCols.map((c) => c && [Math.round(c.left), Math.round(c.right)]) });
   // 14: layout check (this repo has no e2e capture helper): no inner scroller on the board, no clipped text without an ellipsis, no dock button over board text
   fvRec(k(14), d.scrollers.length === 0 && d.clipped.length === 0, { scrollers: d.scrollers, clipped: d.clipped });
 }
@@ -307,9 +328,12 @@ async function fullViewBoard() {
       const d = await page.evaluate(FV_READ);
       FV.states[`crowded-${size.name}`] = { cells: d.heads, chips: d.chips.length, scrollH: d.scrollH, vh: d.vh, nowPlaying: d.nowPlaying, dockButtons: d.dock?.buttons.map((b) => b.label) };
       fvChecks(d, size, `crowded-${size.name}`);
-      // brief 2.1 / 2.3: the hero carries no transform, filter or backdrop-filter; the dock buttons come in the order Timers, Shopping, Front door, Glance, Admin
+      // brief 2.1 / 2.3: the hero carries no transform, filter or backdrop-filter. This visit is pinned (layout=standard), where Glance is hidden: Timers, Shopping, Front door, Admin.
+      // The order with Glance is the unpinned state below ("fullview unpinned").
       const order = (d.dock?.buttons ?? []).map((b) => b.label).join("|");
-      fvRec(`crowded-${size.name} dock order`, /^Timer.*\|Shopping.*\|View the front door.*\|Back to glance.*\|Admin$/.test(order) || d.vw < 1024 && order.length > 0, { order });
+      fvRec(`crowded-${size.name} dock order`, /^Timer.*\|Shopping.*\|View the front door.*\|Admin$/.test(order), { order });
+      // fix 1 item 5: below lg the dock wraps button by button, so the timer and Shopping share the first row
+      if (!lg0(size)) { const [t, s] = d.dock.buttons; fvRec(`crowded-${size.name} dock wraps naturally`, !!t && !!s && Math.abs(t.rect.top - s.rect.top) < 1, { timerTop: t?.rect.top, shoppingTop: s?.rect.top }); }
       if (size.name !== "390x844") await page.screenshot({ path: join(OUT_DIR, `fullview-${size.name}-day.png`), fullPage: true });
       else {
         // 390: scrolled, two viewport shots; N10 the last cell clears the cluster by --sr-space-4
@@ -332,6 +356,19 @@ async function fullViewBoard() {
     });
   }
   // night: the woken full view at 1024x768, checks 1-8 and 14
+  // fix 1 item 4: Glance is hidden while the view is pinned (layout=standard or elevated), so the full view reached FROM Glance (unpinned) is the state with the Glance button
+  await guarded("fullview unpinned", async () => {
+    const size = SIZES[1];
+    const { context, page } = await fvVisit(size, { layout: "glance" });
+    await page.mouse.click(size.viewport.width / 2, size.viewport.height / 2);
+    await seen(page, "section.panel h2", 15_000);
+    await page.waitForTimeout(1500);
+    const d = await page.evaluate(FV_READ);
+    const order = (d.dock?.buttons ?? []).map((b) => b.label).join("|");
+    fvRec("unpinned-1024x768 dock order with Glance", /^Timer.*\|Shopping.*\|View the front door.*\|Back to glance.*\|Admin$/.test(order), { order });
+    await fvCrop(page, page.locator('[data-rain-zone="dock"]'), "dock-unpinned");
+    await context.close();
+  });
   await guarded("fullview night", async () => {
     const size = SIZES[1];
     const { context, page } = await fvVisit(size, { state: "woken-night" });
@@ -387,11 +424,14 @@ async function fullViewBoard() {
   // other states (captures; the numbers above already ran on the crowded evening): nothing on, morning, auto-off banner, HA not connected, stale, loading, no camera, elevated
   const none = { status: "ok", events: [], stale: false };
   await guarded("fullview nothing on", async () => {
-    const { context, page } = await fvVisit(SIZES[1], { state: "ordinary", extra: { "/kiosk/api/calendar": none, "/kiosk/api/bins": { status: "unconfigured" }, "/kiosk/api/doorbell": { status: "unconfigured" } }, timer: false });
+    // The evening ("crowded" clock, 18:30), not "ordinary" (11:00 is the morning period, whose briefing card is always there): no agenda, no bins, nothing playing, no camera, an idle timer.
+    const { context, page } = await fvVisit(SIZES[1], { state: "crowded", extra: { "/kiosk/api/calendar": none, "/kiosk/api/bins": { status: "unconfigured" }, "/kiosk/api/doorbell": { status: "unconfigured" } }, timer: false, np: false });
     await seen(page, "section.panel h2", 15_000);
     await page.waitForTimeout(1200);
     const d = await page.evaluate(FV_READ);
-    fvRec("nothing on: copy and no footer", d.emptyLine === "Nothing on today or tomorrow", { emptyLine: d.emptyLine });
+    fvRec("nothing on: copy and no footer", d.emptyLine === "Nothing on today or tomorrow" && !d.nowPlaying, { emptyLine: d.emptyLine, nowPlaying: d.nowPlaying });
+    const dockLabels = (d.dock?.buttons ?? []).map((b) => b.label).join("|");
+    fvRec("dock no camera, idle timer: Timers, Shopping, Admin", /^Timer(?!.*\d:\d\d).*\|Shopping.*\|Admin$/.test(dockLabels) && !/front door/i.test(dockLabels), { dockLabels });
     await fvCrop(page, fvCell(page, "today"), "today-nothing-on");
     await fvCrop(page, page.locator('[data-rain-zone="dock"]'), "dock-no-camera-timer-idle");
     await context.close();
@@ -404,12 +444,15 @@ async function fullViewBoard() {
     await context.close();
   });
   await guarded("fullview banner", async () => {
-    const { context, page } = await visit(FV_URL(), { viewport: SIZES[1].viewport, weather: calWeatherFor("crowded"), fixedTime: true, instant: calInstant("22:35"), ha: true, routes: { "/kiosk/api/calendar": CAL_STATES.crowded.body } });
+    const { context, page } = await visit(FV_URL(), { viewport: SIZES[1].viewport, weather: calWeatherFor("crowded"), fixedTime: true, instant: calInstant("22:57"), ha: true, routes: { "/kiosk/api/calendar": CAL_STATES.crowded.body } }); // AUTO_OFF fires at 23:00 with a 5-minute warn lead (use-climate-auto-off.ts), so 22:57 is inside the warn window
+    // 22:57 is night: the overlay covers the board until a tap wakes it (as the "fullview night" state does)
+    await page.mouse.click(SIZES[1].viewport.width / 2, SIZES[1].viewport.height / 2);
+    await page.waitForTimeout(800);
     await seen(page, ".sr-climate", 15_000);
     await page.waitForTimeout(1200);
     const banner = await page.locator('section.panel [role="status"]').count();
     FV.states.autoOffBanner = { seen: banner > 0 };
-    if (!banner) FV.notRun.push("auto-off banner warn: not on screen at 22:35 (the warn window is the engine's)");
+    if (!banner) FV.notRun.push("auto-off banner warn: not on screen at 22:57 (the warn window is the engine's)");
     await fvCrop(page, fvCell(page, "climate"), "climate-auto-off-banner");
     await context.close();
   });

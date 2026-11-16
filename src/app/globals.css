@@ -1141,15 +1141,23 @@ body {
     grid-row: 2;
     min-width: 0;
   }
-  /* One line, each reading ends in an ellipsis rather than wrapping (the hero's height is a board number). */
+  /* One line, never wrapping (the hero's height is a board number). The readings keep their full width and only the
+     last one gives way with an ellipsis, so "sunset 18:40" and "UV 12 Extreme" are not cut while "Air fair" still fits
+     part of the space; the line itself clips so nothing reaches the rail. */
   .kiosk-hdr-grid [data-weather-line] {
     flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
   }
   .kiosk-hdr-grid [data-weather-line] > * {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .kiosk-hdr-grid [data-weather-line] > *:last-child {
+    flex-shrink: 1;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
   }
 }
 

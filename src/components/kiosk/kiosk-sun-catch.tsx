@@ -25,13 +25,14 @@ export function aimCatch(e: PointerEvent<HTMLElement>) {
 }
 
 /** The pip and the state word of a Chip. */
-export function SunChipMarks({ on, error, busy, scene }: { on: boolean; error?: boolean; busy?: boolean; scene?: boolean }) {
+export function SunChipMarks({ on, error, busy, scene, bare }: { on: boolean; error?: boolean; busy?: boolean; scene?: boolean; bare?: boolean }) {
   if (useKioskTheme() !== "sunroom") return null;
   const { word, tone } = chipWord({ on, error, busy, scene });
   return (
     <>
       <span className="sr-pip" aria-hidden />
-      {word && (
+      {/* `bare`: the board's chip carries its state by the pip, the tint and aria-checked; only an error still gets a word. */}
+      {word && !(bare && !error) && (
         <span className="sr-state" data-sr-tone={tone}>
           {word}
         </span>

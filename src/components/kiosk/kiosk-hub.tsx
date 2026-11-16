@@ -291,13 +291,14 @@ function ToggleChip({
       // reasoning and the measurement are recorded on the class itself.
     >
       <SunCatch />
-      <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="sr-chip-name min-w-0 truncate text-sm text-ink">{name}</span>
-      <span className={cn("sr-chip-sub max-w-24 shrink-0 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
+      <Icon size={15} className={cn("shrink-0", on ? "text-accent" : "text-ink-faint")} aria-hidden />
+      {/* The name outranks the sub: the sub (62%, unavailable) gives way first (shrink-8), the name keeps 5 characters. */}
+      <span className="sr-chip-name min-w-[5ch] truncate text-sm text-ink">{name}</span>
+      <span className={cn("sr-chip-sub min-w-0 max-w-24 shrink-[8] truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
         {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
       </span>
       {!sr && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />}
-      <SunChipMarks on={on} error={!!error} />
+      <SunChipMarks on={on} error={!!error} bare />
     </button>
   );
 }
@@ -315,7 +316,8 @@ function SceneChip({
   error?: string;
   onActivate: () => void;
 }) {
-  const statusText = error ?? (activated ? "activated" : pending ? "activating…" : "tap to activate");
+  // Idle shows no status (aria-label says "Activate"): the name takes the width. Only a result or an error is worth a word.
+  const statusText = error ?? (activated ? "activated" : pending ? "activating…" : null);
   return (
     <button
       type="button"
@@ -338,11 +340,13 @@ function SceneChip({
       )}
     >
       <SunCatch />
-      <Sparkles size={15} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="sr-chip-name min-w-0 truncate text-sm text-ink">{scene.name}</span>
-      <span className={cn("sr-chip-sub max-w-28 shrink-0 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined} data-sr-num="">
-        {statusText}
-      </span>
+      <Sparkles size={15} className={cn("shrink-0", activated ? "text-accent" : "text-ink-faint")} aria-hidden />
+      <span className="sr-chip-name min-w-[5ch] flex-1 truncate text-sm text-ink" title={scene.name}>{scene.name}</span>
+      {statusText && (
+        <span className={cn("sr-chip-sub min-w-0 max-w-28 shrink-[8] truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined} data-sr-num="">
+          {statusText}
+        </span>
+      )}
       <SunChipMarks on={activated} error={!!error} busy={pending} scene />
     </button>
   );

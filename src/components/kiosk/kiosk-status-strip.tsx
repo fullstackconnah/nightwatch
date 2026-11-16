@@ -76,13 +76,14 @@ export function KioskStatusStripExtras({
   // `middle` (Shopping, Front door, Glance) next; then Admin, or the elevated mark with the host vitals.
   return (
     <>
-      <div className={cn("shrink-0", revealClass)} style={revealStyle(0)}>
+      {/* max-lg:contents: below lg the dock is a wrapping row, so each button wraps on its own (the groups would break the line). */}
+      <div className={cn("shrink-0 max-lg:contents", revealClass)} style={revealStyle(0)}>
         <KioskTimersButton className="h-14 min-w-14" />
       </div>
-      <div className={cn("flex items-center gap-3", revealClass)} style={revealStyle(1)}>
+      <div className={cn("flex items-center gap-3 max-lg:contents", revealClass)} style={revealStyle(1)}>
         {middle}
       </div>
-      <div className={cn("flex shrink-0 items-center gap-3", revealClass)} style={revealStyle(2)}>
+      <div className={cn("flex shrink-0 items-center gap-3 max-lg:contents", revealClass)} style={revealStyle(2)}>
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">
             {/* `dot-live` is excluded from the breathe on purpose: it's an
