@@ -6,10 +6,10 @@ export interface ListFile { v: 1; items: ListItem[]; history: AddHistory[] }
 
 export const MAX_LEN = 60;
 export const MAX_ITEMS = 13;
-/** Hard ceiling on all rows, ticked included, so the file cannot grow without bound between 04:00 sweeps. */
+/** Only the ceiling parseListFile applies when reading a file, so a file written in the last day with more than MAX_ITEMS rows is read whole and loses nothing. Adds are capped by isFull. */
 export const MAX_ROWS = MAX_ITEMS * 3;
-/** Full: MAX_ITEMS open items (ticked rows don't count against the cap) or MAX_ROWS rows in all. */
-export const isFull = (items: { done: boolean }[]): boolean => items.filter((i) => !i.done).length >= MAX_ITEMS || items.length >= MAX_ROWS;
+/** Full: MAX_ITEMS rows in all, ticked included (design rule 16), so the sheet shows every row without scrolling. */
+export const isFull = (items: { done: boolean }[]): boolean => items.length >= MAX_ITEMS;
 /** After a failed optimistic clear: put back the `gone` rows of `before` that `current` lost; rows added meanwhile stay. */
 export const restoreGone = <T extends { id: string }>(current: T[], before: T[], gone: ReadonlySet<string>): T[] => {
   const have = new Set(current.map((i) => i.id));

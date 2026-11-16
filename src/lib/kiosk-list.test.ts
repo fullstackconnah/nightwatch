@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkAdd, restoreGone, norm, sweepBoundary, suggestions, parseListFile, MAX_ITEMS, MAX_ROWS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
+import { checkAdd, restoreGone, norm, sweepBoundary, suggestions, parseListFile, isFull, MAX_ITEMS, MAX_ROWS, MAX_LEN, type ListItem } from "./kiosk-list.ts";
 
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const item = (n: number, text: string, o: Partial<ListItem> = {}): ListItem => ({
@@ -128,14 +128,17 @@ test("24b settleRows: first call splits open and ticked; a tick does not move a 
   assert.deepEqual(settleRows(a, ticked.filter((i) => i.id !== ID(3))).ticked, []);
 });
 
-test("3 checkAdd: ticked rows do not count towards the cap; a hard ceiling does", () => {
-  const ticked = Array.from({ length: MAX_ITEMS + 5 }, (_, i) => ({ text: "t" + i, done: true }));
-  assert.equal(checkAdd("Eggs", ticked).kind, "add");
-  const open = Array.from({ length: MAX_ITEMS }, (_, i) => ({ text: "o" + i, done: false }));
-  assert.equal(checkAdd("Eggs", [...open, ...ticked]).kind, "full");
-  const rows = Array.from({ length: MAX_ITEMS * 3 }, (_, i) => ({ text: "r" + i, done: true }));
-  assert.equal(checkAdd("Eggs", rows).kind, "full");
-  assert.equal(checkAdd("r1", rows).kind, "revive");
+test("3 checkAdd: 13 rows in all, ticked included, is full (design rule 16)", () => {
+  const mix = (o: number, t: number) => [
+    ...Array.from({ length: o }, (_, i) => ({ text: "o" + i, done: false })),
+    ...Array.from({ length: t }, (_, i) => ({ text: "t" + i, done: true })),
+  ];
+  assert.equal(isFull(mix(11, 2)), true);
+  assert.equal(checkAdd("Eggs", mix(11, 2)).kind, "full");
+  assert.equal(checkAdd("Eggs", mix(0, MAX_ITEMS)).kind, "full");
+  for (const [o, t] of [[12, 0], [0, 12], [6, 6], [10, 2]]) assert.equal(isFull(mix(o, t)), false);
+  assert.equal(checkAdd("Eggs", mix(10, 2)).kind, "add");
+  assert.equal(checkAdd("t1", mix(11, 2)).kind, "revive"); // a ticked name still revives at 13
 });
 
 test("4 restoreGone puts back only the cleared rows that are missing", () => {
