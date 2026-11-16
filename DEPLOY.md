@@ -24,6 +24,7 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    # then DOUBLE every '$' before pasting (see below)
    ADMIN_PASSWORD_HASH=$$2b$$12$$…
    SESSION_SECRET=<long random string>
+   # OIDC_ALLOWED_USERS=<your-oidc-sub>   # optional, see README "Single sign-on (OIDC)"
    ```
 
    **Escape every `$` as `$$`.** Compose expands `$` sequences while parsing

@@ -80,6 +80,30 @@ containers even if compromised. Changing the password in Settings does not
 sign out other browsers: their sessions last up to 7 days unless
 `SESSION_SECRET` is changed.
 
+The session, kiosk-unlock and SSO-flow cookies are marked `Secure` when the
+request reaches the app over https through the proxy (`X-Forwarded-Proto:
+https`) and stay non-secure on plain-HTTP LAN access. A browser will not
+overwrite or clear a `Secure` cookie over http, so do not serve one hostname
+over both: sign-in over http would loop back to the login page and sign-out
+over http would not clear the cookie. Use the LAN address for http, a separate
+name for https, and force https on that name at the proxy.
+
+### Single sign-on (OIDC)
+
+`OIDC_ALLOWED_USERS` (or the `oidcAllowedUsers` system setting in
+`data/config.json`, which wins) lists who may sign in through SSO: entries
+separated by commas or spaces, each either an account `sub` (recommended, it
+is an opaque id that never changes; match is exact) or an email (matched
+without regard to case, and only when the provider marks it verified). Unset
+or blank means any account the provider authenticates gets an owner session,
+and the server log says so once. A refused login is logged with its `sub`.
+
+To find your `sub`: set the list to a throwaway value such as `placeholder`,
+sign in through SSO (it is refused), copy the `sub` from the server log line
+`OIDC login refused: sub "..."`, then replace the throwaway value with it.
+The list is never shown in Settings or sent to the browser, and saving Settings
+keeps it. Password sign-in is unaffected by the list.
+
 ## MCP server
 
 `/api/mcp` exposes nightwatch's data to MCP clients (Claude Code, Claude
