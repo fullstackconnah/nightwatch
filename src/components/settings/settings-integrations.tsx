@@ -1083,7 +1083,7 @@ function BinRowEditor({
         <Label id={dayLabel}>
           Collection day<span className="text-ink-dim" aria-hidden="true"> *</span>
         </Label>
-        <div role="group" aria-labelledby={dayLabel} aria-describedby={dayNote} aria-invalid={errors.weekday ? true : undefined} className="flex gap-0.5">
+        <div role="group" aria-labelledby={dayLabel} aria-describedby={dayNote} className="flex gap-0.5">
           {BIN_DAY_ORDER.map((d) => (
             <SegmentButton key={d} fill active={row.weekday === d} label={DAY_NAMES[d]} onClick={() => onChange({ weekday: d })}>
               {DAY_NAMES[d].slice(0, 3)}
