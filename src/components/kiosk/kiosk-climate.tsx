@@ -360,7 +360,7 @@ export function KioskClimateTile({
 
       {/* Distance-readable figure — the number a person 2-3m away actually
           needs, unchanged in size from the row version. */}
-      <div className="sr-climate-now font-mono text-3xl text-ink" data-sr-live>{formatTemp(climate.currentTemp, climate.unit)}</div>
+      <div className="sr-climate-now font-mono text-3xl text-ink" data-sr-live data-sr-num="">{formatTemp(climate.currentTemp, climate.unit)}</div>
 
       {/* [−]  target  [+] — target BETWEEN the two buttons, the shape asked
           for, not beside them. `min-h-14` on the cluster (not just the
@@ -404,6 +404,7 @@ export function KioskClimateTile({
               // one step down keeps it on its own line instead of truncating.
               dualSetpoint ? "text-sm" : "text-base",
             )}
+            data-sr-num=""
           >
             {dualSetpoint ? (
               // A two-value range with a dash is not a dial — the
