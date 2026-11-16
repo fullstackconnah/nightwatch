@@ -2375,13 +2375,16 @@ const tpWidths = (page, jobs) => page.evaluate(async (list) => {
     scope.appendChild(el);
     const cs = getComputedStyle(el);
     const widths = [];
+    let error = null;
     for (const s of samples) {
       el.textContent = s;
-      await document.fonts.load(`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`, s);
+      const spec = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      // a NetworkError names no family: retry once, then report this family and go on
+      try { await document.fonts.load(spec, s); } catch { try { await document.fonts.load(spec, s); } catch (e) { error = String(e?.message ?? e); break; } }
       widths.push(el.getBoundingClientRect().width);
     }
     el.remove();
-    out.push({ id, widths });
+    out.push(error ? { id, error } : { id, widths });
   }
   return out;
 }, jobs);
@@ -2423,9 +2426,13 @@ async function tpOpenTypeface(viewport) {
 let TP_WIDEST = null;
 await tpRun("widths", async () => {
   const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
-  const text = await tpWidths(page, TP_TEXT.map((f) => ({ ...f, token: "body", samples: ["Wednesday 28 Thermostat"] })));
-  const nums = await tpWidths(page, TP_NUMERALS.map((f) => ({ ...f, token: "clock", samples: ["88:88", "11:11"] })));
+  const rawText = await tpWidths(page, TP_TEXT.map((f) => ({ ...f, token: "body", samples: ["Wednesday 28 Thermostat"] })));
+  const rawNums = await tpWidths(page, TP_NUMERALS.map((f) => ({ ...f, token: "clock", samples: ["88:88", "11:11"] })));
   await context.close();
+  // a family that fails to load stays a failed check, but never hides the rest
+  for (const r of [...rawText, ...rawNums]) if (r.error) TP.failed.push(`widths ${r.id}: font failed to load (${r.error})`);
+  const text = rawText.filter((r) => !r.error);
+  const nums = rawNums.filter((r) => !r.error);
   for (const t of text) TP.widths[`text:${t.id}`] = Math.round(t.widths[0] * 10) / 10;
   for (const n of nums) TP.widths[`numerals:${n.id}`] = { "88:88": Math.round(n.widths[0] * 10) / 10, "11:11": Math.round(n.widths[1] * 10) / 10 };
   const widest = (rows, w) => rows.reduce((a, b) => (w(b) > w(a) ? b : a)).id;
