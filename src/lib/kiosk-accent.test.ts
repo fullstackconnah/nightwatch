@@ -228,3 +228,17 @@ describe("accent chip disc fill", () => {
     assert.ok(fill.includes("#5b2bae") && fill.includes("#bc9cf1"));
   });
 });
+
+describe("useKioskAccent after a theme switch", () => {
+  // A hook cannot run under node:test, so the wiring is source-scanned: the id is derived from the
+  // CURRENT theme in render (once storage has been read), never held in state across a theme change.
+  const src = readFileSync(join(process.cwd(), "src/lib/kiosk-accent.ts"), "utf8");
+  const body = src.slice(src.indexOf("export function useKioskAccent"));
+  it("does not keep the id in state, which lags a theme switch by one render", () => {
+    assert.doesNotMatch(body, /useState<KioskAccentId/);
+    assert.doesNotMatch(body, /setId/);
+  });
+  it("reads the current theme's id in render once ready, and stays null before that", () => {
+    assert.match(body, /ready \? readKioskAccents\(\)\[theme\] \?\? null : null/);
+  });
+});
