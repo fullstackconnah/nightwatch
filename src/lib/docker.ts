@@ -157,6 +157,8 @@ export type RuntimeContainer = ContainerSummary & ContainerRuntime;
 const RUNTIME_TTL_MS = 3_000;
 /** Safety TTL for a cached inspect result; see inspectCache. */
 const INSPECT_TTL_MS = 60_000;
+/** How long a failed inspect is remembered before the id is tried again. */
+const INSPECT_FAIL_TTL_MS = 10_000;
 
 /** Docker writes this sentinel rather than a null when a timestamp is unset. */
 const ZERO_TIME = "0001-01-01T00:00:00Z";
@@ -198,7 +200,7 @@ async function inspectRuntime(id: string): Promise<ContainerRuntime> {
  * A container removed between the list and the inspect simply drops out; its
  * caller renders the same "unknown" branch as a never-started one.
  */
-const inspectCache = (globalForDocker.__inspectCache ??= createInspectCache<ContainerRuntime>(INSPECT_TTL_MS));
+const inspectCache = (globalForDocker.__inspectCache ??= createInspectCache<ContainerRuntime>(INSPECT_TTL_MS, INSPECT_FAIL_TTL_MS));
 
 function collectRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {
   return inspectCache.resolve(keys, inspectRuntime);
@@ -223,7 +225,8 @@ const runtimesMemo = new Memo<Record<string, ContainerRuntime>>({
   // Membership, not just age — see collectRuntimes' doc comment. A container
   // created since the last pass would otherwise show no uptime until the TTL
   // expired, which is exactly when someone is watching it.
-  isValid: (cached) => requestedRuntimeKeys.keys.every((k) => k.id in cached),
+  // A recently failed inspect counts as answered, or the id would be re-inspected every poll.
+  isValid: (cached) => requestedRuntimeKeys.keys.every((k) => k.id in cached || inspectCache.isFailed(k.id)),
 });
 
 function containerRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {

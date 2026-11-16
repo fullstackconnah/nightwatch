@@ -321,14 +321,31 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
     return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, [open, anchorRef, onClose]);
 
+  // Keep the tray anchored to its pill but under the forecast rail: cap its height so its top sits one house gap (12 px) below the rail's bottom; it already scrolls inside.
   useLayoutEffect(() => {
     if (!open) return;
     const node = nodeRef.current;
     if (!node) return;
-    // Keep the tray anchored to its pill but under the forecast rail: cap its height so its top sits one house gap (12 px) below the rail's bottom; it already scrolls inside.
-    const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
-    // The cap is measured at open and reopening re-measures. shortcut: no resize listener, add one if the kiosk ever rotates.
-    if (rail) node.style.maxHeight = `min(60vh, ${Math.max(128, node.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom - 12)}px)`;
+    const cap = () => {
+      const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
+      node.style.maxHeight = rail ? `min(60vh, ${Math.max(128, node.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom - 12)}px)` : "";
+    };
+    cap();
+    // Re-measured while open: the slot grows when a late forecast mounts the rail and shrinks when it goes; the window resize covers a rotated kiosk.
+    const slot = document.querySelector('[data-testid="kiosk-forecast-slot"]');
+    const ro = slot ? new ResizeObserver(cap) : null;
+    if (slot) ro?.observe(slot);
+    window.addEventListener("resize", cap);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", cap);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const node = nodeRef.current;
+    if (!node) return;
     if (prefersReducedMotion()) return;
     const anim = node.animate(
       [

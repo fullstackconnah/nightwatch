@@ -716,7 +716,7 @@ export function KioskSurface({
             advance — the exact class of layout-moves-mid-animation bug the
             jitter fix removed. Every pane gets the same reserved height and
             centres inside it. */}
-        <div ref={flip.register("forecast")} data-rain-panel={full ? undefined : ""} className={cn(full && "order-1 ml-auto")}>
+        <div ref={flip.register("forecast")} data-testid="kiosk-forecast-slot" data-rain-panel={full ? undefined : ""} className={cn(full && "order-1 ml-auto")}>
           {full
             ? days.length > 0 && (
                 <KioskForecastRail

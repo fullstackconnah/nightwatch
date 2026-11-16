@@ -171,3 +171,15 @@ test("polish B item 7: the default marker is one text run with a space either si
   assert.equal((src.match(/> · default<\/span>/g) ?? []).length, 2);
   assert.doesNotMatch(src, />· default</);
 });
+
+test("hunt 54: the open downloads tray re-measures its cap when the forecast slot resizes or the window does, and cleans up", () => {
+  const src = read("./kiosk-downloads.tsx");
+  assert.match(src, /new ResizeObserver\(cap\)/);
+  assert.match(src, /\.observe\(slot\)/);
+  assert.match(src, /addEventListener\("resize", cap\)/);
+  assert.match(src, /ro\?\.disconnect\(\)/);
+  assert.match(src, /removeEventListener\("resize", cap\)/);
+  assert.match(src, /: ""/); // rail gone: back to the class default max-h-[60vh]
+  assert.doesNotMatch(src, /shortcut: no resize listener/);
+  assert.match(read("./kiosk-surface.tsx"), /data-testid="kiosk-forecast-slot"/);
+});
