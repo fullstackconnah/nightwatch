@@ -32,6 +32,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useKioskWeather, type KioskWeatherOk } from "@/lib/kiosk-client";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { kioskAccentSwatch, useKioskAccent } from "@/lib/kiosk-accent";
 import { shouldStopFade, sunroomCssVars, sunroomLightVector, sunroomStateAt, sunroomT } from "@/lib/sunroom-light";
 
 /** How often the light direction is recomputed from the anchor. */
@@ -87,6 +88,7 @@ function fadeFromOldStop(oldVars: Record<string, string>, oldDark: boolean) {
 
 export function KioskSunroomLight() {
   const theme = useKioskTheme();
+  const accentId = useKioskAccent("sunroom");
   const { data, isLoading } = useKioskWeather();
 
   const ok = data && data.status === "ok" ? data : null;
@@ -126,7 +128,7 @@ export function KioskSunroomLight() {
     const cloud01 = typeof cloudCoverPct === "number" ? cloudCoverPct / 100 : 0;
     // The nowcast's first bucket is what falls in the next quarter hour; the ground should darken while it rains.
     const rain01 = rainIntensity01(nowcastMmHr ?? currentPrecipMm);
-    const state = sunroomStateAt(t, { cloud01, rain01 });
+    const state = sunroomStateAt(t, { cloud01, rain01, accent: accentId ? kioskAccentSwatch(accentId) : null });
     const { light, isDark } = state;
 
     // Direction override: when the feed carries a true azimuth, point the shadow where the sun is while every
@@ -149,7 +151,7 @@ export function KioskSunroomLight() {
     const decls = Object.entries(vars).map(([k, v]) => `  ${k}: ${v};`).join("\n");
     const css = `${STYLE_SELECTOR} {\n  color-scheme: ${isDark ? "dark" : "light"};\n${decls}\n}`;
     return { css, vars, isDark };
-  }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick]);
+  }, [sun, cloudCoverPct, nowcastMmHr, currentPrecipMm, tick, accentId]);
 
   /* The stop cross-fade: runs in a layout effect so the clone is taken before the browser paints the new values. */
   const prevRef = useRef<{ vars: Record<string, string>; isDark: boolean; settled: boolean } | null>(null);

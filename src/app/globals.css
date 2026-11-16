@@ -948,7 +948,7 @@ body {
   --color-accent-dim: var(--sr-accent-dim);
   /* This theme's blue has always equalled its accent; keep them tied so a
      palette move can't silently split them. */
-  --color-blue: var(--sr-accent);
+  --color-blue: var(--sr-blue, var(--sr-accent));
   --color-ok: var(--sr-ok);
   --color-warn: var(--sr-warn);
   --color-bad: var(--sr-bad);

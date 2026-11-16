@@ -123,8 +123,21 @@ export interface SunroomLight {
   warmth: number;
 }
 
+/** What the ramp emits: the stop palette plus `blue`, the ramp's OWN accent for
+ *  this moment. A chosen swatch replaces `accent`/`accentDim` but never `blue`,
+ *  so `--color-blue` (an alias of it) keeps meaning "blue". */
+export interface SunroomRampPalette extends SunroomPalette {
+  blue: string;
+}
+
+/** A swatch's two halves; the ramp uses the one matching the `nearer` palette. */
+export interface SunroomAccentSwatch {
+  light: { accent: string; dim: string };
+  dark: { accent: string; dim: string };
+}
+
 export interface SunroomState {
-  palette: SunroomPalette;
+  palette: SunroomRampPalette;
   light: SunroomLight;
   t: number;
   /** The ground is dark and the ink is light. Consumers must forward this to
@@ -724,7 +737,7 @@ function darkenHex(hex: string, k: number): string {
  * t x cloud x rain cube. On the dark side the cap is far higher, because
  * there darkening the ground INCREASES contrast against light ink.
  */
-function applyWeather(p: SunroomPalette, cloud01: number, rain01: number, isDark: boolean): SunroomPalette {
+function applyWeather<P extends SunroomPalette>(p: P, cloud01: number, rain01: number, isDark: boolean): P {
   const grey = cloud01 * (isDark ? 0.85 : 0.5);
   /* The asymmetry here is severe and it is the honest answer, not a fudge.
      On the DARK side, rain deepening the ground pushes it away from light ink
@@ -776,7 +789,7 @@ function desaturateTriple(rgb: string, k: number): string {
  */
 export function sunroomStateAt(
   t: number,
-  opts?: { cloud01?: number; elev01?: number; rain01?: number },
+  opts?: { cloud01?: number; elev01?: number; rain01?: number; accent?: SunroomAccentSwatch | null },
 ): SunroomState {
   const pos = wrapT(t);
   const i = Math.floor(pos);
@@ -818,7 +831,11 @@ export function sunroomStateAt(
      untouched and only the exempted transit gets shorter. */
   const kg = crossing ? clamp01((k - 0.5) / 0.12 + 0.5) : k;
 
-  const palette: SunroomPalette = {
+  /* A chosen swatch swaps its half with the ink (same `nearer` vote), so the
+     night crossing changes accent and ink together. Never written inline. */
+  const half = opts?.accent ? (isDark ? opts.accent.dark : opts.accent.light) : null;
+
+  const palette: SunroomRampPalette = {
     bg: lerpHex(a.palette.bg, b.palette.bg, kg),
     panel: lerpHex(a.palette.panel, b.palette.panel, kg),
     panel2: lerpHex(a.palette.panel2, b.palette.panel2, kg),
@@ -830,8 +847,9 @@ export function sunroomStateAt(
     ink: nearer.palette.ink,
     inkDim: nearer.palette.inkDim,
     inkFaint: nearer.palette.inkFaint,
-    accent: nearer.palette.accent,
-    accentDim: nearer.palette.accentDim,
+    accent: half?.accent ?? nearer.palette.accent,
+    accentDim: half?.dim ?? nearer.palette.accentDim,
+    blue: nearer.palette.accent,
     onAccent: nearer.palette.onAccent,
     edge: nearer.palette.edge,
     focus: nearer.palette.focus,
