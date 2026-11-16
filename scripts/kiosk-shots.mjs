@@ -2277,6 +2277,82 @@ for (const n of CNS) {
 }
 if (CL.failed.length) process.exitCode = 1;
 
+// ---- typeface coverage (type PR 1, spec checks 1 and 2): Sunroom follows the per-device Typeface selection ----
+// "kiosk-fonts" is {[theme]: {sans?, mono?}} (src/lib/kiosk-fonts.ts). Lexend and Chivo Mono stand in for the spec's Lexend and Roboto Mono (Roboto Mono joins the catalog in PR 2).
+const TF = { failed: [], states: {} };
+results.typeface = TF;
+const TF_OVERRIDE = `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: { sans: "lexend", mono: "chivo-mono" } }))})`;
+const TF_SANS = "button.sr-chip-sm, [data-sr-title], [data-sr-face] p, .microlabel, .sr-pin-msg, .sr-word, [data-rain-zone=clock] > [data-sr-live]"; // selector list, each tested only in the state that renders it
+const TF_MONO = "button.sr-btn, button.sr-btn-nudge, [data-sr-face] .font-mono, [data-sr-num], [data-rain-zone=clock] > [data-sr-live]"; // [data-sr-num]: weather line, climate value and target, time chip, scene status
+/** First computed family of every match of each selector, against the first family the slot's `--font-t-*` var resolves to. */
+const tfRead = (page, probes) => page.evaluate(async (list) => {
+  await document.fonts.ready;
+  const scope = document.querySelector('[data-kiosk-theme="sunroom"]');
+  const first = (v) => v.split(",")[0].trim();
+  const want = (cssVar) => { const d = document.createElement("div"); d.style.fontFamily = `var(${cssVar})`; scope.appendChild(d); const f = first(getComputedStyle(d).fontFamily); d.remove(); return f; };
+  return list.map(({ sel, cssVar, alsoVar }) => {
+    const els = [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length);
+    const expected = want(cssVar);
+    // paint check: the name matching is not enough. The first family must have a loaded @font-face (a named but unloaded family, or a system-only name, paints in a fallback).
+    const bare = (f) => f.replace(/^["']|["']$/g, "");
+    const unpainted = new Set();
+    for (const e of els) {
+      const cs = getComputedStyle(e), fam = first(cs.fontFamily);
+      const loaded = [...document.fonts].some((f) => bare(f.family) === bare(fam) && f.status === "loaded") && document.fonts.check(`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${fam}`);
+      if (!loaded) unpainted.add(`${cs.fontWeight} ${fam}`);
+    }
+    return { sel, expected, also: alsoVar ? want(alsoVar) : null, found: els.length, got: [...new Set(els.map((e) => first(getComputedStyle(e).fontFamily)))], unpainted: [...unpainted] };
+  });
+}, probes);
+/** One state: record every selector that renders; a selector that renders with any other family fails the check. */
+function tfRecord(check, state, rows, need) {
+  TF.states[`${check}:${state}`] = rows;
+  for (const n of need) if (!rows.some((r) => r.sel === n && r.found)) TF.failed.push(`${check} ${state}: ${n} not rendered`);
+  for (const r of rows) if (r.found && r.got.some((g) => g !== r.expected && g !== r.also)) TF.failed.push(`${check} ${state}: ${r.sel} is ${r.got.join("|")}, want ${r.expected}${r.also ? ` or ${r.also}` : ""}`);
+  for (const r of rows) if (r.found && r.unpainted.length) TF.failed.push(`${check} ${state}: ${r.sel} not painted in its face (no loaded @font-face: ${r.unpainted.join("|")})`);
+  // .microlabel sits on text and numeral elements by design: either face passes, but one must be the text face
+  for (const r of rows) if (r.also && r.found && !r.got.includes(r.expected)) TF.failed.push(`${check} ${state}: ${r.sel} has no ${r.expected} element`);
+}
+for (const [check, init, sansVar, monoVar, tag] of [
+  ["check1", TF_OVERRIDE, "--font-t-lexend", "--font-t-chivo-mono", "override"],
+  ["check2", null, "--font-t-sunroom-sans", "--font-t-sunroom-mono", "default"],
+]) {
+  const probes = [...TF_SANS.split(", ").map((sel) => ({ sel, cssVar: sel.includes("clock") ? monoVar : sansVar, alsoVar: sel === ".microlabel" ? monoVar : null })), ...TF_MONO.split(", ").filter((s) => !s.includes("clock")).map((sel) => ({ sel, cssVar: monoVar }))];
+  const shoot = (page, name) => (tag === "override" ? page.screenshot({ path: join(OUT_DIR, `typeface-sunroom-${name}-1024x768.png`) }) : null);
+  await guarded(`typeface ${check} glance`, async () => {
+    const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: init });
+    tfRecord(check, "glance", await tfRead(page, probes), ["[data-rain-zone=clock] > [data-sr-live]"]);
+    await shoot(page, "glance");
+    await context.close();
+  });
+  await guarded(`typeface ${check} standard`, async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: init });
+    await seen(page, ".sr-climate", 15_000);
+    const stdRows = await tfRead(page, probes);
+    tfRecord(check, "standard", stdRows, ["button.sr-btn-nudge"]);
+    if ((stdRows.find((r) => r.sel === "[data-sr-num]")?.found ?? 0) < 4) TF.failed.push(`${check} standard: fewer than 4 [data-sr-num] numerals rendered`);
+    await shoot(page, "standard");
+    // a sheet: the climate modal's title, copy, microlabels and numerals
+    const modal = OVERLAY_STATES.find((s) => s.key === "climateModal");
+    const r = await withOverlay(page, modal, async () => {
+      tfRecord(check, "sheet", await tfRead(page, probes), ["[data-sr-title]", ".microlabel"]);
+      await shoot(page, "sheet");
+      return {};
+    });
+    if (r.missing) TF.failed.push(`${check} sheet: ${r.missing}`);
+    // the PIN pad: the message line (digits follow the controls row)
+    const pin = OVERLAY_STATES.find((s) => s.key === "pin");
+    const p = await withOverlay(page, pin, async () => {
+      tfRecord(check, "pin", await tfRead(page, probes), [".sr-pin-msg"]);
+      await shoot(page, "pin");
+      return {};
+    });
+    if (p.missing) TF.failed.push(`${check} pin: ${p.missing}`);
+    await context.close();
+  });
+}
+if (TF.failed.length) process.exitCode = 1;
+
 results.n16ConsoleErrors = consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;

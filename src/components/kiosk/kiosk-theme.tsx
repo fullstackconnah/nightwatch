@@ -58,7 +58,7 @@ import { OverlayHostProvider } from "@/components/kiosk/kiosk-overlay-host";
 // object (no spread, no variables) or SWC rejects it with "Unexpected spread".
 
 // Original trio
-const fTerminal = IBM_Plex_Mono({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500"], variable: "--font-t-terminal" });
+const fTerminal = IBM_Plex_Mono({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500", "600", "700"], variable: "--font-t-terminal" });
 const fJournal = Newsreader({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-journal" });
 const fLounge = Fraunces({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-lounge" });
 // Light & calm
@@ -81,7 +81,7 @@ const fCinderMono = Space_Mono({ subsets: ["latin"], display: "swap", preload: f
 // Dark & expressive
 const fAuroraSans = Sora({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-aurora-sans" });
 const fAuroraMono = JetBrains_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-aurora-mono" });
-const fChromeSans = Chakra_Petch({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500"], variable: "--font-t-chrome-sans" });
+const fChromeSans = Chakra_Petch({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "500", "600", "700"], variable: "--font-t-chrome-sans" });
 const fNeonMono = Orbitron({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-neon-mono" });
 const fPixelMono = Silkscreen({ subsets: ["latin"], display: "swap", preload: false, weight: ["400", "700"], variable: "--font-t-pixel-mono" });
 // Picker-only additions — not the default face for any theme, just extra

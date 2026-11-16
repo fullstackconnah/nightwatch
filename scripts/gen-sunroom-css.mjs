@@ -34,8 +34,8 @@ try {
   const decl = (name, value, token) => { lines.push(`  ${name}: ${value};`); if (token) names_.push(name); };
 
   lines.push("  /* type */");
-  decl("--sr-font-sans", `var(--font-t-sunroom-sans), ${tokens.type.families.sans}`, true);
-  decl("--sr-font-mono", `var(--font-t-sunroom-mono), ${tokens.type.families.mono}`, true);
+  decl("--sr-font-sans", `var(--font-sans), ${tokens.type.families.sans}`, true);
+  decl("--sr-font-mono", `var(--font-mono), ${tokens.type.families.mono}`, true);
   for (const g of tokens.type.groups) for (const s of g.styles) {
     const fam = g.family === "mono" ? "mono" : "sans";
     decl(`--sr-type-${s.name}`, `${s.fontWeight} ${s.fontSize}/${s.lineHeight} var(--sr-font-${fam})`, true);
