@@ -21,6 +21,7 @@
    without converting the kiosk layout to a client boundary wholesale. */
 
 import { useEffect, useState } from "react";
+import { KIOSK_THEME_GROUND, kioskAccentSwatch, useKioskAccent } from "@/lib/kiosk-accent";
 import { DEFAULT_THEME_FONTS, kioskFontValue, useKioskFonts } from "@/lib/kiosk-fonts";
 import {
   Archivo,
@@ -278,6 +279,7 @@ export function useKioskTheme(): KioskTheme {
 export function KioskThemeScope({ children }: { children: React.ReactNode }) {
   const theme = useKioskTheme();
   const fonts = useKioskFonts(theme);
+  const accentId = useKioskAccent(theme);
   const defaultFonts = DEFAULT_THEME_FONTS[theme];
   // Only emit an override when it actually differs from the theme's own
   // default, so a device with no stored personalization renders with the
@@ -315,10 +317,20 @@ export function KioskThemeScope({ children }: { children: React.ReactNode }) {
     // custom property alone is enough to reach every numeral/mono element.
     style["--font-mono"] = monoOverride;
   }
+  // Accent: Theme default writes nothing. Sunroom never takes an inline accent —
+  // the solar ramp owns --sr-accent, and an inline value would pin a daytime
+  // colour through the night stop (kiosk-sunroom.tsx passes the swatch in).
+  if (accentId && theme !== "sunroom") {
+    const swatch = kioskAccentSwatch(accentId);
+    const half = swatch[KIOSK_THEME_GROUND[theme] === "light" ? "light" : "dark"];
+    style["--color-accent"] = half.accent;
+    style["--color-accent-dim"] = half.dim;
+  }
 
   return (
     <div
       data-kiosk-theme={theme === "default" ? undefined : theme}
+      data-kiosk-accent={accentId ?? "default"}
       // kiosk-dense: the wall-tablet type/density scope (globals.css, end of
       // file). It belongs on this div rather than page.tsx's inner one so it
       // also reaches the night overlay and the PIN pad, which render outside

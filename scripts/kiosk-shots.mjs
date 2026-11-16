@@ -701,6 +701,260 @@ async function fullViewBoard() {
   });
   if (FV.failed.length) process.exitCode = 1;
 }
+// ---- kiosk accent picker (accent PR 3, spec section 5 checks 4, 5, 9, 10, 11, 12 and the state marks) ----
+// Run alone: SHOTS_ONLY=accent BASE_URL=... OUT_DIR=... node scripts/kiosk-shots.mjs (ONLY=accent works too). Keys: results.accent.{checks.<key> {ok,...}, failed[]}; every false lands in failed and exits 1.
+// Shots appearance-accent-<state>.png (the Appearance panel, an element crop) and glance-sunroom-<day|night>-orchid.png. Pinned like the typeface section: ?theme=sunroom&wx=overcast&wxsun=day, night = STOP_URL with the night weather mock.
+// No capture helper (cropElement, layoutCheck) exists in this repo, so the crops are plain locator screenshots.
+const AC = (results.accent = { checks: {}, failed: [] });
+const acRec = (key, ok, detail = {}) => { AC.checks[key] = { ok, ...detail }; if (!ok) AC.failed.push(`${key} ${JSON.stringify(detail)}`); };
+const AC_SRC = readFileSync(new URL("../src/lib/kiosk-accent.ts", import.meta.url), "utf8");
+/** A swatch's light and dark accent hex, read from the shipped table so a tuned hex needs no edit here. */
+const acHex = (id) => {
+  const m = new RegExp(`id: "${id}", label: "\\w+", light: \\{ accent: "(#\\w+)", dim: "#\\w+" \\}, dark: \\{ accent: "(#\\w+)"`).exec(AC_SRC);
+  return { light: m[1].toLowerCase(), dark: m[2].toLowerCase() };
+};
+const AC_IDS = ["default", "harbour", "lagoon", "fern", "iris", "orchid", "clay"];
+const AC_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
+const acStore = (store) => (store ? `localStorage.setItem("kiosk-accent", ${JSON.stringify(JSON.stringify(store))})` : null);
+/** Everything the checks read from the open Appearance panel, in one round trip. */
+const AC_READ = () => {
+  const scope = document.querySelector("[data-kiosk-accent]");
+  const cs = getComputedStyle(scope);
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;visibility:hidden;height:var(--sr-hit-min)";
+  scope.appendChild(probe);
+  const hitMin = probe.getBoundingClientRect().height;
+  probe.remove();
+  const panel = document.querySelector("#kiosk-tabpanel-appearance");
+  const chips = [...panel.querySelectorAll("[data-accent-chip]")];
+  const disc = (b) => { const r = b?.querySelector(":scope > span[aria-hidden].rounded-full")?.getBoundingClientRect(); return r ? [r.width, r.height] : null; };
+  const themeChip = [...panel.querySelectorAll("button[aria-pressed]:not([data-accent-chip])")].find((b) => b.querySelector(":scope > span[aria-hidden].rounded-full"));
+  return {
+    theme: scope.getAttribute("data-kiosk-theme") ?? "default",
+    dataAccent: scope.getAttribute("data-kiosk-accent"),
+    ids: chips.map((c) => c.getAttribute("data-accent-chip")),
+    pressed: chips.filter((c) => c.getAttribute("aria-pressed") === "true").map((c) => c.getAttribute("data-accent-chip")),
+    heights: chips.map((c) => c.getBoundingClientRect().height),
+    tops: chips.map((c) => Math.round(c.getBoundingClientRect().top)),
+    hitMin,
+    accentDisc: disc(chips[0]),
+    themeDisc: disc(themeChip),
+    colorAccent: cs.getPropertyValue("--color-accent").trim().toLowerCase(),
+    srAccent: cs.getPropertyValue("--sr-accent").trim().toLowerCase(),
+    srBlue: cs.getPropertyValue("--sr-blue").trim().toLowerCase(),
+    colorBlue: cs.getPropertyValue("--color-blue").trim().toLowerCase(),
+    inlineAccent: scope.style.getPropertyValue("--color-accent") || scope.style.getPropertyValue("--sr-accent") || "",
+    docW: document.documentElement.scrollWidth,
+    innerW: innerWidth,
+    hint: [...panel.querySelectorAll("p")].map((p) => p.textContent.trim()).find((t) => t.startsWith("Applies to")) ?? null,
+  };
+};
+/** Open the Appearance tab the way tpOpenTypeface opens Typeface: the admin PIN pad, then the tab that is already first. */
+async function acOpen({ viewport = SIZES[0].viewport, night = false, reduced = false, store = null } = {}) {
+  const v = await visit(night ? `${STOP_URL}&layout=standard` : CONTROLS_URL, { viewport, weather: weatherFor(night ? "night" : "midday"), fixedTime: true, ha: true, reduced, initScript: acStore(store) });
+  const { page } = v;
+  await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? route.fulfill({ json: { ok: true, expiresAt: Date.parse(PINNED_ISO) + 120_000 } }) : route.fallback()));
+  await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: { elevated: true, expiresAt: Date.parse(PINNED_ISO) + 120_000 } }));
+  const admin = page.getByRole("button", { name: /^Admin/ }).first();
+  if (!(await admin.count())) throw new Error("Admin button not found");
+  await admin.click();
+  await seen(page, "[role=dialog]", 5000);
+  for (const d of "0000") await page.getByRole("button", { name: `digit ${d}` }).click();
+  await page.waitForTimeout(1500);
+  if (!(await seen(page, "#kiosk-tabpanel-appearance [data-accent-chip]", 5000))) throw new Error("accent chips not found");
+  await page.waitForTimeout(500);
+  return v;
+}
+/** Shoot the Accent group (chips + hint) alone: scroll it to mid-viewport, check no chip or the hint touches the fixed dock or the sticky hero (`accent-clear-<name>`), clip to its box padded 16 px. */
+const acShot = async (page, name) => {
+  const group = page.locator('[data-accent-chip="default"]').locator("xpath=../..");
+  await group.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(250);
+  const m = await group.evaluate((el) => {
+    const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const chrome = [...document.querySelectorAll('[data-rain-zone="dock"], .kiosk-hdr-grid')].filter((e) => ["fixed", "sticky"].includes(getComputedStyle(e).position)).map(r);
+    const mine = [...el.querySelectorAll("[data-accent-chip]"), ...[...el.querySelectorAll("p")].filter((p) => p.textContent.startsWith("Applies to"))].map(r);
+    return { box: r(el), covered: mine.some((a) => chrome.some((c) => hit(a, c))), vw: innerWidth, vh: innerHeight };
+  });
+  acRec(`accent-clear-${name}`, !m.covered, { covered: m.covered });
+  const x = Math.max(0, m.box.x - 16), y = Math.max(0, m.box.y - 16);
+  await page.screenshot({ path: join(OUT_DIR, `appearance-accent-${name}.png`), clip: { x, y, width: Math.min(m.vw - x, m.box.w + 32), height: Math.min(m.vh - y, m.box.h + 32) } });
+};
+const acPick = async (page, id) => { await page.locator(`[data-accent-chip="${id}"]`).click(); await page.waitForTimeout(500); };
+/** Exactly one pressed chip, matching the scope's mark. */
+const acMarks = (label, d, wantId) => acRec(`marks ${label}`, d.pressed.length === 1 && d.pressed[0] === wantId && d.dataAccent === wantId, { pressed: d.pressed, dataAccent: d.dataAccent, wantId });
+/** Tab from the last theme chip through the seven accent chips; `kind` "ring" reads the Tailwind ring (box-shadow) against --color-accent, "sunroom" reads the outline against --sr-focus. */
+async function acTab(page, kind) {
+  await page.locator("#kiosk-tabpanel-appearance button[aria-pressed]:not([data-accent-chip])").last().focus();
+  const order = [];
+  const marks = [];
+  const tri = (s) => (s.match(/[\d.]+/g) ?? []).slice(0, 3).map((n) => Math.round(Number(n))).join(",");
+  for (let i = 0; i < AC_IDS.length; i++) {
+    await page.keyboard.press("Tab");
+    const f = await page.evaluate((k) => {
+      const a = document.activeElement;
+      const probe = document.createElement("div");
+      probe.style.color = k === "ring" ? "var(--color-accent)" : "var(--sr-focus)";
+      document.querySelector("[data-kiosk-accent]").appendChild(probe);
+      const want = getComputedStyle(probe).color;
+      probe.remove();
+      const cs = getComputedStyle(a);
+      return { id: a.getAttribute("data-accent-chip"), want, shadow: cs.boxShadow, outline: cs.outlineColor, outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth };
+    }, kind);
+    order.push(f.id);
+    const rings = f.shadow.match(/rgba?\([^)]*\)/g) ?? [];
+    const ok = kind === "ring" ? rings.some((r) => tri(r) === tri(f.want)) : f.outlineStyle === "solid" && tri(f.outline) === tri(f.want);
+    marks.push({ id: f.id, ok, want: f.want, got: kind === "ring" ? rings : f.outline });
+  }
+  return { order, marks };
+}
+async function accentShots() {
+  const run = (name, fn) => guarded(`accent ${name}`, async () => { try { await fn(); } catch (e) { AC.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+  const orchid = acHex("orchid");
+
+  // Sunroom by day: default pressed, checks 4 and 5, Orchid, check 12, check 10 (keyboard), then back to Theme default; then Folio and Aurora with Orchid
+  await run("day", async () => {
+    const { context, page } = await acOpen();
+    const base = await page.evaluate(AC_READ);
+    acRec("order", JSON.stringify(base.ids) === JSON.stringify(AC_IDS), { ids: base.ids });
+    acRec("hint sunroom", base.hint === "Applies to Sunroom only.", { hint: base.hint });
+    acRec("check4 sunroom", Math.min(...base.heights) >= 44 && Math.min(...base.heights) >= base.hitMin, { shortest: Math.min(...base.heights), hitMin: base.hitMin });
+    acRec("check5", !!base.accentDisc && !!base.themeDisc && base.accentDisc.every((n, i) => Math.abs(n - base.themeDisc[i]) <= 0.5 && Math.abs(n - 20) <= 0.5), { accentDisc: base.accentDisc, themeDisc: base.themeDisc });
+    acMarks("sunroom default", base, "default");
+    acRec("default writes no inline accent", base.inlineAccent === "", { inline: base.inlineAccent });
+    await acShot(page, "default-pressed");
+
+    await acPick(page, "orchid");
+    const picked = await page.evaluate(AC_READ);
+    acMarks("sunroom day orchid", picked, "orchid");
+    acRec("sunroom day orchid hex", picked.srAccent === orchid.light, { got: picked.srAccent, want: orchid.light });
+    acRec("sunroom never inline", picked.inlineAccent === "", { inline: picked.inlineAccent });
+    acRec("check12 live", picked.colorBlue !== orchid.light && picked.colorBlue === picked.srBlue && picked.srBlue === base.srAccent, { colorBlue: picked.colorBlue, srBlue: picked.srBlue, orchid: orchid.light, rampAccent: base.srAccent });
+    await acShot(page, "sunroom-day-orchid");
+
+    // check 10 on Sunroom: Tab order, and the focus mark is the ramp's own outline (--sr-focus, controls.css), which a swatch never touches
+    const sr = await acTab(page, "sunroom");
+    acRec("check10 order sunroom", JSON.stringify(sr.order) === JSON.stringify(AC_IDS), { order: sr.order });
+    acRec("check10 sunroom outline is --sr-focus", sr.marks.every((m) => m.ok), { marks: sr.marks });
+    await acShot(page, "focus-sunroom");
+
+    await acPick(page, "default");
+    const back = await page.evaluate(AC_READ);
+    acMarks("sunroom back to default", back, "default");
+    acRec("sunroom default restores the ramp accent", back.srAccent === base.srAccent, { got: back.srAccent, want: base.srAccent });
+
+    for (const [label, name, half] of [["Folio", "folio", "light"], ["Aurora", "aurora", "dark"]]) {
+      await page.locator("#kiosk-tabpanel-appearance button[aria-pressed]:not([data-accent-chip])", { hasText: label }).first().click();
+      await page.waitForTimeout(600);
+      const before = await page.evaluate(AC_READ);
+      await acPick(page, "orchid");
+      const after = await page.evaluate(AC_READ);
+      acMarks(`${name} orchid`, after, "orchid");
+      acRec(`${name} orchid hex`, after.theme === name && after.colorAccent === orchid[half], { theme: after.theme, got: after.colorAccent, want: orchid[half] });
+      acRec(`${name} hint`, after.hint === `Applies to ${label === "Aurora" ? "Aurora" : label} only.`, { hint: after.hint });
+      acRec(`check4 ${name}`, Math.min(...after.heights) >= 44, { shortest: Math.min(...after.heights) });
+      await acShot(page, `${name}-orchid`);
+      if (name === "folio") {
+        // check 10 where the chips use focus-visible:ring-accent: the ring is the chosen swatch's own accent
+        const t = await acTab(page, "ring");
+        acRec("check10 order folio", JSON.stringify(t.order) === JSON.stringify(AC_IDS), { order: t.order });
+        acRec("check10 ring colour folio", t.marks.every((m) => m.ok), { marks: t.marks });
+        await acShot(page, "focus");
+      }
+      await acPick(page, "default");
+      const reset = await page.evaluate(AC_READ);
+      acRec(`${name} default restores the theme accent`, reset.colorAccent === before.colorAccent && reset.inlineAccent === "", { got: reset.colorAccent, want: before.colorAccent, inline: reset.inlineAccent });
+    }
+    // Chrome Panel: Lagoon and Fern, each asserted pressed and carried on the theme root before the shot
+    await page.locator("#kiosk-tabpanel-appearance button[aria-pressed]:not([data-accent-chip])", { hasText: "Chrome" }).first().click();
+    await page.waitForTimeout(600);
+    for (const id of ["lagoon", "fern"]) {
+      await acPick(page, id);
+      const d = await page.evaluate(AC_READ);
+      acMarks(`chrome ${id}`, d, id);
+      await acShot(page, `chrome-${id}`);
+    }
+    await acPick(page, "default");
+    await context.close();
+  });
+
+  // Sunroom at night: the dark half, with the ink
+  await run("night", async () => {
+    const { context, page } = await acOpen({ night: true });
+    await acPick(page, "orchid");
+    const d = await page.evaluate(AC_READ);
+    acMarks("sunroom night orchid", d, "orchid");
+    acRec("sunroom night orchid hex", d.srAccent === orchid.dark, { got: d.srAccent, want: orchid.dark });
+    acRec("check12 live night", d.colorBlue !== orchid.dark && d.colorBlue === d.srBlue, { colorBlue: d.colorBlue, srBlue: d.srBlue });
+    await acShot(page, "sunroom-night-orchid");
+    await context.close();
+  });
+
+  // 390 px: the chip row wraps and the page does not scroll sideways
+  await run("390", async () => {
+    const { context, page } = await acOpen({ viewport: { width: 390, height: 844 }, store: { sunroom: "orchid" } });
+    const d = await page.evaluate(AC_READ);
+    acRec("check9", new Set(d.tops).size > 1 && d.docW <= d.innerW, { rows: [...new Set(d.tops)], docW: d.docW, innerW: d.innerW });
+    acRec("check4 390", Math.min(...d.heights) >= 44 && Math.min(...d.heights) >= d.hitMin, { shortest: Math.min(...d.heights), hitMin: d.hitMin });
+    await acShot(page, "390");
+    await context.close();
+  });
+
+  // reduced motion: no chip transition names transform, scale or translate (ThemeChip is read alongside as the reference)
+  await run("reduced", async () => {
+    const { context, page } = await acOpen({ reduced: true });
+    const t = await page.evaluate(() => {
+      const panel = document.querySelector("#kiosk-tabpanel-appearance");
+      const prop = (b) => getComputedStyle(b).transitionProperty;
+      const themeChip = [...panel.querySelectorAll("button[aria-pressed]:not([data-accent-chip])")].find((b) => b.querySelector(":scope > span[aria-hidden].rounded-full"));
+      return { accent: prop(panel.querySelector('[data-accent-chip="orchid"]')), theme: prop(themeChip) };
+    });
+    acRec("check11 sunroom", !/transform|scale|translate|rotate|\ball\b/.test(t.accent), t);
+    // off Sunroom the chips use Tailwind's colour transition: still no transform, scale or translate named
+    await page.locator("#kiosk-tabpanel-appearance button[aria-pressed]:not([data-accent-chip])", { hasText: "Folio" }).first().click();
+    await page.waitForTimeout(600);
+    const f = await page.evaluate(() => getComputedStyle(document.querySelector('#kiosk-tabpanel-appearance [data-accent-chip="orchid"]')).transitionProperty);
+    acRec("check11 folio", !/transform|scale|translate|rotate|\ball\b/.test(f), { accent: f });
+    await context.close();
+  });
+
+  // the Glance pane, with Orchid, by day and at night
+  for (const [name, url, stop] of [["day", MAIN_URL, "midday"], ["night", STOP_URL, "night"]]) {
+    await run(`glance ${name}`, async () => {
+      const { context, page } = await visit(url, { viewport: SIZES[0].viewport, weather: weatherFor(stop), fixedTime: true, ha: true, initScript: acStore({ sunroom: "orchid" }) });
+      await page.waitForTimeout(800);
+      const a = await page.evaluate(() => getComputedStyle(document.querySelector('[data-kiosk-theme="sunroom"]')).getPropertyValue("--sr-accent").trim().toLowerCase());
+      acRec(`glance ${name} orchid`, a === orchid[name === "day" ? "light" : "dark"], { got: a });
+      await page.screenshot({ path: join(OUT_DIR, `glance-sunroom-${name}-orchid.png`), fullPage: true });
+      await context.close();
+    });
+  }
+
+  // meaning is not carried by colour: with Fern chosen, an alert still has its icon and its words
+  await run("fern status", async () => {
+    const { context, page } = await visit(MAIN_URL, { viewport: SIZES[0].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: acStore({ sunroom: "fern" }), routes: { "/kiosk/api/attention": AC_ALERT } });
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    await page.getByRole("button", { name: /alert/i }).first().click();
+    await page.waitForTimeout(600);
+    const m = await page.evaluate(() => {
+      const tray = document.querySelector('[role="dialog"][aria-label="Alerts"]');
+      return { tray: !!tray, icon: !!tray?.querySelector('svg[class*="triangle"]'), text: tray?.textContent.includes("Backup is late") ?? false };
+    });
+    acRec("fern status keeps icon and word", m.tray && m.icon && m.text, m);
+    await context.close();
+  });
+  if (AC.failed.length) process.exitCode = 1;
+}
+if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "accent") {
+  await accentShots();
+  results.n16PageErrorMessages = pageErrorMessages;
+  results.n16ForeignRequests = foreign;
+  await browser.close();
+  writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify(results, null, 2));
+  console.log(JSON.stringify(results));
+  process.exit(process.exitCode ?? 0);
+}
 if (process.env.ONLY === "fullview") {
   await fullViewBoard();
   results.n16PageErrorMessages = pageErrorMessages;
@@ -3252,6 +3506,7 @@ await coRun("reduced motion", async () => {
 });
 if (CO.failed.length) process.exitCode = 1;
 
+await accentShots();
 await fullViewBoard();
 results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;

@@ -51,6 +51,13 @@ import {
   type KioskTheme,
 } from "@/components/kiosk/kiosk-theme";
 import {
+  KIOSK_ACCENTS,
+  accentDiscFill,
+  setKioskThemeAccent,
+  useKioskAccent,
+  type KioskAccentId,
+} from "@/lib/kiosk-accent";
+import {
   DEFAULT_THEME_FONTS,
   KIOSK_FONTS,
   clearKioskThemeFonts,
@@ -296,6 +303,43 @@ function ThemeChip({ theme, active }: { theme: KioskTheme; active: boolean }) {
   );
 }
 
+/** One accent choice for the current theme. Copies ThemeChip (classes, disc
+ *  box, aria-pressed, SunCatch). `id` null is Theme default: the disc shows the
+ *  theme's own accent and the label gets "· default" like FontChip. The disc is
+ *  the swatch half for this theme's ground; Sunroom's ground follows the sun, so
+ *  its disc shows both halves, day and night, split on the diagonal. Colour
+ *  transition only (`transition-colors`): Tailwind's bare `transition` also names
+ *  transform, translate and scale, which the reduced-motion check forbids. */
+function AccentChip({ theme, id, active }: { theme: KioskTheme; id: KioskAccentId | null; active: boolean }) {
+  const swatch = KIOSK_ACCENTS.find((s) => s.id === id);
+  const fill = swatch ? accentDiscFill(theme, swatch.id) : KIOSK_THEME_SWATCHES[theme].accent;
+  return (
+    <button
+      type="button"
+      onClick={() => setKioskThemeAccent(theme, id)}
+      onPointerDown={aimCatch}
+      aria-pressed={active}
+      data-accent-chip={id ?? "default"}
+      className={cn(
+        "sr-chip sr-chip-sm",
+        "flex h-11 items-center gap-2 rounded-md border px-3 text-xs outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent",
+        active
+          ? "border-accent bg-accent/10 text-ink ring-1 ring-accent"
+          : "border-line text-ink-dim hover:border-line-bright hover:text-ink",
+      )}
+    >
+      <SunCatch />
+      <span
+        aria-hidden
+        className="h-5 w-5 shrink-0 rounded-full border border-line-bright"
+        style={{ background: fill }}
+      />
+      {swatch ? swatch.label : "Theme"}
+      {!swatch && <span className="text-ink-dim">· default</span>}
+    </button>
+  );
+}
+
 /** A font chip previews itself IN its own face — the same "show the identity
  *  before it's applied" thesis ThemeChip uses a swatch for, except a
  *  typeface's swatch IS its own label rendered in its own font-family. */
@@ -408,6 +452,7 @@ export function KioskAppearance({
   onLayoutChange: (next: KioskLayoutChoice) => void;
 }) {
   const theme = useKioskTheme();
+  const accent = useKioskAccent(theme);
   const [activeTab, setActiveTab] = useState<PanelTabId>("appearance");
 
   return (
@@ -474,6 +519,15 @@ export function KioskAppearance({
                 </div>
               </div>
             ))}
+            <div className="flex flex-col gap-2">
+              <span className="microlabel">accent</span>
+              <div className="flex flex-wrap gap-2">
+                {[null, ...KIOSK_ACCENTS.map((s) => s.id)].map((id) => (
+                  <AccentChip key={id ?? "default"} theme={theme} id={id} active={accent === id} />
+                ))}
+              </div>
+              <p className="text-2xs text-ink-faint">Applies to {KIOSK_THEME_LABELS[theme]} only.</p>
+            </div>
           </div>
         </div>
       )}
