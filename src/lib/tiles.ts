@@ -1,6 +1,6 @@
-import { loadConfig, publicHost } from "@/lib/config";
-import { parseDashboardLabels, resolveIconUrl } from "@/lib/labels";
-import type { ContainerSummary, RuntimeContainer } from "@/lib/docker";
+import { loadConfig, publicHost } from "./config.ts";
+import { parseDashboardLabels, resolveIconUrl } from "./labels.ts";
+import type { ContainerSummary, RuntimeContainer } from "./docker.ts";
 
 /** Zero-config icons for images we recognise (selfh.st slugs). */
 const IMAGE_ICONS: [RegExp, string][] = [
@@ -65,7 +65,7 @@ function inferUrl(c: ContainerSummary): string | null {
 export function buildTiles<T extends ContainerSummary>(
   containers: T[],
   widgetContainers: Set<string>,
-): (T & { tile: Tile })[] {
+): (Omit<T, "labels"> & { tile: Tile })[] {
   const cfg = loadConfig();
   const groupByContainer = new Map<string, string>();
   for (const g of cfg.groups) for (const name of g.containers) groupByContainer.set(name, g.name);
@@ -80,8 +80,10 @@ export function buildTiles<T extends ContainerSummary>(
       null;
     const group =
       groupByContainer.get(c.name) ?? dl.group ?? prettify(c.composeProject);
+    // Docker labels can hold proxy rules and credentials; the browser gets only the derived tile.
+    const { labels: _labels, ...rest } = c;
     return {
-      ...c,
+      ...rest,
       tile: {
         url,
         icon: resolveIconUrl(iconRaw ?? undefined),
