@@ -223,20 +223,11 @@ export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloads
             : "Downloads"
         }
         style={{
-          top: "calc(1rem + env(safe-area-inset-top))",
-          // Sits LEFT of kiosk-alerts.tsx's button (right: 1.25rem, a
-          // content-driven width around its own icon+badge). This component
-          // can't measure that sibling directly, so the offset below is a
-          // deliberately generous estimate — 4.75rem of clearance plus a
-          // 0.75rem gap — sized for its worst realistic case (a
-          // single-digit badge; kiosk-alerts.tsx's own file thesis notes
-          // `entries` is length 0 or 1 today).
-          right: "calc(1.25rem + 4.75rem + 0.75rem + env(safe-area-inset-right))",
           transitionDuration: `${KIOSK_FADE_MS}ms`,
           transitionTimingFunction: KIOSK_EASE_OUT,
         }}
         className={cn(
-          "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-1.5 rounded-tile border border-line px-3 py-2 text-ink-dim outline-none kiosk-press transition-opacity motion-reduce:transition-none hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent",
+          "flex min-h-14 min-w-14 items-center justify-center gap-1.5 rounded-tile border border-line px-3 py-2 text-ink-dim outline-none kiosk-press transition-opacity motion-reduce:transition-none hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent",
           entered ? "opacity-100" : "opacity-0 motion-reduce:opacity-100",
         )}
       >
@@ -336,7 +327,7 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
     if (!node || prefersReducedMotion()) return;
     const anim = node.animate(
       [
-        { opacity: 0, transform: "translateY(-6px)" },
+        { opacity: 0, transform: "translateY(6px)" },
         { opacity: 1, transform: "translateY(0)" },
       ],
       { duration: KIOSK_POP_MS, easing: KIOSK_EASE_OUT },
@@ -366,12 +357,9 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
       }}
       onClick={(e) => e.stopPropagation()}
       onKeyDownCapture={resetAutoClose}
-      style={{
-        top: "calc(1rem + 3.5rem + 0.75rem + env(safe-area-inset-top))",
-        right: "calc(1.25rem + 4.75rem + 0.75rem + env(safe-area-inset-right))",
-      }}
+      data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {stale && <div className="flex justify-end px-2 pb-1"><StaleTag /></div>}
       {items.map((item, i) => (
@@ -503,14 +491,6 @@ export function KioskDownloads() {
   useEffect(() => {
     if (items.length === 0) setTrayOpen(false);
   }, [items.length]);
-
-  // The button is fixed over the header's right end; this flag lets the header keep that corner clear (globals.css).
-  const hasItems = items.length > 0;
-  useEffect(() => {
-    if (!hasItems) return;
-    document.documentElement.setAttribute("data-kiosk-downloads", "");
-    return () => document.documentElement.removeAttribute("data-kiosk-downloads");
-  }, [hasItems]);
 
   return (
     <>

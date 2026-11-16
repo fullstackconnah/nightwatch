@@ -167,8 +167,8 @@ describe("fix round 2: sheet height, DS type scale, climate echo, downloads corn
     assert.match(css, /\[data-sr-dot-word\]\s*\{[^}]*display:\s*inline/);
     assert.match(css, /\[data-sr-overlay="dialog"\] \[data-sr-face\]\s*\{[^}]*padding:\s*var\(--sr-space-6\)/);
   });
-  it("F4: a downloads button keeps the header's right corner clear in every theme", () => {
-    assert.match(read("src/app/globals.css"), /html\[data-kiosk-downloads\] \.kiosk-hdr-grid\s*\{[^}]*padding-right/);
-    assert.match(read("src/components/kiosk/kiosk-downloads.tsx"), /data-kiosk-downloads/);
+  it("F4: nothing is fixed over the header any more, so no downloads reserve narrows the rail", () => {
+    assert.doesNotMatch(read("src/app/globals.css"), /data-kiosk-downloads/);
+    assert.doesNotMatch(read("src/components/kiosk/kiosk-downloads.tsx"), /data-kiosk-downloads/);
   });
 });

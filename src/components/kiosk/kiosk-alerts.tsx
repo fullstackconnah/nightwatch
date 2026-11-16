@@ -507,12 +507,9 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
           ? `${entries.length} alert${entries.length === 1 ? "" : "s"} — worst ${worstSeverity === "bad" ? "critical" : "warning"}`
           : "Alerts"
       }
-      // `fixed` escapes KioskThemeScope's safe-area padding (see
-      // kiosk-glance.tsx's own note on this same constraint) — bake the
-      // inset into this button's own offset rather than an ancestor's.
+      // A flex item of the surface's fixed bottom-right cluster (kiosk-surface.tsx),
+      // which carries the position and the safe-area inset.
       style={{
-        top: "calc(1rem + env(safe-area-inset-top))",
-        right: "calc(1.25rem + env(safe-area-inset-right))",
         transitionDuration: `${KIOSK_FADE_MS}ms`,
         transitionTimingFunction: KIOSK_EASE_OUT,
         ...reducedBadRing,
@@ -521,17 +518,6 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
       // bump below grows the button past 56px via its own padding, which
       // only ever makes the tap target bigger than the contract requires,
       // never smaller or off-center from the visible glyph.
-      //
-      // z-(--z-toast), NOT z-(--z-sticky): this button is a floating overlay
-      // control (fixed, always on top of page content), not a document-flow
-      // element that merely sticks — full view's own `sticky top-0
-      // z-(--z-sticky)` header sits in the SAME top-right region at the same
-      // z-index, and same-index elements fall back to DOM order, which lets
-      // the header win and swallow clicks meant for this button (found live:
-      // Playwright's click retried for 5s reporting "header ... intercepts
-      // pointer events"). Toast tier matches the tray this button opens, so
-      // the button and its own tray always share one stacking tier above
-      // ordinary page chrome.
       className={cn(
         // kiosk-press replaces active:scale-[0.98] (see globals.css's KIOSK
         // MOTION VOCABULARY). `transition-opacity ease-out
@@ -539,7 +525,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
         // `.kiosk-press`'s own transition property list, and this is the
         // transition that drives the button's mount/unmount fade (`entered`
         // below) — it is load-bearing, not a leftover.
-        "fixed z-(--z-toast) flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none kiosk-press transition-opacity motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent",
+        "relative flex min-h-14 min-w-14 items-center justify-center gap-2 rounded-tile border px-4 py-2 outline-none kiosk-press transition-opacity motion-reduce:transition-none focus-visible:ring-1 focus-visible:ring-accent",
         severityClasses,
         entered ? "opacity-100" : "opacity-0 motion-reduce:opacity-100",
       )}
@@ -547,7 +533,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
       <AlertTriangle size={28} aria-hidden />
       {entries.length > 0 && <span className="font-mono text-lg font-bold tabular-nums">{entries.length}</span>}
       {stale && (
-        <span className="absolute right-0 top-full mt-1">
+        <span className="absolute bottom-full right-0 mb-1">
           <StaleTag />
         </span>
       )}
@@ -691,6 +677,19 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
     wasOpenRef.current = open;
   }, [open, anchorRef]);
 
+  // Tap outside closes, so only one corner tray is open at a time. Capture phase:
+  // the downloads button stops its pointerdown from bubbling to the document.
+  useEffect(() => {
+    if (!open) return;
+    function onDocPointerDown(e: PointerEvent) {
+      const target = e.target as Node | null;
+      if (!target || nodeRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      onClose();
+    }
+    document.addEventListener("pointerdown", onDocPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown, true);
+  }, [open, anchorRef, onClose]);
+
   // Slide+fade in, WAAPI so it can be skipped outright under reduced motion
   // rather than authoring a second no-motion CSS path for the same rule.
   useLayoutEffect(() => {
@@ -699,7 +698,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
     if (!node || prefersReducedMotion()) return;
     const anim = node.animate(
       [
-        { opacity: 0, transform: "translateY(-6px)" },
+        { opacity: 0, transform: "translateY(6px)" },
         { opacity: 1, transform: "translateY(0)" },
       ],
       // KIOSK_POP_MS, not a bespoke 220 — this is an overlay entrance (the
@@ -735,12 +734,9 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
       }}
       onPointerDown={resetAutoClose}
       onKeyDownCapture={resetAutoClose}
-      style={{
-        top: "calc(1rem + 3.5rem + 0.75rem + env(safe-area-inset-top))",
-        right: "calc(1.25rem + env(safe-area-inset-right))",
-      }}
+      data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {entries.map((entry, i) => (
         <AlertRow key={entry.id} entry={entry} ref={i === 0 ? firstRowRef : undefined} onDismiss={() => onDismissAlert(entry.id)} />

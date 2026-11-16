@@ -33,8 +33,21 @@ describe("rain zones: floor-band controls", () => {
   it("every widget in glance's below-band stack sits in a zone: glance's zones are plain names, never conditional", () => {
     const text = src("kiosk-glance.tsx");
     assert.deepEqual([...text.matchAll(/data-rain-zone=\{[^}]*\}/g)].map((m) => m[0]), []);
-    // the below-band wrapper, the bottom-left cluster and Admin
-    assert.ok([...text.matchAll(/data-rain-zone="/g)].length >= 3);
+    // the below-band wrapper and the bottom-left cluster; Admin left Glance
+    assert.ok([...text.matchAll(/data-rain-zone="/g)].length >= 2);
+    assert.doesNotMatch(text, /onAdminClick|data-sr-admin/);
+  });
+
+  it("the alert and downloads buttons share one corner zone (slot 3), and neither is fixed on its own", () => {
+    assert.equal(RAIN_ZONE_SLOT.corner, 3);
+    assert.ok(!("admin" in RAIN_ZONE_SLOT));
+    const surface = src("kiosk-surface.tsx");
+    assert.match(surface, /data-rain-zone="corner"/);
+    for (const f of ["kiosk-alerts.tsx", "kiosk-downloads.tsx"]) {
+      const text = src(f);
+      assert.match(text, /data-rain-zone="corner"/, f + " tray");
+      assert.doesNotMatch(text, /top:s*"calc(1rem + env(safe-area-inset-top))"/, f + " button is a flex item now");
+    }
   });
 
   it("the particles file never loops over a literal 4-slot zone count", () => {
@@ -45,7 +58,7 @@ describe("rain zones: floor-band controls", () => {
   it("every zone name used in kiosk source has a mask slot (readRects drops unknown names)", () => {
     const names = new Set<string>();
     for (const f of files) for (const m of src(f).matchAll(/data-rain-zone="([a-z-]+)"/g)) names.add(m[1]);
-    assert.ok(names.has("playing"));
+    assert.ok(names.has("playing") && names.has("corner"));
     assert.deepEqual([...names].filter((n) => !(n in RAIN_ZONE_SLOT)), []);
     assert.equal(Object.keys(RAIN_ZONE_SLOT).length, RAIN_ZONE_COUNT);
   });
