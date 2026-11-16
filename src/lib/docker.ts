@@ -42,6 +42,9 @@ const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
   __dfSwr?: Swr<DfSnapshot>;
   __dockerRootCache?: DockerRootCacheEntry;
+  // Next bundles instrumentation.ts apart from the routes; plain module state would give each bundle its own inspect pass.
+  __inspectCache?: ReturnType<typeof createInspectCache<ContainerRuntime>>;
+  __requestedRuntimeKeys?: { keys: InspectKey[] };
 };
 export const docker: Docker = globalForDocker.__docker ?? createClient();
 globalForDocker.__docker = docker;
@@ -195,7 +198,7 @@ async function inspectRuntime(id: string): Promise<ContainerRuntime> {
  * A container removed between the list and the inspect simply drops out; its
  * caller renders the same "unknown" branch as a never-started one.
  */
-const inspectCache = createInspectCache<ContainerRuntime>(INSPECT_TTL_MS);
+const inspectCache = (globalForDocker.__inspectCache ??= createInspectCache<ContainerRuntime>(INSPECT_TTL_MS));
 
 function collectRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {
   return inspectCache.resolve(keys, inspectRuntime);
@@ -211,20 +214,20 @@ function collectRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRu
  * the only entry point. If a second caller with a genuinely different id set
  * is ever added, give it its own Memo rather than widening this.
  */
-let requestedRuntimeKeys: InspectKey[] = [];
+const requestedRuntimeKeys = (globalForDocker.__requestedRuntimeKeys ??= { keys: [] });
 
 const runtimesMemo = new Memo<Record<string, ContainerRuntime>>({
   key: "docker.runtimes",
   ttlMs: RUNTIME_TTL_MS,
-  load: () => collectRuntimes(requestedRuntimeKeys),
+  load: () => collectRuntimes(requestedRuntimeKeys.keys),
   // Membership, not just age — see collectRuntimes' doc comment. A container
   // created since the last pass would otherwise show no uptime until the TTL
   // expired, which is exactly when someone is watching it.
-  isValid: (cached) => requestedRuntimeKeys.every((k) => k.id in cached),
+  isValid: (cached) => requestedRuntimeKeys.keys.every((k) => k.id in cached),
 });
 
 function containerRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {
-  requestedRuntimeKeys = keys;
+  requestedRuntimeKeys.keys = keys;
   return runtimesMemo.get();
 }
 
