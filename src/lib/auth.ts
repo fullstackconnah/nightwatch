@@ -43,11 +43,11 @@ export async function verifySessionToken(token: string | undefined): Promise<boo
   }
 }
 
-export function sessionCookieOptions() {
+export function sessionCookieOptions(secure: boolean) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: false, // LAN + NPM-terminated TLS; cookie must survive plain-HTTP LAN access
+    secure, // only when the request came over https, so plain-HTTP LAN access keeps working
     path: "/",
     maxAge: SESSION_TTL_SECONDS,
   };
@@ -83,11 +83,11 @@ export async function verifyKioskElevationToken(token: string | undefined): Prom
   }
 }
 
-export function kioskElevationCookieOptions() {
+export function kioskElevationCookieOptions(secure: boolean) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: false,
+    secure,
     path: "/",
     maxAge: KIOSK_ELEVATION_TTL_SECONDS,
   };

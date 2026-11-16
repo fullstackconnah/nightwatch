@@ -6,6 +6,7 @@ import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import { checkedIssuer, sameIssuer } from "@/lib/oidc-issuer";
+import { oidcAllowDecision } from "@/lib/oidc-allow";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -62,6 +63,11 @@ export function oidcConfig(): OidcConfig | null {
     return null;
   }
   return { issuer: checked.issuer, clientId, clientSecret };
+}
+
+/** Whether the verified id token's account may sign in (the allow-list setting; unset admits everyone, with one warning). */
+export function oidcAllowListCheck(payload: JWTPayload): boolean {
+  return oidcAllowDecision(payload, systemSetting("oidcAllowedUsers", "OIDC_ALLOWED_USERS"));
 }
 
 /** Host only (e.g. "homelab.local:9091") for the settings panel — never the
@@ -282,11 +288,11 @@ export const OIDC_FLOW_COOKIE = "hd_oidc_flow";
 // Sign/verify live in auth.ts beside the other token kinds (each carries its own `typ`).
 export { createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims };
 
-export function oidcFlowCookieOptions() {
+export function oidcFlowCookieOptions(secure: boolean) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: false, // matches sessionCookieOptions()/kioskElevationCookieOptions(): LAN + NPM-terminated TLS
+    secure, // same rule as sessionCookieOptions(): only when the request came over https
     path: "/",
     maxAge: OIDC_FLOW_TTL_SECONDS,
   };

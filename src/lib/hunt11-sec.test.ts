@@ -30,6 +30,8 @@ describe("X1 protectedActionRefused", () => {
   it("kiosk plus protected: restart refused, start allowed", () => {
     assert.equal(protectedActionRefused("restart", false, true), true);
     assert.equal(protectedActionRefused("start", false, true), false);
+    assert.equal(protectedActionRefused("stop", false, true), true);
+    assert.equal(protectedActionRefused("pause", false, true), true);
   });
   it("full plus protected: restart allowed, stop refused", () => {
     assert.equal(protectedActionRefused("restart", true, true), false);

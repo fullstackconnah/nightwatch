@@ -216,6 +216,8 @@ export interface AppConfig {
     oidcIssuer?: string;
     oidcClientId?: string;
     oidcClientSecret?: string;
+    /** Accounts allowed to sign in through SSO (sub or verified email, comma or space separated). Never sent to the browser. */
+    oidcAllowedUsers?: string;
     /** bcrypt hash, same shape as env ADMIN_PASSWORD_HASH. Only ever written
      *  by POST /api/settings/password after verifying the CURRENT password
      *  against the effective hash — never editable as a raw field. */

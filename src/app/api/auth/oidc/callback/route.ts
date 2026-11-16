@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { JWTPayload } from "jose";
 import {
   OIDC_FLOW_COOKIE,
   clearedOidcFlowCookieOptions,
   exchangeCode,
+  oidcAllowListCheck,
   oidcConfig,
   verifyIdToken,
   verifyOidcFlowToken,
 } from "@/lib/oidc";
-import { requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
+import { isSecureRequest, requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { SESSION_COOKIE, createSessionToken, isMissingSecretError, sessionCookieOptions } from "@/lib/auth";
 
 
@@ -57,11 +59,13 @@ export async function GET(req: NextRequest) {
     return ssoErrorRedirect(req, "exchange_failed");
   }
 
+  let payload: JWTPayload;
   try {
-    await verifyIdToken(idToken, flow.nonce);
+    payload = await verifyIdToken(idToken, flow.nonce);
   } catch {
     return ssoErrorRedirect(req, "verify_failed");
   }
+  if (!oidcAllowListCheck(payload)) return ssoErrorRedirect(req, "denied");
 
   // Same session helper the password login mints from — no forked session
   // logic, no id_token/access_token ever set on any client-visible cookie.
@@ -75,7 +79,7 @@ export async function GET(req: NextRequest) {
     return ssoErrorRedirect(req, "config");
   }
   const res = NextResponse.redirect(new URL("/", requestOrigin(req)));
-  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+  res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(isSecureRequest(req)));
   res.cookies.set(OIDC_FLOW_COOKIE, "", clearedOidcFlowCookieOptions());
   return res;
 }
