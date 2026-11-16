@@ -110,7 +110,8 @@ test("Scene row stays in the column's flow; the column reserves the band while t
 test("Playing on a short screen: column, header gap and clock take the 700px steps at 800px, keyed on the pill", () => {
   const s = surface();
   assert.match(s, /data-np=\{npOn && !full \? "" : undefined\}/);
-  assert.match(s, /npOn && !full && "\[@media\(max-height:800px\)\]:gap-3"/);
+  assert.match(s, /text-center \[@media\(max-height:800px\)\]:gap-3"/); // column gap: every state, not only playing
+  assert.doesNotMatch(s, /npOn && !full && "\[@media\(max-height:800px\)\]:gap-3"/);
   assert.match(s, /group-data-\[np\]\/col:\[@media\(max-height:800px\)\]:gap-2\.5/);
   assert.match(read("./kiosk-clock.tsx"), /group-data-\[np\]\/col:\[@media\(max-height:800px\)\]:!text-\[4\.5rem\]/);
 });

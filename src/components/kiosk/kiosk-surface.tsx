@@ -619,16 +619,15 @@ export function KioskSurface({
                the gaps alone can't rescue. The two corner buttons are `fixed`,
                so they sit outside this box and stay reachable even when the
                stack inside it is clipped. */
-            /* gap-3 on a short viewport, for the same reason the band and the
-               clock step down there: this gap sits between the header and
-               glance's own stack, and at 800×480 every 12px of rhythm is 12px
-               the column either fits in or clips. */
-            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:700px)]:gap-3",
+            /* gap-3 at 800px high and below, in every state (idle at 1024×768
+               overflowed by 13px): this gap sits between the header and
+               glance's own stack, and every 12px of rhythm is 12px the column
+               either fits in or clips. The header gap and clock steps stay
+               playing-only (they key on the pill). */
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:800px)]:gap-3",
         // The scene row is the stack's last item, so this reserve alone keeps it, and the text above it, clear of the lifted band: its bottom
         // sits 5.25rem above the viewport (1rem column offset + 4.25rem), or 9.5rem at 640px and below (one gap-3 over the 3.5rem cluster row).
         npOn && !full && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-[640px]:pb-[calc(8.5rem+env(safe-area-inset-bottom))]",
-        // The pill takes 68px of a 768px screen and the stack was already full: give back the short-viewport spacing (same steps as 700px; header gap and clock below).
-        npOn && !full && "[@media(max-height:800px)]:gap-3",
         !full && !npOn && "max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))]",
       )}
     >
