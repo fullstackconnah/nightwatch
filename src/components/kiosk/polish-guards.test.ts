@@ -62,6 +62,15 @@ test("Full view dock: Front door, Glance and Admin take Shopping's pane (border,
   assert.match(read("./kiosk-list.tsx"), pane);
 });
 
+test("Full view dock: from lg every dock button has an opaque panel surface (chips scroll under the fixed dock); a running timer keeps its tint as a gradient layer", () => {
+  const css = read("../../app/globals.css");
+  assert.match(css, /@media \(min-width: 1024px\) \{\s*\[data-rain-zone="dock"\] button \{\s*background-color: var\(--color-panel\);/);
+  const t = read("./kiosk-timers.tsx");
+  assert.doesNotMatch(t, /border-warn\/50 bg-warn\/10/);
+  assert.match(t, /border-warn\/50 bg-linear-to-r from-warn\/10 to-warn\/10/);
+  assert.match(t, /border-accent\/40 bg-linear-to-r from-accent\/10 to-accent\/10/);
+});
+
 test("Full view cell header: the heading never wraps and the stale note truncates on the one row", () => {
   const s = read("./kiosk-hub.tsx");
   const h = s.slice(s.indexOf("function SectionHeader"), s.indexOf("const STALE_NOTE"));

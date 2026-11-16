@@ -387,6 +387,9 @@ async function fullViewBoard() {
     await page.waitForTimeout(1500);
     const d = await page.evaluate(FV_READ);
     fvRec("aerogel 1024 dock insets", !!d.dock && d.dock.position === "fixed" && fvNear(d.dock.rect.left, 20, 0.6) && fvNear(d.vh - d.dock.rect.bottom, 16, 0.6) && (d.scrollH <= d.vh || d.scrollers.length === 0), { dockLeft: d.dock?.rect.left, dockBottom: d.dock && d.vh - d.dock.rect.bottom, scrollH: d.scrollH, vh: d.vh, scrollers: d.scrollers });
+    // logged, never failed: Aerogel's panel colour is itself translucent (#ffffff8c), so its dock buttons rely on the blur
+    const ag = await page.evaluate(() => [...document.querySelectorAll('[data-rain-zone="dock"] button')].map((b) => { const s = getComputedStyle(b); const k = document.createElement("canvas"); k.width = k.height = 1; const x = k.getContext("2d", { willReadFrequently: true }); x.fillStyle = s.backgroundColor; x.fillRect(0, 0, 1, 1); return { label: (b.getAttribute("aria-label") ?? "").slice(0, 20), alpha: +(x.getImageData(0, 0, 1, 1).data[3] / 255).toFixed(2), blur: s.backdropFilter }; }));
+    fvRec("aerogel 1024 dock button surface (logged)", true, { btns: ag });
     await page.screenshot({ path: join(OUT_DIR, "fullview-aerogel-1024x768.png"), fullPage: true });
     await context.close();
   });
@@ -427,13 +430,13 @@ async function fullViewBoard() {
         const e = await page.evaluate(() => {
           const dock = document.querySelector('[data-rain-zone="dock"]');
           const chipBottom = Math.max(...[...document.querySelectorAll('button[role="switch"]')].map((b) => b.getBoundingClientRect().bottom));
-          const alpha = (c) => { const m = c.match(/\/\s*([\d.]+%?)\s*\)/) ?? c.match(/rgba\([^)]*,\s*([\d.]+)\s*\)/); return !m ? (c === "transparent" ? 0 : 1) : m[1].endsWith("%") ? parseFloat(m[1]) / 100 : parseFloat(m[1]); };
+          const alpha = (c) => { const k = document.createElement("canvas"); k.width = k.height = 1; const x = k.getContext("2d", { willReadFrequently: true }); x.fillStyle = c; x.fillRect(0, 0, 1, 1); return x.getImageData(0, 0, 1, 1).data[3] / 255; }; // a 1x1 canvas resolves color-mix / oklch output that getComputedStyle may not give as rgba
           const btns = dock ? [...dock.querySelectorAll("button")].map((b) => { const s = getComputedStyle(b); return { label: (b.getAttribute("aria-label") ?? b.textContent ?? "").trim().slice(0, 20), alpha: alpha(s.backgroundColor), border: parseFloat(s.borderTopWidth) }; }) : [];
           return { dockTop: dock ? dock.getBoundingClientRect().top : null, chipBottom, btns, fixed: dock ? getComputedStyle(dock).position === "fixed" : false };
         });
         const shop = e.btns.find((b) => /^Shopping/.test(b.label));
         fvRec("20 entities: end of scroll, last chip above the dock", e.dockTop !== null && e.chipBottom <= e.dockTop, { chipBottom: e.chipBottom, dockTop: e.dockTop });
-        fvRec("20 entities: every dock button has Shopping's pane (alpha, border)", !!shop && e.btns.every((b) => b.alpha >= shop.alpha - 0.001 && b.border === shop.border), { btns: e.btns });
+        fvRec("20 entities: every dock button (the running timer too) is opaque, alpha >= 0.95, border 1", e.btns.length >= 4 && !!e.btns.find((b) => /^Timers/.test(b.label)) && e.btns.every((b) => b.alpha >= 0.95 && b.border === 1), { btns: e.btns });
       } else await fvCrop(page, fvCell(page, "lights"), `lights-${n}`);
       await context.close();
     });
