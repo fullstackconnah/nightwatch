@@ -101,6 +101,13 @@ describe("N6 / N7 generated tokens", () => {
   it("N7: regenerated tokens.css equals the committed file", () => {
     assert.equal(gen.css, read("tokens.css").replace(/\r\n/g, "\n")); // a Windows checkout (autocrlf) has CRLF; the generator writes LF
   });
+  it("type: --sr-font-sans/-mono read the Typeface slots, never the Sunroom faces", () => {
+    for (const slot of ["sans", "mono"]) {
+      const line = gen.css.split("\n").find((l) => l.includes(`--sr-font-${slot}:`)) ?? "";
+      assert.match(line, new RegExp(`--sr-font-${slot}: var\\(--font-${slot}\\), `));
+      assert.ok(!line.includes("--font-t-sunroom"), line);
+    }
+  });
   it("N6: every tokens.json name is emitted by tokens.css or the tick", () => {
     const missing = gen.names.filter((n) => !declared.has(n) && !tick.has(n));
     assert.deepEqual(missing, []);
