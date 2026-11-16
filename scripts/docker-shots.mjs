@@ -7,6 +7,7 @@
  * fold at 12 with "Show all"; write buttons are disabled when Docker is down; /containers redirects with 307.
  *
  *   BASE_URL=http://host:3006 OUT_DIR=shots node scripts/docker-shots.mjs
+ *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=envmask node scripts/docker-shots.mjs   (container env masking, real API, 1280 and 390)
  *
  * Needs Playwright, which is not a dependency of this repo; run it where one is installed.
  */
@@ -18,6 +19,7 @@ import { containersFor, imagesFor, volumesFor, diskFor } from "./fixtures/docker
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
+const ONLY = process.env.SHOTS_ONLY; // "envmask" runs only the container-detail env section, against the real API (no mocks)
 const VIEWPORTS = [
   { name: "1440", viewport: { width: 1440, height: 900 } },
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
@@ -177,7 +179,7 @@ const dupRowIds = (page) =>
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
-  for (const { name, ...opts } of VIEWPORTS) {
+  for (const { name, ...opts } of ONLY ? [] : VIEWPORTS) {
     // The fixed mobile nav and the Next dev badge would cut a full-page shot; hide them for the capture only.
     const shot = async (page, s) => {
       const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
@@ -432,7 +434,7 @@ try {
   }
 
   // R6: the old routes redirect with a 307 to /docker?find=.
-  await guard("C6s", async () => {
+  if (!ONLY) await guard("C6s", async () => {
     const ctx = await browser.newContext();
     open.push(ctx);
     const login = await ctx.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
@@ -442,6 +444,81 @@ try {
       check(`C6s /${k} redirects 307 to /docker?find=${k}`, res.status() === 307 && (res.headers().location ?? "").includes(`/docker?find=${k}`), `${res.status()} ${res.headers().location ?? ""}`);
     }
   });
+
+  // envmask: the container detail page shows env NAMES only; one value (PATH) is revealed at a time. Real API, one real container.
+  if (ONLY === "envmask") {
+    const MASK = "••••••••";
+    // Tap minimum comes from Button size="sm": h-11 (44px) on touch widths, md:h-7 (28px) at pointer widths; min-w-11 on the page.
+    const ENV_VIEWPORTS = [
+      { name: "1280", viewport: { width: 1280, height: 900 }, minH: 28 },
+      { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, minH: 44 },
+    ];
+    await guard("envmask", async () => {
+      const ctx0 = await browser.newContext();
+      open.push(ctx0);
+      const login0 = await ctx0.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
+      if (!login0.ok()) throw new Error(`login failed: HTTP ${login0.status()}`);
+      const list = await (await ctx0.request.get(`${BASE_URL}/api/docker/containers`)).json();
+      let target = null;
+      for (const c of (list.containers ?? []).filter((c) => c.state === "running")) {
+        const d = await (await ctx0.request.get(`${BASE_URL}/api/docker/containers/${c.id}`)).json();
+        if (Array.isArray(d.env) && d.env.includes("PATH")) { target = c.id; break; }
+      }
+      check("envmask: a running container with a PATH variable exists", !!target);
+      if (!target) return;
+
+      for (const { name, minH, ...opts } of ENV_VIEWPORTS) {
+        const { context, page, errors } = await openPage(browser, opts, "none");
+        await page.unroute("**/api/docker/**"); // real API: nothing mocked
+        const details = [];
+        page.on("response", async (r) => {
+          if (new URL(r.url()).pathname === `/api/docker/containers/${target}`) details.push(await r.text().catch(() => ""));
+        });
+        await page.goto(`${BASE_URL}/containers/${target}`, { waitUntil: "domcontentloaded" });
+        const header = page.locator("[data-env-section] > button.microlabel");
+        await header.waitFor({ timeout: 30_000 });
+        const section = page.locator("[data-env-section]");
+        const rows = page.locator("[data-env-row]");
+        const top = () => header.evaluate((el) => Math.round(el.getBoundingClientRect().top + scrollY));
+        const shot = (s) => cropEl(page, section, join(OUT_DIR, `envmask-${s}-${name}.png`), `envmask ${name} ${s}`);
+        const vals = () => rows.evaluateAll((rs) => rs.map((r) => r.querySelector("[data-env-val]").textContent.trim()));
+
+        await shot("collapsed");
+        await header.click();
+        await rows.first().waitFor();
+        await shot("names");
+        const names = await rows.evaluateAll((rs) => rs.map((r) => r.querySelector("[data-env-name]").textContent));
+        check(`envmask ${name} (1): no name row holds "=" and every value area is the 8-bullet mask`, !names.some((n) => n.includes("=")) && (await vals()).every((v) => v === MASK), `${names.length} rows`);
+        const boxes = await rows.evaluateAll((rs) => rs.map((r) => { const b = r.querySelector("button").getBoundingClientRect(); return [b.width, b.height]; }));
+        check(`envmask ${name} (3): every Show control is at least 44 wide and ${minH} tall`, boxes.every(([w, h]) => w >= 43.5 && h >= minH - 0.5), JSON.stringify(boxes.filter(([w, h]) => w < 43.5 || h < minH - 0.5).slice(0, 3)));
+        const topNames = await top();
+
+        await page.getByRole("button", { name: "Show value of PATH", exact: true }).click();
+        await page.waitForFunction(() => [...document.querySelectorAll("[data-env-row]")].some((r) => r.querySelector("[data-env-name]").textContent === "PATH" && r.querySelector("[data-env-val]").textContent.trim() !== "••••••••"), null, { timeout: 15_000 });
+        const shown = (await vals()).filter((v) => v !== MASK);
+        check(`envmask ${name} (2): exactly one row shows a value and it starts with /`, shown.length === 1 && shown[0].startsWith("/"), `${shown.length} shown`);
+        check(`envmask ${name} (5): the Environment header moves 0 px between names and shown`, (await top()) === topNames, `${topNames} -> ${await top()}`);
+        if (name === "390") check("envmask 390 (4): section scrollWidth <= clientWidth", await section.evaluate((el) => el.scrollWidth <= el.clientWidth));
+        await shot("shown");
+
+        await page.getByRole("button", { name: "Hide value of PATH", exact: true }).click();
+        check(`envmask ${name}: hide returns the row to the mask`, (await vals()).every((v) => v === MASK));
+        await shot("hidden-again");
+
+        await page.getByRole("button", { name: "Show value of PATH", exact: true }).click();
+        await page.getByRole("button", { name: "Hide value of PATH", exact: true }).waitFor();
+        await header.click(); // collapse
+        await header.click(); // expand again
+        await rows.first().waitFor();
+        check(`envmask ${name} (6): after collapse and expand zero rows show a value`, (await vals()).every((v) => v === MASK));
+
+        await page.waitForTimeout(500);
+        check(`envmask ${name} (7): the detail response has no "=" inside env`, details.length > 0 && details.every((t) => { try { return JSON.parse(t).env.every((e) => !e.includes("=")); } catch { return false; } }), `${details.length} responses`);
+        check(`envmask ${name}: no page errors`, errors.length === 0, errors.join(" | ").slice(0, 200));
+        await context.close();
+      }
+    });
+  }
 } finally {
   await browser.close();
 }

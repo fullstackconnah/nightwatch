@@ -86,6 +86,61 @@ function useStatsHistory(id: string, running: boolean) {
   return history;
 }
 
+const ENV_MASK = "••••••••"; // fixed length: the mask never hints at the value's length
+
+type EnvCell = { s: "loading" } | { s: "shown"; v: string } | { s: "error" };
+
+// Values are read one at a time and live only in this component's state: collapsing the section unmounts it, which clears them.
+function EnvRows({ id, names }: { id: string; names: string[] }) {
+  const [cells, setCells] = useState<Record<number, EnvCell | undefined>>({});
+  const set = (i: number, c: EnvCell | undefined) => setCells((p) => ({ ...p, [i]: c }));
+
+  async function reveal(i: number) {
+    set(i, { s: "loading" });
+    try {
+      const res = await fetch(`/api/docker/containers/${id}/env?name=${encodeURIComponent(names[i])}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(String(res.status));
+      set(i, { s: "shown", v: (await res.json()).value as string });
+    } catch {
+      set(i, { s: "error" });
+    }
+  }
+
+  return (
+    <div className="font-mono text-xs text-ink-dim space-y-0.5">
+      {names.map((n, i) => {
+        const c = cells[i];
+        const shown = c?.s === "shown";
+        return (
+          <div key={i} data-env-row className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div data-env-name className="break-all">{n}</div>
+              {shown ? (
+                <div data-env-val className={cn("break-all", c.v === "" ? "text-ink-dim" : "text-ink")}>{c.v === "" ? "(empty)" : c.v}</div>
+              ) : (
+                <div className="flex gap-2">
+                  <span data-env-val aria-hidden>{ENV_MASK}</span>
+                  {c?.s === "error" && <span className="text-warn">Couldn&apos;t load</span>}
+                </div>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="min-w-11 shrink-0"
+              disabled={c?.s === "loading"}
+              aria-label={`${shown ? "Hide" : "Show"} value of ${n}`}
+              onClick={() => (shown ? set(i, undefined) : reveal(i))}
+            >
+              {c?.s === "loading" ? "Loading…" : shown ? "Hide" : c?.s === "error" ? "Retry" : "Show"}
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Logs({ id, name }: { id: string; name: string | null }) {
   const [tail, setTail] = useState(200);
   const [paused, setPaused] = useState(false);
@@ -411,23 +466,15 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
             )}
 
             {info && info.env.length > 0 && (
-              <>
+              <div data-env-section>
                 <button
                   className="microlabel mt-4 mb-1.5 cursor-pointer hover:text-accent block"
                   onClick={() => setShowEnv(!showEnv)}
                 >
-                  Environment ({info.env.length}) {showEnv ? "▾" : "▸ click to reveal"}
+                  Environment ({info.env.length}) {showEnv ? "▾" : "▸ show names"}
                 </button>
-                {showEnv && (
-                  <div className="font-mono text-xs text-ink-dim space-y-0.5">
-                    {info.env.map((e, i) => (
-                      <div key={i} className="break-all">
-                        {e}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
+                {showEnv && <EnvRows key={info.env.join("\n")} id={id} names={info.env} />}
+              </div>
             )}
           </CardContent>
         </Card>
