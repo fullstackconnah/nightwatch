@@ -381,8 +381,7 @@ async function fullViewBoard() {
     fvChecks(d, size, "night-1024x768", { crowded: false });
     const srBg = (p) => p.evaluate(() => getComputedStyle(document.querySelector("[data-kiosk-theme]")).getPropertyValue("--sr-bg").trim().toLowerCase());
     const nightBg = await srBg(page);
-    await page.screenshot({ path: join(OUT_DIR, "fullview-night-1024.png"), fullPage: true });
-    await context.close();
+    // fvpolish fix 1 item 6: the day read and the assert come before the night shot, so a wrong pin is recorded before the capture exists.
     const day = await fvVisit(size, { sun: "day", wx: "off" });
     await seen(day.page, "section.panel h2", 15_000);
     await day.page.waitForTimeout(1200);
@@ -392,6 +391,8 @@ async function fullViewBoard() {
     const src = readFileSync(new URL("../src/lib/sunroom-light.ts", import.meta.url), "utf8");
     const stopBg = src.match(/name: "night"[\s\S]*?bg: "(#[0-9a-fA-F]{6})"/)?.[1]?.toLowerCase();
     fvRec("night capture: Sunroom --sr-bg is the night stop's bg and differs from day", !!stopBg && nightBg === stopBg && dayBg !== nightBg, { nightBg, stopBg, dayBg });
+    await page.screenshot({ path: join(OUT_DIR, "fullview-night-1024.png"), fullPage: true });
+    await context.close();
   });
   // aerogel (a glass .panel theme): the dock's left and bottom equal the viewport insets, and the page fits or scrolls without an inner scroller
   await guarded("fullview aerogel", async () => {
@@ -582,8 +583,23 @@ async function fullViewBoard() {
   };
   const fpOpaque = (rows) => rows.length > 0 && rows.every((r) => r.alpha >= 0.95 && !r.masked);
 
+  /** Page-side (fvpolish fix 1 item 2): what could fade the auto-off pill: opacity and mask on the pill and every ancestor up to the Climate cell, its own paint, its lit layer's box, and unfinished animations. */
+  const PILL_READ = () => {
+    const pill = document.querySelector('button[aria-label^="AC auto-off"]');
+    const cell = pill.closest("section.panel");
+    const chain = []; for (let el = pill; el; el = el.parentElement) { chain.push(el); if (el === cell) break; }
+    const mask = (s) => (s.maskImage && s.maskImage !== "none") || (s.webkitMaskImage && s.webkitMaskImage !== "none");
+    const lit = pill.querySelector(".sr-lit"), disc = pill.querySelector(".sr-catch");
+    const b = (el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, left: r.left, top: r.top }; };
+    const ps = getComputedStyle(pill), ds = disc ? getComputedStyle(disc) : null;
+    return {
+      opacities: chain.map((el) => +getComputedStyle(el).opacity), masked: chain.filter((el) => mask(getComputedStyle(el))).length,
+      bgColor: ps.backgroundColor, bgImage: ps.backgroundImage, discBg: ds?.backgroundColor ?? null, discOpacity: ds ? +ds.opacity : null, discTransform: ds?.transform ?? null,
+      pill: b(pill), lit: lit ? b(lit) : null, running: pill.getAnimations({ subtree: true }).filter((a) => a.playState !== "finished").length,
+    };
+  };
   // 1, 2, 3: the auto-off pill gap, the unavailable chip, the forecast days, at 1024 and 390 (the 1024 count is what 390 must equal)
-  let days1024 = null;
+  let days1024 = null, pill1024 = null;
   for (const [key, size] of [["1024", FP_SIZES.w1024], ["390", FP_SIZES.w390]]) {
     await fpGuarded(`fullview polish ${key}`, async () => {
       const { context, page } = await fvVisit(size);
@@ -598,6 +614,14 @@ async function fullViewBoard() {
       if (key === "1024") days1024 = d.days;
       else fvRec("fullview-forecast-390", d.days === days1024 && days1024 > 0 && !!d.rail && d.rail.sw <= d.rail.cw && d.docW <= d.vw, { days: d.days, days1024, rail: d.rail, docW: d.docW, vw: d.vw });
       FV.states[`polish-${key}`] = { pill: d.pill && { top: d.pill.top, bottom: d.pill.bottom }, days: d.days, unavailable: d.unavail.length };
+      // item 2: below 640 px scroll the Climate header to mid-viewport (no fixed chrome over it), let the sun catch settle, then read before the shot
+      if (key === "390") { await page.evaluate(() => document.querySelector('button[aria-label^="AC auto-off"]').scrollIntoView({ block: "center" })); await page.waitForTimeout(1200); }
+      const pr = await page.evaluate(PILL_READ);
+      if (key === "1024") pill1024 = pr;
+      else if (pill1024) {
+        const eq1 = (a, b) => Math.abs(a - b) <= 1;
+        fvRec("fullview-pill-paint-390", pr.opacities.every((o) => o === 1) && pr.masked === 0 && pr.running === 0 && pr.bgColor === pill1024.bgColor && pr.bgImage === pill1024.bgImage && pr.discBg === pill1024.discBg && pr.discOpacity === pill1024.discOpacity && pr.discTransform === pill1024.discTransform && !!pr.lit && eq1(pr.lit.w, pr.pill.w) && eq1(pr.lit.h, pr.pill.h) && eq1(pr.lit.left, pr.pill.left) && eq1(pr.lit.top, pr.pill.top), { at390: pr, at1024: pill1024 });
+      }
       await fvCrop(page, fvCell(page, "climate"), `pill-gap-${key}`);
       await fvCrop(page, fvCell(page, "lights"), `unavailable-${key}`);
       if (key === "390") await fvCrop(page, page.locator('[data-testid="kiosk-forecast-rail"]'), "forecast-390");
@@ -657,14 +681,16 @@ async function fullViewBoard() {
   }
   await fpGuarded("fullview glance timer running", async () => {
     const { context, page } = await fvVisit(FP_SIZES.w1024, { layout: "glance" });
-    await seen(page, '[data-rain-zone="dock"] button', 15_000);
+    // fvpolish fix 1 item 4: Glance has no dock (data-rain-zone="dock" is Full only); its Timers button is the first button of the "tiles" zone (kiosk-glance.tsx), so the mark is read there.
+    const TILES = '[data-rain-zone="tiles"] button';
+    await seen(page, TILES, 15_000);
     await page.waitForTimeout(1500);
-    const running = await page.locator('[data-rain-zone="dock"] button', { hasText: /\d:\d\d/ }).count();
+    const running = await page.locator(TILES, { hasText: /\d:\d\d/ }).count();
     const mode = await page.evaluate(() => document.querySelector("header")?.getAttribute("data-mode"));
-    if (!running || mode !== "glance") throw new Error(`mark missing: running ${running}, header mode ${mode}`);
-    const rows = await page.evaluate(FP_ALPHA, ['[data-rain-zone="dock"] button']);
+    const rows = await page.evaluate(FP_ALPHA, [TILES]);
     const timer = rows.find((r) => /^Timers?/.test(r.label));
-    fvRec("glance-timer-running-1024", fpOpaque(rows) && !!timer && timer.imageLayers.some((a) => a > 0 && a < 1), { timer, buttons: rows.length });
+    if (!running || mode !== "glance" || !timer) throw new Error(`mark missing: running ${running}, header mode ${mode}, timer row ${!!timer}`);
+    fvRec("glance-timer-running-1024", timer.imageLayers.some((a) => a > 0 && a < 1), { timer, buttons: rows.length });
     await page.screenshot({ path: join(OUT_DIR, "glance-timer-running-1024.png") });
     await context.close();
   });

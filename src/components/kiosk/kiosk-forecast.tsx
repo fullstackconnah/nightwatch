@@ -98,7 +98,7 @@ export const SIZE: Record<
     low: "text-xs",
     icon: "h-4 w-4",
     gap: "gap-x-5",
-    // 640 and below the rail wraps, so all five days show; 641-679 keeps its old reveal (the fifth waits for 680).
+    // Below 640 px the rail wraps, so all five days show; 640-679 keeps its old reveal (the fifth waits for 680).
     revealFourth: "flex",
     revealFifth: "flex min-[641px]:max-[679px]:hidden",
   },

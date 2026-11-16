@@ -95,7 +95,7 @@ test("fvpolish 2: an unavailable chip's sub text is never truncated and wraps un
   assert.match(c, /unavailable && "h-auto min-h-11/);
 });
 
-test("fvpolish 3: at 640 and below the forecast wraps and shows every day; above 640 the reveal points are unchanged", () => {
+test("fvpolish 3: below 640 px the forecast wraps and shows every day; from 640 up the reveal points are unchanged", () => {
   const f = read("./kiosk-forecast.tsx");
   const full = f.slice(f.indexOf("  full: {"), f.indexOf("  glance: {"));
   assert.match(full, /revealFourth: "flex"/);
@@ -104,7 +104,7 @@ test("fvpolish 3: at 640 and below the forecast wraps and shows every day; above
   assert.match(f.slice(f.indexOf("  glance: {"), f.indexOf("export function KioskForecastRail")), /revealFourth: "hidden min-\[640px\]:flex"/);
 });
 
-test("fvpolish 1 and 5: the auto-off pill clears the tiles by the tile gap; at 640 it is on its own line and the row reserves the corner cluster", () => {
+test("fvpolish 1 and 5: the auto-off pill clears the tiles by the tile gap; below 640 px it is on its own line and the row reserves the corner cluster", () => {
   const h = read("./kiosk-hub.tsx");
   const head = h.slice(h.indexOf("<SectionHeader icon={Thermometer}") - 400, h.indexOf("<ClimateAutoOffBanner"));
   assert.match(head, / pb-3\.5 [^"]*max-\[640px\]:pb-1 /);
@@ -120,5 +120,12 @@ test("fvpolish 4 and 7: Aurora and Aerogel get an opaque backing under the panel
   const back = css.match(/\[data-kiosk-theme="aurora"\] \[data-rain-zone="dock"\] button,\s*\[data-kiosk-theme="aerogel"\] \[data-rain-zone="dock"\] button \{[^}]*\}/g) ?? [];
   assert.ok(back.some((b) => /linear-gradient\(var\(--tw-gradient-from[\s\S]*var\(--color-panel\)[\s\S]*background-color: var\(--color-bg\)/.test(b)), "dock backing keeps the timer tint gradient above the panel layer");
   assert.ok(css.lastIndexOf('[data-pinned]') < css.indexOf("/* nw motion */"));
+  assert.ok(css.lastIndexOf('[data-rain-zone="dock"] button') < css.indexOf("/* nw motion */"), "every dock rule sits above the motion block");
   assert.match(read("./kiosk-surface.tsx"), /data-pinned=\{heroPinned \|\| undefined\}/);
+});
+
+test("fvpolish fix 1 item 1: an idle dock button keeps its hover background in Aurora and Aerogel (panel-2 over bg, tint stays the top layer)", () => {
+  const css = read("../../app/globals.css");
+  const hover = css.match(/@media \(hover: hover\) \{\s*\[data-kiosk-theme="aurora"\] \[data-rain-zone="dock"\] button:hover,\s*\[data-kiosk-theme="aerogel"\] \[data-rain-zone="dock"\] button:hover \{[^}]*\}/)?.[0] ?? "";
+  assert.match(hover, /linear-gradient\(var\(--tw-gradient-from[\s\S]*linear-gradient\(var\(--color-panel-2\), var\(--color-panel-2\)\)/);
 });

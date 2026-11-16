@@ -628,7 +628,7 @@ const ClimateSection = memo(function ClimateSection({
   return (
     <Cell className={className} riseIndex={2}>
       {/* Row 1 is one line from 641 px. The pill is 44 px in a 24 px row (-my-2.5 = 10 px over each edge): pb-3.5 = 10 + the tile gap (gap-3, 12) - this cell's gap-2 (8), so it clears the tiles by the tile gap.
-          At 640 and below the pill is its own left-aligned line (pb-1 = 12 - 8) and the row keeps the fixed bottom-right cluster's width (two min-w-14 buttons and gap-3) clear on its right. */}
+          Below 640 px the pill is its own left-aligned line (pb-1 = 12 - 8) and the row keeps the fixed bottom-right cluster's width (two min-w-14 buttons and gap-3) clear on its right. */}
       <div className="flex items-center justify-between gap-2 pb-3.5 max-[640px]:flex-col max-[640px]:items-start max-[640px]:pb-1 max-[640px]:pr-[calc(2*3.5rem+0.75rem)]">
         <SectionHeader icon={Thermometer} label="Climate" stale={stale} />
         <ClimateAutoOffPill autoOff={autoOff} />
