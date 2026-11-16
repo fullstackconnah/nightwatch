@@ -50,6 +50,13 @@ describe("rain zones: floor-band controls", () => {
     }
   });
 
+  it("the corner cluster sits under every sheet and its trays clear it by the 12px house gap", () => {
+    assert.match(src("kiosk-surface.tsx"), /data-rain-zone="corner"\s+className="fixed z-\(--z-sticky\)/);
+    for (const f of ["kiosk-alerts.tsx", "kiosk-downloads.tsx"]) {
+      assert.match(src(f), /bottom-\[calc\(5\.5rem\+env.*max-\[640px\]:bottom-\[calc\(9\.75rem\+/, f + " tray offset");
+    }
+  });
+
   it("the particles file never loops over a literal 4-slot zone count", () => {
     const text = readFileSync(join(DIR, "kiosk-sunroom-particles.tsx"), "utf8");
     assert.deepEqual([...text.matchAll(/i < (?:16|4).*/g)].map((m) => m[0]), []);

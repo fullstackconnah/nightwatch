@@ -359,7 +359,7 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
       onKeyDownCapture={resetAutoClose}
       data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) bottom-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {stale && <div className="flex justify-end px-2 pb-1"><StaleTag /></div>}
       {items.map((item, i) => (

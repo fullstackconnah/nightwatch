@@ -608,7 +608,7 @@ export function KioskSurface({
                clock step down there: this gap sits between the header and
                glance's own stack, and at 800×480 every 12px of rhythm is 12px
                the column either fits in or clips. */
-            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:700px)]:gap-3",
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))] [@media(max-height:700px)]:gap-3",
       )}
     >
       {/* The rain radar, opened from the forecast rail's Today cell in either
@@ -850,13 +850,16 @@ export function KioskSurface({
 
       {/* The alert and downloads buttons: one fixed bottom-right cluster, Glance
           and Standard alike, so a lone downloads button sits in the corner and
-          nothing covers the header's weather. Placed last so the sheets (equal
-          z) paint over it. Both buttons render null when idle, leaving a
-          zero-size box that the rain mask skips. Below 641px it lifts one row
-          to clear the now-playing pill and the bottom-left cluster. */}
+          nothing covers the header's weather. z-(--z-sticky) puts the wrapper
+          and both trays (one stacking context) above page content but under
+          every scrim and sheet (--z-modal-backdrop and up, the PIN pad's z-50),
+          and, placed last, over the equal-z header. Both buttons render null
+          when idle, leaving a zero-size box that the rain mask skips. Below
+          641px it lifts one row to clear the now-playing pill and the
+          bottom-left cluster. */}
       <div
         data-rain-zone="corner"
-        className="fixed z-(--z-toast) flex items-end gap-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+        className="fixed z-(--z-sticky) flex items-end gap-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
       >
         <KioskDownloads />
         <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />

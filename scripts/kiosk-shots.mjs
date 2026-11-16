@@ -2315,7 +2315,9 @@ for (const size of CO_SIZES) {
       coRec(`${k} text clear`, !d.texts.some((t) => coHit(d.wrap, t)), { hits: d.texts.filter((t) => coHit(d.wrap, t)).map((t) => t.t) });
       if (d.tiles.length) coRec(`${k} bottom-left cluster`, Math.max(...d.tiles.map((t) => t.right)) + 11 <= d.wrap.left, { tilesRight: d.tiles.map((t) => t.right), left: d.wrap.left });
       if (d.playing.length) coRec(`${k} pill`, d.playing[0].right + 11 <= d.wrap.left || d.wrap.bottom + 11 <= d.playing[0].top || d.playing[0].bottom + 11 <= d.wrap.top, { pill: d.playing[0], wrap: d.wrap });
-      if (d.sentence.length) coRec(`${k} column clear`, d.wrap.top - Math.max(...d.sentence.map((s) => s.bottom)) >= 23, { top: d.wrap.top, colBottom: Math.max(...d.sentence.map((s) => s.bottom)) });
+      // No column rect meets the cluster grown by 12 (the house gap) on every side.
+      const grown = { left: d.wrap.left - 12, right: d.wrap.right + 12, top: d.wrap.top - 12, bottom: d.wrap.bottom + 12 };
+      if (d.sentence.length) coRec(`${k} column clear`, !d.sentence.some((s) => coHit(grown, s)), { top: d.wrap.top, colBottom: Math.max(...d.sentence.map((s) => s.bottom)), hits: d.sentence.filter((s) => coHit(grown, s)).map((s) => s.t ?? "") });
       await coShot(page, "glance-both", size);
       if (phone) return;
       // downloads tray, Glance: rises above the cluster, inside the viewport
@@ -2366,7 +2368,7 @@ await coRun("standard", async () => {
     await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
     await page.waitForTimeout(800);
     const d = await page.evaluate(CO_READ);
-    coRec("std header clear", !coHit(d.wrap, d.hdr) && (!d.rail || d.rail.right <= d.hdr.right - 15), { hdr: d.hdr, rail: d.rail, wrap: d.wrap });
+    coRec("std header clear", !coHit(d.wrap, d.hdr) && (!d.rail || d.rail.right <= d.hdr.right - 11) /* header px-4 (16) less the rail's -mx-1 (4) = 12 inset, 1 px tolerance */, { hdr: d.hdr, rail: d.rail, wrap: d.wrap });
     coRec("std has Admin", d.admin >= 1, { admin: d.admin });
     coRec("std tab order ends downloads, alert", /download/i.test(d.tabTail[0]) && /alert/i.test(d.tabTail[1]), { tail: d.tabTail });
     await coShot(page, "std-header-dl", size);

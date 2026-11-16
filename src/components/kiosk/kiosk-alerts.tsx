@@ -736,7 +736,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
       onKeyDownCapture={resetAutoClose}
       data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) bottom-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
     >
       {entries.map((entry, i) => (
         <AlertRow key={entry.id} entry={entry} ref={i === 0 ? firstRowRef : undefined} onDismiss={() => onDismissAlert(entry.id)} />
