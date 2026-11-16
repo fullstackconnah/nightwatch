@@ -129,3 +129,45 @@ test("fvpolish fix 1 item 1: an idle dock button keeps its hover background in A
   const hover = css.match(/@media \(hover: hover\) \{\s*\[data-kiosk-theme="aurora"\] \[data-rain-zone="dock"\] button:hover,\s*\[data-kiosk-theme="aerogel"\] \[data-rain-zone="dock"\] button:hover \{[^}]*\}/)?.[0] ?? "";
   assert.match(hover, /linear-gradient\(var\(--tw-gradient-from[\s\S]*linear-gradient\(var\(--color-panel-2\), var\(--color-panel-2\)\)/);
 });
+
+test("polish B item 2: the kiosk microlabel takes back one tracking unit per word gap (wide faces left a hole inside NOT)", () => {
+  const css = read("../../app/globals.css");
+  const rule = css.match(/\.kiosk-dense \.microlabel \{[^}]*\}/)?.[0] ?? "";
+  assert.match(rule, /word-spacing: -0\.1em/);
+  assert.ok(css.indexOf(rule) < css.indexOf("/* nw motion */"));
+});
+
+test("polish B item 3: PIN keypad digits take the Numerals face even where a button font shorthand would win", () => {
+  // the digit key's own className (the one after its aria-label), not any later text
+  assert.match(read("./kiosk-pin-pad.tsx"), /digit \$\{key\}`[\s\S]{0,900}?className="[^"]*sr-btn-nudge h-14[^"]*!font-mono[^"]*"/);
+});
+
+test("polish B item 4: the downloads pill is 56 px like the alert pill, and the open tray stops under the forecast rail", () => {
+  const src = read("./kiosk-downloads.tsx");
+  assert.match(src, /"flex h-14 min-w-14 [^"]*"/);
+  assert.doesNotMatch(src, /min-h-14|py-2 text-ink-dim/);
+  assert.match(src, /node\.style\.maxHeight = [^\n]*Math\.max\(128, [^\n]*rail\.getBoundingClientRect\(\)\.bottom/);
+});
+
+test("polish B item 5: below 641 px the bottom-left Glance cluster takes the lifted row the corner cluster uses", () => {
+  const src = read("./kiosk-glance.tsx");
+  const cluster = src.match(/className="fixed [^"]*"/)?.[0] ?? "";
+  assert.match(cluster, /bottom-\[calc\(1rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(cluster, /max-\[640px\]:bottom-\[calc\(5\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(read("./kiosk-surface.tsx"), /max-\[640px\]:bottom-\[calc\(5\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
+});
+
+test("polish B item 6: every clock digit is a cell stacking all ten glyphs, and one sr-only string carries the time", () => {
+  const src = read("./kiosk-clock.tsx");
+  assert.match(src, /\[\.\.\."0123456789"\]/);
+  assert.match(src, /inline-grid[^"]*"/);
+  assert.match(src, /\[grid-area:1\/1\]/);
+  assert.match(src, /<span className="sr-only">\{time\}<\/span>\s*<span aria-hidden>/);
+  assert.match(src, /<ClockDigits time=\{clock\.time\} \/>/);
+});
+
+test("polish B item 7: the default marker is one text run with a space either side of the dot, in both chips", () => {
+  const src = read("./kiosk-appearance.tsx");
+  assert.equal((src.match(/> · default<\/span>/g) ?? []).length, 2);
+  assert.doesNotMatch(src, />· default</);
+});

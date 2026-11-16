@@ -965,6 +965,258 @@ if (process.env.ONLY === "fullview") {
   process.exit(process.exitCode ?? 0);
 }
 
+// ---- kiosk polish part B (2026-11-16): seven items, run alone with ONLY=polishb (and once in the full run, before the corner section) ----
+// Keys: results.polishb.{checks.<key> {ok,...}, failed[] (one line each; the run exits 1 if any), reported{}}. Shots polishb-<state>.png: padded crops (16 px) plus one full page per breakpoint.
+// Item 1 typeface-390-*, 2 microlabel-*, 3 pin-*, 4 downloads-*, 5 glance-390-*, 6 clock-*, 7 chip-default-*. `reported.autoOffContrast` is a reading only (under 4.5 is a lead finding, never a failure).
+const PB = (results.polishb = { checks: {}, failed: [], reported: {} });
+const pbRec = (key, ok, detail = {}) => { PB.checks[key] = { ok, ...detail }; if (!ok) PB.failed.push(`${key} ${JSON.stringify(detail)}`); };
+const pbRun = (name, fn) => guarded(`polishb ${name}`, async () => { try { await fn(); } catch (e) { PB.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const pbFonts = (fonts) => `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: fonts }))})`;
+const pbHits = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+const PB_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
+const PB_DL = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `pb${i}`, name: `Download number ${i + 1}`, progress: 0.2 + (i % 5) / 10, dlspeed: 1_500_000, size: 4_000_000_000, eta: 900 + i })) });
+/** Shoot one element with 16 px of padding, clipped to the viewport (the acShot clip). */
+const pbShot = async (page, loc, name, pad = 16) => {
+  const b = await loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight }; });
+  const x = Math.max(0, b.x - pad), y = Math.max(0, b.y - pad);
+  await page.screenshot({ path: join(OUT_DIR, `polishb-${name}.png`), clip: { x, y, width: Math.min(b.vw - x, b.w + pad * 2), height: Math.min(b.vh - y, b.h + pad * 2) } });
+};
+/** Nothing fixed, sticky or edge-banded may sit on the group: every button, label and hint inside it must be the element found at its own centre point, inside the viewport. */
+const pbClear = async (page, loc, key, { visibleOnly = false } = {}) => {
+  const m = await loc.evaluate((el, visibleOnly) => {
+    let parts = [...el.querySelectorAll("button, .microlabel, p")];
+    if (visibleOnly) { // only parts fully inside what the shot shows: the group's box, the nearest scroll viewport and the window
+      let sc = el.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+      const g = el.getBoundingClientRect(), s = sc ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+      const top = Math.max(0, g.top - 16, s.top), bottom = Math.min(innerHeight, g.bottom + 16, s.bottom);
+      parts = parts.filter((p) => { const r = p.getBoundingClientRect(); return r.top >= top && r.bottom <= bottom; });
+    }
+    const bad = parts.filter((p) => { const r = p.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return true; const hit = document.elementFromPoint(cx, cy); return !hit || !p.contains(hit); }).map((p) => (p.textContent ?? "").trim().slice(0, 20));
+    return { parts: parts.length, covered: bad };
+  }, visibleOnly);
+  pbRec(`${key}`, m.parts > 0 && m.covered.length === 0, m);
+};
+/** Page-side: the gap each side of the "·" in a chip, from the characters either side of it. */
+const PB_DOT_GAPS = (el) => {
+  const chars = [];
+  const wk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = wk.nextNode(); n; n = wk.nextNode()) for (let i = 0; i < n.textContent.length; i++) chars.push([n, i]);
+  const at = (c) => { const g = document.createRange(); g.setStart(c[0], c[1]); g.setEnd(c[0], c[1] + 1); return g.getBoundingClientRect(); };
+  const d = chars.findIndex(([n, i]) => n.textContent[i] === "·");
+  if (d < 0) return null;
+  const solid = (c) => !/\s/.test(c[0].textContent[c[1]]);
+  const prev = chars.slice(0, d).reverse().find(solid), next = chars.slice(d + 1).find(solid);
+  if (!prev || !next) return null;
+  return { before: at(chars[d]).left - at(prev).right, after: at(next).left - at(chars[d]).right };
+};
+const pbDotGaps = (loc) => loc.evaluate(PB_DOT_GAPS);
+/** The chip's centre and four inset corners (4 px in) must each hit the chip or a descendant: no fixed or sticky chrome over it. */
+const pbChipClear = async (page, loc, key) => {
+  const m = await loc.evaluate((el) => {
+    // inset past the pill radius: a 4 px inset lands outside the rounded corner and hits the parent
+    const r = el.getBoundingClientRect(), d = Math.round(r.height * 0.35);
+    const pts = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + d, r.top + d], [r.right - d, r.top + d], [r.left + d, r.bottom - d], [r.right - d, r.bottom - d]];
+    const over = [];
+    const hits = pts.map(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; const ok = !!h && el.contains(h); if (!ok) over.push(h ? `${h.tagName.toLowerCase()}.${String(h.className).slice(0, 80)}` : "none"); return ok; });
+    return { hits, over, top: r.top, bottom: r.bottom, vh: innerHeight };
+  });
+  pbRec(key, m.hits.length === 5 && m.hits.every(Boolean), m);
+};
+/** The instant (in the pinned zone) at which the wall clock reads `hhmm`, searched from the pinned instant. */
+const pbInstant = (hhmm) => {
+  const f = new Intl.DateTimeFormat("en-AU", { timeZone: ZONE, hour: "numeric", minute: "2-digit", hour12: true });
+  for (let i = 0; i < 1440; i++) {
+    const d = new Date(Date.parse(PINNED_ISO) + i * 60_000);
+    const p = f.formatToParts(d);
+    if (`${p.find((x) => x.type === "hour").value}:${p.find((x) => x.type === "minute").value}` === hhmm) return d;
+  }
+  throw new Error(`no instant reads ${hhmm}`);
+};
+const PB_FACES = [...readFileSync(new URL("../src/lib/kiosk-fonts.ts", import.meta.url), "utf8").matchAll(/\{ id: "([a-z-]+)", label: "[^"]+", kind: "(sans|serif|mono)", cssVar: ['"]var\((--font-t-[a-z-]+)\)/g)].map(([, id, kind, cssVar]) => ({ id, kind, cssVar }));
+
+async function polishbShots() {
+  // item 1 and item 7 (font chip): the Typeface tab at 390 px, Sunroom day. Panel top, then the Numerals group, then a non-default Numerals pick, each shot alone and checked clear of chrome.
+  await pbRun("typeface 390", async () => {
+    const { context, page } = await tpOpenTypeface({ width: 390, height: 844 });
+    const panel = page.locator("#kiosk-tabpanel-typeface");
+    const group = (label) => panel.locator("div.flex.flex-col.gap-2").filter({ has: page.locator("span.microlabel", { hasText: new RegExp(`^${label}$`) }) }).first();
+    await page.evaluate(() => { document.querySelector("#kiosk-tabpanel-typeface").scrollIntoView({ block: "start" }); for (let n = document.querySelector("#kiosk-tabpanel-typeface"); n; n = n.parentElement) if (n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY)) n.scrollTop = 0; scrollTo(0, 0); });
+    await page.waitForTimeout(300);
+    await pbClear(page, group("text"), "typeface-390-clear-top", { visibleOnly: true });
+    await pbShot(page, group("text"), "typeface-390-top");
+    await group("numerals").evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(300);
+    await pbClear(page, group("numerals"), "typeface-390-clear-numerals");
+    await pbShot(page, group("numerals"), "typeface-390-numerals");
+    const gaps = await pbDotGaps(group("numerals").locator("button", { hasText: "default" }).first());
+    pbRec("chip-default-gaps font chip", !!gaps && Math.abs(gaps.before - gaps.after) <= 1, gaps ?? {});
+    await pbChipClear(page, group("numerals").locator("button", { hasText: "default" }).first(), "chip-default-clear font");
+    const pick = group("numerals").locator("button[aria-pressed='false']").first();
+    const picked = (await pick.textContent())?.trim();
+    await pick.click();
+    await page.waitForTimeout(500);
+    await group("numerals").evaluate((el) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(300);
+    const now = await group("numerals").evaluate((el) => ({ pressed: [...el.querySelectorAll("button[aria-pressed='true']")].map((b) => b.textContent.trim()) }));
+    pbRec("typeface-390-pick", now.pressed.length === 1 && now.pressed[0] === picked, { picked, pressed: now.pressed });
+    await pbClear(page, group("numerals"), "typeface-390-clear-picked");
+    await pbShot(page, group("numerals"), "typeface-390-picked");
+    await context.close();
+  });
+
+  // item 7 (accent chip): the gap before and after the dot in "Theme · default"
+  await pbRun("chip default", async () => {
+    const { context, page } = await acOpen();
+    const chip = page.locator('[data-accent-chip="default"]');
+    await chip.evaluate((el) => el.scrollIntoView({ block: "center" })); // clear of the fixed bottom fade and sticky chrome
+    await page.waitForTimeout(300);
+    const gaps = await pbDotGaps(chip);
+    pbRec("chip-default-gaps accent chip", !!gaps && Math.abs(gaps.before - gaps.after) <= 1, gaps ?? {});
+    await pbChipClear(page, chip, "chip-default-clear accent");
+    await pbShot(page, chip, "chip-default-accent");
+    await context.close();
+  });
+
+  // item 2: the microlabel word gap across every Text face (set inline on the label; each face is loaded before it is measured)
+  await pbRun("microlabel", async () => {
+    const { context, page } = await visit(FV_URL("sunroom", "standard"), { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: false, routes: { "/kiosk/api/ha/states": { status: "unconfigured" } } });
+    const label = page.getByText("Home Assistant not connected", { exact: true });
+    if (!(await label.count())) throw new Error("the not-connected microlabel is not on screen");
+    const faces = PB_FACES.filter((f) => f.kind !== "mono").map((f) => ({ id: f.id, cssVar: f.cssVar }));
+    const rows = await label.first().evaluate(async (el, list) => {
+      const out = [];
+      const node = el.firstChild;
+      const words = [...node.textContent.matchAll(/\S+/g)].map((m) => [m.index, m.index + m[0].length]);
+      for (const f of list) {
+        el.style.fontFamily = `var(${f.cssVar}), sans-serif`;
+        const cs = getComputedStyle(el);
+        try { await document.fonts.load(`${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily.split(",")[0]}`, node.textContent); } catch { /* an unloadable face is measured as its fallback and flagged below */ }
+        const rect = (a) => { const g = document.createRange(); g.setStart(node, a[0]); g.setEnd(node, a[1]); return g.getBoundingClientRect(); };
+        const gaps = words.slice(1).map((w, i) => rect(w).left - rect(words[i]).right);
+        out.push({ id: f.id, em: parseFloat(cs.fontSize), maxGap: Math.max(...gaps), spacing: cs.wordSpacing, track: cs.letterSpacing });
+      }
+      el.style.fontFamily = "";
+      return out;
+    }, faces);
+    const worst = rows.reduce((a, b) => (b.maxGap / b.em > a.maxGap / a.em ? b : a));
+    PB.reported.microlabelWidestGap = worst;
+    pbRec("microlabel word gap <= 0.6em in every Text face", rows.length > 0 && rows.every((r) => r.maxGap <= r.em * 0.6), { worst, faces: rows.length });
+    await label.first().evaluate((el, id) => { el.style.fontFamily = `var(${id}), sans-serif`; }, faces.find((f) => f.id === worst.id).cssVar);
+    await page.waitForTimeout(300);
+    await pbShot(page, label.first(), "microlabel-widest");
+    await context.close();
+  });
+
+  // item 3: the PIN keypad digits wear the Numerals face (Chivo Mono picked, so the Text face and the Numerals face differ)
+  await pbRun("pin keypad", async () => {
+    const { context, page } = await visit(CONTROLS_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: pbFonts({ mono: "chivo-mono" }) });
+    await page.getByRole("button", { name: /^Admin/ }).first().click();
+    await seen(page, "[role=dialog]", 5000);
+    await page.waitForTimeout(600);
+    const m = await page.evaluate(() => {
+      const first = (el) => getComputedStyle(el).fontFamily.split(",")[0].trim();
+      const key = document.querySelector('button[aria-label="digit 5"]');
+      const r = key.getBoundingClientRect();
+      return { key: first(key), clock: first(document.querySelector('[data-hero="time"]')), text: first(document.querySelector(".sr-pin-msg")), w: r.width, h: r.height };
+    });
+    pbRec("pin keys use the Numerals face", m.key === m.clock && m.key !== m.text, m);
+    pbRec("pin key keeps its 56 px height", Math.abs(m.h - 56) <= 0.5, { h: m.h, w: m.w });
+    await pbShot(page, page.locator("[role=dialog]").first(), "pin-keypad");
+    await context.close();
+  });
+
+  // item 4 and the auto-off reading: full view at 1024x768 with six downloads and an alert
+  await pbRun("downloads 1024", async () => {
+    const { context, page } = await visit(FV_URL("sunroom", "standard"), { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, routes: { "/kiosk/api/downloads": PB_DL(6), "/kiosk/api/attention": PB_ALERT } });
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    await page.waitForTimeout(600);
+    const pill = await page.evaluate(() => {
+      const wrap = document.querySelector('div[data-rain-zone="corner"]:not([role])');
+      const h = (re) => [...wrap.querySelectorAll("button")].find((b) => re.test(b.getAttribute("aria-label") ?? ""))?.getBoundingClientRect().height;
+      return { dl: h(/download/i), al: h(/alert/i) };
+    });
+    pbRec("pills equal height", typeof pill.dl === "number" && typeof pill.al === "number" && Math.abs(pill.dl - pill.al) <= 0.5, pill);
+    await page.getByRole("button", { name: /downloads in progress/i }).click();
+    await seen(page, '[role="dialog"][aria-label="Downloads"]', 5000);
+    await page.waitForTimeout(700);
+    const d = await page.evaluate(() => {
+      const box = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
+      return { vw: innerWidth, vh: innerHeight, tray: box(document.querySelector('[role="dialog"][aria-label="Downloads"]')), rail: box(document.querySelector('[data-testid="kiosk-forecast-rail"]')), days: document.querySelector('[data-testid="kiosk-forecast-rail"]')?.children.length ?? 0 };
+    });
+    pbRec("downloads tray clear of the forecast rail", !!d.tray && !!d.rail && !pbHits(d.tray, d.rail), { tray: d.tray, rail: d.rail });
+    pbRec("downloads tray stays anchored (right edge 20 from the viewport)", !!d.tray && Math.abs(d.vw - d.tray.right - 20) <= 1, { right: d.tray?.right, vw: d.vw });
+    if (d.tray && d.rail) {
+      const x = Math.max(0, Math.min(d.tray.left, d.rail.left) - 16), y = Math.max(0, d.rail.top - 16);
+      await page.screenshot({ path: join(OUT_DIR, "polishb-downloads-tray-1024.png"), clip: { x, y, width: d.vw - x, height: Math.min(d.vh - y, d.tray.bottom + 16 - y) } });
+    }
+    await page.screenshot({ path: join(OUT_DIR, "polishb-full-1024x768.png"), fullPage: true });
+    await page.keyboard.press("Escape");
+    // the auto-off pill's time text against its gold fill (a reading, never a failure)
+    const c = await page.evaluate(() => {
+      const pillEl = document.querySelector('button[aria-label^="AC auto-off"]');
+      if (!pillEl) return null;
+      const num = (s) => s.match(/[\d.]+/g).map(Number);
+      const lum = (c) => { const [R, G, B] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * R + 0.7152 * G + 0.0722 * B; };
+      const text = getComputedStyle(pillEl.querySelector("[data-sr-num]")).color, fill = getComputedStyle(pillEl.querySelector(".sr-catch")).backgroundColor;
+      const a = lum(num(text)) + 0.05, b = lum(num(fill)) + 0.05;
+      return { label: pillEl.getAttribute("aria-label"), lit: pillEl.getAttribute("data-lit"), text, fill, ratio: Math.round((Math.max(a, b) / Math.min(a, b)) * 100) / 100 };
+    });
+    PB.reported.autoOffContrast = c ?? "the auto-off pill was not on screen";
+    await context.close();
+  });
+
+  // item 5: Glance at 390 px with the now-playing pill, plus the unchanged wide case
+  for (const size of [{ name: "390x844", viewport: { width: 390, height: 844 } }, { name: "1024x768", viewport: SIZES[1].viewport }]) {
+    await pbRun(`glance ${size.name}`, async () => {
+      const { context, page } = await visit(MAIN_URL, { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, nowPlaying: true });
+      await seen(page, '[data-rain-zone="tiles"] button', 15_000);
+      await seen(page, "[data-sr-np]", 15_000);
+      await page.waitForTimeout(800);
+      const d = await page.evaluate(() => {
+        const box = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, label: el.getAttribute("aria-label") ?? el.textContent.trim().slice(0, 16) }; };
+        return { vh: innerHeight, pill: box(document.querySelector("[data-sr-np]")), tiles: [...document.querySelectorAll('[data-rain-zone="tiles"] button')].map(box), sentence: [...document.querySelectorAll('[data-rain-zone="sentence"]')].map(box) };
+      });
+      pbRec(`glance-${size.name} left controls present (Timers and a lamp)`, d.tiles.length >= 2, { tiles: d.tiles.map((t) => t.label) });
+      pbRec(`glance-${size.name} no left control under the now-playing pill`, d.tiles.length > 0 && d.tiles.every((t) => !pbHits(t, d.pill)), { pill: d.pill, hits: d.tiles.filter((t) => pbHits(t, d.pill)).map((t) => t.label) });
+      pbRec(`glance-${size.name} left controls clear of the centre column`, d.tiles.length > 0 && d.sentence.length > 0 && d.tiles.every((t) => d.sentence.every((s) => !pbHits(t, s))), { hits: d.tiles.filter((t) => d.sentence.some((s) => pbHits(t, s))).map((t) => t.label) });
+      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster unchanged (bottom 16 above the viewport edge)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 16 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
+      await page.screenshot({ path: join(OUT_DIR, `polishb-glance-${size.name}.png`), fullPage: true });
+      await context.close();
+    });
+  }
+
+  // item 6: one clock width all day in the two display faces, and in the default face (glance 1024x768; four-digit readings, so the digit count is equal)
+  for (const face of ["neon-mono", "pixel-mono", null]) {
+    await pbRun(`clock ${face ?? "default"}`, async () => {
+      const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: face ? pbFonts({ mono: face }) : null });
+      const widths = {};
+      for (const t of ["11:11", "10:08", "12:38"]) {
+        await context.clock.setFixedTime(pbInstant(t));
+        await page.waitForFunction((want) => document.querySelector('[data-hero="time"] .sr-only')?.textContent === want, t, { timeout: 8000 });
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(250);
+        widths[t] = await page.evaluate(() => document.querySelector('[data-hero="time"] > span[aria-hidden]').getBoundingClientRect().width);
+        if (face && (t === "11:11" || t === "10:08")) await pbShot(page, page.locator('[data-rain-zone="clock"]'), `clock-${face}-${t.replace(":", "")}`);
+      }
+      const v = Object.values(widths);
+      pbRec(`clock-${face ?? "default"} width constant (11:11 vs 10:08 vs 12:38 within 1 px)`, Math.max(...v) - Math.min(...v) <= 1, widths);
+      const read = await page.evaluate(() => ({ sr: document.querySelector('[data-hero="time"] .sr-only')?.textContent, hidden: document.querySelector('[data-hero="time"] > span[aria-hidden]') !== null }));
+      pbRec(`clock-${face ?? "default"} reads as one string`, /^\d{1,2}:\d{2}$/.test(read.sr ?? "") && read.hidden, read);
+      await context.close();
+    });
+  }
+  if (PB.failed.length) process.exitCode = 1;
+}
+if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "polishb") {
+  await polishbShots();
+  results.n16PageErrorMessages = pageErrorMessages;
+  results.n16ForeignRequests = foreign;
+  await browser.close();
+  writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify(results, null, 2));
+  console.log(JSON.stringify(results));
+  process.exit(process.exitCode ?? 0);
+}
+
 // ---- main states: both sizes, 10 s at rest ----
 for (const size of SIZES) {
   await guarded(`main ${size.name}`, async () => {
@@ -3304,6 +3556,7 @@ for (const size of [{ name: "1180x820", viewport: SIZES[0].viewport }, { name: "
 }
 if (TP.failed.length) process.exitCode = 1;
 
+await polishbShots();
 results.n16ConsoleErrors =consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;
