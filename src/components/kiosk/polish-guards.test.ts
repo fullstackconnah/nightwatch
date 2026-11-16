@@ -51,3 +51,21 @@ test("Full view board: the elevated row renders only when elevated, as a span-12
   assert.ok(full.indexOf("elevated && expiresAt") < full.indexOf("<KioskHub"));
   assert.match(s, /\{!full && <KioskNowPlaying/);
 });
+
+test("Full view dock: Front door, Glance and Admin take Shopping's pane (border, so chips never print through them)", () => {
+  const pane = /border border-line [^"]*hover:border-line-bright/;
+  const s = read("./kiosk-surface.tsx");
+  assert.match(s, /<KioskDoorbellButton[^>]*className="h-14 border border-line hover:border-line-bright"/);
+  assert.match(s.slice(s.indexOf("Back to glance view")), pane);
+  const strip = read("./kiosk-status-strip.tsx");
+  assert.match(strip.slice(strip.indexOf("data-sr-admin")), pane);
+  assert.match(read("./kiosk-list.tsx"), pane);
+});
+
+test("Full view cell header: the heading never wraps and the stale note truncates on the one row", () => {
+  const s = read("./kiosk-hub.tsx");
+  const h = s.slice(s.indexOf("function SectionHeader"), s.indexOf("const STALE_NOTE"));
+  assert.match(h, /<h2 className="microlabel whitespace-nowrap">/);
+  assert.match(h, /min-w-0 flex-1 truncate[^"]*@max-\[24rem\]:sr-only" title=\{note\}/);
+  assert.match(h, /<StaleTag title=\{note\} \/>/);
+});

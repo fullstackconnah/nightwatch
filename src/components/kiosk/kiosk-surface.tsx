@@ -754,7 +754,7 @@ export function KioskSurface({
             middle={
               <>
                 <KioskListButton onClick={onListClick} />
-                <KioskDoorbellButton onClick={onDoorbellClick} className="h-14" />
+                <KioskDoorbellButton onClick={onDoorbellClick} className="h-14 border border-line hover:border-line-bright" />
                 {/* Hidden while pinned: an elevated session is held in full mode on purpose, so the control would be inert. */}
                 {!pinned && (
                   <button
@@ -783,7 +783,7 @@ export function KioskSurface({
                     // and every other pressable control on this surface now
                     // springs back on release, so a silent one here would be the
                     // one dead button on the panel.
-                    className="flex h-14 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
+                    className="flex h-14 shrink-0 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-ink-dim outline-none transition hover:border-line-bright hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
                   >
                     <Minimize2 size={14} aria-hidden />
                     <span>Glance</span>

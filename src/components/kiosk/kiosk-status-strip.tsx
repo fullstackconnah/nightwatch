@@ -100,7 +100,7 @@ export function KioskStatusStripExtras({
             type="button"
             data-sr-admin
             onClick={(e) => onAdminClick(e.currentTarget.getBoundingClientRect())}
-            className="h-14 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
+            className="h-14 px-4 rounded-md border border-line hover:border-line-bright text-ink-dim hover:text-ink hover:bg-panel-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
           >
             Admin
           </button>

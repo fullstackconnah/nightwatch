@@ -190,6 +190,7 @@ function fvHa({ zones = 2, lights = 5, switches = 5, scenes = 4, sensors = 2 } =
   };
 }
 const FV_DOOR = { status: "ok", cameras: [{ entityId: "camera.front_door", name: "Front door", available: true }], triggers: [], latest: null, autoOpen: true, viewCamera: null, lastSeenAt: "2026-06-14T13:58:00.000Z" }; // "Seen yesterday 11:58 pm" at the pinned evening
+const FV_BRIEFING = { status: "ok", date: "2026-06-15", digest: { headline: "Overnight: two things need a look", body: "- Backup finished at 02:14 - Disk 81% on the media volume - Two containers restarted after the 03:00 update - Router firmware 4.2 is available", actionNeeded: "no" }, news: { summary: "- Grid operator warns of a cold snap this week\n- Council approves the new tram extension\n- Local team wins the cup final in extra time", headlines: [], source: "ABC News" } }; // the longest Today case: a four-item digest and a three-line news summary
 const FV_DL = { status: "ok", items: Array.from({ length: 3 }, (_, i) => ({ hash: `h${i}`, name: `Download number ${i + 1}`, progress: 0.3, dlspeed: 1_500_000, size: 4_000_000_000, eta: 900 })) };
 const FV_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
 const FV_TIMER = (state) => `localStorage.setItem("kiosk-timers", JSON.stringify([{ id: "t1", name: "Roast", endsAt: ${new Date(calInstant(CAL_STATES[state].at)).getTime() + 5_025_000}, durationMs: 5025000, pausedRemainingMs: 5025000 }]));`; // 1:23:45
@@ -417,7 +418,23 @@ async function fullViewBoard() {
       await page.waitForTimeout(1200);
       const d = await page.evaluate(FV_READ);
       fvRec(`${n} entities no inner scroller`, d.chips.length === n && d.scrollers.length === 0 && (n >= 20 || n === 1 || d.scrollH <= d.vh || n === 12 && d.scrollH <= d.vh + 0), { chips: d.chips.length, scrollH: d.scrollH, vh: d.vh, scrollers: d.scrollers });
-      await fvCrop(page, fvCell(page, "lights"), `lights-${n}`);
+      if (n === 20) {
+        // The page scrolls here and the dock is fixed over it: viewport shots (top, then the end of the scroll, where the end reserve must clear the dock), not a crop taken mid-scroll.
+        await page.evaluate(() => scrollTo(0, 0)); await page.waitForTimeout(250);
+        await page.screenshot({ path: join(OUT_DIR, "fullview-lights-20-top.png") });
+        await page.evaluate(() => scrollTo(0, document.scrollingElement.scrollHeight)); await page.waitForTimeout(400);
+        await page.screenshot({ path: join(OUT_DIR, "fullview-lights-20-end.png") });
+        const e = await page.evaluate(() => {
+          const dock = document.querySelector('[data-rain-zone="dock"]');
+          const chipBottom = Math.max(...[...document.querySelectorAll('button[role="switch"]')].map((b) => b.getBoundingClientRect().bottom));
+          const alpha = (c) => { const m = c.match(/\/\s*([\d.]+%?)\s*\)/) ?? c.match(/rgba\([^)]*,\s*([\d.]+)\s*\)/); return !m ? (c === "transparent" ? 0 : 1) : m[1].endsWith("%") ? parseFloat(m[1]) / 100 : parseFloat(m[1]); };
+          const btns = dock ? [...dock.querySelectorAll("button")].map((b) => { const s = getComputedStyle(b); return { label: (b.getAttribute("aria-label") ?? b.textContent ?? "").trim().slice(0, 20), alpha: alpha(s.backgroundColor), border: parseFloat(s.borderTopWidth) }; }) : [];
+          return { dockTop: dock ? dock.getBoundingClientRect().top : null, chipBottom, btns, fixed: dock ? getComputedStyle(dock).position === "fixed" : false };
+        });
+        const shop = e.btns.find((b) => /^Shopping/.test(b.label));
+        fvRec("20 entities: end of scroll, last chip above the dock", e.dockTop !== null && e.chipBottom <= e.dockTop, { chipBottom: e.chipBottom, dockTop: e.dockTop });
+        fvRec("20 entities: every dock button has Shopping's pane (alpha, border)", !!shop && e.btns.every((b) => b.alpha >= shop.alpha - 0.001 && b.border === shop.border), { btns: e.btns });
+      } else await fvCrop(page, fvCell(page, "lights"), `lights-${n}`);
       await context.close();
     });
   }
@@ -439,9 +456,11 @@ async function fullViewBoard() {
     await context.close();
   });
   await guarded("fullview morning", async () => {
-    const { context, page } = await visit(FV_URL(), { viewport: SIZES[1].viewport, weather: calWeatherFor("ordinary"), fixedTime: true, instant: calInstant("07:30"), ha: true, routes: { "/kiosk/api/calendar": CAL_STATES.ordinary.body } });
+    const { context, page } = await visit(FV_URL(), { viewport: SIZES[1].viewport, weather: calWeatherFor("ordinary"), fixedTime: true, instant: calInstant("07:30"), ha: true, routes: { "/kiosk/api/calendar": CAL_STATES.ordinary.body, "/kiosk/api/briefing": FV_BRIEFING } }); // the shared fixture answers "unconfigured", which the card prints as "Briefing unavailable."
     await seen(page, "section.panel h2", 15_000);
     await page.waitForTimeout(1200);
+    const todayText = await fvCell(page, "today").first().innerText();
+    fvRec("morning briefing loaded", todayText.includes(FV_BRIEFING.digest.headline) && !/Briefing unavailable/.test(todayText), { todayText: todayText.slice(0, 120) });
     await fvCrop(page, fvCell(page, "today"), "today-morning-briefing");
     await context.close();
   });
@@ -475,20 +494,30 @@ async function fullViewBoard() {
     let n = 0;
     const { context, page } = await fvVisit(SIZES[1], { setup: (p) => p.route("**/kiosk/api/ha/states", (route) => (++n <= 2 ? route.fulfill({ json: fvHa() }) : route.fulfill({ status: 500, json: { error: "x" } }))) });
     await seen(page, ".sr-climate", 15_000);
+    await page.waitForTimeout(1200);
+    const lightsHead = () => fvCell(page, "lights").first().evaluate((el) => { const h = el.querySelector("h2"); const lh = parseFloat(getComputedStyle(h).lineHeight) || h.getBoundingClientRect().height; return { header: h.parentElement.parentElement.getBoundingClientRect().height, headingLines: Math.round(h.getBoundingClientRect().height / lh) }; });
+    const fresh = await lightsHead(); // the same cell, not yet stale (the first two polls answer)
     await page.waitForTimeout(30_000);
     const tags = await page.locator("section.panel .sr-stale").count();
     FV.states.haStale = { staleTags: tags };
+    const stale = await lightsHead();
+    fvRec("ha-stale: header keeps its fresh height, heading on one line", tags > 0 && Math.abs(stale.header - fresh.header) <= 0.5 && stale.headingLines === 1, { fresh, stale });
     await fvCrop(page, fvCell(page, "lights"), "ha-stale");
     await context.close();
   });
   await guarded("fullview elevated", async () => {
     const { context, page } = await fvVisit(SIZES[1]);
-    await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? route.fulfill({ json: { ok: true, expiresAt: Date.parse(PINNED_ISO) + 600_000 } }) : route.fallback()));
-    await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: { elevated: true, expiresAt: Date.parse(PINNED_ISO) + 600_000 } }));
+    // The window runs from the page's pinned clock (the crowded evening), not PINNED_ISO (10:30): from there it had already lapsed, so the page stayed plain.
+    const until = Date.parse(calInstant(CAL_STATES.crowded.at)) + 600_000;
+    await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? route.fulfill({ json: { ok: true, expiresAt: until } }) : route.fallback()));
+    await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: { elevated: true, expiresAt: until } }));
     await page.getByRole("button", { name: /^Admin/ }).first().click();
     await seen(page, "[role=dialog]", 5000);
     for (const dg of "0000") await page.getByRole("button", { name: `digit ${dg}` }).click();
     await page.waitForTimeout(1800);
+    // Fail the state, never shoot a plain page: the dock shows the elevated mark and no Admin button.
+    await page.locator('[data-rain-zone="dock"]').getByText("elevated", { exact: true }).waitFor({ timeout: 5000 });
+    if (await page.locator('[data-rain-zone="dock"] [data-sr-admin]').count()) throw new Error("elevated state: the Admin button is still in the dock");
     const d = await page.evaluate(FV_READ);
     const labels = (d.dock?.buttons ?? []).map((b) => b.label);
     // 7 (elevated): vitals plus the elevated mark, Glance hidden; the dock-to-cluster gap still holds

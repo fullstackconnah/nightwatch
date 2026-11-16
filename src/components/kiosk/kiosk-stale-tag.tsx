@@ -11,11 +11,11 @@ import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
  *  reading instead of a fresh one (weather, vitals/health, Home Assistant
  *  state) — one visual marker for "this is old," not a different one per
  *  screen. */
-export function StaleTag() {
+export function StaleTag({ title }: { title?: string } = {}) {
   // Sunroom: a dashed tag, one word, one tag per pane (Sill StaleTag); fresh data renders none of it.
-  if (useKioskTheme() === "sunroom") return <span className="sr-stale">Stale</span>;
+  if (useKioskTheme() === "sunroom") return <span className="sr-stale" title={title}>Stale</span>;
   return (
-    <span className="flex items-center gap-1.5 font-mono text-[0.65rem] text-warn">
+    <span className="flex items-center gap-1.5 font-mono text-[0.65rem] text-warn" title={title}>
       <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-warn" />
       stale
     </span>

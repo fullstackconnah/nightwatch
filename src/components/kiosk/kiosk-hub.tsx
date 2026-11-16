@@ -371,18 +371,19 @@ function SectionHeader({
   stale?: boolean;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-2">
-      <div className="flex items-center gap-2">
+    // @container: the stale note drops to screen-reader-only when under ~120 px is left beside the heading and tag.
+    <div className="@container flex items-baseline justify-between gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Icon size={13} className="text-ink-faint" aria-hidden />
         {/* Real heading, not a styled span — the page supplies an <h1>, so
             these five section captions (Lights/Switches/Scenes/Climate/
             Sensors) sit at <h2>. `.microlabel` carries the visuals unchanged;
             Tailwind's preflight zeroes the browser's own h2 margin/size. */}
-        <h2 className="microlabel">{label}</h2>
+        <h2 className="microlabel whitespace-nowrap">{label}</h2>
         {qualifier && <span className="microlabel opacity-70">{qualifier}</span>}
-        {stale && <span className="-my-1 flex"><StaleTag /></span>}
+        {stale && <span className="-my-1 flex"><StaleTag title={note} /></span>}
       </div>
-      {note && <span className="microlabel">{note}</span>}
+      {note && <span className="microlabel min-w-0 flex-1 truncate text-right @max-[24rem]:sr-only" title={note}>{note}</span>}
     </div>
   );
 }
