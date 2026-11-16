@@ -600,7 +600,22 @@ async function acOpen({ viewport = SIZES[0].viewport, night = false, reduced = f
   await page.waitForTimeout(500);
   return v;
 }
-const acShot = (page, name) => page.locator("#kiosk-tabpanel-appearance").locator("xpath=..").screenshot({ path: join(OUT_DIR, `appearance-accent-${name}.png`) });
+/** Shoot the Accent group (chips + hint) alone: scroll it to mid-viewport, check no chip or the hint touches the fixed dock or the sticky hero (`accent-clear-<name>`), clip to its box padded 16 px. */
+const acShot = async (page, name) => {
+  const group = page.locator('[data-accent-chip="default"]').locator("xpath=../..");
+  await group.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  await page.waitForTimeout(250);
+  const m = await group.evaluate((el) => {
+    const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.x, y: b.y, w: b.width, h: b.height }; };
+    const hit = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    const chrome = [...document.querySelectorAll('[data-rain-zone="dock"], .kiosk-hdr-grid')].filter((e) => ["fixed", "sticky"].includes(getComputedStyle(e).position)).map(r);
+    const mine = [...el.querySelectorAll("[data-accent-chip]"), ...[...el.querySelectorAll("p")].filter((p) => p.textContent.startsWith("Applies to"))].map(r);
+    return { box: r(el), covered: mine.some((a) => chrome.some((c) => hit(a, c))), vw: innerWidth, vh: innerHeight };
+  });
+  acRec(`accent-clear-${name}`, !m.covered, { covered: m.covered });
+  const x = Math.max(0, m.box.x - 16), y = Math.max(0, m.box.y - 16);
+  await page.screenshot({ path: join(OUT_DIR, `appearance-accent-${name}.png`), clip: { x, y, width: Math.min(m.vw - x, m.box.w + 32), height: Math.min(m.vh - y, m.box.h + 32) } });
+};
 const acPick = async (page, id) => { await page.locator(`[data-accent-chip="${id}"]`).click(); await page.waitForTimeout(500); };
 /** Exactly one pressed chip, matching the scope's mark. */
 const acMarks = (label, d, wantId) => acRec(`marks ${label}`, d.pressed.length === 1 && d.pressed[0] === wantId && d.dataAccent === wantId, { pressed: d.pressed, dataAccent: d.dataAccent, wantId });
@@ -686,6 +701,16 @@ async function accentShots() {
       const reset = await page.evaluate(AC_READ);
       acRec(`${name} default restores the theme accent`, reset.colorAccent === before.colorAccent && reset.inlineAccent === "", { got: reset.colorAccent, want: before.colorAccent, inline: reset.inlineAccent });
     }
+    // Chrome Panel: Lagoon and Fern, each asserted pressed and carried on the theme root before the shot
+    await page.locator("#kiosk-tabpanel-appearance button[aria-pressed]:not([data-accent-chip])", { hasText: "Chrome" }).first().click();
+    await page.waitForTimeout(600);
+    for (const id of ["lagoon", "fern"]) {
+      await acPick(page, id);
+      const d = await page.evaluate(AC_READ);
+      acMarks(`chrome ${id}`, d, id);
+      await acShot(page, `chrome-${id}`);
+    }
+    await acPick(page, "default");
     await context.close();
   });
 

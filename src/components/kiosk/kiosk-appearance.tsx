@@ -52,7 +52,7 @@ import {
 } from "@/components/kiosk/kiosk-theme";
 import {
   KIOSK_ACCENTS,
-  KIOSK_THEME_GROUND,
+  accentDiscFill,
   setKioskThemeAccent,
   useKioskAccent,
   type KioskAccentId,
@@ -312,11 +312,7 @@ function ThemeChip({ theme, active }: { theme: KioskTheme; active: boolean }) {
  *  transform, translate and scale, which the reduced-motion check forbids. */
 function AccentChip({ theme, id, active }: { theme: KioskTheme; id: KioskAccentId | null; active: boolean }) {
   const swatch = KIOSK_ACCENTS.find((s) => s.id === id);
-  const ground = KIOSK_THEME_GROUND[theme];
-  let fill: string;
-  if (!swatch) fill = KIOSK_THEME_SWATCHES[theme].accent;
-  else if (ground === "sunroom") fill = `linear-gradient(135deg, ${swatch.light.accent} 50%, ${swatch.dark.accent} 50%)`;
-  else fill = swatch[ground].accent;
+  const fill = swatch ? accentDiscFill(theme, swatch.id) : KIOSK_THEME_SWATCHES[theme].accent;
   return (
     <button
       type="button"

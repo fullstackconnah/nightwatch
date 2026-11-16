@@ -65,6 +65,16 @@ export const KIOSK_THEME_GROUND: Record<KioskTheme, "light" | "dark" | "sunroom"
   sunroom: "sunroom",
 };
 
+/** The chip disc's background. Dark grounds show the swatch's saturated `dim`
+ *  half (the `accent` half reads as a near-white pastel on a small disc); Sunroom
+ *  shows day (light accent) and night (dark dim) split on the diagonal. */
+export function accentDiscFill(theme: KioskTheme, id: KioskAccentId): string {
+  const s = kioskAccentSwatch(id);
+  const ground = KIOSK_THEME_GROUND[theme];
+  if (ground === "sunroom") return `linear-gradient(135deg, ${s.light.accent} 50%, ${s.dark.dim} 50%)`;
+  return ground === "dark" ? s.dark.dim : s.light.accent;
+}
+
 const STORAGE_KEY = "kiosk-accent";
 const CHANGE_EVENT = "kiosk-accent-change";
 

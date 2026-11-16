@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { KIOSK_ACCENTS, KIOSK_THEME_GROUND, kioskAccentSwatch, readKioskAccents, setKioskThemeAccent } from "./kiosk-accent.ts";
+import { KIOSK_ACCENTS, KIOSK_THEME_GROUND, accentDiscFill, kioskAccentSwatch, readKioskAccents, setKioskThemeAccent } from "./kiosk-accent.ts";
 import { SUNROOM_STOPS, sunroomCssVars, sunroomStateAt } from "./sunroom-light.ts";
 
 /* ---- storage -------------------------------------------------------------- */
@@ -215,5 +215,16 @@ describe("sunroom ramp takes the swatch half", () => {
     const picked = sunroomStateAt(midday, { accent: orchid });
     assert.equal(picked.palette.onAccent, plain.palette.onAccent);
     assert.equal(picked.palette.focus, plain.palette.focus);
+  });
+});
+
+describe("accent chip disc fill", () => {
+  it("uses the dim half on a dark ground, the accent half on a light one", () => {
+    assert.equal(accentDiscFill("aurora", "iris"), "#bc9cf1");
+    assert.equal(accentDiscFill("folio", "iris"), "#5b2bae");
+  });
+  it("splits Sunroom into the light accent (day) and the dark dim (night)", () => {
+    const fill = accentDiscFill("sunroom", "iris");
+    assert.ok(fill.includes("#5b2bae") && fill.includes("#bc9cf1"));
   });
 });
