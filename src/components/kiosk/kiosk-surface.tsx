@@ -603,8 +603,9 @@ export function KioskSurface({
   return (
     <div
       onPointerDown={onInteraction}
+      data-np={npOn && !full ? "" : undefined}
       className={cn(
-        "flex flex-col",
+        "group/col flex flex-col",
         full
           ? "gap-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:pb-[calc(9.75rem+env(safe-area-inset-bottom))]"
           :/* Glance is ONE SCREEN. `h-` and not `min-h-`: with a minimum the
@@ -626,6 +627,8 @@ export function KioskSurface({
         // The scene row is the stack's last item, so this reserve alone keeps it, and the text above it, clear of the lifted band: its bottom
         // sits 5.25rem above the viewport (1rem column offset + 4.25rem), or 9.5rem at 640px and below (one gap-3 over the 3.5rem cluster row).
         npOn && !full && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-[640px]:pb-[calc(8.5rem+env(safe-area-inset-bottom))]",
+        // The pill takes 68px of a 768px screen and the stack was already full: give back the short-viewport spacing (same steps as 700px; header gap and clock below).
+        npOn && !full && "[@media(max-height:800px)]:gap-3",
         !full && !npOn && "max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))]",
       )}
     >
@@ -680,7 +683,7 @@ export function KioskSurface({
               // is what a 800×480 panel has. Same max-height:700px breakpoint
               // as the band's own height class, so the whole column steps down
               // together rather than one piece at a time.
-              "flex flex-col items-center gap-5 [@media(max-height:700px)]:gap-2.5",
+              "flex flex-col items-center gap-5 [@media(max-height:700px)]:gap-2.5 group-data-[np]/col:[@media(max-height:800px)]:gap-2.5",
         )}
       >
         <KioskClock ref={flip.register("clock")} size={full ? "full" : "glance"} />

@@ -107,6 +107,14 @@ test("Scene row stays in the column's flow; the column reserves the band while t
   assert.match(s, /!full && !npOn && "max-\[640px\]:pb-\[calc\(5\.25rem/);
 });
 
+test("Playing on a short screen: column, header gap and clock take the 700px steps at 800px, keyed on the pill", () => {
+  const s = surface();
+  assert.match(s, /data-np=\{npOn && !full \? "" : undefined\}/);
+  assert.match(s, /npOn && !full && "\[@media\(max-height:800px\)\]:gap-3"/);
+  assert.match(s, /group-data-\[np\]\/col:\[@media\(max-height:800px\)\]:gap-2\.5/);
+  assert.match(read("./kiosk-clock.tsx"), /group-data-\[np\]\/col:\[@media\(max-height:800px\)\]:!text-\[4\.5rem\]/);
+});
+
 test("Chip widths re-measure when fonts finish loading or the typeface changes", () => {
   const g = glance();
   assert.match(g, /document\.fonts\.addEventListener\("loadingdone"/);

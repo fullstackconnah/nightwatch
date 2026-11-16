@@ -80,7 +80,7 @@ export const KioskClock = forwardRef<HTMLDivElement, { size: "glance" | "full" }
              top at y=-18). Capped by height, and `!` because this and `md:`
              are the same specificity, so without it the winner would depend on
              Tailwind's variant ordering rather than on intent. */
-          !full && "[@media(max-height:700px)]:!text-[4.5rem]",
+          !full && "[@media(max-height:700px)]:!text-[4.5rem] group-data-[np]/col:[@media(max-height:800px)]:!text-[4.5rem]",
         )}
       >
         {clock ? <ClockDigits time={clock.time} /> : "--:--"}

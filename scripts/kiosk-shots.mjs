@@ -1271,6 +1271,16 @@ const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = 
       const low = Math.max(...m.lines.map((l) => l.bottom)), top = Math.min(...m.scenes.map((s) => s.top));
       grRec(k("(8) scene tiles clear of every Glance text line"), m.lines.length >= 3 && touched.length === 0 && low <= top - 8, { lines: m.lines.length, touched, lowestBottom: low, sceneTop: top, rects: m.lines.map((l) => [l.text, Math.round(l.top), Math.round(l.bottom)]), scenes: m.scenes });
     }
+    // (9) the clock (the stack's first child) and the scene row both lie inside the viewport and inside the overflow-hidden column; the clock top is at least 8px from the viewport top.
+    const c9 = await page.evaluate(() => {
+      const r = (e) => { const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; };
+      const clock = document.querySelector('[data-hero="time"]'), scene = document.querySelector('[data-glance-widget="scenes"]');
+      let col = clock?.parentElement;
+      while (col && getComputedStyle(col).overflowY !== "hidden") col = col.parentElement;
+      return { vh: innerHeight, clock: clock && r(clock), scene: scene && r(scene), col: col && r(col) };
+    });
+    const in9 = (x) => x && x.top >= 8 - 0.5 && x.bottom <= c9.vh + 0.5 && c9.col && x.top >= c9.col.top - 0.5 && x.bottom <= c9.col.bottom + 0.5;
+    grRec(k("(9) clock and scene row inside the viewport and the column"), !!c9.clock && !!c9.col && (!scenes || !!c9.scene) && in9(c9.clock) && (!scenes || in9(c9.scene)), c9);
     if (wantMore === "on") grRec(k("(7) +n chip carries the on tone and its name ends on"), !!m.moreChip && m.moreChip.on && /, \d+ on$/.test(m.moreChip.label), { moreChip: m.moreChip });
     else if (wantMore !== null) grRec(k(wantMore ? "folds into a +n chip" : "no +n chip"), (m.more === 1) === wantMore && m.more <= 1, { more: m.more });
     await page.screenshot({ path: join(OUT_DIR, `glancerow-${key.replace(/ /g, "-")}.png`) });
