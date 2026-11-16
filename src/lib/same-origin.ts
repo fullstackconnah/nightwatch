@@ -19,3 +19,8 @@ export function crossSiteWriteRefused(method: string, headers: Headers): boolean
 
   return false; // why: a browser always sends one of the two on a cross-origin write, so neither means a non-browser client
 }
+
+// ?refresh=1 forces a costly du scan on a GET, so it counts as a write: a cross-site GET gets the cached answer.
+export function refreshAllowed(param: string | null, headers: Headers): boolean {
+  return param === "1" && !crossSiteWriteRefused("POST", headers);
+}
