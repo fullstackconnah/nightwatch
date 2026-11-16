@@ -25,7 +25,7 @@
  */
 
 import { chromium } from "playwright";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { uvContrast } from "./kiosk-uv-contrast.mjs";
 import { AUTO_OFF, LIST_EMPTY, LIST_STATES, LONG_NAMES, listBody, longNamesBody,HA_STATES, NOW_PLAYING, RAIN_HA_STATES, RAIN_NOW_PLAYING, PINNED_ISO, QUIET, RAIN_STATES, ROUTES, STOPS, SUN_AIR_STATES, SUN_AIR_STD, ZONE, rainWeatherFor, sunAirInstant, sunAirWeatherFor, weatherFor } from "./fixtures/kiosk/fixtures.mjs";
@@ -2279,10 +2279,10 @@ for (const n of CNS) {
 if (CL.failed.length) process.exitCode = 1;
 
 // ---- typeface coverage (type PR 1, spec checks 1 and 2): Sunroom follows the per-device Typeface selection ----
-// "kiosk-fonts" is {[theme]: {sans?, mono?}} (src/lib/kiosk-fonts.ts). Lexend and Chivo Mono stand in for the spec's Lexend and Roboto Mono (Roboto Mono joins the catalog in PR 2).
+// "kiosk-fonts" is {[theme]: {sans?, mono?}} (src/lib/kiosk-fonts.ts). Lexend and Roboto Mono, as the spec names them (Roboto Mono joined the catalog in type PR 2).
 const TF = { failed: [], states: {} };
 results.typeface = TF;
-const TF_OVERRIDE = `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: { sans: "lexend", mono: "chivo-mono" } }))})`;
+const TF_OVERRIDE = `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: { sans: "lexend", mono: "roboto-mono" } }))})`;
 const TF_SANS = "button.sr-chip-sm, [data-sr-title], [data-sr-face] p, .microlabel, .sr-pin-msg, .sr-word, [data-rain-zone=clock] > [data-sr-live]"; // selector list, each tested only in the state that renders it
 const TF_MONO = "button.sr-btn, button.sr-btn-nudge, [data-sr-face] .font-mono, [data-sr-num], [data-rain-zone=clock] > [data-sr-live]"; // [data-sr-num]: weather line, climate value and target, time chip, scene status
 /** First computed family of every match of each selector, against the first family the slot's `--font-t-*` var resolves to. */
@@ -2315,7 +2315,7 @@ function tfRecord(check, state, rows, need) {
   for (const r of rows) if (r.also && r.found && !r.got.includes(r.expected)) TF.failed.push(`${check} ${state}: ${r.sel} has no ${r.expected} element`);
 }
 for (const [check, init, sansVar, monoVar, tag] of [
-  ["check1", TF_OVERRIDE, "--font-t-lexend", "--font-t-chivo-mono", "override"],
+  ["check1", TF_OVERRIDE, "--font-t-lexend", "--font-t-roboto-mono", "override"],
   ["check2", null, "--font-t-sunroom-sans", "--font-t-sunroom-mono", "default"],
 ]) {
   const probes = [...TF_SANS.split(", ").map((sel) => ({ sel, cssVar: sel.includes("clock") ? monoVar : sansVar, alsoVar: sel === ".microlabel" ? monoVar : null })), ...TF_MONO.split(", ").filter((s) => !s.includes("clock")).map((sel) => ({ sel, cssVar: monoVar }))];
@@ -2354,7 +2354,165 @@ for (const [check, init, sansVar, monoVar, tag] of [
 }
 if (TF.failed.length) process.exitCode = 1;
 
-results.n16ConsoleErrors = consoleErrors;
+// ---- more typefaces (type PR 2, spec section 5 checks 4, 7, 8 and 9) ----
+// Keys: results.typefaces.{failed[], states{}, widths{}, reported[]}. Every check records a failure when false; an error inside one also lands in failed (never skipped).
+// The font list is read from src/lib/kiosk-fonts.ts, so a family added later is measured with no edit here.
+const TP = { failed: [], states: {}, widths: {}, reported: [] };
+results.typefaces = TP;
+const FONTS_SRC = readFileSync(new URL("../src/lib/kiosk-fonts.ts", import.meta.url), "utf8");
+const TP_FONTS = [...FONTS_SRC.matchAll(/\{ id: "([a-z-]+)", label: "[^"]+", kind: "(sans|serif|mono)", cssVar: ['"]var\((--font-t-[a-z-]+)\)/g)].map(([, id, kind, cssVar]) => ({ id, kind, cssVar }));
+const TP_MONO_DEFAULTS = new Set([...FONTS_SRC.matchAll(/mono: "([a-z-]+)" \}/g)].map((m) => m[1])); // the five serif Numerals defaults ride along
+const TP_TEXT = TP_FONTS.filter((f) => f.kind !== "mono");
+const TP_NUMERALS = TP_FONTS.filter((f) => f.kind === "mono" || TP_MONO_DEFAULTS.has(f.id));
+const tpRun = (name, fn) => guarded(`typefaces ${name}`, async () => { try { await fn(); } catch (e) { TP.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const tpWant = (name, ok, detail) => { TP.states[name] = detail; if (!ok) TP.failed.push(`${name} ${JSON.stringify(detail)}`); };
+/** Advance widths: each job is one family, one sample list, one `--sr-type-*` token; the face is loaded first so a fallback never gets measured. */
+const tpWidths = (page, jobs) => page.evaluate(async (list) => {
+  const scope = document.querySelector('[data-kiosk-theme="sunroom"]');
+  const out = [];
+  for (const { id, cssVar, token, samples } of list) {
+    const el = document.createElement("span");
+    el.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:var(--sr-type-${token});letter-spacing:var(--sr-track-${token});font-family:var(${cssVar}),monospace;font-variant-numeric:tabular-nums`;
+    scope.appendChild(el);
+    const cs = getComputedStyle(el);
+    const widths = [];
+    let error = null;
+    for (const s of samples) {
+      el.textContent = s;
+      // the chosen face only: the list also holds next/font's "<Face> Fallback", whose local() source is absent in the capture browser and rejects the whole load
+      const spec = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily.split(",")[0]}`;
+      // a NetworkError names no family: retry once, then report this family and go on
+      try { await document.fonts.load(spec, s); } catch { try { await document.fonts.load(spec, s); } catch (e) { error = String(e?.message ?? e); break; } }
+      widths.push(el.getBoundingClientRect().width);
+    }
+    el.remove();
+    out.push(error ? { id, error } : { id, widths });
+  }
+  return out;
+}, jobs);
+/** One state's layout numbers (check 7): horizontal overflow per pane, inner scrollers, text clipped without an ellipsis, and what sits above the fold. */
+const TP_LAYOUT = () => {
+  const shown = (e) => e.getClientRects().length > 0;
+  const panes = [...new Set([...document.querySelectorAll("[data-sr-face], [data-lists-pane], [data-rain-zone], main section")].filter(shown))];
+  const all = [...document.querySelectorAll("body *")].filter(shown);
+  const hasText = (e) => [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+  return {
+    panes: panes.length,
+    paneOverflowX: panes.filter((e) => e.scrollWidth > e.clientWidth + 1).length,
+    innerScroll: all.filter((e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 1).length,
+    clipped: all.filter((e) => { const s = getComputedStyle(e); return hasText(e) && /hidden|clip/.test(s.overflowX) && s.textOverflow !== "ellipsis" && e.scrollWidth > e.clientWidth + 1; }).length,
+    aboveFold: all.filter((e) => e.matches("button, [data-sr-title], [data-sr-face] p")).filter((e) => { const r = e.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }).length,
+    docOverflowX: document.documentElement.scrollWidth - innerWidth,
+  };
+};
+/** The admin PIN flow the "overlays elevated" visit uses, then the Typeface tab. */
+async function tpOpenTypeface(viewport) {
+  const v = await visit(CONTROLS_URL, { viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+  const { page } = v;
+  await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? route.fulfill({ json: { ok: true, expiresAt: Date.parse(PINNED_ISO) + 120_000 } }) : route.fallback()));
+  await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: { elevated: true, expiresAt: Date.parse(PINNED_ISO) + 120_000 } }));
+  const admin = page.getByRole("button", { name: /^Admin/ }).first();
+  if (!(await admin.count())) throw new Error("Admin button not found");
+  await admin.click();
+  await seen(page, "[role=dialog]", 5000);
+  for (const d of "0000") await page.getByRole("button", { name: `digit ${d}` }).click();
+  await page.waitForTimeout(1500);
+  await page.getByRole("tab", { name: "Typeface" }).click();
+  if (!(await seen(page, "#kiosk-tabpanel-typeface", 5000))) throw new Error("Typeface tab panel not found");
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForTimeout(800);
+  return v;
+}
+
+// check 8 and the widest pair: measured once, on Sunroom at 1024x768
+let TP_WIDEST = null;
+await tpRun("widths", async () => {
+  const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true });
+  const rawText = await tpWidths(page, TP_TEXT.map((f) => ({ ...f, token: "body", samples: ["Wednesday 28 Thermostat"] })));
+  const rawNums = await tpWidths(page, TP_NUMERALS.map((f) => ({ ...f, token: "clock", samples: ["88:88", "11:11"] })));
+  await context.close();
+  // a family that fails to load stays a failed check, but never hides the rest
+  for (const r of [...rawText, ...rawNums]) if (r.error) TP.failed.push(`widths ${r.id}: font failed to load (${r.error})`);
+  const text = rawText.filter((r) => !r.error);
+  const nums = rawNums.filter((r) => !r.error);
+  for (const t of text) TP.widths[`text:${t.id}`] = Math.round(t.widths[0] * 10) / 10;
+  for (const n of nums) TP.widths[`numerals:${n.id}`] = { "88:88": Math.round(n.widths[0] * 10) / 10, "11:11": Math.round(n.widths[1] * 10) / 10 };
+  const widest = (rows, w) => rows.reduce((a, b) => (w(b) > w(a) ? b : a)).id;
+  TP_WIDEST = { sans: widest(text, (t) => t.widths[0]), mono: widest(nums, (n) => n.widths[0]) };
+  TP.states.widest = TP_WIDEST;
+  // check 8: tabular figures, 11:11 as wide as 88:88 within 1 px; the serif theme defaults are reported, not failed (spec section 2)
+  for (const n of nums) {
+    const d = Math.abs(n.widths[0] - n.widths[1]);
+    const kind = TP_FONTS.find((f) => f.id === n.id).kind;
+    if (d <= 1) TP.states[`check8:${n.id}`] = { diff: d };
+    // Orbitron and Silkscreen are display faces that predate this check and have no equal-width digits: reported (board card nw-clock-width-display-faces), not failed
+    else if (kind === "mono" && !["neon-mono", "pixel-mono"].includes(n.id)) tpWant(`check8:${n.id}`, false, { diff: d });
+    else TP.reported.push(`check8 ${n.id} (${kind} theme default): 11:11 differs from 88:88 by ${d.toFixed(2)} px`);
+  }
+});
+
+// check 7: 1024x768, the crowded Shopping list in the Glance and Standard layouts, the widest Text and Numerals faces, Sunroom and the default theme
+if (TP_WIDEST) {
+  const override = `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: TP_WIDEST, default: TP_WIDEST }))})`;
+  for (const theme of ["sunroom", "default"]) {
+    for (const layout of ["glance", "standard"]) {
+      const url = `${MAIN_URL.replace("theme=sunroom", `theme=${theme}`)}${layout === "standard" ? "&layout=standard" : ""}`;
+      const seen7 = {};
+      for (const tag of ["base", "widest"]) {
+        await tpRun(`check7 ${theme} ${layout} ${tag}`, async () => {
+          const v = await listVisit({ body: LIST_STATES.crowded.body }, { url, size: SIZES[1], initScript: tag === "widest" ? override : null });
+          try {
+            await v.page.waitForTimeout(1500);
+            await v.page.evaluate(() => document.fonts.ready);
+            seen7[tag] = await v.page.evaluate(TP_LAYOUT);
+            if (tag === "widest") await v.page.screenshot({ path: join(OUT_DIR, `typeface-${theme}-${layout}-widest-1024x768.png`) });
+          } finally { await v.context.close(); }
+        });
+      }
+      const [b, w] = [seen7.base, seen7.widest];
+      if (b && w) tpWant(`check7:${theme}-${layout}`, w.panes > 0 && w.paneOverflowX <= b.paneOverflowX && w.innerScroll <= b.innerScroll && w.clipped <= b.clipped && w.aboveFold >= b.aboveFold && w.docOverflowX <= Math.max(0, b.docOverflowX), { base: b, widest: w, faces: TP_WIDEST });
+    }
+  }
+}
+
+// checks 4 and 9: the Typeface tab at 1180x820 and 390 px (Sunroom, day), where the chips and rows are measured and captured
+for (const size of [{ name: "1180x820", viewport: SIZES[0].viewport }, { name: "390", viewport: { width: 390, height: 844 } }]) {
+  await tpRun(`typeface tab ${size.name}`, async () => {
+    const { context, page } = await tpOpenTypeface(size.viewport);
+    const m = await page.evaluate(() => {
+      const panel = document.querySelector("#kiosk-tabpanel-typeface");
+      const probe = document.createElement("div");
+      probe.style.cssText = "position:absolute;visibility:hidden;height:var(--sr-hit-min)";
+      document.querySelector("[data-kiosk-theme]").appendChild(probe);
+      const hitMin = probe.getBoundingClientRect().height;
+      probe.remove();
+      const chips = [...panel.querySelectorAll("button[aria-pressed]")];
+      const rows = [...panel.querySelectorAll(".flex-wrap")];
+      const tabs = document.querySelector('[role=tablist][aria-label="Personalisation"]');
+      return {
+        hitMin,
+        chipCount: chips.length,
+        shortest: Math.min(...chips.map((c) => c.getBoundingClientRect().height)),
+        names: chips.map((c) => c.textContent.replace("· default", "").trim()),
+        defaults: chips.filter((c) => c.textContent.includes("· default")).length,
+        rows: rows.length,
+        rowsWrap: rows.every((r) => getComputedStyle(r).flexWrap === "wrap"),
+        rowsFit: rows.every((r) => r.scrollWidth <= r.clientWidth + 1),
+        tabsFit: tabs.scrollWidth <= tabs.clientWidth + 1,
+        docOverflowX: document.documentElement.scrollWidth - innerWidth,
+      };
+    });
+    const NEW = ["Atkinson Hyperlegible Next", "Nunito", "Geist", "Atkinson Hyperlegible Mono", "Geist Mono", "Roboto Mono"];
+    tpWant(`new faces offered ${size.name}`, NEW.every((n) => m.names.includes(n)) && m.rows === 3 && m.defaults === 2, { names: m.names, rows: m.rows, defaults: m.defaults });
+    tpWant(`check4 ${size.name}`, m.shortest >= 44 && m.shortest >= m.hitMin, { shortest: m.shortest, hitMin: m.hitMin, chips: m.chipCount });
+    if (size.name === "390") tpWant("check9", m.rowsWrap && m.rowsFit && m.tabsFit && m.docOverflowX <= 0, { rowsWrap: m.rowsWrap, rowsFit: m.rowsFit, tabsFit: m.tabsFit, docOverflowX: m.docOverflowX });
+    await page.locator("#kiosk-tabpanel-typeface").locator("xpath=..").screenshot({ path: join(OUT_DIR, `typeface-tab-sunroom-day-${size.name}.png`) });
+    await context.close();
+  });
+}
+if (TP.failed.length) process.exitCode = 1;
+
+results.n16ConsoleErrors =consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;
 results.n16HydrationFull = hydrationFull;

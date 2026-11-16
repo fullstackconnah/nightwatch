@@ -45,6 +45,12 @@ export type KioskFontId =
   | "figtree"
   | "manrope"
   | "chivo-mono"
+  | "atkinson-next"
+  | "nunito"
+  | "geist"
+  | "atkinson-mono"
+  | "geist-mono"
+  | "roboto-mono"
   | "system-sans"
   | "system-mono";
 
@@ -108,6 +114,13 @@ export const KIOSK_FONTS: readonly KioskFontOption[] = [
   { id: "figtree", label: "Figtree", kind: "sans", cssVar: 'var(--font-t-figtree), "Segoe UI", sans-serif' },
   { id: "manrope", label: "Manrope", kind: "sans", cssVar: 'var(--font-t-manrope), "Segoe UI", sans-serif' },
   { id: "chivo-mono", label: "Chivo Mono", kind: "mono", cssVar: "var(--font-t-chivo-mono), ui-monospace, monospace" },
+  // Type PR 2: legibility-first and neutral faces (Text), plus three tabular monos (Numerals).
+  { id: "atkinson-next", label: "Atkinson Hyperlegible Next", kind: "sans", cssVar: 'var(--font-t-atkinson-next), "Segoe UI", sans-serif' },
+  { id: "nunito", label: "Nunito", kind: "sans", cssVar: 'var(--font-t-nunito), "Segoe UI", sans-serif' },
+  { id: "geist", label: "Geist", kind: "sans", cssVar: 'var(--font-t-geist), "Segoe UI", sans-serif' },
+  { id: "atkinson-mono", label: "Atkinson Hyperlegible Mono", kind: "mono", cssVar: "var(--font-t-atkinson-mono), ui-monospace, monospace" },
+  { id: "geist-mono", label: "Geist Mono", kind: "mono", cssVar: "var(--font-t-geist-mono), ui-monospace, monospace" },
+  { id: "roboto-mono", label: "Roboto Mono", kind: "mono", cssVar: "var(--font-t-roboto-mono), ui-monospace, monospace" },
   { id: "system-sans", label: "System (Inter)", kind: "sans", cssVar: '"Inter", "Segoe UI", system-ui, -apple-system, sans-serif' },
   { id: "system-mono", label: "System (Cascadia)", kind: "mono", cssVar: '"Cascadia Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace' },
 ];

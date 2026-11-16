@@ -53,7 +53,6 @@ import {
 import {
   DEFAULT_THEME_FONTS,
   KIOSK_FONTS,
-  KIOSK_FONT_MAP,
   clearKioskThemeFonts,
   setKioskThemeFont,
   useKioskFonts,
@@ -61,6 +60,7 @@ import {
   type KioskFontOption,
   type KioskFontSlot,
 } from "@/lib/kiosk-fonts";
+import { fontRows } from "@/lib/kiosk-font-rows";
 import { ChevronDown, ChevronUp, Plus, X } from "lucide-react";
 import {
   KIOSK_WIDGETS,
@@ -331,21 +331,10 @@ function FontChip({
   );
 }
 
-/** Catalog entries for one slot, filtered by kind — "Text" shows sans+serif
- *  faces, "Numerals" shows mono faces. Unions in the theme's own default for
- *  that slot even when it's off-kind: five themes (journal, lounge, bulletin,
- *  understory, duotone) deliberately plug a SERIF face into the numerals
- *  slot for an editorial look (see kiosk-fonts.ts's DEFAULT_THEME_FONTS
- *  comment) — without this union, opening Numerals on Bulletin would make
- *  its own active default vanish from the list it's supposedly chosen from. */
-function optionsForSlot(slot: KioskFontSlot, theme: KioskTheme): readonly KioskFontOption[] {
-  const kinds: readonly KioskFontOption["kind"][] = slot === "sans" ? ["sans", "serif"] : ["mono"];
-  const base = KIOSK_FONTS.filter((f) => kinds.includes(f.kind));
-  const defaultId = DEFAULT_THEME_FONTS[theme][slot];
-  if (base.some((f) => f.id === defaultId)) return base;
-  return [...base, KIOSK_FONT_MAP[defaultId]];
-}
-
+/** One slot's chips, grouped by fontRows (kiosk-font-rows.ts): Text is a sans
+ *  row and a serif row under their own microlabels, Numerals one mono row that
+ *  also keeps the five themes' serif default (so it never vanishes from the
+ *  list it was chosen from). The theme default leads each row. */
 function FontSlotSection({
   slotLabel,
   slot,
@@ -358,26 +347,31 @@ function FontSlotSection({
   activeId: KioskFontId;
 }) {
   const defaultId = DEFAULT_THEME_FONTS[theme][slot];
-  const options = optionsForSlot(slot, theme);
+  const rows = fontRows(KIOSK_FONTS, slot, defaultId);
 
   return (
     <div className="flex flex-col gap-2">
       <span className="microlabel">{slotLabel}</span>
-      <div className="flex flex-wrap gap-2">
-        {options.map((option) => (
-          <FontChip
-            key={option.id}
-            option={option}
-            active={option.id === activeId}
-            isDefault={option.id === defaultId}
-            // Picking the chip that IS the default clears the override
-            // instead of writing an explicit-but-identical one, so "undo"
-            // for a single slot is just "tap the chip marked default" —
-            // no separate control needed for the single-slot case.
-            onSelect={() => setKioskThemeFont(theme, slot, option.id === defaultId ? null : option.id)}
-          />
-        ))}
-      </div>
+      {rows.map((row) => (
+        <div key={row.kind} className="flex flex-col gap-2">
+          {slot === "sans" && <span className="microlabel">{row.kind}</span>}
+          <div className="flex flex-wrap gap-2">
+            {row.options.map((option) => (
+              <FontChip
+                key={option.id}
+                option={option}
+                active={option.id === activeId}
+                isDefault={option.id === defaultId}
+                // Picking the chip that IS the default clears the override
+                // instead of writing an explicit-but-identical one, so "undo"
+                // for a single slot is just "tap the chip marked default" —
+                // no separate control needed for the single-slot case.
+                onSelect={() => setKioskThemeFont(theme, slot, option.id === defaultId ? null : option.id)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
