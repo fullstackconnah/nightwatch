@@ -203,7 +203,7 @@ export function zoneMask(x: number, y: number, zones: Float32Array, n: number, f
  *  own slot or the union would blank the floor between them. Slots 1 and 2 are
  *  the glance gate (hasGlanceZones); a name that also shows in full mode must
  *  not use them. */
-export const RAIN_ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, admin: 3, playing: 4 } as const;
+export const RAIN_ZONE_SLOT = { clock: 0, sentence: 1, tiles: 2, corner: 3, playing: 4 } as const;
 export const RAIN_ZONE_COUNT = 5;
 
 /** True when the glance text (slot 1, the centre column: every widget there, prose or control, carries

@@ -128,14 +128,9 @@ function GlanceLights() {
 
 export function KioskGlance({
   period,
-  onAdminClick,
   onDoorbellClick,
 }: {
   period: KioskPeriod;
-  /** Rect param lets the tapped Admin button feed the PIN pad's container-
-   *  transform origin (kiosk-motion.ts's containerExpand) — see page.tsx's
-   *  openPinPad. */
-  onAdminClick: (rect?: DOMRect) => void;
   /** Threaded through to the optional "doorbell" widget only — see
    *  kiosk-widgets.tsx's KioskWidgetCtx. Full mode already has its own,
    *  always-present doorbell button in the header; glance has none by
@@ -193,7 +188,7 @@ export function KioskGlance({
           on top of them. */}
       {/* The bottom-left CLUSTER: timers plus every light (see GlanceLights).
           One row, `max-w` capped at half the viewport so it can never grow
-          under the Admin button in the opposite corner. */}
+          under the alert and downloads cluster in the opposite corner. */}
       <div
         data-rain-zone="tiles"
         className="fixed flex max-w-[calc(50vw-2rem)] items-center gap-3"
@@ -214,54 +209,6 @@ export function KioskGlance({
         <KioskTimersButton className="h-14" />
         <GlanceLights />
       </div>
-      <button
-        type="button"
-        data-rain-zone="admin"
-        data-sr-admin
-        /* Admin DOES opt out, and it has to — this is not a style choice.
-           An earlier version let the press reach the root handler on the
-           reasoning that promoting to full underneath the PIN pad is
-           harmless. It is no longer merely harmless, it is fatal to the
-           button: the root's pointerdown flips the mode, and on that same
-           commit kiosk-surface.tsx makes the OUTGOING glance block
-           `absolute pointer-events-none` (the fix for the glance⇄full
-           jitter). The block therefore stops accepting pointer events
-           between this button's own pointerdown and its click, the click
-           never dispatches, and the pad never opens — measured on
-           production: mode went glance→full with no dialog.
-
-           Stopping propagation costs nothing, because entering elevation
-           pins the surface to full anyway (`pinned` in kiosk-surface.tsx),
-           so the promotion this used to rely on arrives a moment later by
-           a route that cannot swallow the click. */
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          onAdminClick(e.currentTarget.getBoundingClientRect());
-        }}
-        style={{
-          bottom: "calc(1rem + env(safe-area-inset-bottom))",
-          right: "calc(1.25rem + env(safe-area-inset-right))",
-        }}
-        // h-14 to match the wall-layout's 56px convention (Glance is the
-        // default surface on a fresh device now, so its own chrome should
-        // hold the same touch floor as everything else). ink-faint measures
-        // below the 4.5:1 AA floor on Glance's panel-less ground in 7/16
-        // themes — this is an interactive control, not a caption, so it
-        // gets ink-dim regardless of where ink-faint itself ends up landing.
-        //
-        // ADDITION, not a conversion: this was the only kiosk control with no
-        // press feedback at all — a 56px control on the primary resting
-        // surface with zero response to touch. `kiosk-press` (see globals.css's
-        // KIOSK MOTION VOCABULARY) is new here, and the bare `transition`
-        // utility that used to carry the hover colour swap is dropped for the
-        // same reason as every converted site: `.kiosk-press` already
-        // transitions background-color/color, so a second, layered
-        // `transition` utility would have been inert dead weight underneath it.
-        className="fixed h-14 px-4 rounded-md text-xs text-ink-dim outline-none kiosk-press hover:text-ink hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
-      >
-        Admin
-      </button>
     </>
   );
 }

@@ -592,8 +592,8 @@ export function KioskSurface({
       className={cn(
         "flex flex-col",
         full
-          ? "gap-3"
-          : /* Glance is ONE SCREEN. `h-` and not `min-h-`: with a minimum the
+          ? "gap-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))]"
+          :/* Glance is ONE SCREEN. `h-` and not `min-h-`: with a minimum the
                column simply grew past the viewport and the page scrolled —
                measured on production at 49px of overflow at 1024x768, 17px at
                1280x800 and 337px at 800x480, all of them really scrollable.
@@ -608,18 +608,9 @@ export function KioskSurface({
                clock step down there: this gap sits between the header and
                glance's own stack, and at 800×480 every 12px of rhythm is 12px
                the column either fits in or clips. */
-            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:700px)]:gap-3",
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))] [@media(max-height:700px)]:gap-3",
       )}
     >
-      {/* Fixed overlay, outside the flow — mounted here per the contract's
-          ownership map (agent D mounts it), built by agent A. */}
-      <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />
-
-      {/* Download-progress tray — same fixed-overlay family as the alerts
-          button beside it. Every element inside stops its own pointer
-          propagation, so no wrapper is needed here. */}
-      <KioskDownloads />
-
       {/* The rain radar, opened from the forecast rail's Today cell in either
           mode (see `radar` above for why it is mounted out here rather than
           inside the rail). It self-marks aria-modal, so useDomModalOpen already
@@ -851,11 +842,27 @@ export function KioskSurface({
                 optional "doorbell" widget. */}
             <KioskGlance
               period={period}
-              onAdminClick={onAdminClick}
               onDoorbellClick={onDoorbellClick}
             />
           </RevealBlock>
         )}
+      </div>
+
+      {/* The alert and downloads buttons: one fixed bottom-right cluster, Glance
+          and Standard alike, so a lone downloads button sits in the corner and
+          nothing covers the header's weather. z-(--z-sticky) puts the wrapper
+          and both trays (one stacking context) above page content but under
+          every scrim and sheet (--z-modal-backdrop and up, the PIN pad's z-50),
+          and, placed last, over the equal-z header. Both buttons render null
+          when idle, leaving a zero-size box that the rain mask skips. Below
+          641px it lifts one row to clear the now-playing pill and the
+          bottom-left cluster. */}
+      <div
+        data-rain-zone="corner"
+        className="fixed z-(--z-sticky) flex items-end gap-3 bottom-[calc(1rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] max-[640px]:bottom-[calc(5.25rem+env(safe-area-inset-bottom))]"
+      >
+        <KioskDownloads />
+        <KioskAlerts onOverlayStateChange={setAlertOverlayOpen} />
       </div>
     </div>
   );
