@@ -54,7 +54,7 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
         // rendered 44px target still overflows the row invisibly above/below.
         data-lit={state.enabled}
         onPointerDown={aimCatch}
-        className="sr-chip sr-chip-sm kiosk-press -my-2.5 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        className="sr-chip sr-chip-sm kiosk-press -my-2.5 max-[640px]:my-0 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
         <SunCatch />
         <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />

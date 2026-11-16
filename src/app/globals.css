@@ -3769,6 +3769,23 @@ body {
   }
 }
 
+/* Aurora and Aerogel panels are translucent by design (#151329d9, #ffffff8c). Content scrolls under two fixed or sticky pieces of the Full view,
+   so each gets an opaque backing from the theme's own --color-bg under its panel colour (a two-layer background: the panel as an image over the bg
+   colour). The hero only while it is pinned (data-pinned, set by kiosk-surface.tsx once the page has scrolled): unpinned, the glass looks as before.
+   The dock keeps the Timers tint: Tailwind's gradient variables stay the top layer. Unlayered, so it beats the layered panel colour above. */
+@media (min-width: 1024px) {
+  [data-kiosk-theme="aurora"] [data-mode="full"][data-pinned],
+  [data-kiosk-theme="aerogel"] [data-mode="full"][data-pinned] {
+    background-image: linear-gradient(var(--color-panel), var(--color-panel));
+    background-color: var(--color-bg);
+  }
+  [data-kiosk-theme="aurora"] [data-rain-zone="dock"] button,
+  [data-kiosk-theme="aerogel"] [data-rain-zone="dock"] button {
+    background-image: linear-gradient(var(--tw-gradient-from, transparent), var(--tw-gradient-to, transparent)), linear-gradient(var(--color-panel), var(--color-panel));
+    background-color: var(--color-bg);
+  }
+}
+
 /* nw motion */
 /* Unlayered and last on purpose: the Home reduced rule (`.hm *`, transition none) is unlayered too and would beat an earlier rule, which
    would kill the Home menu's reduced opacity fade. Curve is --ease-calm; exits stay instant (unmount). */

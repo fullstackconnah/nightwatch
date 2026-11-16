@@ -569,6 +569,15 @@ export function KioskSurface({
   const fullIsOutgoing = outgoingMode === "full";
   const glanceIsOutgoing = outgoingMode === "glance";
   const fullMounted = full || fullIsOutgoing;
+  // The hero is pinned (lg:sticky) once the page has scrolled; the translucent themes then back it opaque (globals.css, data-pinned).
+  const [heroPinned, setHeroPinned] = useState(false);
+  useEffect(() => {
+    if (!full) return;
+    const read = () => setHeroPinned(window.scrollY > 0);
+    read();
+    window.addEventListener("scroll", read, { passive: true });
+    return () => window.removeEventListener("scroll", read);
+  }, [full]);
   const glanceMounted = !full || glanceIsOutgoing;
 
   const days: WeatherDay[] = weather.ok?.days ?? [];
@@ -655,6 +664,7 @@ export function KioskSurface({
           nested inside) change. */}
       <header
         data-mode={mode}
+        data-pinned={heroPinned || undefined}
         className={cn(
           full
             ? "panel kiosk-hdr-grid top-0 z-(--z-sticky) px-4 py-2.5 md:py-3 lg:sticky lg:px-6 lg:py-3"
