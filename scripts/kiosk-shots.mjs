@@ -1231,6 +1231,11 @@ const GR_READ = () => {
     more: chips.filter((b) => /^Show all \d+ lights(, \d+ on)?$/.test(b.getAttribute("aria-label") ?? "")).length,
     moreChip: (() => { const b = chips.find((x) => /^Show all \d+ lights/.test(x.getAttribute("aria-label") ?? "")); return b ? { label: b.getAttribute("aria-label"), on: /\btext-accent\b/.test(b.className) } : null; })(),
     scenes: [...document.querySelectorAll('[data-glance-widget="scenes"] button')].map((b) => r(b)),
+    // Glance column text lines (check 8): every element with its own text in the bin line and the non-scene widgets, one rect per element.
+    lines: [...document.querySelectorAll('[data-bin-night="line"], [data-bin-night="line"] *, [data-glance-widget]:not([data-glance-widget="scenes"]) *')]
+      .filter((el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && el.getBoundingClientRect().height > 0)
+      .map((el) => ({ text: el.textContent.trim().slice(0, 24), ...r(el) })),
+    sceneRow: (() => { const w = document.querySelector('[data-glance-widget="scenes"]'); return w ? r(w) : null; })(),
   };
 };
 const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = false, lastOn = false } = {}, wantMore = null, row = null) => {
@@ -1260,6 +1265,12 @@ const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = 
     grRec(k("(5) every scene tile and cluster chip is fully inside the viewport"), m.chips.length + m.scenes.length > 0 && outside.length === 0, { outside });
     // (6) while the pill plays, the scene row sits at or above the pill's top.
     if (np && scenes) { const sb = Math.max(...m.scenes.map((r2) => r2.bottom)); grRec(k("(6) scene row bottom is at or above the pill top"), !!m.pill && sb <= m.pill.top + 0.5, { sceneBottom: sb, pillTop: m.pill?.top }); }
+    // (8) no scene tile touches a Glance text line (at least 3 lines matched), and the lowest line ends 8 px (the house gap-2) above the scene row.
+    if (scenes) {
+      const touched = m.lines.filter((l) => m.scenes.some((s) => grHit(l, s))).map((l) => l.text);
+      const low = Math.max(...m.lines.map((l) => l.bottom)), top = Math.min(...m.scenes.map((s) => s.top));
+      grRec(k("(8) scene tiles clear of every Glance text line"), m.lines.length >= 3 && touched.length === 0 && low <= top - 8, { lines: m.lines.length, touched, lowestBottom: low, sceneTop: top, rects: m.lines.map((l) => [l.text, Math.round(l.top), Math.round(l.bottom)]), scenes: m.scenes });
+    }
     if (wantMore === "on") grRec(k("(7) +n chip carries the on tone and its name ends on"), !!m.moreChip && m.moreChip.on && /, \d+ on$/.test(m.moreChip.label), { moreChip: m.moreChip });
     else if (wantMore !== null) grRec(k(wantMore ? "folds into a +n chip" : "no +n chip"), (m.more === 1) === wantMore && m.more <= 1, { more: m.more });
     await page.screenshot({ path: join(OUT_DIR, `glancerow-${key.replace(/ /g, "-")}.png`) });

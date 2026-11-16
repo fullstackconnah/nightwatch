@@ -43,7 +43,7 @@ test("Alert and downloads cluster lifts with the pill too", () => {
 });
 
 test("Glance column reserves the pill's row only while it shows", () => {
-  assert.match(surface(), /npOn && !full && "pb-\[calc\(3rem\+env\(safe-area-inset-bottom\)\)\]"/);
+  assert.match(surface(), /npOn && !full && "pb-\[calc\(4\.25rem\+env/);
 });
 
 test("Pill reports when it is on screen and the surface listens", () => {
@@ -98,12 +98,13 @@ test("Folded lights: the rendered list is the fitChips result, and +n shows the 
   assert.match(g, /foldOn > 0 \? "border-accent\/40 bg-accent\/10 text-accent" : CHIP_OFF/);
 });
 
-test("Scene row lifts as one band above the pill while it plays, three bands at <=640px", () => {
+test("Scene row stays in the column's flow; the column reserves the band while the pill plays", () => {
   const g = glance();
-  assert.match(g, /lifted && id === "scenes"/);
-  assert.match(g, /data-lifted/);
-  assert.match(g, /fixed inset-x-0 bottom-\[calc\(5\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(g, /max-\[640px\]:bottom-\[calc\(9\.5rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.doesNotMatch(g, /lifted && id === "scenes"/);
+  assert.doesNotMatch(g, /fixed inset-x-0/);
+  const s = surface();
+  assert.match(s, /npOn && !full && "pb-\[calc\(4\.25rem\+env\(safe-area-inset-bottom\)\)\] max-\[640px\]:pb-\[calc\(8\.5rem\+env\(safe-area-inset-bottom\)\)\]"/);
+  assert.match(s, /!full && !npOn && "max-\[640px\]:pb-\[calc\(5\.25rem/);
 });
 
 test("Chip widths re-measure when fonts finish loading or the typeface changes", () => {

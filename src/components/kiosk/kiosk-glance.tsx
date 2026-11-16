@@ -240,14 +240,7 @@ export function KioskGlance({
             data-glance-widget={id}
             // Every widget in this centre column, prose or control (scenes), shares one rain-mask zone (same-named rects union).
             data-rain-zone="sentence"
-            data-lifted={(lifted && id === "scenes") || undefined}
-            className={cn(
-              dropsWhenShort && "[@media(max-height:700px)]:hidden",
-              // While the pill plays the scene row joins the lifted band: fixed, centred, above the pill by a band (5.25rem) and, below 641px,
-              // above the cluster row too (cluster 5.25rem + 3.5rem chip + 0.75rem gap). The strip passes pointer events through to its chips.
-              lifted && id === "scenes" &&
-                "fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex justify-center px-6 pointer-events-none *:pointer-events-auto max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))]",
-            )}
+            className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}
           >
             {def.render(ctx)}
           </div>

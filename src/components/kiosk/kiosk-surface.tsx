@@ -622,8 +622,11 @@ export function KioskSurface({
                clock step down there: this gap sits between the header and
                glance's own stack, and at 800×480 every 12px of rhythm is 12px
                the column either fits in or clips. */
-            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))] [@media(max-height:700px)]:gap-3",
-        npOn && !full && "pb-[calc(3rem+env(safe-area-inset-bottom))]",
+            "h-[calc(100dvh-2rem)] items-center justify-center gap-6 overflow-hidden px-6 text-center [@media(max-height:700px)]:gap-3",
+        // The scene row is the stack's last item, so this reserve alone keeps it, and the text above it, clear of the lifted band: its bottom
+        // sits 5.25rem above the viewport (1rem column offset + 4.25rem), or 9.5rem at 640px and below (one gap-3 over the 3.5rem cluster row).
+        npOn && !full && "pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-[640px]:pb-[calc(8.5rem+env(safe-area-inset-bottom))]",
+        !full && !npOn && "max-[640px]:pb-[calc(5.25rem+env(safe-area-inset-bottom))]",
       )}
     >
       {/* The rain radar, opened from the forecast rail's Today cell in either
