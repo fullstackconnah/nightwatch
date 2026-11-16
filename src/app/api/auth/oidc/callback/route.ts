@@ -11,6 +11,7 @@ import {
 } from "@/lib/oidc";
 import { isSecureRequest, requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { SESSION_COOKIE, createSessionToken, isMissingSecretError, sessionCookieOptions } from "@/lib/auth";
+import { sessionEpoch } from "@/lib/config";
 
 
 export const dynamic = "force-dynamic";
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest) {
   // Post-login destination is always "/", never a caller-supplied path.
   let token: string;
   try {
-    token = await createSessionToken();
+    token = await createSessionToken(sessionEpoch());
   } catch (e) {
     // Production without SESSION_SECRET: the login page shows its "SSO is not available" copy, not a raw 500.
     if (!isMissingSecretError(e)) throw e;

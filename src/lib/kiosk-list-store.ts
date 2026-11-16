@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readCapped } from "./read-capped.ts";
+import { sessionEpoch } from "./config.ts";
 import {
   checkAdd, fold, isListId, norm, parseListFile, sortItems, suggestions, sweepBoundary, MAX_ROWS, isFull, UUID_RE,
   type AddHistory, type ListFile, type ListItem,
@@ -145,7 +146,7 @@ const idList = (v: unknown): string[] | null =>
 async function elevated(session?: string, elevation?: string): Promise<boolean> {
   if (!session && !elevation) return false;
   const a = await import("./auth.ts");
-  return (await a.verifySessionToken(session)) || (await a.verifyKioskElevationToken(elevation));
+  return (await a.verifySessionToken(session, sessionEpoch())) || (await a.verifyKioskElevationToken(elevation));
 }
 
 /** Reads a request body capped at MAX_BODY bytes whatever content-length says (chunked or bogus headers included). */

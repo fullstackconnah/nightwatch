@@ -68,6 +68,18 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
      && sudo chmod 600 /mnt/docker/stacks/homelab-dashboard/data/config.json"
    ```
 
+   The app reloads the file whenever its modification time differs from the one it cached, so a
+   copy is picked up without a restart, even with preserved times (`scp -p`). It would be missed
+   only if the copy's modification time were exactly equal to the cached one.
+
+   **This copy overwrites the server's `system.sessionEpoch` and `system.adminPasswordHash`** with
+   the PC file's values. A password change on the server bumps the epoch to sign out older sessions;
+   shipping a file with a lower epoch (0 if the PC file has none) makes those revoked sessions valid
+   again and puts the password back to the PC's. Before copying, fetch the server's file and bring
+   those two fields into the PC file. Never ship a file whose `sessionEpoch` is lower than the
+   server's. Changing the password once after the copy only bumps the epoch relative to the shipped
+   value, so old stolen sessions can stay valid until the counter passes the old server value.
+
    (uid 1000 = the `node` user in the container; the data dir must stay
    writable or Settings saves will fail.)
 
@@ -282,3 +294,5 @@ ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
 # nuclear: sudo docker compose down
 ```
+
+Rolling back to a build from before the session epoch: every session the newer build issued keeps working and the epoch is ignored, so a password change made on the newer build no longer signs anyone out.

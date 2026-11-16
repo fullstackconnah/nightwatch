@@ -96,41 +96,41 @@ describe("kioskMayCall (what an elevated kiosk may reach)", () => {
 
 describe("isRequestAuthenticated", () => {
   it("a session cookie passes every route", async () => {
-    const session = await createSessionToken();
+    const session = await createSessionToken(0);
     for (const [m, p] of [["GET", "/api/settings/system"], ["POST", "/api/docker/prune"], ["GET", "/settings"]]) {
-      assert.ok(await isRequestAuthenticated(session, undefined, m, p));
+      assert.ok(await isRequestAuthenticated(session, undefined, m, p, 0));
     }
   });
 
   it("an elevation cookie passes only the kiosk allowlist", async () => {
     const kiosk = await createKioskElevationToken();
-    assert.ok(await isRequestAuthenticated(undefined, kiosk, "POST", "/api/docker/containers/abc/action"));
-    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "GET", "/api/settings/system")));
-    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "POST", "/api/docker/prune")));
-    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "GET", "/settings")));
+    assert.ok(await isRequestAuthenticated(undefined, kiosk, "POST", "/api/docker/containers/abc/action", 0));
+    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "GET", "/api/settings/system", 0)));
+    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "POST", "/api/docker/prune", 0)));
+    assert.ok(!(await isRequestAuthenticated(undefined, kiosk, "GET", "/settings", 0)));
   });
 
   it("an elevation token in the session slot is refused (token confusion)", async () => {
     const kiosk = await createKioskElevationToken();
-    assert.ok(!(await isRequestAuthenticated(kiosk, undefined, "GET", "/api/settings/system")));
-    assert.ok(!(await verifySessionToken(kiosk)));
+    assert.ok(!(await isRequestAuthenticated(kiosk, undefined, "GET", "/api/settings/system", 0)));
+    assert.ok(!(await verifySessionToken(kiosk, 0)));
   });
 
   it("an OIDC flow token in the session slot is refused", async () => {
     const flow = await createOidcFlowToken({ state: "s", nonce: "n", verifier: "v" });
-    assert.ok(!(await isRequestAuthenticated(flow, undefined, "GET", "/api/settings/system")));
+    assert.ok(!(await isRequestAuthenticated(flow, undefined, "GET", "/api/settings/system", 0)));
   });
 
   it("a session token in the elevation slot does not count as elevation", async () => {
-    const session = await createSessionToken();
+    const session = await createSessionToken(0);
     assert.ok(!(await verifyKioskElevationToken(session)));
-    assert.ok(!(await isRequestAuthenticated(undefined, session, "POST", "/api/docker/containers/abc/action")));
+    assert.ok(!(await isRequestAuthenticated(undefined, session, "POST", "/api/docker/containers/abc/action", 0)));
   });
 
   it("an OIDC flow token is not a kiosk elevation, and a session is not a flow token", async () => {
     const flow = await createOidcFlowToken({ state: "s", nonce: "n", verifier: "v" });
     assert.ok(!(await verifyKioskElevationToken(flow)));
-    assert.equal(await verifyOidcFlowToken(await createSessionToken()), null);
+    assert.equal(await verifyOidcFlowToken(await createSessionToken(0)), null);
     assert.equal(await verifyOidcFlowToken(await createKioskElevationToken()), null);
     assert.ok(await verifyOidcFlowToken(flow));
   });
@@ -140,8 +140,8 @@ describe("isRequestAuthenticated", () => {
     new SignJWT(claims).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("60s").sign(secretKey());
 
   it("each verifier refuses a wrong or missing typ on its own", async () => {
-    assert.ok(!(await verifySessionToken(await sign({ sub: "admin", typ: "kiosk" }))));
-    assert.ok(!(await verifySessionToken(await sign({ sub: "admin" }))));
+    assert.ok(!(await verifySessionToken(await sign({ sub: "admin", typ: "kiosk" }), 0)));
+    assert.ok(!(await verifySessionToken(await sign({ sub: "admin" }), 0)));
     assert.ok(!(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "session" }))));
     assert.ok(!(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true }))));
     const flow = { state: "s", nonce: "n", verifier: "v" };
@@ -160,6 +160,6 @@ describe("isRequestAuthenticated", () => {
   });
 
   it("no cookie passes nothing", async () => {
-    assert.ok(!(await isRequestAuthenticated(undefined, undefined, "GET", "/api/docker/containers")));
+    assert.ok(!(await isRequestAuthenticated(undefined, undefined, "GET", "/api/docker/containers", 0)));
   });
 });

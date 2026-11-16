@@ -148,16 +148,16 @@ describe("scan route", () => {
 describe("session rule (N5)", () => {
   it("answers no without a dashboard session; a kiosk elevation cannot call media", async () => {
     for (const [m, p] of [["GET", "/api/media/library"], ["GET", "/api/media/title"], ["POST", "/api/media/scan"]] as const) {
-      assert.equal(await isRequestAuthenticated(undefined, undefined, m, p), false, p);
+      assert.equal(await isRequestAuthenticated(undefined, undefined, m, p, 0), false, p);
       assert.equal(kioskMayCall(m, p), false, p);
-      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), m, p), false, p);
-      assert.equal(await isRequestAuthenticated(await createSessionToken(), undefined, m, p), true, p);
+      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), m, p, 0), false, p);
+      assert.equal(await isRequestAuthenticated(await createSessionToken(0), undefined, m, p, 0), true, p);
     }
   });
 
   it("middleware keeps /api/media out of PUBLIC_PATHS and inside the matcher", () => {
     const src = readFileSync(new URL("../../middleware.ts", import.meta.url), "utf8");
-    const paths = /const PUBLIC_PATHS = \[([^\]]*)\]/.exec(src)?.[1] ?? "";
+    const paths = /const PUBLIC_PATHS = \[([^\]]*)\]/.exec(readFileSync(new URL("../public-paths.ts", import.meta.url), "utf8"))?.[1] ?? "";
     assert.ok(paths.length > 0 && !paths.includes("media"));
     const matcher = /matcher:\s*\[\s*"([^"]+)"\s*\]/.exec(src)?.[1] ?? "";
     assert.equal(new RegExp(`^${matcher}$`).test("/api/media/library"), true);
@@ -239,7 +239,7 @@ describe("jobs routes (B9)", () => {
     assert.equal(r.status, 502);
     for (const [m, p] of [["GET", "/api/media/jobs"], ["POST", "/api/media/jobs"], ["POST", `/api/media/jobs/${JOB}/cancel`], ["POST", `/api/media/jobs/${JOB}/undo`], ["POST", `/api/media/jobs/batch/${JOB}/cancel`]] as const) {
       assert.equal(kioskMayCall(m, p), false, p);
-      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), m, p), false, p);
+      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), m, p, 0), false, p);
     }
   });
 });

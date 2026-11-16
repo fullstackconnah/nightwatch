@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
-import { loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import { epochOf, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { isSecureRequest } from "@/lib/oidc-origin";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,7 @@ const BCRYPT_ROUNDS = 12;
  * `npm run hash-password`), then manages it here from then on — mirroring
  * how the dev-mode login bypass (any password accepted) is a login-only
  * affordance and deliberately does not extend to this destructive write.
+ * A change signs out every other session (system.sessionEpoch); this browser gets a fresh cookie.
  */
 export async function POST(req: NextRequest) {
   let body: { currentPassword?: unknown; newPassword?: unknown };
@@ -84,7 +87,8 @@ export async function POST(req: NextRequest) {
   }
   const next: AppConfig = {
     ...current,
-    system: { ...current.system, adminPasswordHash: newHash, updatedAt: now },
+    // Same save as the hash: every session minted before this change stops verifying.
+    system: { ...current.system, adminPasswordHash: newHash, sessionEpoch: epochOf(current.system?.sessionEpoch) + 1, updatedAt: now },
   };
 
   try {
@@ -97,5 +101,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, updatedAt: now });
+  const res = NextResponse.json({ ok: true, updatedAt: now });
+  // The changing browser would otherwise be signed out by its own change; if minting fails the password is saved, sign in again.
+  try {
+    res.cookies.set(SESSION_COOKIE, await createSessionToken(epochOf(next.system?.sessionEpoch)), sessionCookieOptions(isSecureRequest(req)));
+  } catch (e) {
+    console.error("settings/password re-issue session", e);
+  }
+  return res;
 }

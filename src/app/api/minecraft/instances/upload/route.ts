@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { sessionEpoch } from "@/lib/config";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   if (crossSiteWriteRefused(req.method, req.headers)) {
     return NextResponse.json({ error: "cross-site request refused" }, { status: 403 });
   }
-  if (!(await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value))) {
+  if (!(await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, sessionEpoch()))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

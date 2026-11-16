@@ -76,9 +76,10 @@ Two layers, both required for exposure beyond the LAN:
 
 Session = 7-day HttpOnly JWT cookie; middleware guards every page and API
 route. The socket proxy never exposes `EXEC`, so the app cannot shell into
-containers even if compromised. Changing the password in Settings does not
-sign out other browsers: their sessions last up to 7 days unless
-`SESSION_SECRET` is changed.
+containers even if compromised. Changing the password in Settings signs out
+every other session and browser (the browser that changed it stays signed in).
+An `ADMIN_PASSWORD_HASH` set in `.env` still accepts the old password after a
+change, so update or remove it there too.
 
 The session, kiosk-unlock and SSO-flow cookies are marked `Secure` when the
 request reaches the app over https through the proxy (`X-Forwarded-Proto:
@@ -91,7 +92,7 @@ name for https, and force https on that name at the proxy.
 ### Single sign-on (OIDC)
 
 `OIDC_ALLOWED_USERS` (or the `oidcAllowedUsers` system setting in
-`data/config.json`, which wins) lists who may sign in through SSO: entries
+`data/config.json`, which wins unless it holds no entries) lists who may sign in through SSO: entries
 separated by commas or spaces, each either an account `sub` (recommended, it
 is an opaque id that never changes; match is exact) or an email (matched
 without regard to case, and only when the provider marks it verified). Unset

@@ -1,12 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims } from "@/lib/auth";
-import { systemSetting } from "@/lib/config";
+import { loadConfig, systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import { checkedIssuer, sameIssuer } from "@/lib/oidc-issuer";
-import { oidcAllowDecision } from "@/lib/oidc-allow";
+import { ALLOW_ENV_NAME, ALLOW_SETTING_KEY, allowListSetting, oidcAllowDecision } from "@/lib/oidc-allow";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -67,7 +67,7 @@ export function oidcConfig(): OidcConfig | null {
 
 /** Whether the verified id token's account may sign in (the allow-list setting; unset admits everyone, with one warning). */
 export function oidcAllowListCheck(payload: JWTPayload): boolean {
-  return oidcAllowDecision(payload, systemSetting("oidcAllowedUsers", "OIDC_ALLOWED_USERS"));
+  return oidcAllowDecision(payload, allowListSetting(loadConfig().system?.[ALLOW_SETTING_KEY], process.env[ALLOW_ENV_NAME]));
 }
 
 /** Host only (e.g. "homelab.local:9091") for the settings panel — never the

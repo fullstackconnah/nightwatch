@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { isDeskCameraPath, isDeskGlancePath } from "@/lib/desk-auth";
 import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "@/lib/auth";
+import { sessionEpoch } from "@/lib/config";
+import { isPublicPath } from "@/lib/public-paths";
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
 // public on the LAN — it's an ambient wall display that exposes only host
@@ -18,9 +20,8 @@ import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "
 // way — that's the whole point of an SSO entry point on the login page.
 // /dashboard.webmanifest: iOS fetches the PWA manifest without cookies when
 // adding to the home screen, and it contains nothing but names/colors/icon
-// paths. (The kiosk's manifest + icons need no entry — the "/kiosk" prefix
-// happens to cover /kiosk.webmanifest and /kiosk-icon-*.png too.)
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/kiosk", "/api/auth/oidc", "/kiosk", "/api/mcp", "/dashboard.webmanifest"];
+// paths. The list (matched by whole segment, kiosk manifest + icons named one
+// by one) lives in lib/public-paths.ts.
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -33,7 +34,7 @@ export async function middleware(req: NextRequest) {
   if (pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/") && crossSiteWriteRefused(req.method, req.headers)) {
     return NextResponse.json({ error: "cross-site request refused" }, { status: 403 });
   }
-  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) return NextResponse.next();
+  if (isPublicPath(pathname)) return NextResponse.next();
 
   // A real session passes everywhere. A kiosk PIN elevation passes only the
   // API calls the elevated kiosk makes (container list/lifecycle, voice — see
@@ -43,6 +44,7 @@ export async function middleware(req: NextRequest) {
     req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value,
     req.method,
     pathname,
+    sessionEpoch(),
   );
   if (ok) return NextResponse.next();
 
@@ -56,6 +58,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
+  // Node runtime, not Edge: the session epoch is read from data/config.json (node:fs).
+  runtime: "nodejs",
   // Everything except static assets, and the Minecraft pack upload: Next 15.5
   // buffers (and truncates at 10 MB) the body of any matched path, but that
   // route streams ~300 MB zips. It authenticates itself (verifySessionToken in the route).

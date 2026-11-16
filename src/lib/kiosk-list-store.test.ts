@@ -202,7 +202,7 @@ test("15b clear-all with cookies (needs the jose package)", async () => {
   assert.equal(elev.json.removed.length, 2);
   assert.equal(stored().items.length, 0);
   seed([mk(1, "Bread")]);
-  const sess = await post("clear-all", { listId: "shopping" }, T, { sessionCookie: await auth.createSessionToken() });
+  const sess = await post("clear-all", { listId: "shopping" }, T, { sessionCookie: await auth.createSessionToken(0) });
   assert.equal(sess.status, 200);
   assert.equal(stored().items.length, 0);
 });

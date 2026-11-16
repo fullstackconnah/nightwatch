@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
+import { sessionEpoch } from "@/lib/config";
 import { getHermesJob } from "@/lib/hermes-ctl";
 import { jobVisible } from "@/lib/kiosk-access";
 
@@ -14,7 +15,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   // a real 401 as this app's own session expiring, not Hermes'.
   const result = await getHermesJob(id);
   // Elevation-only callers (kiosk) may read only "ask" jobs; 404 rather than 403 so the id is not confirmed.
-  if (result.ok && !jobVisible(result.job.kind, await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value))) {
+  if (result.ok && !jobVisible(result.job.kind, await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, sessionEpoch()))) {
     return NextResponse.json({ ok: false, status: "not-found", detail: `Job ${id} was not found.` }, { status: 404 });
   }
   return NextResponse.json(result);
