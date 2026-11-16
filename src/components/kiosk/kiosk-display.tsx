@@ -33,18 +33,16 @@ import {
   CloudRainWind,
   CloudSnow,
   CloudSun,
-  Droplets,
   type LucideIcon,
   Moon,
   Newspaper,
   Sun,
-  Sunrise,
   Sunset,
-  Wind,
 } from "lucide-react";
 import { fetcher } from "@/lib/client";
-import { BinNightRow } from "@/components/kiosk/kiosk-bins";
-import { useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
+import { BinNightRow, useBinNight } from "@/components/kiosk/kiosk-bins";
+import { type KioskAgenda, useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
+import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
 import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
@@ -310,9 +308,6 @@ export function useSunAirView(ok: WeatherOk | null) {
   return useMemo(() => (now === 0 ? null : sunAirView(ok, new Date(now))), [ok, now]);
 }
 
-/** MicroDatum values are `text-ink` by default; only a tone changes that. */
-const microTone = (t: SunAirTone) => (t === "none" ? "text-ink" : SUN_AIR_TONE_CLASS[t]);
-
 export const SUN_AIR_TONE_CLASS: Record<SunAirTone, string> = { none: "text-ink-dim", warn: "text-warn", bad: "text-bad" };
 
 /** One inline UV or air item in the weather line: the label stays faint, the value takes the tone. */
@@ -322,22 +317,6 @@ function SunAirInline({ item }: { item: SunAirInlineItem }) {
     <span data-sun-inline="" key={sr ? item.text : undefined} className={sr ? "whitespace-nowrap font-mono text-sm text-ink-faint sr-fade-in" : "whitespace-nowrap font-mono text-sm text-ink-faint"}>
       {item.label} <span className={SUN_AIR_TONE_CLASS[item.tone]}>{item.text.slice(item.label.length + 1)}</span>
     </span>
-  );
-}
-
-function MicroDatum({ icon: Icon, label, value, toneClass = "text-ink" }: { icon?: LucideIcon; label: string; value: string; toneClass?: string }) {
-  // Sunroom: a changed reading cross-fades in over 180 ms (keyed on the value), it never rolls.
-  const sr = useKioskTheme() === "sunroom";
-  return (
-    <div className="flex flex-col items-center gap-0.5">
-      <div className="flex items-center gap-1 text-ink-faint">
-        {Icon && <Icon size={11} aria-hidden />}
-        <span className="microlabel">{label}</span>
-      </div>
-      <span key={sr ? value : undefined} className={sr ? `font-mono text-sm ${toneClass} sr-fade-in` : `font-mono text-sm ${toneClass}`}>
-        {value}
-      </span>
-    </div>
   );
 }
 
@@ -371,49 +350,6 @@ function WeatherSkeleton() {
 
 /* ── current weather ─────────────────────────────────────────────────────── */
 
-function CurrentWeatherLarge({
-  current,
-  today,
-  place,
-  stale,
-  rain,
-  sunAir,
-}: {
-  current: WeatherCurrent;
-  today: WeatherDay;
-  place: string;
-  stale: boolean;
-  rain?: WeatherRain;
-  sunAir: SunAirView | null;
-}) {
-  // No icon/temp/label here (redesign-06 follow-up, 2026-08-03): the shared
-  // header (kiosk-surface.tsx's TempNode) already states the current reading
-  // once, ~150px above this band, and both were visible on screen at once.
-  // This band now carries only what the header doesn't: feels-like, wind,
-  // humidity, sunrise, place, staleness, and the rain nowcast/ribbon.
-  return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-3 text-ink-faint">
-          {place && <span className="text-xs">{place}</span>}
-          {stale && <StaleTag />}
-        </div>
-        <div data-weather-datums="" className="flex flex-wrap items-center gap-4">
-          <MicroDatum label="feels" value={`${Math.round(current.feelsC)}°`} />
-          <MicroDatum icon={Droplets} label="rain" value={`${current.precipMm.toFixed(1)} mm`} />
-          <MicroDatum icon={Wind} label="wind" value={`${Math.round(current.windKmh)} km/h`} />
-          <MicroDatum label="humidity" value={`${Math.round(current.humidityPct)}%`} />
-          {sunAir?.inline.uv && <MicroDatum label={sunAir.inline.uv.label} value={sunAir.inline.uv.value} toneClass={microTone(sunAir.inline.uv.tone)} />}
-          {sunAir?.inline.air && <MicroDatum label={sunAir.inline.air.label} value={sunAir.inline.air.value} toneClass={microTone(sunAir.inline.air.tone)} />}
-          <MicroDatum icon={Sunrise} label="sunrise" value={clockOf(today.sunrise)} />
-        </div>
-      </div>
-      {rain && <RainNowcastBand rain={rain} />}
-      {rain && <RainHourlyRibbon hours={rain.hours} />}
-    </div>
-  );
-}
-
 function CurrentWeatherCompact({
   current,
   today,
@@ -438,12 +374,11 @@ function CurrentWeatherCompact({
     <div data-weather-line="" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {mode === "day" ? (
         <span
-          key={sr ? `${Math.round(current.feelsC)}|${Math.round(today.maxC)}|${Math.round(today.minC)}|${today.rainPct}` : undefined}
+          key={sr ? `${Math.round(current.feelsC)}|${today.rainPct}` : undefined}
           className={sr ? "font-mono text-sm text-ink-faint sr-fade-in" : "font-mono text-sm text-ink-faint"}
           data-sr-num=""
         >
-          feels {Math.round(current.feelsC)}° · H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° ·{" "}
-          {today.rainPct}% rain
+          feels {Math.round(current.feelsC)}° · {today.rainPct}% rain
         </span>
       ) : (
         <span className="flex items-center gap-1 font-mono text-sm text-ink-faint">
@@ -477,127 +412,29 @@ function RainSummaryText({ summary, className }: { summary: string; className?: 
   );
 }
 
-const NOWCAST_W = 320;
-const NOWCAST_H = 36;
-// Fixed 0/15/30/45/60/75/90-minute grid: bar position comes from this slot
-// count, never from how many points the server actually returned, so a
-// short/uneven nowcast array can't push a bar past the viewBox.
-const NOWCAST_SLOTS = 7;
-const NOWCAST_SLOT_W = NOWCAST_W / NOWCAST_SLOTS;
-
-/** ~36px SVG band: 15-min precip bars over a hairline baseline. Renders no
- *  bars at all when every bucket is dry — the summary sentence alone carries
- *  "dry for the next 90 min" rather than drawing a flat empty strip. Renders
- *  nothing whatsoever when there's no nowcast and no summary to show, so a
- *  data-missing morning never leaves a dead box under the current reading. */
-function RainNowcastBand({ rain }: { rain: WeatherRain }) {
-  const { nowcast, summary } = rain;
-  if (nowcast.length === 0 && !summary) return null;
-
-  const hasBars = nowcast.some((p) => p.precipMmHr > 0);
-  const peak = hasBars ? Math.max(...nowcast.map((p) => p.precipMmHr)) : 1;
-  const baselineY = NOWCAST_H - 5;
-
-  return (
-    <div className="mt-3">
-      {summary && <RainSummaryText summary={summary} className="text-xs text-ink-dim" />}
-      {hasBars && (
-        <svg
-          viewBox={`0 0 ${NOWCAST_W} ${NOWCAST_H}`}
-          preserveAspectRatio="none"
-          className="mt-1 h-9 w-full"
-          aria-hidden
-        >
-          <line
-            x1={0}
-            y1={baselineY}
-            x2={NOWCAST_W}
-            y2={baselineY}
-            stroke="var(--color-line-bright)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
-          {nowcast.map((p) => {
-            const slot = Math.min(NOWCAST_SLOTS - 1, Math.round(p.minutesFromNow / 15));
-            const x = slot * NOWCAST_SLOT_W;
-            const barH = Math.max(1.5, (p.precipMmHr / peak) * (baselineY - 4));
-            return (
-              <rect
-                key={p.minutesFromNow}
-                x={x + NOWCAST_SLOT_W * 0.15}
-                y={baselineY - barH}
-                width={Math.max(1, NOWCAST_SLOT_W * 0.7)}
-                height={barH}
-                rx={1}
-                fill="var(--color-blue)"
-                opacity={0.85}
-              />
-            );
-          })}
-        </svg>
-      )}
-    </div>
-  );
-}
-
-/** 12 tiny cells, opacity-mapped to rain probability, with a "now" tick at
- *  the left edge (hours[0] is the current/next hour bucket). Omitted
- *  entirely — no hatched placeholder — when the hourly block didn't come
- *  back, per spec: this is outlook furniture, not a reading that failed. */
-function RainHourlyRibbon({ hours }: { hours: WeatherRain["hours"] }) {
-  if (hours.length === 0) return null;
-  return (
-    <div className="mt-3">
-      <div className="microlabel mb-1.5">next 12h rain</div>
-      <div className="relative flex h-3 gap-0.5">
-        <span aria-hidden className="absolute -top-1.5 left-0 h-1.5 w-px bg-ink-faint" />
-        {hours.slice(0, 12).map((h) => (
-          <div
-            key={h.hourIso}
-            className="h-full min-w-0 flex-1 rounded-sm"
-            style={{ backgroundColor: "var(--color-blue)", opacity: Math.max(0.08, Math.min(1, h.probabilityPct / 100)) }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── weather band ────────────────────────────────────────────────────────── */
 
-function WeatherBand({ period, weather }: { period: KioskPeriod; weather: WeatherView }) {
+/** The header's fifth child (full only): feels, rain, UV and air under the temperature. Always the compact line: the morning's large reading repeated the hero temperature. */
+export function WeatherBand({ period, weather }: { period: KioskPeriod; weather: WeatherView }) {
   const sunAir = useSunAirView(weather.ok);
   if (weather.status === "unconfigured") return <WeatherUnconfigured />;
   if (weather.status === "unreachable-empty") return <WeatherUnreachable detail={weather.detail} />;
   if (weather.status === "loading" || !weather.ok) return <WeatherSkeleton />;
 
-  const { current, days, place, rain } = weather.ok;
+  const { current, days, rain } = weather.ok;
   const today = days[0];
   const stale = weather.status === "ready-stale";
 
-  // The forecast rail used to render here (a `days.length > 0 &&` block
-  // below the current reading). redesign-06 §5 moves it out: the rail is
-  // now owned by kiosk-surface.tsx's shared header in both glance and full
-  // mode (see that file's structural-rule comment), so it's the same DOM
-  // node across the mode transition instead of two separate copies. This
-  // band keeps the current reading and the rain nowcast/ribbon, unchanged.
-  // No box: not a touch target or alert, just open ground (redesign-06 §E).
-  // It's the first thing in the full-view content stack, so nothing sits
-  // above it to separate from.
   return (
-    <section>
-      {period === "morning" ? (
-        <CurrentWeatherLarge current={current} today={today} place={place} stale={stale} rain={rain} sunAir={sunAir} />
-      ) : (
-        <CurrentWeatherCompact
-          current={current}
-          today={today}
-          mode={period === "evening" ? "evening" : "day"}
-          stale={stale}
-          rain={rain}
-          sunAir={sunAir}
-        />
-      )}
+    <section className="min-w-0 basis-full lg:basis-auto">
+      <CurrentWeatherCompact
+        current={current}
+        today={today}
+        mode={period === "evening" ? "evening" : "day"}
+        stale={stale}
+        rain={rain}
+        sunAir={sunAir}
+      />
     </section>
   );
 }
@@ -613,7 +450,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
   // treatment as the hub's sections.
   if (preparing) {
     return (
-      <section className="border-t border-line pt-3">
+      <section>
         <SectionLabel icon={Newspaper} label="Morning Briefing" />
         <div className="mt-2 flex items-center gap-2 text-xs text-ink-dim">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ink-faint motion-reduce:animate-none" aria-hidden />
@@ -625,7 +462,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
 
   if (data.status !== "ok") {
     return (
-      <section className="border-t border-line pt-3">
+      <section>
         <SectionLabel icon={Newspaper} label="Morning Briefing" />
         <p className="mt-2 text-xs text-ink-faint">Briefing unavailable.</p>
       </section>
@@ -641,7 +478,7 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
     : [];
 
   return (
-    <section className="border-t border-line pt-3">
+    <section>
       <SectionLabel icon={Newspaper} label="Morning Briefing" />
 
       {digest && (
@@ -690,19 +527,13 @@ function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefi
 /* ── calendar (today's and tomorrow's events) ───────────────────────────── */
 
 /** The agenda's one home on Standard: at most 3 rows and one "and N more" row. 0 px (no node) when there is nothing to say. */
-function CalendarSection() {
-  const { view, stale, failed } = useKioskAgenda();
+function CalendarSection({ agenda: { view, failed } }: { agenda: KioskAgenda }) {
   if (!view && !failed) return null;
   return (
-    <section data-calendar-section="" className="border-t border-line pt-3">
-      <div className="flex items-center gap-2">
-        <SectionLabel icon={CalendarDays} label="Calendar" />
-        {/* -my-1: the 24 px sunroom pill overflows the label's line evenly, so the hub below never moves */}
-        {stale && <span className="-my-1 flex"><StaleTag /></span>}
-      </div>
-      {failed && <p className="mt-2 text-xs text-ink-faint">Calendar unavailable.</p>}
+    <section data-calendar-section="">
+      {failed && <p className="text-xs text-ink-faint">Calendar unavailable.</p>}
       {view && (
-        <ul className="mt-2 space-y-1 text-sm">
+        <ul className="space-y-1 text-sm">
           {view.rows.map((r) => (
             <li key={r.id} data-agenda-row="" className="flex items-baseline gap-2">
               <span className="w-16 shrink-0 text-xs text-ink-faint">{r.day}</span>
@@ -720,22 +551,32 @@ function CalendarSection() {
 
 /* ── display band (morning / day / evening) ─────────────────────────────── */
 
+/** The Today cell's content (kiosk-hub.tsx owns the cell and its span): briefing in the morning, bin night in the evening, the agenda, and what is playing at the foot. */
 export function KioskDisplay({ period }: { period: KioskPeriod }) {
-  const weather = useWeatherView();
   // Already night-backed-off structurally, not just by rate: `active` false
   // outside "morning" passes SWR a `null` key, which stops polling outright
   // rather than merely slowing it down. Nobody reads a 3am briefing, and this
   // was already the case before the 2026-08 idle/night pass — noted here so
   // that pass doesn't get "fixed" a second time onto a poll that isn't running.
   const briefing = useKioskBriefing(period === "morning");
+  const agenda = useKioskAgenda();
+  const bins = useBinNight(period);
+  // The cell stays so the board keeps its shape. The morning briefing always has a card, so it never reads "nothing".
+  const nothingOn = period !== "morning" && !bins && !agenda.view && !agenda.failed;
 
   return (
-    <div className="space-y-3">
-      <WeatherBand period={period} weather={weather} />
-      <BinNightRow period={period} />
+    <>
+      <div className="flex items-center gap-2">
+        <SectionLabel icon={CalendarDays} label="Today" />
+        {/* -my-1: the 24 px sunroom pill overflows the label's line evenly, so nothing below it moves */}
+        {agenda.stale && <span className="-my-1 flex"><StaleTag /></span>}
+      </div>
       {period === "morning" && <BriefingCard briefing={briefing} />}
-      <CalendarSection />
-    </div>
+      <BinNightRow period={period} />
+      <CalendarSection agenda={agenda} />
+      {nothingOn && <p data-today-empty="" className="text-sm text-ink-dim">Nothing on today or tomorrow</p>}
+      <KioskNowPlaying docked />
+    </>
   );
 }
 

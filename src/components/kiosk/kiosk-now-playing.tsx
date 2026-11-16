@@ -21,7 +21,8 @@ import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { KIOSK_EASE_OUT, KIOSK_FADE_MS } from "@/lib/kiosk-motion";
 import type { NowPlayingActive } from "@/lib/types/nowplaying";
 
-export function KioskNowPlaying() {
+/** `docked`: the Standard board's Today cell footer: in flow at the cell foot, full width, opacity fade only (the rise is for a floating pill). */
+export function KioskNowPlaying({ docked = false }: { docked?: boolean } = {}) {
   // Ambient: what's playing is a glanceable nicety, not something anyone is
   // waiting on. Backed off while idle and overnight — see
   // useKioskPollInterval's note on which polls should NOT do this.
@@ -78,10 +79,12 @@ export function KioskNowPlaying() {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "fixed left-1/2 z-(--z-toast) -translate-x-1/2 transition-[opacity,transform] motion-reduce:transition-none",
+        docked
+          ? "mt-auto transition-opacity motion-reduce:transition-none"
+          : "fixed left-1/2 z-(--z-toast) -translate-x-1/2 transition-[opacity,transform] motion-reduce:transition-none",
         entered
           ? "translate-y-0 opacity-100"
-          : "translate-y-2 opacity-0 motion-reduce:translate-y-0 motion-reduce:opacity-100",
+          : cn("opacity-0 motion-reduce:opacity-100", !docked && "translate-y-2 motion-reduce:translate-y-0"),
       )}
       style={{
         bottom: "calc(1rem + env(safe-area-inset-bottom))",
@@ -100,7 +103,9 @@ export function KioskNowPlaying() {
         data-sr-np
         data-playing={playing || undefined}
         className={cn(
-          "panel relative flex max-w-[min(90vw,28rem)] items-center gap-2.5 overflow-hidden rounded-full py-2.5 pl-3.5 pr-4",
+          docked
+            ? "relative flex w-full items-center gap-2.5 overflow-hidden rounded-full bg-panel-2 py-2.5 pl-3.5 pr-4"
+            : "panel relative flex max-w-[min(90vw,28rem)] items-center gap-2.5 overflow-hidden rounded-full py-2.5 pl-3.5 pr-4",
           // Paused dims the whole pill a touch — a quieter state than
           // playing, without disappearing outright (it's still relevant,
           // just not moving). Kept on this INNER node rather than the outer

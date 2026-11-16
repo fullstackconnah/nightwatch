@@ -20,7 +20,7 @@
    and force an immediate refetch the moment it settles, success or failure,
    so the real state is on screen within one round trip either way. */
 
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import {
   Battery,
@@ -52,9 +52,7 @@ import type {
 } from "@/lib/types/ha";
 import { cn } from "@/lib/utils";
 import { chipWord, showSub } from "@/lib/sunroom-controls";
-import { LG_COL_SPAN, mergeToggles, rowOneSpans, rowTwoLayout } from "@/lib/kiosk-board";
-import { shortenSharedPrefix } from "@/lib/kiosk-chip-names";
-import { useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
+import { CHIP_COLS, LG_COL_SPAN, SCENE_COLS, TILE_COLS, mergeToggles, rowOneSpans, rowTwoLayout } from "@/lib/kiosk-board";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { aimCatch, SunCatch, SunChipMarks } from "@/components/kiosk/kiosk-sun-catch";
 
@@ -85,7 +83,6 @@ const HATCH_PATTERN =
 // floor); the row's total height scales with entity COUNT, not a fixed column
 // count, so 1 light + 7 switches costs far less vertical space than the old
 // 2-4 column grid did.
-const CHIP_ROW = "flex flex-wrap gap-2";
 
 const SENSOR_ICON: Record<HaSensorKind, LucideIcon> = {
   temperature: Thermometer,
@@ -278,7 +275,7 @@ function ToggleChip({
       onClick={onToggle}
       onPointerDown={aimCatch}
       className={cn(
-        "sr-chip kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        "sr-chip sr-chip-sm kiosk-press relative flex h-11 w-full min-w-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
         !available && "pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
@@ -295,8 +292,8 @@ function ToggleChip({
     >
       <SunCatch />
       <Icon size={15} className={on ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="sr-chip-name max-w-72 truncate text-sm text-ink">{name}</span>
-      <span className={cn("sr-chip-sub max-w-24 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
+      <span className="sr-chip-name min-w-0 truncate text-sm text-ink">{name}</span>
+      <span className={cn("sr-chip-sub max-w-24 shrink-0 truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
         {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
       </span>
       {!sr && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />}
@@ -329,21 +326,21 @@ function SceneChip({
       data-lit={activated}
       aria-busy={pending || undefined}
       className={cn(
-        "sr-chip",
+        "sr-chip sr-chip-sm",
         // Same sheen pane as ToggleChip above. The bare `transition` utility
         // this used to carry is gone rather than left in place: `.kiosk-press`
         // is unlayered and fully owns the `transition` longhands, so a layered
         // Tailwind `transition` here would have been a dead class reading as
         // if it did something.
-        "kiosk-press relative flex h-14 max-w-full shrink-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
+        "kiosk-press relative flex h-11 w-full min-w-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:pointer-events-none",
         !scene.available && "opacity-40",
         activated ? "border-accent/50 bg-accent/15" : "border-line bg-panel-2 hover:border-line-bright",
       )}
     >
       <SunCatch />
       <Sparkles size={15} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
-      <span className="sr-chip-name max-w-28 truncate text-sm text-ink">{scene.name}</span>
-      <span className={cn("sr-chip-sub max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined} data-sr-num="">
+      <span className="sr-chip-name min-w-0 truncate text-sm text-ink">{scene.name}</span>
+      <span className={cn("sr-chip-sub max-w-28 shrink-0 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined} data-sr-num="">
         {statusText}
       </span>
       <SunChipMarks on={activated} error={!!error} busy={pending} scene />
@@ -358,6 +355,7 @@ function SectionHeader({
   label,
   qualifier,
   note,
+  stale,
 }: {
   icon: LucideIcon;
   label: string;
@@ -365,9 +363,11 @@ function SectionHeader({
    *  door") — surfaced once here instead of repeating it on every pill. */
   qualifier?: string | null;
   note?: string;
+  /** The HA cells' stale mark, beside the heading (-my-1: the 24 px sunroom pill overflows the line evenly, so no height changes). */
+  stale?: boolean;
 }) {
   return (
-    <div className="mb-2.5 flex items-baseline justify-between gap-2">
+    <div className="flex items-baseline justify-between gap-2">
       <div className="flex items-center gap-2">
         <Icon size={13} className="text-ink-faint" aria-hidden />
         {/* Real heading, not a styled span — the page supplies an <h1>, so
@@ -376,6 +376,7 @@ function SectionHeader({
             Tailwind's preflight zeroes the browser's own h2 margin/size. */}
         <h2 className="microlabel">{label}</h2>
         {qualifier && <span className="microlabel opacity-70">{qualifier}</span>}
+        {stale && <span className="-my-1 flex"><StaleTag /></span>}
       </div>
       {note && <span className="microlabel">{note}</span>}
     </div>
@@ -388,109 +389,95 @@ function SectionHeader({
 // would still re-render on every poll despite that stability, since a parent
 // re-render always reconciles children unless props are shallow-equal AND
 // the component opts in.
-const LightsSection = memo(function LightsSection({
+const STALE_NOTE = "last confirmed state — may not reflect a recent change";
+
+/** Every board cell: one `.panel` (one pane deep, nothing inside is a panel), its own `<section>` and rise step. */
+function Cell({ className, riseIndex, children }: { className: string; riseIndex: number; children: ReactNode }) {
+  return (
+    <section
+      // relative: sunroom sheen anchor, as on the old sections.
+      className={cn("panel relative kiosk-rise flex min-w-0 flex-col gap-2 p-3", className)}
+      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
+    >
+      {children}
+    </section>
+  );
+}
+
+/** Row 1 spans: 12 wide below 641 px, 6 each from 641 px, then by the zone count from lg (kiosk-board.ts). */
+const rowOneCell = (lgSpan: number) => cn("col-span-12 min-[641px]:col-span-6", LG_COL_SPAN[lgSpan]);
+/** Where a status cell (not connected, load error, skeleton) sits: Climate's slot, so Today keeps its 5 columns. */
+const STATUS_SLOT = rowOneCell(7);
+
+function TodayCell({ today, zones }: { today: ReactNode; zones: number }) {
+  const span = rowOneSpans(zones).today;
+  return (
+    <Cell className={span === 12 ? "col-span-12" : rowOneCell(span)} riseIndex={1}>
+      {today}
+    </Cell>
+  );
+}
+
+const TogglesSection = memo(function TogglesSection({
   ha,
   lights,
+  switches,
   entities,
-  riseIndex,
+  className,
+  columns,
+  stale,
 }: {
   ha: UseKioskHaResult;
   lights: HaLight[];
-  entities: HaEntities;
-  /** This section's step in the surface's unfolding sequence — see
-   *  ClimateSection's comment on the same prop for why it's a plain number
-   *  passed in rather than derived here. */
-  riseIndex: number;
-}) {
-  const onCount = lights.filter((l) => l.on).length;
-  // Same prefix-stripping treatment as Switches, applied for consistency
-  // rather than because today's fixture needs it: this section currently
-  // has a single light ("Front door Floodlight"), and shortenSharedPrefix
-  // requires 2+ entities before it strips anything, so it's a no-op here
-  // right now. It's still correct to run it — the moment a second light is
-  // added under a shared prefix, this section gets the same fix for free
-  // instead of silently regressing. (The single light's own truncation in
-  // the original bug report is fixed separately, by ToggleChip's widened
-  // label column — see max-w-72 above.)
-  const { labels: lightLabels, qualifier } = useMemo(() => shortenSharedPrefix(lights.map((l) => l.name)), [lights]);
-  return (
-    // No box: a pure section wrapper, not a touch target or alert (redesign-06
-    // §E). A hairline top rule groups it from the section above; the first
-    // rendered section (whichever it is, since sections are conditional on
-    // data) sits flush with nothing above it via `first:`.
-    <section
-      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
-      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
-    >
-      <SectionHeader icon={Lightbulb} label="Lights" qualifier={qualifier} note={`${onCount} of ${lights.length} on`} />
-      <div className={CHIP_ROW}>
-        {lights.map((light, i) => {
-          const toggle = () => {
-            const next: HaEntities = {
-              ...entities,
-              lights: entities.lights.map((l) =>
-                l.entityId === light.entityId
-                  ? { ...l, on: !l.on, brightnessPct: l.on ? null : l.brightnessPct }
-                  : l,
-              ),
-            };
-            void ha.runAction({ entityId: light.entityId, action: "toggle" }, next);
-          };
-          const statusText = !light.available
-            ? "unavailable"
-            : light.on && light.brightnessPct != null
-              ? `${light.brightnessPct}%`
-              : light.on
-                ? "on"
-                : "off";
-          return (
-            <ToggleChip
-              key={light.entityId}
-              icon={Lightbulb}
-              name={lightLabels[i]}
-              fullName={light.name}
-              on={light.on}
-              available={light.available}
-              subtitle={statusText}
-              error={ha.actionErrors[light.entityId]}
-              onToggle={toggle}
-            />
-          );
-        })}
-      </div>
-    </section>
-  );
-});
-
-const SwitchesSection = memo(function SwitchesSection({
-  ha,
-  switches,
-  entities,
-  riseIndex,
-}: {
-  ha: UseKioskHaResult;
   switches: HaSwitch[];
   entities: HaEntities;
-  /** See ClimateSection's comment on the same prop. */
-  riseIndex: number;
+  /** Row 2 span and chip columns (kiosk-board.ts). */
+  className: string;
+  columns: string;
+  stale: boolean;
 }) {
-  const onCount = switches.filter((s) => s.on).length;
-  // See sharedLeadingWords/shortenSharedPrefix above: strips a shared
-  // leading prefix (e.g. "Front door") from labels so the word that
-  // actually distinguishes each switch survives at kiosk viewing distance,
-  // and surfaces the stripped prefix once via SectionHeader's `qualifier`
-  // instead of repeating it on every pill.
-  const { labels: switchLabels, qualifier } = useMemo(() => shortenSharedPrefix(switches.map((s) => s.name)), [switches]);
+  // One merged grid: lights, then switches, one count and one shared-prefix qualifier over both.
+  const { entries, qualifier, note } = useMemo(() => mergeToggles(lights, switches), [lights, switches]);
   return (
-    <section
-      // relative: sunroom sheen anchor — see LightsSection's comment on the
-      // same class.
-      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
-      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
-    >
-      <SectionHeader icon={ToggleLeft} label="Switches" qualifier={qualifier} note={`${onCount} of ${switches.length} on`} />
-      <div className={CHIP_ROW}>
-        {switches.map((sw, i) => {
+    <Cell className={className} riseIndex={3}>
+      <SectionHeader icon={Lightbulb} label="Lights and switches" qualifier={qualifier} note={stale ? STALE_NOTE : note} stale={stale} />
+      <div className={cn("grid gap-2", columns)}>
+        {entries.map((e) => {
+          if (e.kind === "light") {
+            const light = e.item;
+            const toggle = () => {
+              const next: HaEntities = {
+                ...entities,
+                lights: entities.lights.map((l) =>
+                  l.entityId === light.entityId
+                    ? { ...l, on: !l.on, brightnessPct: l.on ? null : l.brightnessPct }
+                    : l,
+                ),
+              };
+              void ha.runAction({ entityId: light.entityId, action: "toggle" }, next);
+            };
+            const statusText = !light.available
+              ? "unavailable"
+              : light.on && light.brightnessPct != null
+                ? `${light.brightnessPct}%`
+                : light.on
+                  ? "on"
+                  : "off";
+            return (
+              <ToggleChip
+                key={light.entityId}
+                icon={Lightbulb}
+                name={e.label}
+                fullName={light.name}
+                on={light.on}
+                available={light.available}
+                subtitle={statusText}
+                error={ha.actionErrors[light.entityId]}
+                onToggle={toggle}
+              />
+            );
+          }
+          const sw = e.item;
           const toggle = () => {
             const next: HaEntities = {
               ...entities,
@@ -502,7 +489,7 @@ const SwitchesSection = memo(function SwitchesSection({
             <ToggleChip
               key={sw.entityId}
               icon={ToggleLeft}
-              name={switchLabels[i]}
+              name={e.label}
               fullName={sw.name}
               on={sw.on}
               available={sw.available}
@@ -513,19 +500,25 @@ const SwitchesSection = memo(function SwitchesSection({
           );
         })}
       </div>
-    </section>
+    </Cell>
   );
 });
 
-const ScenesSection = memo(function ScenesSection({
+/** Scenes, then (under the hub's own hairline) the read-only sensors: one panel, the house beside the day. */
+const SidePanel = memo(function SidePanel({
   ha,
   scenes,
-  riseIndex,
+  sensors,
+  className,
+  columns,
+  stale,
 }: {
   ha: UseKioskHaResult;
   scenes: HaScene[];
-  /** See ClimateSection's comment on the same prop. */
-  riseIndex: number;
+  sensors: HaSensor[];
+  className: string;
+  columns: string;
+  stale: boolean;
 }) {
   const [activated, setActivated] = useState<Set<string>>(new Set());
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -547,26 +540,47 @@ const ScenesSection = memo(function ScenesSection({
   };
 
   return (
-    <section
-      // relative: sunroom sheen anchor — see LightsSection's comment on the
-      // same class.
-      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
-      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
-    >
-      <SectionHeader icon={Sparkles} label="Scenes" />
-      <div className={CHIP_ROW}>
-        {scenes.map((scene) => (
-          <SceneChip
-            key={scene.entityId}
-            scene={scene}
-            activated={activated.has(scene.entityId)}
-            pending={ha.isPending(scene.entityId)}
-            error={ha.actionErrors[scene.entityId]}
-            onActivate={() => activate(scene)}
-          />
-        ))}
-      </div>
-    </section>
+    <Cell className={className} riseIndex={4}>
+      {scenes.length > 0 && (
+        <>
+          <SectionHeader icon={Sparkles} label="Scenes" stale={stale} />
+          <div className={cn("grid gap-2", columns)}>
+            {scenes.map((scene) => (
+              <SceneChip
+                key={scene.entityId}
+                scene={scene}
+                activated={activated.has(scene.entityId)}
+                pending={ha.isPending(scene.entityId)}
+                error={ha.actionErrors[scene.entityId]}
+                onActivate={() => activate(scene)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+      {sensors.length > 0 && (
+        <div className={cn("flex flex-col gap-2", scenes.length > 0 && "border-t border-line pt-2")}>
+          <SectionHeader icon={Battery} label="Sensors" stale={scenes.length === 0 && stale} />
+          {/* Read-only readings, no touch target and no alert: name and value on one line; the readings wrap and the panel grows. */}
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {sensors.map((s) => {
+              const Icon = SENSOR_ICON[s.kind];
+              return (
+                <div key={s.entityId} className={cn("flex items-center gap-2", !s.available && "opacity-50")}>
+                  <Icon size={13} className="shrink-0 text-ink-faint" aria-hidden />
+                  <span className="microlabel max-w-32 truncate" title={s.name}>
+                    {s.name}
+                  </span>
+                  <span className={cn("font-mono text-sm", s.available ? batteryTone(s) : "text-ink-faint")}>
+                    {s.available ? formatSensor(s) : "unavailable"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Cell>
   );
 });
 
@@ -574,74 +588,37 @@ const ClimateSection = memo(function ClimateSection({
   ha,
   climates,
   entities,
-  riseIndex,
   autoOff,
+  className,
+  tileColumns,
+  stale,
 }: {
   ha: UseKioskHaResult;
   climates: HaClimate[];
   entities: HaEntities;
-  /** This section's step in the surface's own unfolding sequence
-   *  (kiosk-surface.tsx's `FullContent` uses 0-2 for KioskDisplay/admin
-   *  group/KioskHub; the hub's five sections continue from there at 3-7,
-   *  because visually these are the panes that arrive after the hub's own
-   *  container). Passed in as a plain number rather than derived from a
-   *  position in an array: KioskHub renders five independently-conditional
-   *  NAMED sections, not a mapped list, so there is no array index to read
-   *  it off — hardcoding each call site's number is the only option, and
-   *  correct precisely because the set of sections and their order is fixed
-   *  in source, not data-driven. */
-  riseIndex: number;
-  /** The nightly-sweep engine result, lifted to KioskHub (its config poll and
-   *  fire effect must run regardless of whether this section is even mounted
-   *  — see useClimateAutoOff's THESIS) and threaded down just for the header
-   *  pill. Part of this component's memo-relevant props like everything else
-   *  here: useClimateAutoOff identity-stabilizes `status`/`warn` internally
-   *  (content-equal values keep the same object across its own 30s tick, see
-   *  the sameStatus/sameWindow refs in use-climate-auto-off.ts) before
-   *  wrapping the result in its own useMemo, so `autoOff` itself only changes
-   *  identity when the auto-off situation actually does — a few times a day,
-   *  not every tick — and passing it through here doesn't reintroduce the
-   *  re-render memo() is guarding against. */
+  /** The nightly-sweep engine result, lifted to KioskHub (its config poll and fire effect must run whether or not this cell is
+   *  mounted, see useClimateAutoOff's THESIS) and threaded down for the header pill and the banner. useClimateAutoOff
+   *  identity-stabilizes it, so passing it does not defeat the memo. */
   autoOff: UseClimateAutoOffResult;
+  /** Row 1 span and tile columns by zone count (kiosk-board.ts). */
+  className: string;
+  tileColumns: string;
+  stale: boolean;
 }) {
-  // Which tile (by entityId) is currently under adjustment, for the depth-
-  // of-field exemption (globals.css's "focus isolation" block). Owned here,
-  // not in the tile: two tiles adjusting at once would mean two different
-  // members claiming the one "in focus" slot, and the grid — not either
-  // tile — is what has to arbitrate that.
+  // Which tile (by entityId) is under adjustment, for the depth-of-field exemption (globals.css "focus isolation"). Owned
+  // here: two tiles adjusting at once would both claim the one "in focus" slot, and the grid is what arbitrates.
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   return (
-    <section
-      // relative: sunroom sheen anchor — see LightsSection's comment on the
-      // same class.
-      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
-      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
-    >
+    <Cell className={className} riseIndex={2}>
       <div className="flex items-center justify-between gap-2">
-        <SectionHeader icon={Thermometer} label="Climate" />
+        <SectionHeader icon={Thermometer} label="Climate" stale={stale} />
         <ClimateAutoOffPill autoOff={autoOff} />
       </div>
-      {/* Compact tiles in a grid, not stacked rows (2026-08-03 follow-up —
-          supersedes the divide-y row list this used to be): fixed breakpoint
-          columns rather than `repeat(auto-fit, minmax(...))` because the
-          panel's two verification sizes (1024×768, 1180×820) both land in
-          Tailwind's `lg` bucket (≥1024px) — a single `lg:grid-cols-4`
-          predictably puts 4 tiles in one row at BOTH sizes, matching "4
-          across at 1180" while landing at the top of "2-4 at 1024" for the
-          biggest vertical win; a fluid auto-fit minmax would have made that
-          column count depend on exactly where the tuned minmax happened to
-          fall relative to those two specific widths. A box on the tile is
-          legitimate here — it's a touch target, same as the toggle/scene
-          pills below (kiosk-climate.tsx's own THESIS has the full tile
-          layout rationale). */}
+      <ClimateAutoOffBanner autoOff={autoOff} />
       <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
-        // Arms the depth-of-field isolation the moment ANY tile is adjusting
-        // — see globals.css's `[data-kiosk-focus="on"] .kiosk-defocus` rule.
-        // The one member matching `adjustingId` marks itself
-        // `data-kiosk-focused="true"` (inside KioskClimateTile) and is
-        // exempted from the blur/dim that rule applies to its `.kiosk-defocus`
-        // siblings.
+        className={cn("grid gap-3", tileColumns)}
+        // Arms the depth-of-field isolation the moment ANY tile is adjusting (globals.css
+        // `[data-kiosk-focus="on"] .kiosk-defocus`); the matching tile marks itself data-kiosk-focused.
         data-kiosk-focus={adjustingId ? "on" : undefined}
       >
         {climates.map((c) => (
@@ -652,91 +629,46 @@ const ClimateSection = memo(function ClimateSection({
             entities={entities}
             focused={adjustingId === c.entityId}
             onAdjustingChange={(adjusting: boolean) =>
-              // `prev === c.entityId ? null : prev` is load-bearing, not
-              // defensive filler: a stale "I stopped" from tile A must never
-              // clear a focus that tile B has since claimed (contract's own
-              // wording) — e.g. A's `interacting` flips false one tick after
-              // B's already flipped true, and without this guard A's own
-              // callback would still fire and null out B's focus mid-adjust.
+              // `prev === c.entityId ? null : prev` is load-bearing: a stale "I stopped" from tile A must never clear a
+              // focus tile B has since claimed (A's `interacting` can flip false one tick after B's flips true).
               setAdjustingId((prev) => (adjusting ? c.entityId : prev === c.entityId ? null : prev))
             }
           />
         ))}
       </div>
-    </section>
-  );
-});
-
-const SensorsSection = memo(function SensorsSection({
-  sensors,
-  riseIndex,
-}: {
-  sensors: HaSensor[];
-  /** See ClimateSection's comment on the same prop. */
-  riseIndex: number;
-}) {
-  return (
-    <section
-      // relative: sunroom sheen anchor — see LightsSection's comment on the
-      // same class.
-      className="relative border-t border-line pt-2.5 first:border-t-0 first:pt-0 kiosk-rise"
-      style={{ "--kiosk-rise-i": riseIndex } as React.CSSProperties}
-    >
-      <SectionHeader icon={Battery} label="Sensors" />
-      {/* Read-only readings, no touch target and no alert — the chip box and
-          the stacked name/value are both chrome the density pass drops:
-          open ground, name and value collapsed onto one line. */}
-      <div className="flex flex-wrap gap-x-5 gap-y-2">
-        {sensors.map((s) => {
-          const Icon = SENSOR_ICON[s.kind];
-          return (
-            <div key={s.entityId} className={cn("flex items-center gap-2", !s.available && "opacity-50")}>
-              <Icon size={13} className="shrink-0 text-ink-faint" aria-hidden />
-              <span className="microlabel max-w-32 truncate" title={s.name}>
-                {s.name}
-              </span>
-              <span className={cn("font-mono text-sm", s.available ? batteryTone(s) : "text-ink-faint")}>
-                {s.available ? formatSensor(s) : "unavailable"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    </Cell>
   );
 });
 
 /* ── non-happy states ───────────────────────────────────────────────────── */
 
+/** Loading: the Climate and Lights and switches slots, so the board keeps its shape. Today shows its own content. */
 function HubSkeleton() {
-  const labels: { label: string; icon: LucideIcon }[] = [
-    { label: "Lights", icon: Lightbulb },
-    { label: "Switches", icon: ToggleLeft },
-    { label: "Scenes", icon: Sparkles },
-  ];
   return (
-    <div className="space-y-3">
-      {labels.map(({ label, icon: Icon }, i) => (
-        <div key={label} className="border-t border-line pt-2.5 first:border-t-0 first:pt-0">
-          <SectionHeader icon={Icon} label={label} />
-          <div className={CHIP_ROW}>
-            {Array.from({ length: 4 }).map((_, j) => (
-              <div
-                key={j}
-                className="h-14 w-28 animate-pulse rounded-full bg-panel-2 motion-reduce:animate-none"
-                style={{ animationDelay: `${(i * 4 + j) * 60}ms` }}
-              />
-            ))}
-          </div>
+    <>
+      <Cell className={STATUS_SLOT} riseIndex={2}>
+        <SectionHeader icon={Thermometer} label="Climate" />
+        <div className="grid grid-cols-1 gap-3 min-[641px]:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, j) => (
+            <div key={j} className="h-24 animate-pulse rounded-md bg-panel-2 motion-reduce:animate-none" style={{ animationDelay: `${j * 60}ms` }} />
+          ))}
         </div>
-      ))}
-    </div>
+      </Cell>
+      <Cell className="col-span-12" riseIndex={3}>
+        <SectionHeader icon={Lightbulb} label="Lights and switches" />
+        <div className="grid grid-cols-2 gap-2 min-[641px]:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, j) => (
+            <div key={j} className="h-11 animate-pulse rounded-full bg-panel-2 motion-reduce:animate-none" style={{ animationDelay: `${j * 60}ms` }} />
+          ))}
+        </div>
+      </Cell>
+    </>
   );
 }
 
 function HubLoadError({ error }: { error: unknown }) {
   return (
-    <div role="status" className="panel flex flex-wrap items-center gap-3 px-4 py-3">
+    <div role="status" className={cn("panel flex flex-wrap items-center gap-3 px-4 py-3", STATUS_SLOT)}>
       <span className="microlabel !text-bad" data-sr-tone="bad">load failed</span>
       <p className="text-xs text-ink-dim">
         {error instanceof Error ? error.message : "Could not reach nightwatch's own /kiosk/api/ha/states."}
@@ -754,7 +686,7 @@ function HubLoadError({ error }: { error: unknown }) {
 // emptiness to be papered over.
 function HubUnconfigured() {
   return (
-    <div role="status" className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
+    <div role="status" className={cn("panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3", STATUS_SLOT)}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
       <span className="microlabel relative !text-warn" data-sr-tone="warn">Home Assistant not connected</span>
@@ -766,7 +698,7 @@ function HubUnconfigured() {
 function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"; detail?: string }) {
   const isUnreachable = kind === "unreachable";
   return (
-    <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+    <div role="status" className={cn("panel flex flex-wrap items-center gap-2 px-4 py-3", STATUS_SLOT)}>
       <span className={cn("dot", isUnreachable ? "dot-dead" : "dot-unhealthy")} aria-hidden />
       <span className={cn("microlabel", isUnreachable ? "!text-bad" : "!text-warn")} data-sr-tone={isUnreachable ? "bad" : "warn"}>
         Home Assistant {kind}
@@ -778,7 +710,7 @@ function HubStatusIssue({ kind, detail }: { kind: "unreachable" | "unauthorized"
 
 function HubEmpty() {
   return (
-    <div role="status" className="panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3">
+    <div role="status" className={cn("panel relative flex flex-wrap items-center gap-3 overflow-hidden px-4 py-3", STATUS_SLOT)}>
       <div aria-hidden className="pointer-events-none absolute inset-0" style={{ backgroundImage: HATCH_PATTERN }} />
       <House size={16} className="relative shrink-0 text-ink-faint" aria-hidden />
       <span className="microlabel relative">Nothing to control yet</span>
@@ -791,18 +723,17 @@ function HubEmpty() {
 
 /* ── hub ─────────────────────────────────────────────────────────────────── */
 
-export function KioskHub() {
+/** The board's cells, as a fragment so they are direct children of FullContent's 12-column grid: Today beside Climate (row 1),
+ *  Lights and switches beside Scenes and Sensors (row 2). `today` is the Today cell's content: its span depends on the
+ *  climate-zone count, which only this hook knows. A status state (not connected, error, empty) is the Climate-slot cell and row 2 is absent. */
+export function KioskHub({ today }: { today: ReactNode }) {
   const ha = useKioskHa();
   const autoOff = useClimateAutoOff(ha);
   const { data, error, isLoading } = ha;
-  // The Calendar section (kiosk-display.tsx) shows on `view || failed`; when it sits above, the first section gets the
-  // other sections' rule. pt-2 not pt-2.5: the page's gap-3 above the hub is 2 px more than space-y-2.5, so 12 + 1 + 8 = 10 + 1 + 10.
-  const agenda = useKioskAgenda();
-  const afterCalendar = Boolean(agenda.view) || agenda.failed;
 
-  if (isLoading && !data) return <HubSkeleton />;
-  if (Boolean(error) && !data) return <HubLoadError error={error} />;
-  if (!data) return null;
+  if (isLoading && !data) return <><TodayCell today={today} zones={2} /><HubSkeleton /></>;
+  if (Boolean(error) && !data) return <><TodayCell today={today} zones={2} /><HubLoadError error={error} /></>;
+  if (!data) return <TodayCell today={today} zones={0} />;
 
   // `error` here means the *latest* poll failed while `data` still holds the
   // last successful one (SWR keeps it — see useFreshness in kiosk-client.ts
@@ -812,12 +743,18 @@ export function KioskHub() {
   // still a stale read and gets marked rather than repainted as current.
   const stale = Boolean(error);
 
-  if (data.status === "unconfigured") return <HubUnconfigured />;
-  if (data.status === "unreachable") return <HubStatusIssue kind="unreachable" detail={data.detail} />;
-  if (data.status === "unauthorized") return <HubStatusIssue kind="unauthorized" detail={data.detail} />;
+  const status = (cell: ReactNode) => (
+    <>
+      <TodayCell today={today} zones={2} />
+      {cell}
+    </>
+  );
+  if (data.status === "unconfigured") return status(<HubUnconfigured />);
+  if (data.status === "unreachable") return status(<HubStatusIssue kind="unreachable" detail={data.detail} />);
+  if (data.status === "unauthorized") return status(<HubStatusIssue kind="unauthorized" detail={data.detail} />);
 
   const entities = data.entities;
-  if (!entities) return <HubEmpty />;
+  if (!entities) return status(<HubEmpty />);
 
   const total =
     entities.lights.length +
@@ -825,33 +762,49 @@ export function KioskHub() {
     entities.scenes.length +
     entities.climates.length +
     entities.sensors.length;
-  if (total === 0) return <HubEmpty />;
+  if (total === 0) return status(<HubEmpty />);
+
+  const zones = entities.climates.length;
+  const one = rowOneSpans(zones);
+  const hasChips = entities.lights.length + entities.switches.length > 0;
+  const hasSide = entities.scenes.length + entities.sensors.length > 0;
+  const two = rowTwoLayout(hasChips, hasSide);
 
   return (
-    <div className={afterCalendar ? "space-y-2.5 [&>section:first-of-type]:border-t [&>section:first-of-type]:pt-2" : "space-y-2.5"}>
-      <ClimateAutoOffBanner autoOff={autoOff} />
-      {stale && (
-        <div className="flex items-center gap-2 px-1">
-          <StaleTag />
-          <span className="text-2xs text-ink-dim">last confirmed state — may not reflect a recent change</span>
-        </div>
+    <>
+      <TodayCell today={today} zones={zones} />
+      {zones > 0 && (
+        <ClimateSection
+          ha={ha}
+          climates={entities.climates}
+          entities={entities}
+          autoOff={autoOff}
+          className={rowOneCell(one.climate)}
+          tileColumns={TILE_COLS[one.tileColumns]}
+          stale={stale}
+        />
       )}
-      {/* Climate first (redesign-06 follow-up, 2026-08-03: "climate first,
-          switches condensed" is the owner's stated priority) — it's the
-          section people walk up to the panel for, and it sits directly under
-          the weather line above with nothing else between. Lights/switches/
-          scenes condense into chip rows next; sensors, read-only, stay last. */}
-      {entities.climates.length > 0 && (
-        <ClimateSection ha={ha} climates={entities.climates} entities={entities} riseIndex={3} autoOff={autoOff} />
+      {hasChips && (
+        <TogglesSection
+          ha={ha}
+          lights={entities.lights}
+          switches={entities.switches}
+          entities={entities}
+          className={cn("col-span-12", LG_COL_SPAN[two.chips])}
+          columns={CHIP_COLS[two.chipColumns]}
+          stale={stale}
+        />
       )}
-      {entities.lights.length > 0 && (
-        <LightsSection ha={ha} lights={entities.lights} entities={entities} riseIndex={4} />
+      {hasSide && (
+        <SidePanel
+          ha={ha}
+          scenes={entities.scenes}
+          sensors={entities.sensors}
+          className={cn("col-span-12", LG_COL_SPAN[two.side])}
+          columns={SCENE_COLS[two.sceneColumns] ?? SCENE_COLS[4]}
+          stale={stale}
+        />
       )}
-      {entities.switches.length > 0 && (
-        <SwitchesSection ha={ha} switches={entities.switches} entities={entities} riseIndex={5} />
-      )}
-      {entities.scenes.length > 0 && <ScenesSection ha={ha} scenes={entities.scenes} riseIndex={6} />}
-      {entities.sensors.length > 0 && <SensorsSection sensors={entities.sensors} riseIndex={7} />}
-    </div>
+    </>
   );
 }

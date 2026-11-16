@@ -47,3 +47,18 @@ export function mergeToggles<L extends Toggle, S extends Toggle>(lights: L[], sw
     note: `${on} of ${all.length} on`,
   };
 }
+
+// Grid columns inside the cells, by the counts above. Below 641 px every grid is 2 columns (tiles 1); 641 to 1023 px the cells are 6 or 12 wide.
+export const TILE_COLS: Record<number, string> = {
+  1: "grid-cols-1 min-[641px]:grid-cols-2 lg:grid-cols-1",
+  2: "grid-cols-1 min-[641px]:grid-cols-2",
+  3: "grid-cols-1 min-[641px]:grid-cols-2 lg:grid-cols-3",
+};
+export const CHIP_COLS: Record<number, string> = {
+  3: "grid-cols-2 min-[641px]:grid-cols-4 lg:grid-cols-3",
+  4: "grid-cols-2 min-[641px]:grid-cols-4",
+};
+export const SCENE_COLS: Record<number, string> = {
+  2: "grid-cols-2 min-[641px]:grid-cols-4 lg:grid-cols-2",
+  4: "grid-cols-2 min-[641px]:grid-cols-4",
+};

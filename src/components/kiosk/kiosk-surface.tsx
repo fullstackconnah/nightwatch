@@ -45,6 +45,7 @@ import { conditionWord } from "@/lib/kiosk-weather-fx";
 import { useKioskWidgetLayout } from "@/lib/kiosk-widgets";
 import {
   KioskDisplay,
+  WeatherBand,
   useWeatherView,
   currentGlyph,
   type KioskPeriod,
@@ -311,6 +312,7 @@ function TempNode({
     >
       <Icon size={full ? 18 : 28} className="shrink-0 text-ink-dim" aria-hidden />
       <span
+        data-hero="temp"
         className={cn(
           "shrink-0 font-mono tabular-nums",
           full ? "text-xl" : "text-4xl min-[420px]:text-5xl md:text-6xl",
@@ -324,6 +326,7 @@ function TempNode({
         {Math.round(current.tempC)}°
       </span>
       <span
+        data-hero="cond"
         className={cn(
           "truncate text-ink-dim",
           full ? "text-sm" : "max-w-full text-xl min-[420px]:text-2xl md:text-3xl",
@@ -592,7 +595,7 @@ export function KioskSurface({
       className={cn(
         "flex flex-col",
         full
-          ? "gap-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))]"
+          ? "gap-3 pb-[calc(5.25rem+env(safe-area-inset-bottom))] max-[640px]:pb-[calc(9.75rem+env(safe-area-inset-bottom))]"
           :/* Glance is ONE SCREEN. `h-` and not `min-h-`: with a minimum the
                column simply grew past the viewport and the page scrolled —
                measured on production at 49px of overflow at 1024x768, 17px at
@@ -645,7 +648,7 @@ export function KioskSurface({
           content) so it shows in BOTH glance and full, same reasoning as the
           shared header. Self-fetching, renders null when idle, stops its own
           pointer propagation. */}
-      <KioskNowPlaying />
+      {!full && <KioskNowPlaying />}
 
       {/* THE shared container — same clock/temp/forecast/server-line nodes
           in both modes, only the wrapping classes (and the full-only extras
@@ -654,7 +657,7 @@ export function KioskSurface({
         data-mode={mode}
         className={cn(
           full
-            ? "panel kiosk-hdr-grid sticky top-0 z-(--z-sticky) px-4 py-2.5 md:py-3"
+            ? "panel kiosk-hdr-grid top-0 z-(--z-sticky) px-4 py-2.5 md:py-3 lg:sticky lg:px-6 lg:py-3"
             : // Four gaps between five stacked pieces (clock, temp, band,
               // server line): 20px each is right when there is 768px of height
               // to spend and 40px of pure overflow when there is 448px, which
@@ -729,77 +732,68 @@ export function KioskSurface({
         </div>
         <ServerLine mode={mode} registerRef={flip.register("server-line")} hideRunning={mode === "glance" && bandPageId === "containers"} />
 
-        {full && (
-          /* `basis-full` gives the controls their own line under the clock
-             rather than competing for the end of the clock row. That row was
-             the constraint the whole time: at 1024x768 it already carries the
-             clock, the conditions, the running count and a five-day rail, and
-             anything else added to it wrapped the column awkwardly (measured:
-             a 142px header against 90px without). On its own line the group is
-             left-aligned under the time, sits clear of the fixed alert badge
-             in the opposite corner by construction, and the bar is the same
-             height at both tablet sizes instead of 52px taller on the smaller
-             one. `order-3` keeps it last visually without moving it in the
-             DOM — the same rule the shared FLIP nodes above rely on.
-
-             Gated on `full` (immediate), not a lagged mode — this row's own
-             height is part of what the header's shared FLIP nodes measure,
-             so it has to reach its final presence/absence on the same frame
-             `mode` changes too, same reasoning as the content swap below.
-             The tradeoff: on a full→glance exit this row now disappears
-             instantly instead of fading out with the rest of full's content —
-             a small, one-line cost for removing a second source of the
-             reported jitter. */
-          <div className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-2">
-            {/* Hidden while pinned — an elevated session is held in full mode
-                on purpose, so the control would be inert. */}
-            {!pinned && (
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  // The surface root treats any pointer press as "someone is
-                  // using this" and flips to full. Without stopping the event
-                  // here, pressing this button would return to glance and be
-                  // thrown straight back to full by its own click.
-                  e.stopPropagation();
-                  onReturnToGlance();
-                }}
-                aria-label="Back to glance view"
-                /* KioskAlertButton is `fixed` in the top-right corner at
-                   z-toast, so it sits ON TOP of this area rather than in flow
-                   with it, and it swallows presses from anything underneath.
-                   Measured on production with a real alert standing: the badge
-                   occupies x923-1004/y16-72 at 1024px. Staying in this row —
-                   the one the timer and Admin already share — keeps this
-                   button below that band without reserving any width. */
-                // No bare `active:scale-[0.98]` existed here before — this
-                // control just never got the press treatment the rest of the
-                // kiosk did. Adding `.kiosk-press` anyway rather than leaving
-                // it alone: at 44px (h-11) it's already at the touch floor,
-                // and every other pressable control on this surface now
-                // springs back on release, so a silent one here would be the
-                // one dead button on the panel.
-                className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
-              >
-                <Minimize2 size={14} aria-hidden />
-                <span>Glance</span>
-              </button>
-            )}
-            {/* Ahead of Admin in the row: it's the control most likely to be
-                wanted in a hurry, and unlike Admin it hides itself entirely
-                when Home Assistant has no door camera to show. */}
-            <KioskDoorbellButton onClick={onDoorbellClick} />
-            <KioskListButton onClick={onListClick} />
-            <KioskStatusStripExtras
-              elevated={elevated}
-              onAdminClick={onAdminClick}
-              revealed={incomingVisible}
-              durationMs={durationMs}
-            />
-          </div>
-        )}
+        {/* Child 5, full only: the feels / UV / air line under the temperature (globals.css .kiosk-hdr-grid keeps the child list in sync). */}
+        {full && <WeatherBand period={period} weather={weather} />}
       </header>
+
+      {/* THE DOCK (full only): the controls row, a DOM sibling right after the header and never a child of it. Aerogel and
+          Aurora put backdrop-filter on `.panel`, which would trap a fixed child. From lg it is the same bottom-left spot
+          as Glance's cluster (same insets, same gap); below lg it is an in-flow wrapping row under the hero. It comes after
+          the bottom fade in the DOM so it paints above it at equal z. Not rendered in glance. The order is Timers, Shopping,
+          Front door, Glance, Admin; Timers comes first so it never moves when the mode changes. */}
+      {full && (
+        <div
+          data-rain-zone="dock"
+          className="flex flex-wrap items-center gap-3 lg:fixed lg:z-(--z-sticky) lg:flex-nowrap lg:bottom-[calc(1rem+env(safe-area-inset-bottom))] lg:left-[calc(1.25rem+env(safe-area-inset-left))]"
+        >
+          <KioskStatusStripExtras
+            elevated={elevated}
+            onAdminClick={onAdminClick}
+            revealed={incomingVisible}
+            durationMs={durationMs}
+            middle={
+              <>
+                <KioskListButton onClick={onListClick} />
+                <KioskDoorbellButton onClick={onDoorbellClick} className="h-14" />
+                {/* Hidden while pinned: an elevated session is held in full mode on purpose, so the control would be inert. */}
+                {!pinned && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      // The surface root treats any pointer press as "someone is
+                      // using this" and flips to full. Without stopping the event
+                      // here, pressing this button would return to glance and be
+                      // thrown straight back to full by its own click.
+                      e.stopPropagation();
+                      onReturnToGlance();
+                    }}
+                    aria-label="Back to glance view"
+                    /* KioskAlertButton is `fixed` in the top-right corner at
+                       z-toast, so it sits ON TOP of this area rather than in flow
+                       with it, and it swallows presses from anything underneath.
+                       Measured on production with a real alert standing: the badge
+                       occupies x923-1004/y16-72 at 1024px. Staying in this row —
+                       the one the timer and Admin already share — keeps this
+                       button below that band without reserving any width. */
+                    // No bare `active:scale-[0.98]` existed here before — this
+                    // control just never got the press treatment the rest of the
+                    // kiosk did. Adding `.kiosk-press` anyway rather than leaving
+                    // it alone: at 56px (h-14) it's well above the touch floor,
+                    // and every other pressable control on this surface now
+                    // springs back on release, so a silent one here would be the
+                    // one dead button on the panel.
+                    className="flex h-14 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
+                  >
+                    <Minimize2 size={14} aria-hidden />
+                    <span>Glance</span>
+                  </button>
+                )}
+              </>
+            }
+          />
+        </div>
+      )}
 
       {/* Below-header content. Each block is keyed to a fixed MODE identity
           (glance / full), never swapped by role (incoming / outgoing) — so
@@ -961,29 +955,18 @@ function FullContent({
   onLock: () => void;
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-3">
-      <Rise index={0}>
-        <KioskDisplay period={period} />
-      </Rise>
-
+    <div className="mx-auto grid w-full max-w-6xl flex-1 grid-cols-12 content-start gap-3">
       {elevated && expiresAt !== null && (
-        <Rise index={1} className="flex flex-col items-center gap-4">
+        <Rise index={0} className="col-span-12 flex flex-col items-center gap-4">
           <KioskVoicePanel />
           <KioskAppearance layout={layout} onLayoutChange={onLayoutChange} />
           <KioskAdminPanel expiresAt={expiresAt} onLock={onLock} />
         </Rise>
       )}
 
-      {/* No flex-affecting classes to carry across here: KioskHub's own root
-          (`<div className="space-y-2.5">`) carries none itself, so as a
-          default flex item (flex: 0 1 auto, same as every other child of
-          this flex-col) it sizes to its content whether the wrapper is here
-          or not — unlike a child that declared `flex-1`/`min-h-0`, which
-          this wrapper would have had to inherit to avoid changing the
-          layout. */}
-      <Rise index={2}>
-        <KioskHub />
-      </Rise>
+      {/* The cells are direct children of this grid (KioskHub returns a fragment): Today beside Climate, then Lights and
+          switches beside Scenes. Today is passed in because its span depends on the climate-zone count the hub knows. */}
+      <KioskHub today={<KioskDisplay period={period} />} />
     </div>
   );
 }
