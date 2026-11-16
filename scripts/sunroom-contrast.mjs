@@ -186,6 +186,71 @@ for (const cloud01 of [0, 0.35, 0.7, 1]) {
 }
 console.log(`\n  ${cubeChecked} samples checked, ${cubeExempt} exempt as light↔dark transit`);
 
+/* GATE 6 — the accent swatches (src/lib/kiosk-accent.ts).
+ *
+ * A chosen swatch replaces `accent` and `accentDim` with its light or dark half,
+ * picked by the same `nearer` vote as the ink. So gates 1, 2 and 3 run again once
+ * per swatch, with only those two foregrounds, against the real grounds at every
+ * stop, every interpolated point and the whole cloud x rain cube (rain darkens the
+ * ground, which is what a light half must still read on). The light↔dark transit
+ * is exempt exactly as in gate 2. Then the on-accent pass: the filled-control
+ * label is #f7f9fd on a light half and #0d1425 on a dark half. The numbers come
+ * from the shipped kiosk-accent.ts, read in a child node with type stripping. */
+console.log("\nGATE 6 — accent swatches: gates 1, 2, 3 once per swatch, plus on-accent\n");
+const swatches = JSON.parse(
+  execFileSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e",
+      `import { KIOSK_ACCENTS } from "./src/lib/kiosk-accent.ts"; console.log(JSON.stringify(KIOSK_ACCENTS));`],
+    { cwd: process.cwd() },
+  ).toString(),
+);
+if (swatches.length !== 6) failures.push(`accent pass is vacuous: ${swatches.length} swatches`);
+const ACCENT_FGS = ["accent", "accentDim"];
+const ON_LIGHT = "#f7f9fd";
+const ON_DARK = "#0d1425";
+console.log("  swatch    samples  worst pair                       ratio  on-accent (light / dark)");
+console.log("  --------  -------  -------------------------------  -----  ------------------------");
+for (const sw of swatches) {
+  let samples = 0;
+  let worst = null;
+  const check = (state, label) => {
+    if (state.crossing) return;
+    samples++;
+    for (const fg of ACCENT_FGS) {
+      for (const surface of SURFACES) {
+        const r = contrast(state.palette[fg], state.palette[surface]);
+        if (!worst || r < worst.ratio) worst = { ratio: r, label: `${fg} on ${surface}`, at: label };
+        if (r < AA) failures.push(`swatch ${sw.id} ${label}: ${fg} on ${surface} = ${r.toFixed(2)}`);
+      }
+    }
+  };
+  for (let i = 0; i < SUNROOM_STOPS.length; i++) {
+    check(sunroomStateAt(i, { accent: sw }), `stop ${SUNROOM_STOPS[i].name}`);
+    for (let s = 1; s <= STEPS_BETWEEN; s++) {
+      check(sunroomStateAt(i + s / (STEPS_BETWEEN + 1), { accent: sw }), `${SUNROOM_STOPS[i].name}+${s}`);
+    }
+  }
+  for (const cloud01 of [0, 0.35, 0.7, 1]) {
+    for (const rain01 of [0, 0.5, 1]) {
+      for (let s = 0; s < T_SAMPLES; s++) {
+        check(sunroomStateAt((s / T_SAMPLES) * SUNROOM_STOPS.length, { cloud01, rain01, accent: sw }), `cloud=${cloud01} rain=${rain01} t=${s}`);
+      }
+    }
+  }
+  const onLight = contrast(ON_LIGHT, sw.light.accent);
+  const onDark = contrast(ON_DARK, sw.dark.accent);
+  if (onLight < AA) failures.push(`swatch ${sw.id}: ${ON_LIGHT} on light half ${sw.light.accent} = ${onLight.toFixed(2)}`);
+  if (onDark < AA) failures.push(`swatch ${sw.id}: ${ON_DARK} on dark half ${sw.dark.accent} = ${onDark.toFixed(2)}`);
+  console.log(
+    `  ${sw.id.padEnd(8)}  ${String(samples).padStart(7)}  ${`${worst.label} @ ${worst.at}`.padEnd(31).slice(0, 31)}  ${worst.ratio.toFixed(2)}  ${onLight.toFixed(2)} / ${onDark.toFixed(2)}`,
+  );
+}
+for (const [name, stop] of [["day", SUNROOM_STOPS.find((s) => !s.dark)], ["night", SUNROOM_STOPS.find((s) => s.dark)]]) {
+  const want = name === "day" ? ON_LIGHT : ON_DARK;
+  if (stop.palette.onAccent !== want) failures.push(`on-accent pair drifted: ${name} stop has ${stop.palette.onAccent}, gate expects ${want}`);
+}
+
 /* GATE 4 — rain marks over the wet grounds.
  *
  * The puddle-line rain keeps its loud marks (rings, crowns) out of the glance
