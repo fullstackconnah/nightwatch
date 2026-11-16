@@ -519,7 +519,11 @@ export function KioskListSheet({
             />
             <button type="submit" disabled={disabled || !text.trim()} className={ACCENT_BTN}>Add</button>
           </form>
-          <p role="status" className="min-h-[22px] text-sm text-ink-dim">{shownHint}</p>
+          <div className="grid text-sm text-ink-dim">
+            <p role="status" className="col-start-1 row-start-1">{shownHint}</p>
+            {/* a <p> like the hint: sunroom sheets give p body type, so a span would reserve a shorter line */}
+            <p aria-hidden="true" className="invisible col-start-1 row-start-1">{FULL_HINT}</p>
+          </div>
 
           {suggestions.length > 0 && (
             <div>

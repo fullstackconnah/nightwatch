@@ -57,6 +57,7 @@ export function Field({
   label,
   hint,
   error,
+  errorClassName = "text-warn/80",
   required,
   action,
   describedBy: externalDescribedBy,
@@ -67,6 +68,8 @@ export function Field({
   label: React.ReactNode;
   hint?: React.ReactNode;
   error?: React.ReactNode;
+  /** Colour of the error line; default is amber. A problem that blocks Save passes "text-bad". */
+  errorClassName?: string;
   required?: boolean;
   /** Rendered inline with the label — e.g. a "Generate" button. */
   action?: React.ReactNode;
@@ -112,7 +115,7 @@ export function Field({
         "aria-required": required || undefined,
       })}
       {error ? (
-        <p id={errorId} className="mt-1 text-[0.7rem] text-warn/80">
+        <p id={errorId} className={`mt-1 text-[0.7rem] ${errorClassName}`}>
           {error}
         </p>
       ) : (

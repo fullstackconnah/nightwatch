@@ -1091,7 +1091,7 @@ if (SA.failed.length) process.exitCode = 1;
 // Writes are answered by listFake (per-state `cfg`): it applies add/done/clear to cfg.body and does not re-implement dedupe or the cap; a state that
 // needs another answer sets cfg.post.<action> = {status, json} | "abort". Only placeholder PIN digits are typed, and /api/auth/kiosk is mocked.
 const LS = (results.lists = { entries: {}, states: {}, registry: {}, failed: [] });
-const LNS = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12", "L13", "L14", "L15", "L16"];
+const LNS = ["L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10", "L11", "L12", "L13", "L14", "L15", "L16", "L17"];
 for (const n of LNS) LS.entries[n] = [];
 const lRecord = (n, key, ok, detail = {}) => { LS.entries[n].push({ key, ok, ...detail }); if (!ok) LS.failed.push(`${n} ${key} ${JSON.stringify(detail)}`); };
 const lRun = (name, fn) => guarded(`lists ${name}`, async () => { try { await fn(); } catch (e) { LS.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
@@ -1339,6 +1339,7 @@ for (const [name, cfg, label, aria] of [
 
 // ---- the sheet at every count (L3 no scroll and rows = items, L4, L5, L6, L10; shots for the named states) ----
 const COUNTS = [[0, listBody(0), "sheet-empty-with-chips"], [3, LIST_STATES.ordinary.body, "sheet-ordinary"], [6, listBody(6), null], [7, listBody(7), null], [9, LIST_STATES.crowded.body, "sheet-crowded"], [13, LIST_STATES.full.body, null]];
+const captionTops = {};
 for (const [n, body, shot] of COUNTS) {
   await withList(`sheet count ${n}`, { body }, {}, async ({ page }) => {
     await page.waitForTimeout(600);
@@ -1357,9 +1358,12 @@ for (const [n, body, shot] of COUNTS) {
     if (n === 3) lWant("sheet-ordinary", text, ["Often added", "Clear list", "Add an item"]);
     if (n === 9) lWant("sheet-crowded", text, ["Clear list"]);
     if (n === 13) lWant("sheet-full", text, LIST_STATES.full.want);
+    if (n === 3 || n === 13) captionTops[n] = await page.evaluate(() => { const cap = [...document.querySelectorAll("[data-list-sheet] .microlabel")].find((e) => /often added/i.test(e.textContent)); const fld = document.querySelector('[data-list-sheet] input[aria-label="Add an item"]'); return cap && fld ? cap.getBoundingClientRect().top - fld.getBoundingClientRect().bottom : null; });
     if (shot) await lShot(page, shot, page.locator(SHEET));
   });
 }
+// L17: the hint line is reserved, so the "Often added" caption's top minus the bottom of the "Add an item" field is the same (within 1 px) in the ordinary (3 rows) and the full (13 rows) sheet; page-level tops differ because the sheet is centred
+lRecord("L17", "caption offset below add field, ordinary vs full", captionTops[3] != null && captionTops[13] != null && Math.abs(captionTops[3] - captionTops[13]) <= 1, { ordinary: captionTops[3], full: captionTops[13] });
 
 // ---- L15: the full list (11 open + 2 ticked) fits at both sizes: the last ticked row ends above the footer and the body does not scroll ----
 const LIST_FIT = () => {
@@ -1627,7 +1631,7 @@ await lRun("L8 contrast", async () => {
 });
 
 // every L needs its entries (a missing one fails it): L1 five pane states, L3-L6 six counts, L10 five panes + six counts, L11 stale pane and sheet
-const L_NEED = { L1: 5, L2: 1, L3: 6, L4: 7, L5: 6, L6: 6, L7: 2, L8: 1, L9: 1, L10: 11, L11: 2, L12: 1, L13: 2, L14: 3, L15: 2, L16: 3 };
+const L_NEED = { L1: 5, L2: 1, L3: 6, L4: 7, L5: 6, L6: 6, L7: 2, L8: 1, L9: 1, L10: 11, L11: 2, L12: 1, L13: 2, L14: 3, L15: 2, L16: 3, L17: 1 };
 for (const n of LNS) {
   const e = LS.entries[n];
   LS[n] = e.length >= L_NEED[n] && e.every((x) => x.ok);
@@ -1878,7 +1882,7 @@ await bnRun("settings two bins", () => binsSettings("settings-two-bins", BIN_RUL
 await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TWO, {
   drive: async (page) => {
     await page.getByRole("button", { name: "Add a bin" }).click(); // a third row copies Tuesday and every second week, name blank
-    await page.locator('input[placeholder="Recycling"]').nth(2).fill("recycling"); // the first row's name in another case
+    await page.locator('input[placeholder="Bin name"]').nth(2).fill("recycling"); // the first row's name in another case
     await page.locator('input[type="date"]').nth(1).fill("2026-11-18"); // a Wednesday on a Tuesday bin
     await page.getByRole("button", { name: "Add a bin" }).click(); // a fourth, blank row; the button then goes
   },
@@ -1888,7 +1892,7 @@ await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TW
 await bnRun("settings night too long", () => binsSettings("settings-night-long", BIN_RULE_WED, {
   drive: async (page) => {
     await page.getByRole("button", { name: "Add a bin" }).click(); // copies Wednesday and weekly
-    await page.locator('input[placeholder="Recycling"]').nth(2).fill("Cans");
+    await page.locator('input[placeholder="Bin name"]').nth(2).fill("Cans");
   },
   want: ["Tuesday night's line is too long for the wall (47 of 44 characters). Shorten a bin name."],
   mark: async (page) => ({ ok: await saveDisabled(page) }),
@@ -1900,7 +1904,11 @@ await bnRun("settings 390", () => binsSettings("settings-390", BIN_RULE_TWO, {
   mark: async (page) => page.evaluate(() => {
     const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     const w = [...document.querySelectorAll("button[aria-label]")].filter((b) => days.includes(b.getAttribute("aria-label")) && b.getBoundingClientRect().width > 0).map((b) => Math.round(b.getBoundingClientRect().width * 10) / 10);
-    return { ok: w.length >= 14 && Math.min(...w) >= 44 && document.documentElement.scrollWidth <= 390, narrowestDay: w.length ? Math.min(...w) : null, dayButtons: w.length, pageScrollW: document.documentElement.scrollWidth };
+    // Remove (item 6): at least the house tap minimum. The repo defines no --tap-min token, so read it when present and fall back to 44 (h-11, the day-button floor).
+    const tapMin = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--tap-min")) || 44;
+    const rm = [...document.querySelectorAll("button[aria-label^='Remove ']")].filter((b) => b.getBoundingClientRect().width > 0).map((b) => Math.round(b.getBoundingClientRect().height * 10) / 10);
+    const removeOk = rm.length >= 2 && Math.min(...rm) >= tapMin;
+    return { ok: w.length >= 14 && Math.min(...w) >= 44 && document.documentElement.scrollWidth <= 390 && removeOk, narrowestDay: w.length ? Math.min(...w) : null, dayButtons: w.length, pageScrollW: document.documentElement.scrollWidth, removeOk, removeH: rm.length ? Math.min(...rm) : null, removeButtons: rm.length, tapMin };
   }),
 }));
 
@@ -1924,7 +1932,7 @@ if (BN.failed.length) process.exitCode = 1;
 // Shots: calendar-<state>-<size>.png (the band), calendar-std-<state>-<size>.png (the section), calendar-full-<state>-<size>.png, calendar-settings-<state>.png.
 // The route is answered per state through visit()'s `routes`; no link, address or host exists in any fixture, and nothing is fetched out.
 const CL = (results.calendar = { entries: {}, states: {}, settings: {}, failed: [] });
-const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9"];
+const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9", "C10", "C11"];
 const cExpected = {};
 for (const n of CNS) CL.entries[n] = [];
 const cPlan = (n) => { cExpected[n] = (cExpected[n] ?? 0) + 1; };
@@ -1996,6 +2004,16 @@ const CAL_STD = () => {
     header: document.querySelector("header")?.getBoundingClientRect().height ?? null,
     hubTop: root && root.lastElementChild ? root.lastElementChild.getBoundingClientRect().top : null,
   };
+  // C11: the hub's Climate and Lights sections: top border (width, colour) and the gap from the preceding content (the Calendar section for Climate) to the section's header
+  const hubSecs = root && root.lastElementChild ? [...root.lastElementChild.querySelectorAll("section")].filter((s) => s.parentElement.classList.contains("space-y-2.5")) : [];
+  const hubOf = (name) => {
+    const s = hubSecs.find((x) => new RegExp(`^${name}`, "i").test((x.firstElementChild?.textContent ?? "").trim()));
+    if (!s) return null;
+    const prev = s.previousElementSibling ?? sec;
+    const bs = getComputedStyle(s);
+    return { w: bs.borderTopWidth, color: bs.borderTopColor, gap: prev && s.firstElementChild ? s.firstElementChild.getBoundingClientRect().top - prev.getBoundingClientRect().bottom : null };
+  };
+  out.hub = { climate: hubOf("climate"), lights: hubOf("lights") };
   if (!sec) return out;
   const r = sec.getBoundingClientRect();
   const cs = getComputedStyle(sec);
@@ -2028,6 +2046,7 @@ const calPane = async (key, state, theme, size) => {
   else cPlan("C6");
   if (present && def.stale && theme === "sunroom") cPlan("C1"); // the one-stale-tag entry
   if (present && state === "crowded") cPlan("C9");
+  if (present && state === "long-title") cPlan("C10");
   await cRun(`pane ${key}`, async () => {
     const { context, page } = await calVisit(state, CAL_URL(theme), size);
     await page.locator('button[aria-label="Show Calendar"]').first().click({ timeout: 4000 }).catch(() => {});
@@ -2050,6 +2069,8 @@ const calPane = async (key, state, theme, size) => {
         const centred = [a.caption, a.lead, a.more].every((x) => cNear(x, a.pane, 1)); // 1 px rounding tolerance
         cRecord("C9", `pane-${key}`, centred && (!a.leadCut || a.leadEllipsis === true), a);
       }
+      // C10: the long-title fixture really truncates: the lead's text is wider than its box and shows an ellipsis
+      if (state === "long-title") cRecord("C10", `pane-${key}`, m.align.leadCut === true && m.align.leadEllipsis === true, { leadCut: m.align.leadCut, leadEllipsis: m.align.leadEllipsis });
       if (def.stale && theme === "sunroom") cRecord("C1", `pane-${key} one stale tag`, m.staleTags === 1 && m.staleInCaption === 1, { staleTags: m.staleTags, staleInCaption: m.staleInCaption });
       await page.screenshot({ path: join(OUT_DIR, `calendar-${key}.png`), clip: m.clip });
     }
@@ -2083,6 +2104,7 @@ const calStd = async (key, state, theme, size) => {
   if (absent) cPlan("C6");
   else for (const n of ["C4", "C5"]) cPlan(n);
   if (def.stale && theme === "sunroom") cPlan("C4"); // the one-stale-tag entry
+  if (state === "crowded" && theme === "sunroom") cPlan("C11");
   await cRun(`standard ${key}`, async () => {
     const { context, page } = await calVisit(state, CAL_URL(theme, true), size);
     await calWake(page, size, state);
@@ -2106,6 +2128,11 @@ const calStd = async (key, state, theme, size) => {
       { rows: m.rows, more: m.more, want: { rows: def.rows ?? 0, more: def.more ? 1 : 0 }, heading: m.heading, inner: m.inner, clipped: m.clipped, header: m.header, baseHeader: base.header, shift, allowance, hubTop: m.hubTop, vh: m.vh });
     cRecord("C5", `std-${key}`, m.border.w === m.border.refW && m.border.color === m.border.refColor && parseFloat(m.border.w) > 0, m.border);
     if (def.stale && theme === "sunroom") cRecord("C4", `std-${key} one stale tag`, m.staleTags === 1, { staleTags: m.staleTags });
+    if (state === "crowded" && theme === "sunroom") {
+      // C11: with the Calendar section shown, Climate has Lights' top rule and the same gap above its header (1 px); with no calendar set it has no rule (0 px)
+      const c = m.hub?.climate, l = m.hub?.lights, b = base.hub?.climate;
+      cRecord("C11", `std-${key}`, !!c && !!l && !!b && c.w === l.w && parseFloat(c.w) > 0 && c.color === l.color && cNear(c.gap, l.gap, 1) && parseFloat(b.w) === 0, { climate: c, lights: l, noCalendarClimate: b });
+    }
     await page.screenshot({ path: join(OUT_DIR, `calendar-std-${key}.png`), fullPage: true, clip: m.clip });
     if (theme === "sunroom" && ["crowded", "six-four", "ordinary"].includes(state)) await page.screenshot({ path: join(OUT_DIR, `calendar-full-${key}.png`), fullPage: true });
     await context.close();
@@ -2186,7 +2213,7 @@ await cRun("settings warn", () => calSettings("settings-warn", CAL_SETTINGS.warn
 }));
 await cRun("settings replace", () => calSettings("settings-replace", CAL_SETTINGS.replace, {
   drive: (page) => page.getByRole("button", { name: "Replace" }).click(), want: ["Cancel", "Clear", "Calendar connected · 14 events this week"],
-  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "leave blank to keep the current value" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
+  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "Paste the new link" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
 }));
 await cRun("settings 390", () => calSettings("settings-390", CAL_SETTINGS.empty, {
   viewport: { width: 390, height: 844 }, saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
