@@ -1218,7 +1218,7 @@ const GR_READ = () => {
   const r = (el) => { const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
   const scope = document.querySelector("[data-kiosk-theme]");
   const probe = (css) => { const el = document.createElement("span"); el.style.cssText = `position:absolute;visibility:hidden;${css}`; scope.append(el); const w = parseFloat(getComputedStyle(el).width); el.remove(); return w; };
-  const clear = (el) => { const b = el.getBoundingClientRect(), d = 4; const pts = [[b.left + b.width / 2, b.top + b.height / 2], [b.left + d, b.top + d], [b.right - d, b.top + d], [b.left + d, b.bottom - d], [b.right - d, b.bottom - d]]; return pts.every(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; return !!h && el.contains(h); }); };
+  const clear = (el) => { const b = el.getBoundingClientRect(), d = Math.round(Math.min(b.width, b.height) * 0.35); /* inset past the corner radius */ const pts = [[b.left + b.width / 2, b.top + b.height / 2], [b.left + d, b.top + d], [b.right - d, b.top + d], [b.left + d, b.bottom - d], [b.right - d, b.bottom - d]]; return pts.every(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; return !!h && el.contains(h); }); };
   const cluster = document.querySelector('[data-rain-zone="tiles"]');
   const chips = cluster ? [...cluster.querySelectorAll("button")] : [];
   const corner = document.querySelector('[data-rain-zone="corner"]');
