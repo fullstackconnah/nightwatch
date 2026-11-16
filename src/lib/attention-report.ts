@@ -4,7 +4,7 @@ import type { RuntimeContainer } from "./docker.ts";
 import { countText, type Tally } from "./change-log.ts";
 import { BACKUP_KIND_LABEL, drillAge, type BackupStatus, type RestoreDrill } from "./backup-status.ts";
 import { restoreDrillDue } from "./attention-copy.ts";
-import { isTestContainer } from "./test-container.ts";
+import { hasTestToken, isTestContainer } from "./test-container.ts";
 
 export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
@@ -228,7 +228,7 @@ export function deriveChanges(
     }
   }
   for (const [name, t] of logged) {
-    if (liveNames.has(name) || isTestContainer({ name, composeProject: null })) continue; // a container gone from Docker keeps its logged rows
+    if (liveNames.has(name) || hasTestToken(name)) continue; // gone from Docker: only the token rule (the random-name rule would hide a real word_word service)
     if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself, false);
     if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode);
   }

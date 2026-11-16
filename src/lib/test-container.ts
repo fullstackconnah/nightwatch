@@ -2,7 +2,7 @@
  * Their going down is not worth telling the owner about. Pure, so node:test can load it. */
 
 const TOKEN_SPLIT = /[-_.]/;
-const hasTestToken = (s: string | null) =>
+export const hasTestToken = (s: string | null) =>
   s !== null && s.toLowerCase().split(TOKEN_SPLIT).some((t) => t === "test" || t.startsWith("vvtest") || t.startsWith("pgtest"));
 
 export function isTestContainer(c: { name: string; composeProject: string | null }): boolean {

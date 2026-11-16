@@ -211,6 +211,14 @@ test("a stopped, restarted or removed test container gives no change event; a re
   assert.equal(deriveChanges([], null, SINCE, [], logged).length, 0);
 });
 
+test("a removed real word_word service keeps its logged lines; removed test-token names give none", () => {
+  const row = { starts: 1, stops: 2, byItself: 0, lastStartAt: SINCE + 5, lastStopAt: SINCE + 9, lastCode: 1 };
+  const real = deriveChanges([], null, SINCE, [], new Map([["immich_server", row]]));
+  assert.ok(real.length > 0 && real.every((e) => e.subjects[0] === "container:immich_server"));
+  const gone = new Map([["odip-pgtest-15432", row], ["homelab-dashboard-test-proxy", row]]);
+  assert.equal(deriveChanges([], null, SINCE, [], gone).length, 0);
+});
+
 const backupOk: BackupStatus = {
   status: "ok",
   checkedAt: new Date(NOW).toISOString(),
