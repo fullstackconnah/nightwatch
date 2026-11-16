@@ -1358,12 +1358,12 @@ for (const [n, body, shot] of COUNTS) {
     if (n === 3) lWant("sheet-ordinary", text, ["Often added", "Clear list", "Add an item"]);
     if (n === 9) lWant("sheet-crowded", text, ["Clear list"]);
     if (n === 13) lWant("sheet-full", text, LIST_STATES.full.want);
-    if (n === 3 || n === 13) captionTops[n] = await page.evaluate(() => [...document.querySelectorAll("[data-list-sheet] .microlabel")].find((e) => /often added/i.test(e.textContent))?.getBoundingClientRect().top ?? null);
+    if (n === 3 || n === 13) captionTops[n] = await page.evaluate(() => { const cap = [...document.querySelectorAll("[data-list-sheet] .microlabel")].find((e) => /often added/i.test(e.textContent)); const fld = document.querySelector('[data-list-sheet] input[aria-label="Add an item"]'); return cap && fld ? cap.getBoundingClientRect().top - fld.getBoundingClientRect().bottom : null; });
     if (shot) await lShot(page, shot, page.locator(SHEET));
   });
 }
-// L17: the hint line is reserved, so the "Often added" caption sits at the same top (within 1 px) in the ordinary (3 rows) and the full (13 rows) sheet at the same viewport
-lRecord("L17", "caption top ordinary vs full", captionTops[3] != null && captionTops[13] != null && Math.abs(captionTops[3] - captionTops[13]) <= 1, { ordinary: captionTops[3], full: captionTops[13] });
+// L17: the hint line is reserved, so the "Often added" caption's top minus the bottom of the "Add an item" field is the same (within 1 px) in the ordinary (3 rows) and the full (13 rows) sheet; page-level tops differ because the sheet is centred
+lRecord("L17", "caption offset below add field, ordinary vs full", captionTops[3] != null && captionTops[13] != null && Math.abs(captionTops[3] - captionTops[13]) <= 1, { ordinary: captionTops[3], full: captionTops[13] });
 
 // ---- L15: the full list (11 open + 2 ticked) fits at both sizes: the last ticked row ends above the footer and the body does not scroll ----
 const LIST_FIT = () => {
@@ -2213,7 +2213,7 @@ await cRun("settings warn", () => calSettings("settings-warn", CAL_SETTINGS.warn
 }));
 await cRun("settings replace", () => calSettings("settings-replace", CAL_SETTINGS.replace, {
   drive: (page) => page.getByRole("button", { name: "Replace" }).click(), want: ["Cancel", "Clear", "Calendar connected · 14 events this week"],
-  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "leave blank to keep the current value" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
+  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "Paste the new link" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
 }));
 await cRun("settings 390", () => calSettings("settings-390", CAL_SETTINGS.empty, {
   viewport: { width: 390, height: 844 }, saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
