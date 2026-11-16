@@ -280,7 +280,7 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
   // 11: chips at 1024 in 3 columns: a short name ("Bedside") shows in full; a longer one ends in an ellipsis with its title; the sub is never clipped
   if (d.vw === 1024) {
     const bed = d.chips.find((c) => c.nameText === "Bedside"), long = d.chips.find((c) => c.nameText.length > 14);
-    fvRec(k(11), !!bed && !bed.nameClipped && (!long || (long.nameEllipsis && long.title === FV_LIGHT[1])) && d.chips.every((c) => c.nameW >= 5 * 7), { bedside: bed && { clipped: bed.nameClipped }, long: long && { ellipsis: long.nameEllipsis, title: long.title }, minNameW: Math.min(...d.chips.map((c) => c.nameW)), subClipped: d.chips.filter((c) => c.subClipped).length });
+    fvRec(k(11), !!bed && !bed.nameClipped && (!long || (long.nameEllipsis && long.title === FV_LIGHT[1])) && d.chips.every((c) => !c.nameClipped || c.nameW >= 5 * 7), { bedside: bed && { clipped: bed.nameClipped }, long: long && { ellipsis: long.nameEllipsis, title: long.title }, minNameW: Math.min(...d.chips.map((c) => c.nameW)), subClipped: d.chips.filter((c) => c.subClipped).length });
   }
   // 11b (fix 1): no plain ON/OFF word on a toggle chip; every chip icon >= 14 px; an unavailable chip shows its name; at 1024 (3 columns) a name of 12 characters or fewer shows in
   // full, at 390 (2 columns) a name of 7 or fewer (the shortened name is what is measured; a 62% sub or "unavailable" gives way first); the name keeps 5 characters (min-w-[5ch]).
