@@ -39,7 +39,9 @@ import { type KioskPeriod } from "@/components/kiosk/kiosk-display";
 import { BinNightLine } from "@/components/kiosk/kiosk-bins";
 import { KioskTimersButton } from "@/components/kiosk/kiosk-timers";
 import { useKioskHa } from "@/components/kiosk/kiosk-hub";
-import { fitChips } from "@/components/kiosk/glance-fit";
+import { fitChips, foldedOn } from "@/components/kiosk/glance-fit";
+import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
+import { useKioskFonts } from "@/lib/kiosk-fonts";
 
 /* The fixed, non-rotating stack under the band. Deliberately NOT the
    reorderable layout: `layout.glance` now drives the BAND (kiosk-surface.tsx),
@@ -90,7 +92,9 @@ function GlanceCluster({ lifted, onMore }: { lifted: boolean; onMore: () => void
   const ha = useKioskHa();
   const entities = ha.data?.status === "ok" ? ha.data.entities : null;
   const lights = useMemo(() => entities?.lights.filter((l) => l.available) ?? [], [entities]);
-  const key = lights.map((l) => `${l.entityId}:${l.name}`).join("|");
+  // The typeface is part of the key: a new face changes every chip's natural width, so it re-measures like a new light set.
+  const fontKey = useKioskFonts(useKioskTheme()).sans;
+  const key = lights.map((l) => `${l.entityId}:${l.name}`).join("|") + `#${fontKey}`;
   const ref = useRef<HTMLDivElement>(null);
   const widths = useRef(new Map<string, number>());
   const [fit, setFit] = useState<{ key: string; k: number } | null>(null);
@@ -101,7 +105,13 @@ function GlanceCluster({ lifted, onMore }: { lifted: boolean; onMore: () => void
   useEffect(() => {
     const on = () => setTick((t) => t + 1);
     window.addEventListener("resize", on);
-    return () => window.removeEventListener("resize", on);
+    // A web font arriving after first paint changes chip widths: drop the fit so every chip renders once and is measured again.
+    const refit = () => setFit(null);
+    document.fonts.addEventListener("loadingdone", refit);
+    return () => {
+      window.removeEventListener("resize", on);
+      document.fonts.removeEventListener("loadingdone", refit);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -122,6 +132,9 @@ function GlanceCluster({ lifted, onMore }: { lifted: boolean; onMore: () => void
     const next = fitChips(lights.map((l) => widths.current.get(l.entityId) ?? 0), right - timersW - CLUSTER_GAP, CLUSTER_GAP, MORE_W);
     setFit((f) => (f && f.key === key && f.k === next ? f : { key, k: next }));
   }, [key, entities, lifted, tick, fit, lights]);
+
+  const foldOn = foldedOn(lights, k);
+  const foldOnTone = foldOn > 0 ? "border-accent/40 bg-accent/10 text-accent" : CHIP_OFF;
 
   return (
     <div
@@ -159,9 +172,9 @@ function GlanceCluster({ lifted, onMore }: { lifted: boolean; onMore: () => void
       {k < lights.length && (
         <button
           type="button"
-          aria-label={`Show all ${lights.length} lights`}
+          aria-label={`Show all ${lights.length} lights${foldOn > 0 ? `, ${foldOn} on` : ""}`}
           onClick={() => onMore()}
-          className={cn(GLANCE_CHIP, "w-14 justify-center px-0", CHIP_OFF)}
+          className={cn(GLANCE_CHIP, "w-14 justify-center px-0", foldOnTone)}
         >
           +{lights.length - k}
         </button>
@@ -227,7 +240,14 @@ export function KioskGlance({
             data-glance-widget={id}
             // Every widget in this centre column, prose or control (scenes), shares one rain-mask zone (same-named rects union).
             data-rain-zone="sentence"
-            className={cn(dropsWhenShort && "[@media(max-height:700px)]:hidden")}
+            data-lifted={(lifted && id === "scenes") || undefined}
+            className={cn(
+              dropsWhenShort && "[@media(max-height:700px)]:hidden",
+              // While the pill plays the scene row joins the lifted band: fixed, centred, above the pill by a band (5.25rem) and, below 641px,
+              // above the cluster row too (cluster 5.25rem + 3.5rem chip + 0.75rem gap). The strip passes pointer events through to its chips.
+              lifted && id === "scenes" &&
+                "fixed inset-x-0 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex justify-center px-6 pointer-events-none *:pointer-events-auto max-[640px]:bottom-[calc(9.5rem+env(safe-area-inset-bottom))]",
+            )}
           >
             {def.render(ctx)}
           </div>

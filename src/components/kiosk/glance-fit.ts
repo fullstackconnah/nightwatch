@@ -12,3 +12,8 @@ export function fitChips(widths: number[], limit: number, gap: number, moreW: nu
   }
   return k;
 }
+
+/** How many of the lights folded into the "+n" chip (every light past the first `k`) are on. */
+export function foldedOn(lights: { on: boolean }[], k: number): number {
+  return lights.slice(k).filter((l) => l.on).length;
+}

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { fitChips } from "./glance-fit.ts";
+import { fitChips, foldedOn } from "./glance-fit.ts";
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
@@ -62,4 +62,57 @@ test("Folded lights: a +n chip in the same chip class opens the Full view", () =
 
 test("Scene wrappers are findable so the cluster can measure its limit", () => {
   assert.match(glance(), /data-glance-widget=\{id\}/);
+});
+
+test("fitChips: one chip wider than the limit folds to +1 (it cannot fit anywhere)", () => {
+  assert.equal(fitChips([200], 100, 12, 56), 0);
+});
+test("fitChips: a limit below the +n width with chips present shows none", () => {
+  assert.equal(fitChips([100, 100], 50, 12, 56), 0);
+});
+test("fitChips: a +1 never hides a chip that would fit in the +n slot", () => {
+  // Folding exactly one chip means everything before it fits beside +n; a last chip no wider than +n then fits too, so all show.
+  assert.equal(fitChips([100, 56], 168, 12, 56), 2);
+  assert.equal(fitChips([100, 57], 168, 12, 56), 1);
+});
+test("fitChips: unmeasured (zero) widths show every chip", () => {
+  assert.equal(fitChips([0, 0, 0], 200, 12, 56), 3);
+});
+
+test("foldedOn counts the lit lights past the shown ones", () => {
+  const l = (on: boolean) => ({ on });
+  assert.equal(foldedOn([l(true), l(false), l(false)], 1), 0);
+  assert.equal(foldedOn([l(false), l(true), l(false)], 1), 1);
+  assert.equal(foldedOn([l(false), l(true), l(true)], 1), 2);
+  assert.equal(foldedOn([l(true), l(true)], 2), 0);
+});
+
+test("Folded lights: the rendered list is the fitChips result, and +n shows the on tone and count", () => {
+  const g = glance();
+  assert.match(g, /const next = fitChips\(/);
+  assert.match(g, /\{ key, k: next \}/);
+  assert.match(g, /fit\.k : lights\.length/);
+  assert.match(g, /lights\.slice\(0, k\)\.map\(/);
+  assert.match(g, /foldedOn\(lights, k\)/);
+  assert.match(g, /lights, M on|\$\{foldOn\} on/);
+  assert.match(g, /foldOn > 0 \? "border-accent\/40 bg-accent\/10 text-accent" : CHIP_OFF/);
+});
+
+test("Scene row lifts as one band above the pill while it plays, three bands at <=640px", () => {
+  const g = glance();
+  assert.match(g, /lifted && id === "scenes"/);
+  assert.match(g, /data-lifted/);
+  assert.match(g, /fixed inset-x-0 bottom-\[calc\(5\.25rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(g, /max-\[640px\]:bottom-\[calc\(9\.5rem\+env\(safe-area-inset-bottom\)\)\]/);
+});
+
+test("Chip widths re-measure when fonts finish loading or the typeface changes", () => {
+  const g = glance();
+  assert.match(g, /document\.fonts\.addEventListener\("loadingdone"/);
+  assert.match(g, /document\.fonts\.removeEventListener\("loadingdone"/);
+  assert.match(g, /useKioskFonts\(useKioskTheme\(\)\)/);
+});
+
+test("Pill reports visibility in a layout effect (same frame as the lift)", () => {
+  assert.match(read("./kiosk-now-playing.tsx"), /useLayoutEffect\(\(\) => \{\s*onVisibleChange\?\.\(visible\)/);
 });

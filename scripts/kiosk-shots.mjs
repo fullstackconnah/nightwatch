@@ -1209,7 +1209,7 @@ async function polishbShots() {
 }
 // ---- glance bottom row (2026-11-17): the now-playing pill never overlaps a chip, scene tile or cluster; folded lights; run alone with SHOTS_ONLY=glancerow ----
 // Keys: results.glancerow.{checks.<key> {ok,...}, failed[] (one line each; the run exits 1 if any)}. Shots glancerow-<state>.png: one full viewport each.
-// States a normal/idle, b normal/playing, c crowded 1024x768, d crowded 390x844, e crowded 768x1024, f one chip/playing. Every check needs at least one matched element.
+// States a normal/idle, b normal/playing, c crowded 1024x768, d crowded 390x844, e crowded 768x1024, f one chip/playing, g crowded 1024x768 with a folded light on. Every check needs at least one matched element.
 const GR = (results.glancerow = { checks: {}, failed: [] });
 const grRec = (key, ok, detail = {}) => { GR.checks[key] = { ok, ...detail }; if (!ok) GR.failed.push(`${key} ${JSON.stringify(detail)}`); };
 const grHit = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
@@ -1228,13 +1228,15 @@ const GR_READ = () => {
     tapMin: probe("width:var(--sr-hit-min)"), row1: probe("width:calc(1rem + env(safe-area-inset-bottom))"), row2: probe("width:calc(5.25rem + env(safe-area-inset-bottom))"),
     cluster: cluster ? r(cluster) : null, corner: corner && corner.getBoundingClientRect().width > 0 ? r(corner) : null, pill: pill ? r(pill) : null,
     chips: chips.map((b) => ({ rect: r(b), label: b.getAttribute("aria-label") ?? b.textContent.trim().slice(0, 12), clear: clear(b), clipped: [...b.querySelectorAll("span")].some((s) => s.scrollWidth > s.clientWidth + 1 && getComputedStyle(s).textOverflow !== "ellipsis") })),
-    more: chips.filter((b) => /^Show all \d+ lights$/.test(b.getAttribute("aria-label") ?? "")).length,
+    more: chips.filter((b) => /^Show all \d+ lights(, \d+ on)?$/.test(b.getAttribute("aria-label") ?? "")).length,
+    moreChip: (() => { const b = chips.find((x) => /^Show all \d+ lights/.test(x.getAttribute("aria-label") ?? "")); return b ? { label: b.getAttribute("aria-label"), on: /\btext-accent\b/.test(b.className) } : null; })(),
     scenes: [...document.querySelectorAll('[data-glance-widget="scenes"] button')].map((b) => r(b)),
   };
 };
-const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = false } = {}, wantMore = null, row = null) => {
+const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = false, lastOn = false } = {}, wantMore = null, row = null) => {
   const ha = fvHa({ lights, scenes, switches: 2, sensors: 1 });
   if (scenes >= 2) ha.entities.scenes[1].name = "Night";
+  if (lastOn) ha.entities.lights[lights - 1].on = true; // the last light is the first to fold
   const { context, page } = await fvVisit({ viewport: { width: size[0], height: size[1] } }, { layout: "glance", ha, timer, np });
   try {
     await seen(page, '[data-rain-zone="tiles"] button', 15_000);
@@ -1253,7 +1255,13 @@ const grState = async (key, size, { lights = 5, scenes = 4, timer = false, np = 
     grRec(k("(2) no cluster chip under a scene chip"), under.length === 0, { under });
     grRec(k("(3) every chip at least the tap floor high, clear of chrome, text ellipsised"), m.chips.every((c) => c.rect.h >= m.tapMin - 0.5 && c.clear && !c.clipped), { tapMin: m.tapMin, chips: m.chips.map((c) => [c.label, Math.round(c.rect.h), c.clear, c.clipped]) });
     if (row) { const want = m[row]; grRec(k(`(4) cluster bottom offset is ${row}`), !!m.cluster && Math.abs(m.vh - m.cluster.bottom - want) <= 0.5, { got: m.vh - m.cluster.bottom, want }); }
-    if (wantMore !== null) grRec(k(wantMore ? "folds into a +n chip" : "no +n chip"), (m.more === 1) === wantMore && m.more <= 1, { more: m.more });
+    // (5) nothing clipped by the overflow-hidden root: every scene tile and cluster chip lies fully inside the viewport.
+    const outside = [...m.chips.map((c) => [c.label, c.rect]), ...m.scenes.map((r2) => ["scene", r2])].filter(([, r2]) => r2.left < -0.5 || r2.top < -0.5 || r2.right > m.vw + 0.5 || r2.bottom > m.vh + 0.5).map(([l]) => l);
+    grRec(k("(5) every scene tile and cluster chip is fully inside the viewport"), m.chips.length + m.scenes.length > 0 && outside.length === 0, { outside });
+    // (6) while the pill plays, the scene row sits at or above the pill's top.
+    if (np && scenes) { const sb = Math.max(...m.scenes.map((r2) => r2.bottom)); grRec(k("(6) scene row bottom is at or above the pill top"), !!m.pill && sb <= m.pill.top + 0.5, { sceneBottom: sb, pillTop: m.pill?.top }); }
+    if (wantMore === "on") grRec(k("(7) +n chip carries the on tone and its name ends on"), !!m.moreChip && m.moreChip.on && /, \d+ on$/.test(m.moreChip.label), { moreChip: m.moreChip });
+    else if (wantMore !== null) grRec(k(wantMore ? "folds into a +n chip" : "no +n chip"), (m.more === 1) === wantMore && m.more <= 1, { more: m.more });
     await page.screenshot({ path: join(OUT_DIR, `glancerow-${key.replace(/ /g, "-")}.png`) });
   } finally { await context.close(); }
 };
@@ -1262,9 +1270,10 @@ async function glancerowShots() {
   await run("a normal idle 1024", () => grState("a normal-idle-1024x768", [1024, 768], { lights: 5, scenes: 4 }, null, "row1"));
   await run("b normal playing 1024", () => grState("b normal-playing-1024x768", [1024, 768], { lights: 5, scenes: 4, np: true }, null, "row2"));
   await run("c crowded 1024", () => grState("c crowded-1024x768", [1024, 768], { lights: 8, scenes: 2, timer: true, np: true }, true, "row2"));
-  await run("d crowded 390", () => grState("d crowded-390x844", [390, 844], { lights: 8, scenes: 2, timer: true, np: true }, null, "row2"));
-  await run("e crowded 768", () => grState("e crowded-768x1024", [768, 1024], { lights: 8, scenes: 2, timer: true, np: true }, null, "row2"));
+  await run("d crowded 390", () => grState("d crowded-390x844", [390, 844], { lights: 8, scenes: 2, timer: true, np: true }, true, "row2"));
+  await run("e crowded 768", () => grState("e crowded-768x1024", [768, 1024], { lights: 8, scenes: 2, timer: true, np: true }, true, "row2"));
   await run("f one chip playing", () => grState("f one-chip-playing-1024x768", [1024, 768], { lights: 1, scenes: 2, np: true }, false, "row2"));
+  await run("g crowded folded on 1024", () => grState("g crowded-folded-on-1024x768", [1024, 768], { lights: 8, scenes: 2, timer: true, np: true, lastOn: true }, "on", "row2"));
   if (GR.failed.length) process.exitCode = 1;
 }
 if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "glancerow") {

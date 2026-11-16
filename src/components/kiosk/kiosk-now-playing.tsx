@@ -13,7 +13,7 @@
    so a stray tap on the pill can't also promote glance→full underneath it. */
 
 import { Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useKioskNowPlaying } from "@/lib/kiosk-client";
 import { useKioskPollInterval } from "@/lib/kiosk-activity";
 import { cn } from "@/lib/utils";
@@ -65,7 +65,7 @@ export function KioskNowPlaying({ docked = false, onVisibleChange }: { docked?: 
 
   // The floating pill owns the bottom row: tell the surface so the corner clusters and the Glance column lift clear of it (it unmounts on Full, so cleanup resets).
   const visible = Boolean(mounted && active);
-  useEffect(() => {
+  useLayoutEffect(() => {
     onVisibleChange?.(visible);
     return () => onVisibleChange?.(false);
   }, [visible, onVisibleChange]);
