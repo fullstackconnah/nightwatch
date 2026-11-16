@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 type Phase = "idle" | "asking" | "flight" | "failed";
@@ -66,6 +66,7 @@ export function WriteAction({
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   const frame = useRef<HTMLDivElement>(null);
+  const sayId = useId();
   useEffect(() => {
     if (phase === "idle" && refocus.current) {
       refocus.current = false;
@@ -147,9 +148,9 @@ export function WriteAction({
           renderAsk({ onYes: () => void go(), onCancel: cancel })
         ) : (
           <>
-            <p className="st-say" role="status">{say}</p>
+            <p id={sayId} className="st-say" role="status">{say}</p>
             <div className="st-acts">
-              <Button autoFocus size="sm" variant="ghost" onClick={cancel}>
+              <Button autoFocus aria-describedby={sayId} size="sm" variant="ghost" onClick={cancel}>
                 Cancel
               </Button>
               <Button size="sm" variant={danger ? "danger" : "default"} onClick={() => void go()}>

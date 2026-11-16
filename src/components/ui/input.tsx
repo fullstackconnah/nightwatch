@@ -94,7 +94,7 @@ export function Field({
   const labelNode = (
     <Label htmlFor={id} className={cn(action && "mb-0", labelClassName)}>
       {label}
-      {required && <span className="text-ink-dim"> *</span>}
+      {required && <span className="text-ink-dim" aria-hidden="true"> *</span>}
     </Label>
   );
 
@@ -115,7 +115,7 @@ export function Field({
         "aria-required": required || undefined,
       })}
       {error ? (
-        <p id={errorId} className={`mt-1 text-[0.7rem] ${errorClassName}`}>
+        <p id={errorId} role="alert" className={`mt-1 text-[0.7rem] ${errorClassName}`}>
           {error}
         </p>
       ) : (

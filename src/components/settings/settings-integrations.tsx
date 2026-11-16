@@ -13,7 +13,7 @@
    say "Unsaved" or "Not saved". Clear is the pattern's one write idiom
    (WriteAction), never a browser confirm(). */
 
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { WriteAction } from "@/components/strips/write-action";
@@ -124,6 +124,7 @@ export function SecretField({
   disabled,
   action,
   describedBy,
+  invalid,
   maxLength,
 }: {
   label: string;
@@ -140,9 +141,19 @@ export function SecretField({
   /** id of an external hint/error element (owned by the caller) to fold
    *  into this field's own aria-describedby. */
   describedBy?: string;
+  /** The external error is showing: the input says so (aria-invalid). */
+  invalid?: boolean;
   maxLength?: number;
 }) {
   const [replacing, setReplacing] = useState(!configured);
+  // Replace and Cancel each unmount the control that had focus: send it to its successor (never to body).
+  const inputRef = useRef<HTMLInputElement>(null);
+  const replaceRef = useRef<HTMLButtonElement>(null);
+  const focusNext = useRef<"input" | "replace" | null>(null);
+  useEffect(() => {
+    (focusNext.current === "input" ? inputRef : focusNext.current === "replace" ? replaceRef : null)?.current?.focus();
+    focusNext.current = null;
+  }, [replacing]);
   // One id backs both states: the editable <input> gets it directly, and
   // the read-only masked view (a <div>, not a labelable element — `for`
   // can't target it) gets an aria-labelledby pointing at the label's own id
@@ -187,9 +198,19 @@ export function SecretField({
             aria-labelledby={label ? labelId : undefined}
             className="h-11 md:h-8 flex-1 min-w-0 flex items-center rounded-md border border-line bg-bg px-2.5 font-mono text-sm md:text-xs text-ink-faint tracking-widest"
           >
-            ••••••••••••
+            <span aria-hidden="true">••••••••••••</span>
           </div>
-          <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => setReplacing(true)}>
+          <Button
+            ref={replaceRef}
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => {
+              focusNext.current = "input";
+              setReplacing(true);
+            }}
+          >
             Replace
           </Button>
         </div>
@@ -207,12 +228,14 @@ export function SecretField({
       {labelRow}
       <div className="flex items-center gap-2">
         <Input
+          ref={inputRef}
           id={id}
           type="password"
           className="flex-1"
           value={draft}
           disabled={disabled}
           aria-describedby={describedBy}
+          aria-invalid={invalid || undefined}
           maxLength={maxLength}
           onChange={(e) => onDraftChange(e.target.value)}
           placeholder={placeholder ?? (configured ? "leave blank to keep the current value" : "not set")}
@@ -224,6 +247,7 @@ export function SecretField({
             variant="ghost"
             disabled={disabled}
             onClick={() => {
+              focusNext.current = "replace";
               setReplacing(false);
               onDraftChange("");
             }}
@@ -238,10 +262,11 @@ export function SecretField({
 
 /** Clear: an outlined trigger, one plain question, then "Yes, clear". The request fires only on Yes (K10); `run`
  *  throws on failure so the frame shows it with Try again. */
-export function ClearAction({ say, failure, run }: { say: string; failure: string; run: () => Promise<void> }) {
+export function ClearAction({ say, failure, run, ariaLabel }: { say: string; failure: string; run: () => Promise<void>; ariaLabel?: string }) {
   return (
     <WriteAction
       label="Clear"
+      ariaLabel={ariaLabel}
       icon={<Trash2 size={13} />}
       say={say}
       yes="Yes, clear"
@@ -606,6 +631,7 @@ export function CalendarCard({ data, mutate }: PanelProps) {
           onDraftChange={setLink}
           placeholder={configured ? "Paste the new link" : "Paste the private calendar link"}
           describedBy={error ? errorId : undefined}
+          invalid={!!error}
           maxLength={MAX_CALENDAR_LINK}
         />
         {line && <p className={`mt-1 text-[0.7rem] ${line.tone === "warn" ? "text-warn" : "text-ink-dim"}`}>{line.text}</p>}
@@ -613,6 +639,7 @@ export function CalendarCard({ data, mutate }: PanelProps) {
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {configured ? (
           <ClearAction
+            ariaLabel="Clear calendar link"
             say="Removes the saved calendar link. The kiosk's agenda disappears until you paste a link again."
             failure="Couldn't remove the calendar link"
             run={async () => {
@@ -625,7 +652,7 @@ export function CalendarCard({ data, mutate }: PanelProps) {
         )}
         <div className="flex items-center gap-2">
           {error && (
-            <span id={errorId} className="text-[0.7rem] text-bad">
+            <span id={errorId} role="alert" className="text-[0.7rem] text-bad">
               {error}
             </span>
           )}
@@ -1029,9 +1056,10 @@ const BIN_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 type BinRowErrors = Partial<Record<"name" | "weekday" | "every" | "anchor", string>>;
 
 function BinRowEditor({
-  row, errors, removable, onChange, onRemove,
+  row, index, errors, removable, onChange, onRemove,
 }: {
   row: BinRow;
+  index: number;
   errors: BinRowErrors;
   removable: boolean;
   onChange: (patch: Partial<BinRow>) => void;
@@ -1042,22 +1070,27 @@ function BinRowEditor({
   const dayNote = `${uid}-day-note`;
   const everyLabel = `${uid}-every`;
   return (
-    <div className="grid grid-cols-1 gap-3">
+    <div
+      role="group"
+      aria-label={`Bin ${index + 1}${row.name.trim() ? `: ${row.name.trim()}` : ""}`}
+      data-bin-row=""
+      className="grid grid-cols-1 gap-3"
+    >
       <Field label="Bin" required error={errors.name} errorClassName="text-bad">
         <Input placeholder="Bin name" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
       </Field>
       <div>
         <Label id={dayLabel}>
-          Collection day<span className="text-ink-dim"> *</span>
+          Collection day<span className="text-ink-dim" aria-hidden="true"> *</span>
         </Label>
-        <div role="group" aria-labelledby={dayLabel} aria-describedby={dayNote} className="flex gap-0.5">
+        <div role="group" aria-labelledby={dayLabel} aria-describedby={dayNote} aria-invalid={errors.weekday ? true : undefined} className="flex gap-0.5">
           {BIN_DAY_ORDER.map((d) => (
             <SegmentButton key={d} fill active={row.weekday === d} label={DAY_NAMES[d]} onClick={() => onChange({ weekday: d })}>
               {DAY_NAMES[d].slice(0, 3)}
             </SegmentButton>
           ))}
         </div>
-        <p id={dayNote} className={errors.weekday ? "mt-1 text-[0.7rem] text-bad" : "mt-1 text-[0.7rem] text-ink-dim"}>
+        <p id={dayNote} role={errors.weekday ? "alert" : undefined} className={errors.weekday ? "mt-1 text-[0.7rem] text-bad" : "mt-1 text-[0.7rem] text-ink-dim"}>
           {errors.weekday ?? "The day the truck comes."}
         </p>
       </div>
@@ -1107,6 +1140,18 @@ export function BinNightCard({ data, mutate }: PanelProps) {
   const check = rows.length === 1 && binRowIdle(rows[0]) ? null : checkBins({ collections: rows.map(({ name, weekday, every, anchor }) => ({ name, weekday, every, anchor })) });
   const errors = check && !check.ok ? check.errors : [];
   const cardError = errors.find((e) => e.row === undefined)?.message;
+  // Remove and Clear unmount the focused control: the pending target is applied once the new rows are committed.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const focusAfter = useRef<{ row: number } | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    const want = focusAfter.current;
+    if (!want || !seeded) return;
+    focusAfter.current = null;
+    const card = cardRef.current;
+    const input = card?.querySelectorAll("[data-bin-row]")[want.row]?.querySelector<HTMLInputElement>("input");
+    (input ?? card?.querySelector<HTMLButtonElement>("[data-add-bin]"))?.focus();
+  }, [rows, seeded, focusTick]);
   const patch = (id: number, p: Partial<BinRow>) => setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...p } : r)));
 
   // The preview is the saved rule, never the draft: the exact sentence the wall would show, so a fallback is visible.
@@ -1119,7 +1164,7 @@ export function BinNightCard({ data, mutate }: PanelProps) {
       : "The saved schedule isn't valid, so the wall shows no bin line.";
 
   return (
-    <div className="space-y-3">
+    <div ref={cardRef} className="space-y-3">
       <p className="text-[0.7rem] text-ink-dim">
         The wall kiosk shows a line from 5 pm to 10 pm on the evening before a collection. Nothing shows on other days.
       </p>
@@ -1127,15 +1172,20 @@ export function BinNightCard({ data, mutate }: PanelProps) {
         <div key={r.id} className={i > 0 ? "border-t border-line pt-3" : undefined}>
           <BinRowEditor
             row={r}
+            index={i}
             errors={Object.fromEntries(errors.filter((e) => e.row === i).map((e) => [e.field, e.message])) as BinRowErrors}
             removable={rows.length > 1}
             onChange={(p) => patch(r.id, p)}
-            onRemove={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
+            onRemove={() => {
+              focusAfter.current = { row: Math.max(i - 1, 0) };
+              setRows((rs) => rs.filter((x) => x.id !== r.id));
+            }}
           />
         </div>
       ))}
       {rows.length < MAX_BINS && (
         <Button
+          data-add-bin=""
           variant="ghost"
           size="sm"
           onClick={() => setRows((rs) => [...rs, blankBinRow({ weekday: rs[rs.length - 1].weekday, every: rs[rs.length - 1].every })])}
@@ -1143,20 +1193,25 @@ export function BinNightCard({ data, mutate }: PanelProps) {
           <Plus size={13} /> Add a bin
         </Button>
       )}
-      {cardError && <p className="text-[0.7rem] text-bad">{cardError}</p>}
+      {cardError && <p role="alert" className="text-[0.7rem] text-bad">{cardError}</p>}
       {data && <p className="text-[0.7rem] text-ink-dim">{preview}</p>}
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {stored ? (
           <ClearAction
+            ariaLabel="Clear bin schedule"
             say="Removes the bin schedule. The wall stops showing bin night until you set it again."
             failure="Couldn't remove the bin schedule"
-            run={() => clear("bins")}
+            run={async () => {
+              await clear("bins");
+              focusAfter.current = { row: 0 };
+              setFocusTick((t) => t + 1);
+            }}
           />
         ) : (
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || !check || !check.ok}
