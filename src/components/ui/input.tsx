@@ -87,7 +87,8 @@ export function Field({
   }>;
 }) {
   const id = React.useId();
-  const hintId = hint ? `${id}-hint` : undefined;
+  // The hint is not rendered while an error shows, so its id must not be referenced then.
+  const hintId = hint && !error ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [hintId, errorId, externalDescribedBy].filter(Boolean).join(" ") || undefined;
 
