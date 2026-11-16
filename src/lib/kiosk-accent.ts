@@ -135,12 +135,15 @@ export function setKioskThemeAccent(theme: KioskTheme, id: KioskAccentId | null)
 /** The chosen swatch id for a theme, or null for Theme default. SSR-safe seed is
  *  null (never storage), then it hydrates and live-updates. No cross-tab sync. */
 export function useKioskAccent(theme: KioskTheme): KioskAccentId | null {
-  const [id, setId] = useState<KioskAccentId | null>(null);
+  // `ready` flips once on mount (storage is client-only); the id is then read for the CURRENT theme in
+  // render, so a theme switch never pairs the old theme's id with the new ground. `tick` re-renders on a pick.
+  const [ready, setReady] = useState(false);
+  const [, setTick] = useState(0);
   useEffect(() => {
-    const resolve = () => setId(readKioskAccents()[theme] ?? null);
-    resolve();
-    window.addEventListener(CHANGE_EVENT, resolve);
-    return () => window.removeEventListener(CHANGE_EVENT, resolve);
-  }, [theme]);
-  return id;
+    const bump = () => setTick((n) => n + 1);
+    setReady(true);
+    window.addEventListener(CHANGE_EVENT, bump);
+    return () => window.removeEventListener(CHANGE_EVENT, bump);
+  }, []);
+  return ready ? readKioskAccents()[theme] ?? null : null;
 }

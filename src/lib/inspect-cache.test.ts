@@ -5,7 +5,7 @@ import { createInspectCache, hasLiveStats } from "./inspect-cache.ts";
 function setup() {
   let clock = 0;
   const calls: string[] = [];
-  const cache = createInspectCache<string>(60_000, () => clock);
+  const cache = createInspectCache<string>(60_000, 10_000, () => clock);
   const inspect = async (id: string) => {
     calls.push(id);
     if (id === "bad") throw new Error("gone");
@@ -57,12 +57,64 @@ test("an entry past 60 s is inspected; one at 60 s is not", async () => {
   assert.equal(calls.length, 2);
 });
 
-test("a failed inspect is left out of the result and nothing is cached", async () => {
-  const { cache, inspect, calls } = setup();
+test("a failed inspect is left out of the result, also on the cached pass", async () => {
+  const { cache, inspect } = setup();
   const out = await cache.resolve([k("a"), k("bad")], inspect);
   assert.deepEqual(Object.keys(out), ["a"]);
-  await cache.resolve([k("a"), k("bad")], inspect);
-  assert.deepEqual(calls, ["a", "bad", "bad"]);
+  const again = await cache.resolve([k("a"), k("bad")], inspect);
+  assert.deepEqual(Object.keys(again), ["a"]);
+});
+
+test("a failed inspect is remembered for the failure TTL, then retried", async () => {
+  const { cache, inspect, calls, tick } = setup();
+  await cache.resolve([k("bad")], inspect);
+  assert.equal(cache.isFailed("bad"), true);
+  tick(10_000);
+  await cache.resolve([k("bad")], inspect);
+  assert.deepEqual(calls, ["bad"]);
+  assert.equal(cache.isFailed("bad"), true);
+  tick(1);
+  assert.equal(cache.isFailed("bad"), false);
+  await cache.resolve([k("bad")], inspect);
+  assert.deepEqual(calls, ["bad", "bad"]);
+});
+
+test("a later success replaces a remembered failure at once", async () => {
+  const { cache, calls } = setup();
+  let ok = false;
+  const flaky = async (id: string) => {
+    calls.push(id);
+    if (!ok) throw new Error("timeout");
+    return "fine";
+  };
+  await cache.resolve([k("a")], flaky);
+  ok = true;
+  const out = await cache.resolve([k("a", "exited")], flaky); // list state changed: not served from the failure
+  assert.equal(out.a, "fine");
+  assert.equal(cache.isFailed("a"), false);
+  assert.equal((await cache.resolve([k("a", "exited")], flaky)).a, "fine");
+  assert.equal(calls.length, 2);
+});
+
+test("a remembered failure is evicted when the container leaves the list", async () => {
+  const { cache, inspect, calls } = setup();
+  await cache.resolve([k("bad")], inspect);
+  await cache.resolve([k("a")], inspect);
+  assert.equal(cache.isFailed("bad"), false);
+  await cache.resolve([k("bad")], inspect);
+  assert.equal(calls.filter((c) => c === "bad").length, 2);
+});
+
+test("clear() forgets failures too", async () => {
+  const { cache, inspect } = setup();
+  await cache.resolve([k("bad")], inspect);
+  cache.clear();
+  assert.equal(cache.isFailed("bad"), false);
+});
+
+test("the runtimes memo accepts an id whose inspect failed recently", () => {
+  assert.match(dockerSrc, /INSPECT_FAIL_TTL_MS/);
+  assert.match(dockerSrc, /inspectCache\.isFailed\(k\.id\)/);
 });
 
 test("clear() forces a re-inspect", async () => {
