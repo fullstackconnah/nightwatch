@@ -19,3 +19,10 @@ export function ssoErrorUrl(req: OriginRequest, code: string): URL {
   login.searchParams.set("sso_error", code);
   return login;
 }
+
+/** True when the browser reached us over https: the proxy's first x-forwarded-proto value, else the URL's own protocol. */
+export function isSecureRequest(req: { headers: { get(name: string): string | null }; nextUrl: { protocol: string } }): boolean {
+  const fwd = req.headers.get("x-forwarded-proto");
+  if (fwd === null) return req.nextUrl.protocol === "https:";
+  return fwd.split(",")[0].trim().toLowerCase() === "https";
+}

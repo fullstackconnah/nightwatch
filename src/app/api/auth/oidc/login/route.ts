@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
+import { isSecureRequest, requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { OIDC_FLOW_COOKIE, buildAuthorizationUrl, createOidcFlowToken, oidcConfig, oidcFlowCookieOptions } from "@/lib/oidc";
 
 
@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     res.cookies.set(
       OIDC_FLOW_COOKIE,
       await createOidcFlowToken({ state, nonce, verifier: codeVerifier }),
-      oidcFlowCookieOptions(),
+      oidcFlowCookieOptions(isSecureRequest(req)),
     );
     return res;
   } catch {

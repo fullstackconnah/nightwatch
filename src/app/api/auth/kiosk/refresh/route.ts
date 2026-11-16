@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSecureRequest } from "@/lib/oidc-origin";
 import {
   KIOSK_ELEVATION_COOKIE,
   KIOSK_ELEVATION_TTL_SECONDS,
@@ -27,6 +28,6 @@ export async function POST(req: NextRequest) {
 
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ elevated: true, expiresAt });
-  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions());
+  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions(isSecureRequest(req)));
   return res;
 }

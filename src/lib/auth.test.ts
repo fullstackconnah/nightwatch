@@ -139,8 +139,13 @@ describe("auth", () => {
   });
 
   describe("cookie options", () => {
+    it("session cookie is secure only when asked (https request); plain HTTP keeps it non-secure", () => {
+      assert.equal(sessionCookieOptions(true).secure, true);
+      assert.equal(kioskElevationCookieOptions(true).secure, true);
+    });
+
     it("session cookie is httpOnly, lax, path /, seven days, and not secure (LAN over plain HTTP)", () => {
-      assert.deepEqual(sessionCookieOptions(), {
+      assert.deepEqual(sessionCookieOptions(false), {
         httpOnly: true,
         sameSite: "lax",
         secure: false,
@@ -150,7 +155,7 @@ describe("auth", () => {
     });
 
     it("kiosk elevation cookie is httpOnly, lax, path /, five minutes", () => {
-      assert.deepEqual(kioskElevationCookieOptions(), {
+      assert.deepEqual(kioskElevationCookieOptions(false), {
         httpOnly: true,
         sameSite: "lax",
         secure: false,

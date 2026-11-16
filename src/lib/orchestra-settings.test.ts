@@ -55,6 +55,11 @@ describe("mergeOrchestraSettings", () => {
 });
 
 describe("publicSystem (what GET /api/settings returns)", () => {
+  it("never returns the OIDC allow-list", () => {
+    const out = publicSystem({ oidcAllowedUsers: "x" });
+    assert.equal(JSON.stringify(out).includes("oidcAllowedUsers"), false);
+  });
+
   it("returns orchestraUrl but never any secret, whatever the stored block holds", () => {
     const out = publicSystem({
       orchestraUrl: "http://192.0.2.10:7420",

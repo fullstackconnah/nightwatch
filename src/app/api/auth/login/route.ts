@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createSessionToken, isMissingSecretError, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
+import { isSecureRequest } from "@/lib/oidc-origin";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
@@ -45,7 +46,7 @@ export async function POST(req: NextRequest) {
   limiter.reset();
   const res = NextResponse.json({ ok: true });
   try {
-    res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions());
+    res.cookies.set(SESSION_COOKIE, await createSessionToken(), sessionCookieOptions(isSecureRequest(req)));
   } catch (e) {
     if (!isMissingSecretError(e)) throw e;
     return NextResponse.json({ error: "SESSION_SECRET is not set. Set SESSION_SECRET in .env (a long random string), then restart." }, { status: 503 });
