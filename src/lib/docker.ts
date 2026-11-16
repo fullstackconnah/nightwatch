@@ -2,6 +2,7 @@ import Docker from "dockerode";
 import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
+import { createInspectCache, hasLiveStats, type InspectKey } from "@/lib/inspect-cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { classifyImages } from "@/lib/image-reclaim";
 import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
@@ -151,6 +152,8 @@ export interface ContainerRuntime {
 export type RuntimeContainer = ContainerSummary & ContainerRuntime;
 
 const RUNTIME_TTL_MS = 3_000;
+/** Safety TTL for a cached inspect result; see inspectCache. */
+const INSPECT_TTL_MS = 60_000;
 
 /** Docker writes this sentinel rather than a null when a timestamp is unset. */
 const ZERO_TIME = "0001-01-01T00:00:00Z";
@@ -175,26 +178,27 @@ function parseDockerTime(value: string | undefined): number | null {
  * `stats`, which blocks ~1s per call to fill precpu. Fanning it out across ~26
  * containers costs a few milliseconds.
  */
-async function collectRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
-  const settled = await Promise.allSettled(
-    ids.map(async (id) => {
-      const info = await docker.getContainer(id).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
-      const runtime: ContainerRuntime = {
-        startedAt: parseDockerTime(info.State?.StartedAt),
-        finishedAt: info.State?.Running ? null : parseDockerTime(info.State?.FinishedAt),
-        exitCode: info.State?.Running ? null : (info.State?.ExitCode ?? null),
-        restartCount: info.RestartCount ?? 0,
-      };
-      return [id, runtime] as const;
-    }),
-  );
-  const data: Record<string, ContainerRuntime> = {};
-  for (const r of settled) {
-    // A container removed between the list and the inspect simply drops out;
-    // its caller renders the same "unknown" branch as a never-started one.
-    if (r.status === "fulfilled") data[r.value[0]] = r.value[1];
-  }
-  return data;
+async function inspectRuntime(id: string): Promise<ContainerRuntime> {
+  const info = await docker.getContainer(id).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
+  return {
+    startedAt: parseDockerTime(info.State?.StartedAt),
+    finishedAt: info.State?.Running ? null : parseDockerTime(info.State?.FinishedAt),
+    exitCode: info.State?.Running ? null : (info.State?.ExitCode ?? null),
+    restartCount: info.RestartCount ?? 0,
+  };
+}
+
+/**
+ * Only new, state-changed or 60 s-old containers are inspected (inspect-cache.ts).
+ * Accepted: restartCount can be up to 60 s old for a container that restarts
+ * without leaving "running" between two polls.
+ * A container removed between the list and the inspect simply drops out; its
+ * caller renders the same "unknown" branch as a never-started one.
+ */
+const inspectCache = createInspectCache<ContainerRuntime>(INSPECT_TTL_MS);
+
+function collectRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {
+  return inspectCache.resolve(keys, inspectRuntime);
 }
 
 /**
@@ -207,20 +211,20 @@ async function collectRuntimes(ids: string[]): Promise<Record<string, ContainerR
  * the only entry point. If a second caller with a genuinely different id set
  * is ever added, give it its own Memo rather than widening this.
  */
-let requestedRuntimeIds: string[] = [];
+let requestedRuntimeKeys: InspectKey[] = [];
 
 const runtimesMemo = new Memo<Record<string, ContainerRuntime>>({
   key: "docker.runtimes",
   ttlMs: RUNTIME_TTL_MS,
-  load: () => collectRuntimes(requestedRuntimeIds),
+  load: () => collectRuntimes(requestedRuntimeKeys),
   // Membership, not just age — see collectRuntimes' doc comment. A container
   // created since the last pass would otherwise show no uptime until the TTL
   // expired, which is exactly when someone is watching it.
-  isValid: (cached) => requestedRuntimeIds.every((id) => id in cached),
+  isValid: (cached) => requestedRuntimeKeys.every((k) => k.id in cached),
 });
 
-function containerRuntimes(ids: string[]): Promise<Record<string, ContainerRuntime>> {
-  requestedRuntimeIds = ids;
+function containerRuntimes(keys: InspectKey[]): Promise<Record<string, ContainerRuntime>> {
+  requestedRuntimeKeys = keys;
   return runtimesMemo.get();
 }
 
@@ -239,7 +243,7 @@ const UNKNOWN_RUNTIME: ContainerRuntime = {
  */
 export async function listContainersWithRuntime(): Promise<RuntimeContainer[]> {
   const containers = await listContainers();
-  const runtimes = await containerRuntimes(containers.map((c) => c.id)).catch(
+  const runtimes = await containerRuntimes(containers.map((c) => ({ id: c.id, state: c.state, created: c.created, status: c.status }))).catch(
     () => ({}) as Record<string, ContainerRuntime>,
   );
   return containers.map((c) => ({ ...c, ...(runtimes[c.id] ?? UNKNOWN_RUNTIME) }));
@@ -358,12 +362,14 @@ export interface ContainerStatsRow {
  * 1Hz streaming consumers that would otherwise see the same sample ~4 ticks out of 5.
  */
 async function collectAllContainerStats(): Promise<Record<string, ContainerStatsRow>> {
-  const running = await withTimeout(docker.listContainers({ all: false, abortSignal: AbortSignal.timeout(TELEMETRY_CALL_MS) }), TELEMETRY_CALL_MS, () => null);
-  if (!running) throw new Error("listContainers timed out");
+  // The shared 2 s list memo, not a raw call: same running set, one fewer GET /containers/json per tick.
+  const all = await withTimeout(listContainers(), TELEMETRY_CALL_MS, () => null);
+  if (!all) throw new Error("listContainers timed out");
+  const running = all.filter((c) => hasLiveStats(c.state));
   const settled = await mapWithin(
     running,
     async (c) => {
-      const s = await containerStats(c.Id);
+      const s = await containerStats(c.id);
       const row: ContainerStatsRow = {
         cpuPct: s.cpuPercent,
         memBytes: s.memUsage,
@@ -379,7 +385,7 @@ async function collectAllContainerStats(): Promise<Record<string, ContainerStats
     },
     STATS_CALL_MS,
   );
-  return Object.fromEntries(settled.map(([c, row]) => [c.Id, row]));
+  return Object.fromEntries(settled.map(([c, row]) => [c.id, row]));
 }
 
 const statsMemo = new Memo<Record<string, ContainerStatsRow>>({
@@ -796,6 +802,7 @@ export async function performContainerAction(id: string, action: ContainerAction
   } finally {
     runtimesMemo.invalidate();
     containersMemo.invalidate();
+    inspectCache.clear(); // a restart keeps state "running" but resets startedAt
   }
 }
 
@@ -806,6 +813,7 @@ export async function removeContainer(id: string): Promise<void> {
   } finally {
     containersMemo.invalidate();
     runtimesMemo.invalidate();
+    inspectCache.clear();
     dfSwr.clear();
   }
 }

@@ -18,6 +18,8 @@ const nextConfig: NextConfig = {
     ];
   },
   serverExternalPackages: ["dockerode", "systeminformation", "ssh2"],
+  // images.unoptimized below means nothing loads sharp (libvips, ~37 MB) at run time; keep it out of the standalone trace.
+  outputFileTracingExcludes: { "*": ["node_modules/sharp/**", "node_modules/@img/**"] },
   images: {
     // Icons come from selfh.st / arbitrary label URLs; don't proxy-optimize them.
     unoptimized: true,
