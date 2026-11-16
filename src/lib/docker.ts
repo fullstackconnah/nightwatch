@@ -2,7 +2,7 @@ import Docker from "dockerode";
 import { containerCpuShare } from "@/lib/cpu-share";
 import { getHostVitals, HOST_ROOTFS } from "@/lib/host-metrics";
 import { Memo } from "@/lib/cache";
-import { createInspectCache, type InspectKey } from "@/lib/inspect-cache";
+import { createInspectCache, hasLiveStats, type InspectKey } from "@/lib/inspect-cache";
 import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { classifyImages } from "@/lib/image-reclaim";
 import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
@@ -243,7 +243,7 @@ const UNKNOWN_RUNTIME: ContainerRuntime = {
  */
 export async function listContainersWithRuntime(): Promise<RuntimeContainer[]> {
   const containers = await listContainers();
-  const runtimes = await containerRuntimes(containers.map((c) => ({ id: c.id, state: c.state, created: c.created }))).catch(
+  const runtimes = await containerRuntimes(containers.map((c) => ({ id: c.id, state: c.state, created: c.created, status: c.status }))).catch(
     () => ({}) as Record<string, ContainerRuntime>,
   );
   return containers.map((c) => ({ ...c, ...(runtimes[c.id] ?? UNKNOWN_RUNTIME) }));
@@ -365,7 +365,7 @@ async function collectAllContainerStats(): Promise<Record<string, ContainerStats
   // The shared 2 s list memo, not a raw call: same running set, one fewer GET /containers/json per tick.
   const all = await withTimeout(listContainers(), TELEMETRY_CALL_MS, () => null);
   if (!all) throw new Error("listContainers timed out");
-  const running = all.filter((c) => c.state === "running");
+  const running = all.filter((c) => hasLiveStats(c.state));
   const settled = await mapWithin(
     running,
     async (c) => {
