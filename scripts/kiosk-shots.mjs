@@ -1015,8 +1015,9 @@ const pbChipClear = async (page, loc, key) => {
   const m = await loc.evaluate((el) => {
     const r = el.getBoundingClientRect(), d = 4;
     const pts = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + d, r.top + d], [r.right - d, r.top + d], [r.left + d, r.bottom - d], [r.right - d, r.bottom - d]];
-    const hits = pts.map(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; return !!h && el.contains(h); });
-    return { hits, top: r.top, bottom: r.bottom, vh: innerHeight };
+    const over = [];
+    const hits = pts.map(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; const ok = !!h && el.contains(h); if (!ok) over.push(h ? `${h.tagName.toLowerCase()}.${String(h.className).slice(0, 80)}` : "none"); return ok; });
+    return { hits, over, top: r.top, bottom: r.bottom, vh: innerHeight };
   });
   pbRec(key, m.hits.length === 5 && m.hits.every(Boolean), m);
 };
