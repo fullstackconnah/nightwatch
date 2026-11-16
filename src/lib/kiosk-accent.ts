@@ -30,8 +30,8 @@ export interface KioskAccentSwatch {
  *  for Sunroom's whole ramp). Change a hex only with both gates green. */
 export const KIOSK_ACCENTS: readonly KioskAccentSwatch[] = [
   { id: "harbour", label: "Harbour", light: { accent: "#21488c", dim: "#204688" }, dark: { accent: "#c3d4f1", dim: "#83aaef" } },
-  { id: "lagoon", label: "Lagoon", light: { accent: "#0e5251", dim: "#0c4543" }, dark: { accent: "#24cec8", dim: "#10c4be" } },
-  { id: "fern", label: "Fern", light: { accent: "#1e5632", dim: "#1b4b2b" }, dark: { accent: "#70cd8f", dim: "#48d577" } },
+  { id: "lagoon", label: "Lagoon", light: { accent: "#0e5251", dim: "#0c4543" }, dark: { accent: "#60e3df", dim: "#10c4be" } },
+  { id: "fern", label: "Fern", light: { accent: "#1e5632", dim: "#1b4b2b" }, dark: { accent: "#a5dfb8", dim: "#48d577" } },
   { id: "iris", label: "Iris", light: { accent: "#5b2bae", dim: "#592aa9" }, dark: { accent: "#dccef3", dim: "#bc9cf1" } },
   { id: "orchid", label: "Orchid", light: { accent: "#832367", dim: "#7b2160" }, dark: { accent: "#f0c6e4", dim: "#ed87ce" } },
   { id: "clay", label: "Clay", light: { accent: "#7a381c", dim: "#72351b" }, dark: { accent: "#efc9b9", dim: "#ec946f" } },
