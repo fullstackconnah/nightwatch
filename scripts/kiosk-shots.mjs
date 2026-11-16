@@ -20,6 +20,7 @@
  * UV and air (kiosk-uv): sunAir.N1..N11 (true/false; the run exits 1 if any is false), sunAir.entries.<Nx>[], sunAir.states, sunAir.std, sunAir.failed[]. Shots sunair-*.png.
  * Bin night (kiosk-bins): bins.N1..N9,N11,P3 (true/false; the run exits 1 if any is false), bins.entries.<Nx>[], bins.states, bins.settings.<state>, bins.failed[]. Shots bins-*.png. N10 is src/lib/bin-night.test.ts.
  * Calendar (kiosk-calendar): calendar.{C1..C6,C8,C9} (true/false; the run exits 1 if any is false), calendar.entries.<Cx>[], calendar.states, calendar.settings.<state>, calendar.failed[]. Shots calendar-*.png. C7 is src/lib/kiosk-agenda.test.ts.
+ * Corner controls (kiosk-corner): corner.checks.<key> {ok,...}, corner.failed[] (one line each; the run exits 1 if any). Shots corner-<state>-<size>.png.
  * Polish round: polish.p1.runningCount (1), polish.p3.{left,right,bottom} (>= 2), polish.p4-<stop>-<size>[] {fontPx >= 15, w, h >= 44}, polish.controls-<size>.{p5,p6,p7}. Shots polish-*.png.
  */
 
@@ -2234,6 +2235,201 @@ results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;
 results.n16HydrationFull = hydrationFull;
 results.n16PageErrors = pageErrors;
+// ---- kiosk corner controls: alerts and downloads at the bottom right, no Admin on Glance ----
+// results.corner.{checks, failed[]}: every mismatch is recorded in failed (never skipped); results.corner.checks.<key> = {ok, ...measurements}. Shots corner-<state>-<size>.png.
+// Checks (shape note section 5): nothing leaves no hit area and Glance has no Admin; downloads-only right edge = innerWidth - 20; alert + downloads gap 12, both >= 56 high;
+// 2-digit count unclipped and >= 4.5:1; ring inside the button; trays inside the viewport and 12 above the cluster, no animation under reduced motion; 390 row clears the pill and the
+// bottom-left cluster; Glance column / band text never intersects the cluster; Glance does not scroll; Standard header clear and last row >= 84 from the bottom at the end of scroll;
+// tab order ends downloads, alert; an open timers sheet and the PIN pad cover the cluster. The weather, sun and clock are pinned (MAIN_URL, fixed time, midday stop).
+const CO = (results.corner = { checks: {}, failed: [] });
+const coRec = (key, ok, detail = {}) => { CO.checks[key] = { ok, ...detail }; if (!ok) CO.failed.push(`${key} ${JSON.stringify(detail)}`); };
+const coRun = (name, fn) => guarded(`corner ${name}`, async () => { try { await fn(); } catch (e) { CO.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } });
+const coNear = (a, b, tol = 1) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= tol;
+const CO_W = weatherFor(STOPS.includes("midday") ? "midday" : STOPS[0]);
+const CO_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
+const coItems = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `h${i}`, name: `Download number ${i + 1}`, progress: 0.2 + (i % 5) / 10, dlspeed: 1_500_000, size: 4_000_000_000, eta: 900 + i })) });
+const CO_SIZES = [...SIZES, { name: "390x844", viewport: { width: 390, height: 844 } }];
+const coVisit = (std, size, { alert = false, dl = 0, reduced = false, nowPlaying = false } = {}) => visit(std ? `${MAIN_URL}&layout=standard` : MAIN_URL, {
+  viewport: size.viewport, weather: CO_W, fixedTime: true, ha: true, reduced, nowPlaying,
+  routes: { "/kiosk/api/attention": alert ? CO_ALERT : { status: "quiet" }, "/kiosk/api/downloads": dl ? coItems(dl) : { status: "unconfigured" } },
+});
+/** Rects of the cluster wrapper and its two buttons, plus the viewport; every control found by its aria-label. */
+const CO_READ = () => {
+  const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
+  const wrap = document.querySelector('div[data-rain-zone="corner"]:not([role])');
+  const btn = (re) => [...(wrap?.querySelectorAll("button") ?? [])].find((b) => re.test(b.getAttribute("aria-label") ?? ""));
+  const dl = btn(/download/i), al = btn(/alert/i);
+  const num = (s) => s.match(/[\d.]+/g).map(Number);
+  const lum = (c) => { const [R, G, B] = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * R + 0.7152 * G + 0.0722 * B; };
+  const ink = (el) => {
+    let bg = null;
+    for (let n = el; n && !bg; n = n.parentElement) { const c = num(getComputedStyle(n).backgroundColor); if ((c[3] ?? 1) > 0.5) bg = c.slice(0, 3); }
+    const a = lum(num(getComputedStyle(el).color).slice(0, 3)) + 0.05, b = lum(bg ?? [0, 0, 0]) + 0.05;
+    return Math.max(a, b) / Math.min(a, b);
+  };
+  const count = (b) => { const s = b && [...b.querySelectorAll("span")].find((x) => /^\d+$/.test(x.textContent.trim())); return s ? { text: s.textContent.trim(), clipped: s.scrollWidth > s.clientWidth + 1, contrast: ink(s) } : null; };
+  const ring = dl?.querySelector("svg"), rr = ring?.getBoundingClientRect(), db = dl?.getBoundingClientRect();
+  const tray = (name) => r(document.querySelector(`[role="dialog"][aria-label="${name}"]`));
+  const zone = (n) => [...document.querySelectorAll(`[data-rain-zone="${n}"]`)].map(r);
+  // every visible text node outside the cluster and the trays, for the "no cluster rect intersects any text" check
+  const texts = [];
+  const wk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let n = wk.nextNode(); n; n = wk.nextNode()) {
+    const p = n.parentElement;
+    if (!n.textContent.trim() || !p || p.closest('[data-rain-zone="corner"], [role="dialog"], script, style, .sr-only, [aria-hidden="true"]') || getComputedStyle(p).visibility === "hidden") continue;
+    const g = document.createRange();
+    g.selectNodeContents(n);
+    const b = g.getBoundingClientRect();
+    if (b.width > 0 && b.height > 0) texts.push({ left: b.left, top: b.top, right: b.right, bottom: b.bottom, t: n.textContent.trim().slice(0, 24) });
+  }
+  const tab = [...document.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter((e) => !e.closest('[role="dialog"]'));
+  const hit = wrap ? (() => { const b = wrap.getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return { area: b.width * b.height, within: !!e?.closest('[data-rain-zone="corner"]'), sheet: !!e?.closest('[data-sr-overlay="sheet"], [role="dialog"]') }; })() : null;
+  return {
+    vw: innerWidth, vh: innerHeight, scrollH: document.documentElement.scrollHeight, wrap: r(wrap), dl: r(dl), al: r(al), dlCount: count(dl), alCount: count(al),
+    ring: rr && db ? { inside: rr.left >= db.left && rr.right <= db.right && rr.top >= db.top && rr.bottom <= db.bottom } : null,
+    hit, admin: [...document.querySelectorAll("button")].filter((b) => b.textContent.trim() === "Admin").length, trayDl: tray("Downloads"), trayAl: tray("Alerts"),
+    tiles: zone("tiles"), playing: zone("playing"), sentence: zone("sentence"), texts, hdr: r(document.querySelector(".kiosk-hdr-grid")), rail: r(document.querySelector('[data-testid="kiosk-forecast-rail"]')),
+    tabTail: tab.slice(-2).map((e) => e.getAttribute("aria-label") ?? e.textContent.trim().slice(0, 20)),
+    animating: [...document.querySelectorAll('[role="dialog"]')].flatMap((d) => d.getAnimations()).length,
+  };
+};
+const coHit = (a, b) => a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+const coShot = (page, name, size) => page.screenshot({ path: join(OUT_DIR, `corner-${name}-${size.name}.png`) });
+
+for (const size of CO_SIZES) {
+  const phone = size.name === "390x844";
+  await coRun(`both ${size.name}`, async () => {
+    const { context, page } = await coVisit(false, size, { alert: true, dl: 12, nowPlaying: phone });
+    try {
+      await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+      await page.waitForTimeout(600);
+      const d = await page.evaluate(CO_READ);
+      const k = `${size.name} glance both`;
+      coRec(`${k} gap`, coNear(d.al?.left - d.dl?.right, 12), { gap: d.al?.left - d.dl?.right });
+      coRec(`${k} height`, d.dl?.h >= 55 && d.al?.h >= 55, { dl: d.dl?.h, al: d.al?.h });
+      coRec(`${k} alert at the corner`, coNear(d.al?.right, d.vw - 20), { right: d.al?.right, vw: d.vw });
+      coRec(`${k} no Admin`, d.admin === 0, { admin: d.admin });
+      coRec(`${k} no scroll`, d.scrollH <= d.vh + 1, { scrollH: d.scrollH, vh: d.vh });
+      coRec(`${k} 2-digit count`, !!d.dlCount && !d.dlCount.clipped && d.dlCount.contrast >= 4.5, d.dlCount ?? {});
+      coRec(`${k} ring inside`, d.ring?.inside === true, { ring: d.ring });
+      coRec(`${k} text clear`, !d.texts.some((t) => coHit(d.wrap, t)), { hits: d.texts.filter((t) => coHit(d.wrap, t)).map((t) => t.t) });
+      if (d.tiles.length) coRec(`${k} bottom-left cluster`, Math.max(...d.tiles.map((t) => t.right)) + 11 <= d.wrap.left, { tilesRight: d.tiles.map((t) => t.right), left: d.wrap.left });
+      if (d.playing.length) coRec(`${k} pill`, d.playing[0].right + 11 <= d.wrap.left || d.wrap.bottom + 11 <= d.playing[0].top || d.playing[0].bottom + 11 <= d.wrap.top, { pill: d.playing[0], wrap: d.wrap });
+      if (d.sentence.length) coRec(`${k} column clear`, d.wrap.top - Math.max(...d.sentence.map((s) => s.bottom)) >= 23, { top: d.wrap.top, colBottom: Math.max(...d.sentence.map((s) => s.bottom)) });
+      await coShot(page, "glance-both", size);
+      if (phone) return;
+      // downloads tray, Glance: rises above the cluster, inside the viewport
+      await page.getByRole("button", { name: /download/i }).first().click();
+      await page.waitForTimeout(500);
+      const t = await page.evaluate(CO_READ);
+      coRec(`${k} downloads tray`, !!t.trayDl && t.trayDl.left >= 0 && t.trayDl.top >= 0 && t.trayDl.right <= t.vw && t.wrap.top - t.trayDl.bottom >= 11, { tray: t.trayDl, cluster: t.wrap });
+      if (size.name === "1024x768") await coShot(page, "glance-dltray", size);
+    } finally {
+      await context.close();
+    }
+  });
+}
+
+await coRun("downloads only and nothing", async () => {
+  const size = SIZES[1];
+  {
+    const { context, page } = await coVisit(false, size, { dl: 3 });
+    try {
+      await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+      await page.waitForTimeout(600);
+      const d = await page.evaluate(CO_READ);
+      coRec("glance downloads only right edge", coNear(d.dl?.right, d.vw - 20), { right: d.dl?.right, vw: d.vw });
+      coRec("glance downloads only no Admin", d.admin === 0, { admin: d.admin });
+      await coShot(page, "glance-dl-only", size);
+    } finally {
+      await context.close();
+    }
+  }
+  {
+    const { context, page } = await coVisit(false, size);
+    try {
+      await page.waitForTimeout(1500);
+      const d = await page.evaluate(CO_READ);
+      coRec("glance nothing no hit area", !d.wrap || (d.wrap.w === 0 && d.wrap.h === 0), { wrap: d.wrap });
+      coRec("glance nothing no Admin", d.admin === 0, { admin: d.admin });
+      await coShot(page, "glance-nothing", size);
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+await coRun("standard", async () => {
+  const size = SIZES[1];
+  const { context, page } = await coVisit(true, size, { alert: true, dl: 3 });
+  try {
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    await page.waitForTimeout(800);
+    const d = await page.evaluate(CO_READ);
+    coRec("std header clear", !coHit(d.wrap, d.hdr) && (!d.rail || d.rail.right <= d.hdr.right - 15), { hdr: d.hdr, rail: d.rail, wrap: d.wrap });
+    coRec("std has Admin", d.admin >= 1, { admin: d.admin });
+    coRec("std tab order ends downloads, alert", /download/i.test(d.tabTail[0]) && /alert/i.test(d.tabTail[1]), { tail: d.tabTail });
+    await coShot(page, "std-header-dl", size);
+    await page.evaluate(() => scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(400);
+    const e = await page.evaluate(CO_READ);
+    const last = Math.max(...e.texts.map((t) => t.bottom));
+    coRec("std end of scroll clear", e.vh - last >= 83, { vh: e.vh, lastRowBottom: last });
+    await coShot(page, "std-end", size);
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.getByRole("button", { name: /alert/i }).first().click();
+    await page.waitForTimeout(500);
+    const t = await page.evaluate(CO_READ);
+    coRec("std alert tray", !!t.trayAl && t.trayAl.left >= 0 && t.trayAl.top >= 0 && t.trayAl.right <= t.vw && t.wrap.top - t.trayAl.bottom >= 11, { tray: t.trayAl, cluster: t.wrap });
+    await coShot(page, "std-alerttray", size);
+    // one at a time: opening downloads closes the alert tray
+    await page.getByRole("button", { name: /download/i }).first().click();
+    await page.waitForTimeout(500);
+    const o = await page.evaluate(CO_READ);
+    coRec("std one tray at a time", !!o.trayDl && !o.trayAl, { dl: !!o.trayDl, al: !!o.trayAl });
+    // the PIN pad covers the cluster
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Admin", exact: true }).first().click();
+    await page.waitForTimeout(700);
+    const p = await page.evaluate(CO_READ);
+    coRec("std PIN pad covers cluster", p.hit?.sheet === true, { hit: p.hit });
+    await coShot(page, "std-pin", size);
+  } finally {
+    await context.close();
+  }
+});
+
+await coRun("timers sheet", async () => {
+  const size = SIZES[1];
+  const { context, page } = await coVisit(false, size, { alert: true, dl: 3 });
+  try {
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    await page.waitForTimeout(600);
+    await page.getByRole("button", { name: /^Timers/ }).first().click();
+    await page.waitForTimeout(700);
+    const d = await page.evaluate(CO_READ);
+    coRec("glance timers sheet covers cluster", d.hit?.sheet === true, { hit: d.hit });
+    await coShot(page, "glance-timers-sheet", size);
+  } finally {
+    await context.close();
+  }
+});
+
+await coRun("reduced motion", async () => {
+  const { context, page } = await coVisit(false, SIZES[1], { dl: 3, reduced: true });
+  try {
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    await page.waitForTimeout(600);
+    await page.getByRole("button", { name: /download/i }).first().click();
+    await page.waitForTimeout(400);
+    const d = await page.evaluate(CO_READ);
+    coRec("reduced motion tray no animation", !!d.trayDl && d.animating === 0, { animating: d.animating });
+  } finally {
+    await context.close();
+  }
+});
+if (CO.failed.length) process.exitCode = 1;
+
 results.n16PageErrorMessages = pageErrorMessages;
 results.n16ForeignRequests = foreign;
 await browser.close();
