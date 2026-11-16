@@ -52,6 +52,7 @@ import type {
 } from "@/lib/types/ha";
 import { cn } from "@/lib/utils";
 import { chipWord, showSub } from "@/lib/sunroom-controls";
+import { useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { aimCatch, SunCatch, SunChipMarks } from "@/components/kiosk/kiosk-sun-catch";
 
@@ -870,6 +871,10 @@ export function KioskHub() {
   const ha = useKioskHa();
   const autoOff = useClimateAutoOff(ha);
   const { data, error, isLoading } = ha;
+  // The Calendar section (kiosk-display.tsx) shows on `view || failed`; when it sits above, the first section gets the
+  // other sections' rule. pt-2 not pt-2.5: the page's gap-3 above the hub is 2 px more than space-y-2.5, so 12 + 1 + 8 = 10 + 1 + 10.
+  const agenda = useKioskAgenda();
+  const afterCalendar = Boolean(agenda.view) || agenda.failed;
 
   if (isLoading && !data) return <HubSkeleton />;
   if (Boolean(error) && !data) return <HubLoadError error={error} />;
@@ -899,7 +904,7 @@ export function KioskHub() {
   if (total === 0) return <HubEmpty />;
 
   return (
-    <div className="space-y-2.5">
+    <div className={afterCalendar ? "space-y-2.5 [&>section:first-child]:border-t [&>section:first-child]:pt-2" : "space-y-2.5"}>
       <ClimateAutoOffBanner autoOff={autoOff} />
       {stale && (
         <div className="flex items-center gap-2 px-1">

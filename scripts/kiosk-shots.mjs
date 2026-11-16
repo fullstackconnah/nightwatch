@@ -1932,7 +1932,7 @@ if (BN.failed.length) process.exitCode = 1;
 // Shots: calendar-<state>-<size>.png (the band), calendar-std-<state>-<size>.png (the section), calendar-full-<state>-<size>.png, calendar-settings-<state>.png.
 // The route is answered per state through visit()'s `routes`; no link, address or host exists in any fixture, and nothing is fetched out.
 const CL = (results.calendar = { entries: {}, states: {}, settings: {}, failed: [] });
-const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9", "C10"];
+const CNS = ["C1", "C2", "C3", "C4", "C5", "C6", "C8", "C9", "C10", "C11"];
 const cExpected = {};
 for (const n of CNS) CL.entries[n] = [];
 const cPlan = (n) => { cExpected[n] = (cExpected[n] ?? 0) + 1; };
@@ -2004,6 +2004,16 @@ const CAL_STD = () => {
     header: document.querySelector("header")?.getBoundingClientRect().height ?? null,
     hubTop: root && root.lastElementChild ? root.lastElementChild.getBoundingClientRect().top : null,
   };
+  // C11: the hub's Climate and Lights sections: top border (width, colour) and the gap from the preceding content (the Calendar section for Climate) to the section's header
+  const hubSecs = root && root.lastElementChild ? [...root.lastElementChild.querySelectorAll("section")].filter((s) => s.parentElement.classList.contains("space-y-2.5")) : [];
+  const hubOf = (name) => {
+    const s = hubSecs.find((x) => new RegExp(`^${name}`, "i").test((x.firstElementChild?.textContent ?? "").trim()));
+    if (!s) return null;
+    const prev = s.previousElementSibling ?? sec;
+    const bs = getComputedStyle(s);
+    return { w: bs.borderTopWidth, color: bs.borderTopColor, gap: prev && s.firstElementChild ? s.firstElementChild.getBoundingClientRect().top - prev.getBoundingClientRect().bottom : null };
+  };
+  out.hub = { climate: hubOf("climate"), lights: hubOf("lights") };
   if (!sec) return out;
   const r = sec.getBoundingClientRect();
   const cs = getComputedStyle(sec);
@@ -2094,6 +2104,7 @@ const calStd = async (key, state, theme, size) => {
   if (absent) cPlan("C6");
   else for (const n of ["C4", "C5"]) cPlan(n);
   if (def.stale && theme === "sunroom") cPlan("C4"); // the one-stale-tag entry
+  if (state === "crowded" && theme === "sunroom") cPlan("C11");
   await cRun(`standard ${key}`, async () => {
     const { context, page } = await calVisit(state, CAL_URL(theme, true), size);
     await calWake(page, size, state);
@@ -2117,6 +2128,11 @@ const calStd = async (key, state, theme, size) => {
       { rows: m.rows, more: m.more, want: { rows: def.rows ?? 0, more: def.more ? 1 : 0 }, heading: m.heading, inner: m.inner, clipped: m.clipped, header: m.header, baseHeader: base.header, shift, allowance, hubTop: m.hubTop, vh: m.vh });
     cRecord("C5", `std-${key}`, m.border.w === m.border.refW && m.border.color === m.border.refColor && parseFloat(m.border.w) > 0, m.border);
     if (def.stale && theme === "sunroom") cRecord("C4", `std-${key} one stale tag`, m.staleTags === 1, { staleTags: m.staleTags });
+    if (state === "crowded" && theme === "sunroom") {
+      // C11: with the Calendar section shown, Climate has Lights' top rule and the same gap above its header (1 px); with no calendar set it has no rule (0 px)
+      const c = m.hub?.climate, l = m.hub?.lights, b = base.hub?.climate;
+      cRecord("C11", `std-${key}`, !!c && !!l && !!b && c.w === l.w && parseFloat(c.w) > 0 && c.color === l.color && cNear(c.gap, l.gap, 1) && parseFloat(b.w) === 0, { climate: c, lights: l, noCalendarClimate: b });
+    }
     await page.screenshot({ path: join(OUT_DIR, `calendar-std-${key}.png`), fullPage: true, clip: m.clip });
     if (theme === "sunroom" && ["crowded", "six-four", "ordinary"].includes(state)) await page.screenshot({ path: join(OUT_DIR, `calendar-full-${key}.png`), fullPage: true });
     await context.close();
