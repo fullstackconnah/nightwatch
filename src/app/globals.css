@@ -3752,6 +3752,23 @@ body {
   .st-wide .md-act:has(.st-frame) { grid-area: 3 / 1 / 4 / -1; }
 }
 
+/* The Full view dock is fixed from lg and the page scrolls under it (13+ lights), so each dock button gets the theme's
+   opaque panel; otherwise chip names print through the buttons. In @layer components so utilities still win: hover:bg-panel-2
+   and the Timers tint (a gradient layer, kiosk-timers.tsx) sit on top of this colour. Aerogel and Aurora panels are translucent
+   and blur what is behind them, so the buttons blur it too. Below lg the dock is in flow and nothing passes under it. */
+@layer components {
+  @media (min-width: 1024px) {
+    [data-rain-zone="dock"] button {
+      background-color: var(--color-panel);
+    }
+    [data-kiosk-theme="aerogel"] [data-rain-zone="dock"] button,
+    [data-kiosk-theme="aurora"] [data-rain-zone="dock"] button {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  }
+}
+
 /* nw motion */
 /* Unlayered and last on purpose: the Home reduced rule (`.hm *`, transition none) is unlayered too and would beat an earlier rule, which
    would kill the Home menu's reduced opacity fade. Curve is --ease-calm; exits stay instant (unmount). */
@@ -3789,21 +3806,4 @@ body {
     .nw-confirm, .nw-pop { transform: none; }
   }
   .hm-pill, .dk-new, .st-pill { transition-duration: 1ms; }
-}
-
-/* The Full view dock is fixed from lg and the page scrolls under it (13+ lights), so each dock button gets the theme's
-   opaque panel; otherwise chip names print through the buttons. In @layer components so utilities still win: hover:bg-panel-2
-   and the Timers tint (a gradient layer, kiosk-timers.tsx) sit on top of this colour. Aerogel and Aurora panels are translucent
-   and blur what is behind them, so the buttons blur it too. Below lg the dock is in flow and nothing passes under it. */
-@layer components {
-  @media (min-width: 1024px) {
-    [data-rain-zone="dock"] button {
-      background-color: var(--color-panel);
-    }
-    [data-kiosk-theme="aerogel"] [data-rain-zone="dock"] button,
-    [data-kiosk-theme="aurora"] [data-rain-zone="dock"] button {
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-    }
-  }
 }
