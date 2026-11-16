@@ -521,7 +521,8 @@ export function KioskListSheet({
           </form>
           <div className="grid text-sm text-ink-dim">
             <p role="status" className="col-start-1 row-start-1">{shownHint}</p>
-            <span aria-hidden="true" className="invisible col-start-1 row-start-1">{FULL_HINT}</span>
+            {/* a <p> like the hint: sunroom sheets give p body type, so a span would reserve a shorter line */}
+            <p aria-hidden="true" className="invisible col-start-1 row-start-1">{FULL_HINT}</p>
           </div>
 
           {suggestions.length > 0 && (
