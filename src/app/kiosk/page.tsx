@@ -248,7 +248,7 @@ function KioskPageInner() {
 
   return (
     <div
-      className="min-h-screen flex flex-col gap-4 px-3 py-3 md:px-5 md:py-4"
+      className="min-h-screen flex flex-col gap-4 px-3 py-3 md:px-5 md:py-4 lg:px-4"
       // Any tap/click anywhere on the elevated surface counts as activity —
       // capture phase so it fires even when the click lands on a button that
       // stops propagation for its own purposes.

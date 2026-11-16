@@ -1090,13 +1090,10 @@ body {
   animation-iteration-count: infinite;
 }
 /* ── Kiosk full-mode header grid ──────────────────────────────────────────
-   Two columns: the clock band and its controls stack on the left, the
-   forecast rail spans both rows on the right. Flex could not express this.
-   Its only tool for putting the controls on a second line is `basis-full`,
-   which forces a full-width row BELOW the rail — measured at 146px tall at
-   both tablet sizes, against 90px when the controls sat inline. Letting the
-   rail span two rows instead puts the controls in space the rail was already
-   occupying, so they cost nothing.
+   From lg (1024 px) the hero is a grid: the clock and the running count stack on the left, the temperature and the feels /
+   UV / air line beside them, and the forecast rail spans both rows on the right. Flex could not express this. Its only tool
+   for putting a second line is `basis-full`, which forces a full-width row BELOW the rail. Below lg the hero is a plain
+   wrapping stack (flex), and the controls row (the dock) is a separate sibling after the header, never a child.
 
    PLACEMENT IS BY nth-child ON PURPOSE. The four shared FLIP nodes are
    identified by their position in the React tree, and kiosk-surface.tsx's own
@@ -1108,42 +1105,60 @@ body {
    in sync; both carry the warning.
 
    Child order in the DOM: 1 clock, 2 temp, 3 forecast, 4 server-line,
-   5 controls. Column 4 is an empty 1fr that pushes the rail to the edge. */
+   5 weather band (WeatherBand: feels, UV, air). Column 3 is the 1fr that pushes the rail to the edge; the band spans
+   columns 2-3 so a long line ellipsizes there instead of widening the temperature column. */
 .kiosk-hdr-grid {
-  display: grid;
-  grid-template-columns: auto auto auto 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   column-gap: 1rem;
   row-gap: 0.5rem;
 }
-.kiosk-hdr-grid > *:nth-child(1) {
-  grid-column: 1;
-  grid-row: 1;
-}
-.kiosk-hdr-grid > *:nth-child(2) {
-  grid-column: 2;
-  grid-row: 1;
-}
-.kiosk-hdr-grid > *:nth-child(3) {
-  grid-column: 5;
-  grid-row: 1 / span 2;
-}
-.kiosk-hdr-grid > *:nth-child(4) {
-  grid-column: 3;
-  grid-row: 1;
-}
-.kiosk-hdr-grid > *:nth-child(5) {
-  grid-column: 1 / span 3;
-  grid-row: 2;
-}
-/* Below this the five-day rail and the clock band can't share a row at all,
-   so the grid collapses to a plain stack and everything gets its own line —
-   the phone/regression width, not a tablet one. */
-@media (max-width: 640px) {
+@media (min-width: 1024px) {
   .kiosk-hdr-grid {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    column-gap: 1.5rem;
+  }
+  .kiosk-hdr-grid > *:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .kiosk-hdr-grid > *:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .kiosk-hdr-grid > *:nth-child(3) {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .kiosk-hdr-grid > *:nth-child(4) {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .kiosk-hdr-grid > *:nth-child(5) {
+    /* Runs under the forecast rail (the rail ends in row 1) so all three readings fit at 1024. */
+    grid-column: 2 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+  /* One line, never wrapping (the hero's height is a board number). The readings keep their full width and only the
+     last one gives way with an ellipsis, so "sunset 18:40" and "UV 12 Extreme" are not cut while "Air fair" still fits
+     part of the space; the line itself clips so nothing reaches the rail. */
+  .kiosk-hdr-grid [data-weather-line] {
+    flex-wrap: nowrap;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .kiosk-hdr-grid [data-weather-line] > * {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .kiosk-hdr-grid [data-weather-line] > *:last-child {
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -3735,6 +3750,23 @@ body {
   .st-wide .md-codec::before, .st-wide .md-rate::before { content: none; }
   .st-wide .md-word { justify-self: start; }
   .st-wide .md-act:has(.st-frame) { grid-area: 3 / 1 / 4 / -1; }
+}
+
+/* The Full view dock is fixed from lg and the page scrolls under it (13+ lights), so each dock button gets the theme's
+   opaque panel; otherwise chip names print through the buttons. In @layer components so utilities still win: hover:bg-panel-2
+   and the Timers tint (a gradient layer, kiosk-timers.tsx) sit on top of this colour. Aerogel and Aurora panels are translucent
+   and blur what is behind them, so the buttons blur it too. Below lg the dock is in flow and nothing passes under it. */
+@layer components {
+  @media (min-width: 1024px) {
+    [data-rain-zone="dock"] button {
+      background-color: var(--color-panel);
+    }
+    [data-kiosk-theme="aerogel"] [data-rain-zone="dock"] button,
+    [data-kiosk-theme="aurora"] [data-rain-zone="dock"] button {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  }
 }
 
 /* nw motion */

@@ -388,7 +388,7 @@ export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffRe
   const [skipFailed, setSkipFailed] = useState<string | null>(null);
   if (notice) {
     return (
-      <div role="status" className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+      <div role="status" className="flex flex-wrap items-center gap-2 rounded-md bg-panel-2 px-4 py-3">
         <Moon size={14} className="text-warn" aria-hidden />
         <span className="microlabel !text-warn">Auto-off</span>
         <span className="text-xs text-ink-dim">{notice}</span>
@@ -405,7 +405,7 @@ export function ClimateAutoOffBanner({ autoOff }: { autoOff: UseClimateAutoOffRe
   }
   if (!warn || onCount === 0 || !state) return null;
   return (
-    <div role="status" className="panel flex flex-wrap items-center gap-2.5 px-4 py-2.5">
+    <div role="status" className="flex flex-wrap items-center gap-2.5 rounded-md bg-panel-2 px-4 py-2.5">
       <Moon size={14} className="text-accent" aria-hidden />
       <span className="microlabel">Auto-off</span>
       <span className="text-xs text-ink-dim">

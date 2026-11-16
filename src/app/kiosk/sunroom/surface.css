@@ -13,6 +13,12 @@
   -webkit-backdrop-filter: none;
 }
 
+/* Full view board cell headings are --sr-type-micro (shape check N3); .microlabel alone is 11px. */
+[data-kiosk-theme="sunroom"] .grid-cols-12 > section.panel h2.microlabel {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+}
+
 /* The press: the face sits down 2 px along the sun's vector and keeps only the 1 px contact. No colour tween. */
 [data-kiosk-theme="sunroom"] :is(button, .kiosk-press) {
   transition: transform var(--sr-m-press-out) var(--sr-m-ease-spring);
@@ -61,4 +67,47 @@
   [data-kiosk-theme="sunroom"] .sr-stopfade {
     transition: none;
   }
+}
+
+/* Full view board (direction B). Sunroom-scoped type only: the 12-column board, the dock and the spans are structural for
+   every theme (globals.css, kiosk-surface.tsx). The hero reads from across the room: clock one step under Glance's clock,
+   the date stacked under it, the temperature at figure size. The DOM and the FLIP nodes do not change, only their type. */
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-rain-zone="clock"] {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sr-space-1);
+}
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-hero="time"] {
+  font: var(--sr-type-reading);
+  letter-spacing: var(--sr-track-reading);
+}
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-hero="date"] {
+  display: block;
+  font: var(--sr-type-label);
+}
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-hero="temp"] {
+  font: var(--sr-type-figure);
+}
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-hero="cond"] {
+  font: var(--sr-type-body);
+}
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-weather-line],
+[data-kiosk-theme="sunroom"] [data-mode="full"] [data-weather-line] * {
+  font: var(--sr-type-meta);
+}
+/* The dock: labels at label size, counts and countdowns at meta (mono, tabular). Each button keeps its own radius, border and press class. */
+[data-kiosk-theme="sunroom"] [data-rain-zone="dock"] button {
+  font: var(--sr-type-label);
+}
+[data-kiosk-theme="sunroom"] [data-rain-zone="dock"] button .font-mono {
+  font: var(--sr-type-meta);
+}
+/* Today: agenda titles at label size, times at meta; the empty line at label size. */
+[data-kiosk-theme="sunroom"] [data-agenda-row],
+[data-kiosk-theme="sunroom"] [data-today-empty],
+[data-kiosk-theme="sunroom"] [data-bin-night="row"] {
+  font: var(--sr-type-label);
+}
+[data-kiosk-theme="sunroom"] [data-agenda-row] .font-mono {
+  font: var(--sr-type-meta);
 }

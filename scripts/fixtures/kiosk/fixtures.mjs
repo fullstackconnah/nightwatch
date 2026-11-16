@@ -196,9 +196,9 @@ export const sunAirInstant = (state) => `2026-06-15T${SUN_AIR_STATES[state].at}:
  *  morning (07:30) is two MicroDatum, value only ("6 High", "Fair"). */
 export const SUN_AIR_STD = {
   ordinary: { want: ["UV 6 High", "Air fair"] },
-  morning: { want: ["6 High", "Fair"] },
+  morning: { want: ["UV 6 High", "Air fair"] },
   crowded: { want: ["UV 12 Extreme", "Air fair"] },
-  "crowded-am": { want: ["12 Extreme", "Fair"] },
+  "crowded-am": { want: ["UV 12 Extreme", "Air fair"] },
   "uv-past": { want: ["UV peaked 12 Extreme", "Air fair"] },
   tomorrow: { want: ["UV 12 Extreme tomorrow", "Air fair"] },
   worst: { want: ["UV 10 Very high tomorrow", "Air extremely poor"] },

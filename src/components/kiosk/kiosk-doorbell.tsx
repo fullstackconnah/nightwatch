@@ -257,7 +257,7 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
 /** Sits in the header's control row beside Glance and Admin. Renders nothing
  *  at all when HA has no door camera to offer, rather than a control that
  *  can only fail — the same rule kiosk-alerts.tsx's tray follows. */
-export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => void }) {
+export function KioskDoorbellButton({ onClick, className }: { onClick: (rect?: DOMRect) => void; className?: string }) {
   const { data } = useDoorbellSnapshot();
   if (!data?.cameras.length) return null;
 
@@ -273,7 +273,7 @@ export function KioskDoorbellButton({ onClick }: { onClick: (rect?: DOMRect) => 
         onClick(e.currentTarget.getBoundingClientRect());
       }}
       aria-label="View the front door camera"
-      className="flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent"
+      className={cn("flex h-11 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs text-ink-dim outline-none transition hover:bg-panel-2 hover:text-ink focus-visible:ring-1 focus-visible:ring-accent", className)}
     >
       <DoorOpen size={14} aria-hidden />
       <span className="flex min-w-0 flex-col items-start">

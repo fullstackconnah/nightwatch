@@ -274,9 +274,9 @@ export function KioskTimersButton({ className }: { className?: string }) {
           // then holds the steady warn paint.
           "flex h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md border px-3 text-xs outline-none kiosk-press focus-visible:ring-1 focus-visible:ring-accent",
           finished
-            ? "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_30] border-warn/50 bg-warn/10 text-warn motion-reduce:animate-none"
+            ? "animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_30] border-warn/50 bg-linear-to-r from-warn/10 to-warn/10 text-warn motion-reduce:animate-none"
             : active
-              ? "border-accent/40 bg-accent/10 text-accent"
+              ? "border-accent/40 bg-linear-to-r from-accent/10 to-accent/10 text-accent"
               : "border-line text-ink-dim hover:border-line-bright hover:bg-panel-2 hover:text-ink",
           className,
         )}

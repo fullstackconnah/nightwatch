@@ -79,3 +79,18 @@ describe("rain zones: floor-band controls", () => {
     assert.equal(Object.keys(RAIN_ZONE_SLOT).length, RAIN_ZONE_COUNT);
   });
 });
+
+describe("rain zones: the full-view dock", () => {
+  it("has its own slot (5), not Glance's tiles slot, and the zone count follows", () => {
+    assert.equal(RAIN_ZONE_SLOT.dock, 5);
+    assert.equal(RAIN_ZONE_COUNT, 6);
+    assert.notEqual(RAIN_ZONE_SLOT.dock, RAIN_ZONE_SLOT.tiles);
+  });
+  it("the dock row is a sibling after the header, carries data-rain-zone=dock and never `tiles`", () => {
+    const text = src("kiosk-surface.tsx");
+    const headerEnd = text.indexOf("</header>");
+    const dock = text.indexOf('data-rain-zone="dock"');
+    assert.ok(headerEnd > 0 && dock > headerEnd, "dock row comes after </header>, not inside it");
+    assert.doesNotMatch(text, /data-rain-zone="tiles"/);
+  });
+});

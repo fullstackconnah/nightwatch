@@ -160,7 +160,7 @@ export function KioskListButton({ onClick }: { onClick: (rect: DOMRect) => void 
         onClick(e.currentTarget.getBoundingClientRect());
       }}
       aria-label={v.aria}
-      className="flex h-11 shrink-0 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-ink outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
+      className="flex h-14 shrink-0 items-center gap-1.5 rounded-md border border-line px-3 text-sm text-ink outline-none kiosk-press hover:border-line-bright hover:bg-panel-2 focus-visible:ring-1 focus-visible:ring-accent"
     >
       <ShoppingBasket size={14} aria-hidden />
       <span>{v.label}</span>

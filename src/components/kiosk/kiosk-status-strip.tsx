@@ -18,6 +18,7 @@
    Wordmark removed and vitals gated behind `elevated` (redesign-06
    follow-up, 2026-08-03) — see the render below for why. */
 
+import type { ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import { useFreshness, useKioskVitals } from "@/lib/kiosk-client";
 import { useKioskPollInterval } from "@/lib/kiosk-activity";
@@ -31,6 +32,7 @@ export function KioskStatusStripExtras({
   onAdminClick,
   revealed,
   durationMs,
+  middle,
 }: {
   elevated: boolean;
   /** Rect param lets the tapped Admin button feed the PIN pad's container-
@@ -43,6 +45,8 @@ export function KioskStatusStripExtras({
    *  has finished. */
   revealed: boolean;
   durationMs: number;
+  /** Dock buttons that sit between Timers and Admin (kiosk-surface.tsx owns them). */
+  middle?: ReactNode;
 }) {
   // 15s, not 5s: this strip runs for weeks at a time and shows ambient host
   // vitals, not a live console — the shared header's health poll (running
@@ -68,42 +72,22 @@ export function KioskStatusStripExtras({
     transitionDelay: revealed ? `${i * 40}ms` : "0ms",
   });
 
+  // The dock's own order (brief 2.3): Timers first, so it keeps Glance's bottom-left spot; the caller's
+  // `middle` (Shopping, Front door, Glance) next; then Admin, or the elevated mark with the host vitals.
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      {/* The "nightwatch · ambient" wordmark is gone (redesign-06 follow-up,
-          2026-08-03): distance-read space on a wall panel goes to the
-          owner's data, not the software's own name. Host vitals move behind
-          `elevated` for the same reason — genuinely useful to the owner, but
-          cpu/mem readings make the resting panel read as a monitoring
-          console rather than a house. The running-count and unreachable/
-          stale states live in kiosk-surface.tsx's ServerLine and are
-          unaffected — they stay ambient in both modes. */}
-      {elevated && (
-        <div className={revealClass} style={revealStyle(0)}>
-          {vitals.status === "unreachable-empty" ? (
-            <div className="flex items-center gap-1.5 font-mono text-xs text-bad" data-sr-tone="bad">
-              <ShieldAlert size={12} aria-hidden />
-              <span className="hidden sm:inline">vitals unreachable</span>
-              <span className="sm:hidden">vitals down</span>
-            </div>
-          ) : (
-            vitals.data && (
-              <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
-                <span>
-                  cpu <span className="text-ink" data-sr-live>{Math.round(vitals.data.cpu.percent)}%</span>
-                </span>
-                <span>
-                  mem <span className="text-ink" data-sr-live>{Math.round(vitals.data.memory.percent)}%</span>
-                </span>
-                {vitals.status === "ready-stale" && <StaleTag />}
-              </div>
-            )
-          )}
-        </div>
-      )}
-
-      <div className={cn("flex shrink-0 items-center gap-2", revealClass)} style={revealStyle(1)}>
-        <KioskTimersButton />
+    <>
+      {/* max-lg:contents: below lg the dock is a wrapping row, so each button wraps on its own (the groups would break the line). */}
+      <div className={cn("shrink-0 max-lg:contents", revealClass)} style={revealStyle(0)}>
+        <KioskTimersButton className="h-14 min-w-14" />
+      </div>
+      <div className={cn("flex items-center gap-3 max-lg:contents", revealClass)} style={revealStyle(1)}>
+        {middle}
+      </div>
+      {/* Elevated: the mark and vitals are text, not a button, so the group takes the dock's opaque panel itself (the page scrolls under the fixed dock). */}
+      <div
+        className={cn("flex shrink-0 items-center gap-3 max-lg:contents", elevated && "lg:h-14 lg:rounded-md lg:border lg:border-line lg:bg-panel lg:px-4", revealClass)}
+        style={revealStyle(2)}
+      >
         {elevated ? (
           <span className="flex items-center gap-1.5 font-mono text-xs text-accent">
             {/* `dot-live` is excluded from the breathe on purpose: it's an
@@ -120,12 +104,35 @@ export function KioskStatusStripExtras({
             type="button"
             data-sr-admin
             onClick={(e) => onAdminClick(e.currentTarget.getBoundingClientRect())}
-            className="h-11 px-4 rounded-md text-ink-dim hover:text-ink hover:bg-panel-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
+            className="h-14 px-4 rounded-md border border-line hover:border-line-bright text-ink-dim hover:text-ink hover:bg-panel-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-accent kiosk-press"
           >
             Admin
           </button>
         )}
+        {elevated && (
+          <div>
+            {vitals.status === "unreachable-empty" ? (
+              <div className="flex items-center gap-1.5 font-mono text-xs text-bad" data-sr-tone="bad">
+                <ShieldAlert size={12} aria-hidden />
+                <span className="hidden sm:inline">vitals unreachable</span>
+                <span className="sm:hidden">vitals down</span>
+              </div>
+            ) : (
+              vitals.data && (
+                <div className="hidden items-center gap-2 font-mono text-xs text-ink-dim sm:flex">
+                  <span>
+                    cpu <span className="text-ink" data-sr-live>{Math.round(vitals.data.cpu.percent)}%</span>
+                  </span>
+                  <span>
+                    mem <span className="text-ink" data-sr-live>{Math.round(vitals.data.memory.percent)}%</span>
+                  </span>
+                  {vitals.status === "ready-stale" && <StaleTag />}
+                </div>
+              )
+            )}
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
