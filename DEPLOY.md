@@ -68,6 +68,10 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
      && sudo chmod 600 /mnt/docker/stacks/homelab-dashboard/data/config.json"
    ```
 
+   Do not copy `config.json` with preserved times (`scp -p`, `rsync -t`): the app notices a changed
+   file by its modification time, so a copy that keeps the old time is not seen until restart (a
+   password change, which signs out other sessions, would not take effect).
+
    (uid 1000 = the `node` user in the container; the data dir must stay
    writable or Settings saves will fail.)
 
@@ -282,3 +286,5 @@ ssh homelab@homelab.local "cd /mnt/docker/stacks/homelab-dashboard \
   && sudo docker compose build && sudo docker compose up -d"
 # nuclear: sudo docker compose down
 ```
+
+Rolling back to a build from before the session epoch: every session the newer build issued keeps working and the epoch is ignored, so a password change made on the newer build no longer signs anyone out.

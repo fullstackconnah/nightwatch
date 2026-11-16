@@ -6,8 +6,18 @@ interface Claims {
   email_verified?: unknown;
 }
 
+/** The config key and env var the allow-list is read from; a test pins both against .env.example and the README. */
+export const ALLOW_SETTING_KEY = "oidcAllowedUsers";
+export const ALLOW_ENV_NAME = "OIDC_ALLOWED_USERS";
+
+export const parseAllowList = (raw: string | undefined): string[] => (raw ?? "").split(/[\s,]+/).filter(Boolean);
+
+/** The stored value wins only when it names someone; blank or separator-only falls back to the env value (never opens SSO). */
+export const allowListSetting = (stored: unknown, env: string | undefined): string | undefined =>
+  typeof stored === "string" && parseAllowList(stored).length ? stored : env?.trim() || undefined;
+
 export function oidcLoginAllowed(claims: Claims, rawList: string | undefined): { allowed: boolean; open: boolean } {
-  const list = (rawList ?? "").split(/[\s,]+/).filter(Boolean);
+  const list = parseAllowList(rawList);
   if (list.length === 0) return { allowed: true, open: true };
   const bySub = typeof claims.sub === "string" && list.includes(claims.sub);
   const email = typeof claims.email === "string" ? claims.email.toLowerCase() : null;

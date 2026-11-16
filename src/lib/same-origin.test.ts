@@ -56,7 +56,7 @@ const REFUSE = /if \(.*crossSiteWriteRefused\(req\.method, req\.headers\)\) \{\s
 test("middleware calls the guard before PUBLIC_PATHS and exempts /api/mcp", () => {
   const src = read("../middleware.ts");
   const guard = src.indexOf("crossSiteWriteRefused(");
-  const pub = src.indexOf("PUBLIC_PATHS.some");
+  const pub = src.indexOf("isPublicPath(");
   assert.ok(guard > 0, "guard not called");
   assert.ok(guard < pub, "guard must run before the PUBLIC_PATHS early return");
   assert.ok(src.includes('pathname !== "/api/mcp" && !pathname.startsWith("/api/mcp/")'), "exact-or-subpath mcp exemption");

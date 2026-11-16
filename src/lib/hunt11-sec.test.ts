@@ -42,7 +42,7 @@ describe("X1 protectedActionRefused", () => {
   });
   it("the route asks with the session cookie", () => {
     const src = readFileSync(new URL("../app/api/docker/containers/[id]/action/route.ts", import.meta.url), "utf8");
-    assert.match(src, /verifySessionToken\(req\.cookies\.get\(SESSION_COOKIE\)\?\.value\)/);
+    assert.match(src, /verifySessionToken\(req\.cookies\.get\(SESSION_COOKIE\)\?\.value, sessionEpoch\(\)\)/);
   });
 });
 

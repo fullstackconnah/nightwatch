@@ -25,19 +25,22 @@ export const isMissingSecretError = (e: unknown): boolean => e instanceof Error 
 // it must never reach node:fs (loadConfig). See auth-server.ts for the
 // try-both-hashes lockout-safety design.
 
-export async function createSessionToken(): Promise<string> {
-  return new SignJWT({ sub: "admin", typ: "session" })
+// `ep` is the session epoch stored in config (bumped by a password change); epoch is required so tsc flags every caller.
+export async function createSessionToken(epoch: number): Promise<string> {
+  return new SignJWT({ sub: "admin", typ: "session", ep: epoch })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
     .sign(secretKey());
 }
 
-export async function verifySessionToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+// ep >= epoch, not ===: a rolled-back config (epoch 0) must never lock the owner out. A missing ep counts as 0.
+export async function verifySessionToken(token: string | undefined, epoch: number): Promise<boolean> {
+  if (!token || !Number.isSafeInteger(epoch)) return false;
   try {
     const { payload } = await jwtVerify(token, secretKey());
-    return payload.typ === "session" && payload.sub === "admin";
+    const ep = payload.ep === undefined ? 0 : payload.ep;
+    return payload.typ === "session" && payload.sub === "admin" && typeof ep === "number" && Number.isSafeInteger(ep) && ep >= 0 && ep >= epoch;
   } catch {
     return false;
   }
@@ -105,8 +108,9 @@ export async function isRequestAuthenticated(
   kioskElevationToken: string | undefined,
   method: string,
   pathname: string,
+  epoch: number,
 ): Promise<boolean> {
-  if (await verifySessionToken(sessionToken)) return true;
+  if (await verifySessionToken(sessionToken, epoch)) return true;
   return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken));
 }
 

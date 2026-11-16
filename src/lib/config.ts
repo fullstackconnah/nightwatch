@@ -222,6 +222,8 @@ export interface AppConfig {
      *  by POST /api/settings/password after verifying the CURRENT password
      *  against the effective hash — never editable as a raw field. */
     adminPasswordHash?: string;
+    /** Bumped only by POST /api/settings/password; sessions minted at an older epoch are refused. Never editable. */
+    sessionEpoch?: number;
     updatedAt?: string;
   };
 }
@@ -491,6 +493,14 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
   if (typeof fromConfig === "string" && fromConfig.trim()) return fromConfig.trim();
   const fromEnv = process.env[envName];
   return fromEnv?.trim() ? fromEnv.trim() : undefined;
+}
+
+/** A stored epoch: a non-negative safe integer, else 0 (a malformed counter un-revokes, never locks anyone out). */
+export const epochOf = (v: unknown): number => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
+
+/** Current session epoch; an mtime-cached read, so cheap per request. */
+export function sessionEpoch(): number {
+  return epochOf(loadConfig().system?.sessionEpoch);
 }
 
 export function publicHost(): string {
