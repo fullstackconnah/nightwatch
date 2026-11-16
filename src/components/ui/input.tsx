@@ -87,14 +87,15 @@ export function Field({
   }>;
 }) {
   const id = React.useId();
-  const hintId = hint ? `${id}-hint` : undefined;
+  // The hint is not rendered while an error shows, so its id must not be referenced then.
+  const hintId = hint && !error ? `${id}-hint` : undefined;
   const errorId = error ? `${id}-error` : undefined;
   const describedBy = [hintId, errorId, externalDescribedBy].filter(Boolean).join(" ") || undefined;
 
   const labelNode = (
     <Label htmlFor={id} className={cn(action && "mb-0", labelClassName)}>
       {label}
-      {required && <span className="text-ink-dim"> *</span>}
+      {required && <span className="text-ink-dim" aria-hidden="true"> *</span>}
     </Label>
   );
 
@@ -115,7 +116,7 @@ export function Field({
         "aria-required": required || undefined,
       })}
       {error ? (
-        <p id={errorId} className={`mt-1 text-[0.7rem] ${errorClassName}`}>
+        <p id={errorId} role="alert" className={`mt-1 text-[0.7rem] ${errorClassName}`}>
           {error}
         </p>
       ) : (

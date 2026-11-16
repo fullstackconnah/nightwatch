@@ -60,6 +60,7 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
         <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />
         <span
           className={cn("font-mono text-xs tabular-nums", state.enabled ? "text-accent" : "text-ink-dim")}
+          data-sr-num=""
         >
           {state.enabled ? state.time : "off"}
         </span>

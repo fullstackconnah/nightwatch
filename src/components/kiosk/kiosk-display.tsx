@@ -440,6 +440,7 @@ function CurrentWeatherCompact({
         <span
           key={sr ? `${Math.round(current.feelsC)}|${Math.round(today.maxC)}|${Math.round(today.minC)}|${today.rainPct}` : undefined}
           className={sr ? "font-mono text-sm text-ink-faint sr-fade-in" : "font-mono text-sm text-ink-faint"}
+          data-sr-num=""
         >
           feels {Math.round(current.feelsC)}° · H {Math.round(today.maxC)}° · L {Math.round(today.minC)}° ·{" "}
           {today.rainPct}% rain

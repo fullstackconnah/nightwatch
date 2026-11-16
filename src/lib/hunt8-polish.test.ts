@@ -133,3 +133,11 @@ describe("hunt 8 polish 7: readCapped", () => {
     assert.ok(out !== null && out.length === 1000);
   });
 });
+
+it("attention.ts feeds the crash, restart and health probes the test-filtered list", () => {
+  const src = read("./attention.ts");
+  for (const p of ["probeContainerDeath", "probeRestartLoop", "probeUnhealthy"]) {
+    assert.match(src, new RegExp(`${p}\\(watched\\b`), p);
+    assert.doesNotMatch(src, new RegExp(`${p}\\(containers\\)`), p);
+  }
+});

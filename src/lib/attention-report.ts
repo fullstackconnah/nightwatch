@@ -4,6 +4,7 @@ import type { RuntimeContainer } from "./docker.ts";
 import { countText, type Tally } from "./change-log.ts";
 import { BACKUP_KIND_LABEL, drillAge, type BackupStatus, type RestoreDrill } from "./backup-status.ts";
 import { restoreDrillDue } from "./attention-copy.ts";
+import { hasTestToken, isTestContainer } from "./test-container.ts";
 
 export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
@@ -208,6 +209,7 @@ export function deriveChanges(
   const liveNames = new Set<string>();
   for (const c of containers) {
     liveNames.add(c.name);
+    if (isTestContainer(c)) continue; // test runs start and stop all day: no change line
     const t = logged.get(c.name);
     const liveStart = c.state === "running" && c.startedAt != null && c.startedAt > sinceMs ? c.startedAt : null;
     const liveStop = c.state === "exited" && c.finishedAt != null && c.finishedAt > sinceMs ? c.finishedAt : null;
@@ -226,7 +228,7 @@ export function deriveChanges(
     }
   }
   for (const [name, t] of logged) {
-    if (liveNames.has(name)) continue; // a container gone from Docker keeps its logged rows
+    if (liveNames.has(name) || hasTestToken(name)) continue; // gone from Docker: only the token rule (the random-name rule would hide a real word_word service)
     if (t.starts > 0) addStart(name, null, t.lastStartAt, t.starts, t.byItself, false);
     if (t.stops > 0) addStop(name, t.lastStopAt, t.stops, t.lastCode);
   }

@@ -9,6 +9,7 @@ import { validateSpecShape } from "@/lib/create-spec";
 import { createErrorCopy } from "@/lib/docker-create-error";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
+import { isTestContainer } from "@/lib/test-container";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export async function GET() {
         paused,
         restarting,
         stopped: tiles.length - running - paused - restarting,
-        unhealthy: tiles.filter((t) => t.health === "unhealthy").length,
+        unhealthy: tiles.filter((t) => t.health === "unhealthy" && !isTestContainer(t)).length, // feeds the side-nav badge
       },
     });
   } catch (e) {

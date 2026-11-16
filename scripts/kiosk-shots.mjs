@@ -1829,7 +1829,7 @@ for (const state of BIN_ABSENT) {
 
 // ---- the Settings card: GET /api/settings is answered here, so only the page itself is real ----
 // The settings page sits behind the login: each state signs in on its own context (the test stack takes any password).
-async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 }, drive = null, want = [], not = [], mark = null } = {}) {
+async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 }, drive = null, want = [], not = [], mark = null, after = null } = {}) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE });
   const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
   if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
@@ -1862,10 +1862,15 @@ async function binsSettings(name, rule, { viewport = { width: 1024, height: 768 
   // The fixed bottom tab bar would float over the first name field in a full-page 390 shot; hide it for this capture only.
   if (viewport.width === 390) await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
   await page.screenshot({ path: join(OUT_DIR, `bins-settings-${name}.png`), fullPage: true });
+  // a11y checks that change the card run after the capture; anything but ok === true is a failure, never a skip
+  if (after) { const a = await after(page); BN.settings[name].after = a; if (a.ok !== true) BN.failed.push(`settings ${name} after ${JSON.stringify(a)}`); }
   await context.close();
 }
 const BIN_ERRORS = ["Name this bin, or remove it.", "Bin names are 20 characters at most.", "Use letters or numbers in the bin name.", "Another bin already has this name.", "Pick any date this bin is collected.", "Pick a date between 2000 and 2099."];
 const binCard = (page) => page.getByText("The wall kiosk shows a line from 5 pm to 10 pm").locator(".."); // the intro is the card root's first child
+// where focus is: the control's name, or "body" when it was lost
+const focusOf = (page) => page.evaluate(() => { const a = document.activeElement; return a && a !== document.body ? { tag: a.tagName, ph: a.getAttribute("placeholder"), label: a.getAttribute("aria-label"), text: (a.textContent || "").trim().slice(0, 30), value: a.value ?? null, describedText: a.getAttribute("aria-describedby") ? document.getElementById(a.getAttribute("aria-describedby"))?.textContent?.slice(0, 40) ?? null : null } : { tag: "body" }; });
+const binGroups = (page) => binCard(page).locator("[data-bin-row]").evaluateAll((els) => els.map((e) => ({ role: e.getAttribute("role"), label: e.getAttribute("aria-label") })));
 const saveDisabled = (page) => binCard(page).getByRole("button", { name: "Save" }).isDisabled();
 await bnRun("settings empty", () => binsSettings("settings-empty", null, {
   want: ["Nothing saved yet. The wall shows no bin line."], not: [...BIN_ERRORS, "Pick the day the truck comes."],
@@ -1876,7 +1881,24 @@ await bnRun("settings two bins", () => binsSettings("settings-two-bins", BIN_RUL
   // no segment label may be cut to an ellipsis at desktop width
   mark: async (page) => {
     const clipped = await binCard(page).locator("button[aria-pressed]").evaluateAll((bs) => bs.filter((b) => b.scrollWidth > b.clientWidth).map((b) => b.textContent));
-    return { ok: !(await saveDisabled(page)) && clipped.length === 0, clipped };
+    const groups = await binGroups(page); // each row is a named group: "Bin 1: Recycling"
+    const named = groups.length === 2 && groups.every((g, i) => g.role === "group" && new RegExp(`^Bin ${i + 1}: .+`).test(g.label ?? ""));
+    return { ok: !(await saveDisabled(page)) && clipped.length === 0 && named, clipped, groups };
+  },
+  after: async (page) => {
+    const card = binCard(page);
+    await card.getByRole("button", { name: /^Remove / }).nth(1).click(); // the last row goes: focus to the row before
+    await page.waitForTimeout(200);
+    const removed = await focusOf(page);
+    await card.getByRole("button", { name: "Clear bin schedule" }).click();
+    await page.waitForTimeout(200);
+    const asked = await focusOf(page); // Cancel, reading the question
+    await page.route((u) => u.pathname === "/api/settings/integrations", (r) => r.fulfill({ json: { ok: true } }));
+    await page.getByRole("button", { name: "Yes, clear" }).click();
+    await page.waitForTimeout(800);
+    const cleared = await focusOf(page);
+    const ok = removed.tag === "INPUT" && removed.ph === "Bin name" && asked.text === "Cancel" && /^Removes the bin schedule/.test(asked.describedText ?? "") && cleared.tag === "INPUT" && cleared.ph === "Bin name";
+    return { ok, removed, asked, cleared };
   },
 }));
 await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TWO, {
@@ -1887,7 +1909,21 @@ await bnRun("settings errors", () => binsSettings("settings-errors", BIN_RULE_TW
     await page.getByRole("button", { name: "Add a bin" }).click(); // a fourth, blank row; the button then goes
   },
   want: ["Another bin already has this name.", "18 Nov 2026 is a Wednesday. Pick a Tuesday, or change the collection day.", "Name this bin, or remove it."],
-  mark: async (page) => ({ ok: (await saveDisabled(page)) && (await binCard(page).getByRole("button", { name: "Add a bin" }).count()) === 0 }),
+  mark: async (page) => {
+    // a shown field error is an alert and its input is aria-invalid
+    const errs = await binCard(page).locator("[role=alert]").count();
+    const names = await binCard(page).locator('input[placeholder="Bin name"]').evaluateAll((is) => is.map((i) => i.getAttribute("aria-invalid")));
+    const dates = await binCard(page).locator('input[type="date"]').evaluateAll((is) => is.map((i) => i.getAttribute("aria-invalid")));
+    const a11y = errs >= 3 && names[2] === "true" && names[3] === "true" && dates[1] === "true";
+    return { ok: (await saveDisabled(page)) && (await binCard(page).getByRole("button", { name: "Add a bin" }).count()) === 0 && a11y, alerts: errs, names, dates };
+  },
+  after: async (page) => {
+    await binCard(page).getByRole("button", { name: /^Remove / }).first().click(); // the first row goes: focus to the new first row
+    await page.waitForTimeout(200);
+    const f = await focusOf(page);
+    const first = await binCard(page).locator("[data-bin-row]").first().getAttribute("aria-label");
+    return { ok: f.tag === "INPUT" && f.ph === "Bin name" && first === "Bin 1: " + f.value, f, first };
+  },
 }));
 await bnRun("settings night too long", () => binsSettings("settings-night-long", BIN_RULE_WED, {
   drive: async (page) => {
@@ -2151,7 +2187,7 @@ await cRun("C8 contrast", async () => {
 // ---- the Settings card: GET /api/settings is answered here and the save is mocked, so no link is typed or stored anywhere ----
 // The settings page sits behind the login: each state signs in on its own context (the test stack takes any password).
 const CAL_INTRO = "The private link from your calendar's sharing settings";
-async function calSettings(name, status, { viewport = { width: 1024, height: 768 }, drive = null, saveReply = { status: 200, json: { ok: true } }, want = [], not = [], mark = null } = {}) {
+async function calSettings(name, status, { viewport = { width: 1024, height: 768 }, drive = null, saveReply = { status: 200, json: { ok: true } }, want = [], not = [], mark = null, after = null } = {}) {
   const context = await browser.newContext({ viewport, timezoneId: ZONE });
   const login = await context.request.post(`${BASE_URL}/api/auth/login`, { data: { password: "x" } });
   if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
@@ -2181,6 +2217,7 @@ async function calSettings(name, status, { viewport = { width: 1024, height: 768
   if (!textOk) CL.failed.push(`settings ${name} ${JSON.stringify(t)}`);
   if (extra.ok === false) CL.failed.push(`settings ${name} ${JSON.stringify(extra)}`);
   await page.screenshot({ path: join(OUT_DIR, `calendar-settings-${name}.png`), fullPage: true });
+  if (after) { const a = await after(page); CL.settings[name].after = a; if (a.ok !== true) CL.failed.push(`settings ${name} after ${JSON.stringify(a)}`); }
   await context.close();
 }
 // every helper is scoped to the card (its intro's parent), as binCard is: the page holds other Save buttons, fields and Test buttons
@@ -2205,7 +2242,11 @@ await cRun("settings configured", () => calSettings("settings-configured", CAL_S
 }));
 await cRun("settings error", () => calSettings("settings-error", CAL_SETTINGS.empty, {
   saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
-  mark: async (page) => { const e = await calErrorFacts(page); const f = await calFieldFacts(page); return { ok: !!e && e.text === CAL_LONGEST_ERROR && e.whole && f.value === CAL_DRAFT && !!f.describedBy, error: e, draftKept: f.value === CAL_DRAFT }; },
+  mark: async (page) => {
+    const e = await calErrorFacts(page); const f = await calFieldFacts(page);
+    const alertOk = (await calCard(page).locator("[role=alert]").count()) === 1 && (await calField(page).getAttribute("aria-invalid")) === "true";
+    return { ok: !!e && e.text === CAL_LONGEST_ERROR && e.whole && f.value === CAL_DRAFT && !!f.describedBy && alertOk, error: e, draftKept: f.value === CAL_DRAFT, alertOk };
+  },
 }));
 await cRun("settings warn", () => calSettings("settings-warn", CAL_SETTINGS.warn, {
   want: ["Not syncing since Thu 2:40 pm: the calendar refused the link (copy a fresh private link and Replace)."], not: ["Calendar connected"],
@@ -2213,7 +2254,14 @@ await cRun("settings warn", () => calSettings("settings-warn", CAL_SETTINGS.warn
 }));
 await cRun("settings replace", () => calSettings("settings-replace", CAL_SETTINGS.replace, {
   drive: (page) => page.getByRole("button", { name: "Replace" }).click(), want: ["Cancel", "Clear", "Calendar connected · 14 events this week"],
-  mark: async (page) => { const f = await calFieldFacts(page); return { ok: f.placeholder === "Paste the new link" && !(await calSave(page).isDisabled()), ...f }; }, // blank keeps the saved link, so Save stays on
+  mark: async (page) => { const f = await calFieldFacts(page); const on = await focusOf(page); return { ok: f.placeholder === "Paste the new link" && !(await calSave(page).isDisabled()) && on.tag === "INPUT" && on.ph === "Paste the new link", focusAfterReplace: on, ...f }; }, // blank keeps the saved link, so Save stays on; Replace sent focus to the field
+  after: async (page) => {
+    await calCard(page).getByRole("button", { name: "Cancel" }).click();
+    await page.waitForTimeout(200);
+    const on = await focusOf(page);
+    const labelled = (await calCard(page).getByRole("button", { name: "Clear calendar link" }).count()) === 1;
+    return { ok: on.tag === "BUTTON" && on.text === "Replace" && labelled, focusAfterCancel: on, labelled };
+  },
 }));
 await cRun("settings 390", () => calSettings("settings-390", CAL_SETTINGS.empty, {
   viewport: { width: 390, height: 844 }, saveReply: { status: 400, json: { error: CAL_LONGEST_ERROR } }, drive: calTypeAndSave, want: [CAL_LONGEST_ERROR],
@@ -2235,16 +2283,25 @@ const TF = { failed: [], states: {} };
 results.typeface = TF;
 const TF_OVERRIDE = `localStorage.setItem("kiosk-fonts", ${JSON.stringify(JSON.stringify({ sunroom: { sans: "lexend", mono: "roboto-mono" } }))})`;
 const TF_SANS = "button.sr-chip-sm, [data-sr-title], [data-sr-face] p, .microlabel, .sr-pin-msg, .sr-word, [data-rain-zone=clock] > [data-sr-live]"; // selector list, each tested only in the state that renders it
-const TF_MONO = "button.sr-btn, button.sr-btn-nudge, [data-sr-face] .font-mono, [data-rain-zone=clock] > [data-sr-live]";
+const TF_MONO = "button.sr-btn, button.sr-btn-nudge, [data-sr-face] .font-mono, [data-sr-num], [data-rain-zone=clock] > [data-sr-live]"; // [data-sr-num]: weather line, climate value and target, time chip, scene status
 /** First computed family of every match of each selector, against the first family the slot's `--font-t-*` var resolves to. */
-const tfRead = (page, probes) => page.evaluate((list) => {
+const tfRead = (page, probes) => page.evaluate(async (list) => {
+  await document.fonts.ready;
   const scope = document.querySelector('[data-kiosk-theme="sunroom"]');
   const first = (v) => v.split(",")[0].trim();
   const want = (cssVar) => { const d = document.createElement("div"); d.style.fontFamily = `var(${cssVar})`; scope.appendChild(d); const f = first(getComputedStyle(d).fontFamily); d.remove(); return f; };
   return list.map(({ sel, cssVar, alsoVar }) => {
     const els = [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length);
     const expected = want(cssVar);
-    return { sel, expected, also: alsoVar ? want(alsoVar) : null, found: els.length, got: [...new Set(els.map((e) => first(getComputedStyle(e).fontFamily)))] };
+    // paint check: the name matching is not enough. The first family must have a loaded @font-face (a named but unloaded family, or a system-only name, paints in a fallback).
+    const bare = (f) => f.replace(/^["']|["']$/g, "");
+    const unpainted = new Set();
+    for (const e of els) {
+      const cs = getComputedStyle(e), fam = first(cs.fontFamily);
+      const loaded = [...document.fonts].some((f) => bare(f.family) === bare(fam) && f.status === "loaded") && document.fonts.check(`${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${fam}`);
+      if (!loaded) unpainted.add(`${cs.fontWeight} ${fam}`);
+    }
+    return { sel, expected, also: alsoVar ? want(alsoVar) : null, found: els.length, got: [...new Set(els.map((e) => first(getComputedStyle(e).fontFamily)))], unpainted: [...unpainted] };
   });
 }, probes);
 /** One state: record every selector that renders; a selector that renders with any other family fails the check. */
@@ -2252,6 +2309,7 @@ function tfRecord(check, state, rows, need) {
   TF.states[`${check}:${state}`] = rows;
   for (const n of need) if (!rows.some((r) => r.sel === n && r.found)) TF.failed.push(`${check} ${state}: ${n} not rendered`);
   for (const r of rows) if (r.found && r.got.some((g) => g !== r.expected && g !== r.also)) TF.failed.push(`${check} ${state}: ${r.sel} is ${r.got.join("|")}, want ${r.expected}${r.also ? ` or ${r.also}` : ""}`);
+  for (const r of rows) if (r.found && r.unpainted.length) TF.failed.push(`${check} ${state}: ${r.sel} not painted in its face (no loaded @font-face: ${r.unpainted.join("|")})`);
   // .microlabel sits on text and numeral elements by design: either face passes, but one must be the text face
   for (const r of rows) if (r.also && r.found && !r.got.includes(r.expected)) TF.failed.push(`${check} ${state}: ${r.sel} has no ${r.expected} element`);
 }
@@ -2270,7 +2328,9 @@ for (const [check, init, sansVar, monoVar, tag] of [
   await guarded(`typeface ${check} standard`, async () => {
     const { context, page } = await visit(CONTROLS_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, initScript: init });
     await seen(page, ".sr-climate", 15_000);
-    tfRecord(check, "standard", await tfRead(page, probes), ["button.sr-btn-nudge"]);
+    const stdRows = await tfRead(page, probes);
+    tfRecord(check, "standard", stdRows, ["button.sr-btn-nudge"]);
+    if ((stdRows.find((r) => r.sel === "[data-sr-num]")?.found ?? 0) < 4) TF.failed.push(`${check} standard: fewer than 4 [data-sr-num] numerals rendered`);
     await shoot(page, "standard");
     // a sheet: the climate modal's title, copy, microlabels and numerals
     const modal = OVERLAY_STATES.find((s) => s.key === "climateModal");
@@ -2442,7 +2502,7 @@ for (const size of [{ name: "1180x820", viewport: SIZES[0].viewport }, { name: "
 }
 if (TP.failed.length) process.exitCode = 1;
 
-results.n16ConsoleErrors = consoleErrors;
+results.n16ConsoleErrors =consoleErrors;
 results.n16ConsoleErrorMessages = consoleErrorMessages;
 results.n16ConsoleErrorLog = consoleErrorLog;
 results.n16HydrationFull = hydrationFull;

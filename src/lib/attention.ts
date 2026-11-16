@@ -1,5 +1,6 @@
 import { listContainersWithRuntime, type RuntimeContainer } from "@/lib/docker";
 import { readChangeLog } from "@/lib/change-log-store";
+import { isTestContainer } from "@/lib/test-container";
 import { tally } from "@/lib/change-log";
 import { getSmartSnapshot } from "@/lib/smart";
 import { getHostVitals, HOST_ROOTFS, HOST_SYS, readHostMounts } from "@/lib/host-metrics";
@@ -517,6 +518,7 @@ async function computeReport(): Promise<Computed> {
   } catch (e) {
     dockerFailure = e;
   }
+  const watched = containers.filter((c) => !isTestContainer(c)); // test containers raise no attention item
   const needDocker = () => {
     if (dockerFailure) throw dockerFailure;
   };
@@ -538,15 +540,15 @@ async function computeReport(): Promise<Computed> {
 
   const outsideHost = outsideHostSetting();
   const defs: ProbeDef[] = [
-    { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(containers)) },
-    { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(containers)) },
+    { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(watched)) },
+    { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(watched)) },
     { id: "smart", label: "Drive health", run: (isLate) => probeSmart(isLate) },
     { id: "mounts", label: "Mounts", run: () => probeMountReadable() },
     // After hardware: a dead drive outranks a late backup; before disk capacity,
     // because an unrecoverable database is worse than a filling one.
     { id: "backup", label: "Backup", run: () => probeBackup(backup, backupFailure, drill), hitsOnFail: drillHits(drill) },
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
-    { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(containers)) },
+    { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(watched)) },
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.

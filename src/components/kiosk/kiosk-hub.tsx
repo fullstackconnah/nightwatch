@@ -341,7 +341,7 @@ function SceneChip({
       <SunCatch />
       <Sparkles size={15} className={activated ? "text-accent" : "text-ink-faint"} aria-hidden />
       <span className="sr-chip-name max-w-28 truncate text-sm text-ink">{scene.name}</span>
-      <span className={cn("sr-chip-sub max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined}>
+      <span className={cn("sr-chip-sub max-w-28 truncate font-mono text-2xs", error ? "text-bad" : activated ? "text-accent" : "text-ink-faint")} data-sr-tone={error ? "bad" : undefined} data-sr-num="">
         {statusText}
       </span>
       <SunChipMarks on={activated} error={!!error} busy={pending} scene />
