@@ -327,6 +327,7 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
     if (!node) return;
     // Keep the tray anchored to its pill but under the forecast rail: cap its height so its top sits one house gap (12 px) below the rail's bottom; it already scrolls inside.
     const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
+    // The cap is measured at open and reopening re-measures. shortcut: no resize listener, add one if the kiosk ever rotates.
     if (rail) node.style.maxHeight = `min(60vh, ${Math.max(128, node.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom - 12)}px)`;
     if (prefersReducedMotion()) return;
     const anim = node.animate(

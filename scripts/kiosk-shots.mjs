@@ -982,12 +982,18 @@ const pbShot = async (page, loc, name, pad = 16) => {
   await page.screenshot({ path: join(OUT_DIR, `polishb-${name}.png`), clip: { x, y, width: Math.min(b.vw - x, b.w + pad * 2), height: Math.min(b.vh - y, b.h + pad * 2) } });
 };
 /** Nothing fixed, sticky or edge-banded may sit on the group: every button, label and hint inside it must be the element found at its own centre point, inside the viewport. */
-const pbClear = async (page, loc, key) => {
-  const m = await loc.evaluate((el) => {
-    const parts = [...el.querySelectorAll("button, .microlabel, p")];
+const pbClear = async (page, loc, key, { visibleOnly = false } = {}) => {
+  const m = await loc.evaluate((el, visibleOnly) => {
+    let parts = [...el.querySelectorAll("button, .microlabel, p")];
+    if (visibleOnly) { // only parts fully inside what the shot shows: the group's box, the nearest scroll viewport and the window
+      let sc = el.parentElement; while (sc && !(sc.scrollHeight > sc.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(sc).overflowY))) sc = sc.parentElement;
+      const g = el.getBoundingClientRect(), s = sc ? sc.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+      const top = Math.max(0, g.top - 16, s.top), bottom = Math.min(innerHeight, g.bottom + 16, s.bottom);
+      parts = parts.filter((p) => { const r = p.getBoundingClientRect(); return r.top >= top && r.bottom <= bottom; });
+    }
     const bad = parts.filter((p) => { const r = p.getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2; if (cx < 0 || cy < 0 || cx > innerWidth || cy > innerHeight) return true; const hit = document.elementFromPoint(cx, cy); return !hit || !p.contains(hit); }).map((p) => (p.textContent ?? "").trim().slice(0, 20));
     return { parts: parts.length, covered: bad };
-  });
+  }, visibleOnly);
   pbRec(`${key}`, m.parts > 0 && m.covered.length === 0, m);
 };
 /** Page-side: the gap each side of the "·" in a chip, from the characters either side of it. */
@@ -1004,6 +1010,16 @@ const PB_DOT_GAPS = (el) => {
   return { before: at(chars[d]).left - at(prev).right, after: at(next).left - at(chars[d]).right };
 };
 const pbDotGaps = (loc) => loc.evaluate(PB_DOT_GAPS);
+/** The chip's centre and four inset corners (4 px in) must each hit the chip or a descendant: no fixed or sticky chrome over it. */
+const pbChipClear = async (page, loc, key) => {
+  const m = await loc.evaluate((el) => {
+    const r = el.getBoundingClientRect(), d = 4;
+    const pts = [[r.left + r.width / 2, r.top + r.height / 2], [r.left + d, r.top + d], [r.right - d, r.top + d], [r.left + d, r.bottom - d], [r.right - d, r.bottom - d]];
+    const hits = pts.map(([x, y]) => { const h = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight ? document.elementFromPoint(x, y) : null; return !!h && el.contains(h); });
+    return { hits, top: r.top, bottom: r.bottom, vh: innerHeight };
+  });
+  pbRec(key, m.hits.length === 5 && m.hits.every(Boolean), m);
+};
 /** The instant (in the pinned zone) at which the wall clock reads `hhmm`, searched from the pinned instant. */
 const pbInstant = (hhmm) => {
   const f = new Intl.DateTimeFormat("en-AU", { timeZone: ZONE, hour: "numeric", minute: "2-digit", hour12: true });
@@ -1024,7 +1040,7 @@ async function polishbShots() {
     const group = (label) => panel.locator("div.flex.flex-col.gap-2").filter({ has: page.locator("span.microlabel", { hasText: new RegExp(`^${label}$`) }) }).first();
     await page.evaluate(() => { document.querySelector("#kiosk-tabpanel-typeface").scrollIntoView({ block: "start" }); for (let n = document.querySelector("#kiosk-tabpanel-typeface"); n; n = n.parentElement) if (n.scrollHeight > n.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(n).overflowY)) n.scrollTop = 0; scrollTo(0, 0); });
     await page.waitForTimeout(300);
-    await pbClear(page, group("text"), "typeface-390-clear-top");
+    await pbClear(page, group("text"), "typeface-390-clear-top", { visibleOnly: true });
     await pbShot(page, group("text"), "typeface-390-top");
     await group("numerals").evaluate((el) => el.scrollIntoView({ block: "center" }));
     await page.waitForTimeout(300);
@@ -1032,6 +1048,7 @@ async function polishbShots() {
     await pbShot(page, group("numerals"), "typeface-390-numerals");
     const gaps = await pbDotGaps(group("numerals").locator("button", { hasText: "default" }).first());
     pbRec("chip-default-gaps font chip", !!gaps && Math.abs(gaps.before - gaps.after) <= 1, gaps ?? {});
+    await pbChipClear(page, group("numerals").locator("button", { hasText: "default" }).first(), "chip-default-clear font");
     const pick = group("numerals").locator("button[aria-pressed='false']").first();
     const picked = (await pick.textContent())?.trim();
     await pick.click();
@@ -1049,8 +1066,11 @@ async function polishbShots() {
   await pbRun("chip default", async () => {
     const { context, page } = await acOpen();
     const chip = page.locator('[data-accent-chip="default"]');
+    await chip.evaluate((el) => el.scrollIntoView({ block: "center" })); // clear of the fixed bottom fade and sticky chrome
+    await page.waitForTimeout(300);
     const gaps = await pbDotGaps(chip);
     pbRec("chip-default-gaps accent chip", !!gaps && Math.abs(gaps.before - gaps.after) <= 1, gaps ?? {});
+    await pbChipClear(page, chip, "chip-default-clear accent");
     await pbShot(page, chip, "chip-default-accent");
     await context.close();
   });
@@ -1155,9 +1175,9 @@ async function polishbShots() {
         return { vh: innerHeight, pill: box(document.querySelector("[data-sr-np]")), tiles: [...document.querySelectorAll('[data-rain-zone="tiles"] button')].map(box), sentence: [...document.querySelectorAll('[data-rain-zone="sentence"]')].map(box) };
       });
       pbRec(`glance-${size.name} left controls present (Timers and a lamp)`, d.tiles.length >= 2, { tiles: d.tiles.map((t) => t.label) });
-      pbRec(`glance-${size.name} no left control under the now-playing pill`, d.tiles.every((t) => !pbHits(t, d.pill)), { pill: d.pill, hits: d.tiles.filter((t) => pbHits(t, d.pill)).map((t) => t.label) });
-      pbRec(`glance-${size.name} left controls clear of the centre column`, d.tiles.every((t) => d.sentence.every((s) => !pbHits(t, s))), { hits: d.tiles.filter((t) => d.sentence.some((s) => pbHits(t, s))).map((t) => t.label) });
-      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster unchanged (bottom 16 above the viewport edge)`, d.tiles.every((t) => Math.abs(d.vh - 16 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
+      pbRec(`glance-${size.name} no left control under the now-playing pill`, d.tiles.length > 0 && d.tiles.every((t) => !pbHits(t, d.pill)), { pill: d.pill, hits: d.tiles.filter((t) => pbHits(t, d.pill)).map((t) => t.label) });
+      pbRec(`glance-${size.name} left controls clear of the centre column`, d.tiles.length > 0 && d.sentence.length > 0 && d.tiles.every((t) => d.sentence.every((s) => !pbHits(t, s))), { hits: d.tiles.filter((t) => d.sentence.some((s) => pbHits(t, s))).map((t) => t.label) });
+      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster unchanged (bottom 16 above the viewport edge)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 16 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
       await page.screenshot({ path: join(OUT_DIR, `polishb-glance-${size.name}.png`), fullPage: true });
       await context.close();
     });

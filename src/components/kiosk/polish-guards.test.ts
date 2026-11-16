@@ -138,14 +138,15 @@ test("polish B item 2: the kiosk microlabel takes back one tracking unit per wor
 });
 
 test("polish B item 3: PIN keypad digits take the Numerals face even where a button font shorthand would win", () => {
-  assert.match(read("./kiosk-pin-pad.tsx"), /sr-btn-nudge h-14[^"]*!font-mono/);
+  // the digit key's own className (the one after its aria-label), not any later text
+  assert.match(read("./kiosk-pin-pad.tsx"), /digit \$\{key\}`[\s\S]{0,900}?className="[^"]*sr-btn-nudge h-14[^"]*!font-mono[^"]*"/);
 });
 
 test("polish B item 4: the downloads pill is 56 px like the alert pill, and the open tray stops under the forecast rail", () => {
   const src = read("./kiosk-downloads.tsx");
   assert.match(src, /"flex h-14 min-w-14 [^"]*"/);
   assert.doesNotMatch(src, /min-h-14|py-2 text-ink-dim/);
-  assert.match(src, /kiosk-forecast-rail[\s\S]*style\.maxHeight/);
+  assert.match(src, /node\.style\.maxHeight = [^\n]*Math\.max\(128, [^\n]*rail\.getBoundingClientRect\(\)\.bottom/);
 });
 
 test("polish B item 5: below 641 px the bottom-left Glance cluster takes the lifted row the corner cluster uses", () => {
