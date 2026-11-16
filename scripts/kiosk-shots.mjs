@@ -170,7 +170,8 @@ const lg0 = (size) => size.viewport.width >= 1024;
 const fvNear =(a, b, tol = 1) => typeof a === "number" && typeof b === "number" && Math.abs(a - b) <= tol;
 const fvHits = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
 const FV_SIZES = [...SIZES, { name: "390x844", viewport: { width: 390, height: 844 } }];
-const FV_URL = (theme = "sunroom", layout = "standard") => `${BASE_URL}/kiosk?theme=${theme}&wx=overcast&wxsun=day&layout=${layout}`;
+// fvpolish item 6: `sun` is the explicit wxsun pin, and an explicit wxsun BEATS the stop (kiosk-weather-fx.ts applyWxPreview), so a night capture must pass sun: "night" (it used to ride wxsun=day, a day Sunroom).
+const FV_URL = (theme = "sunroom", layout = "standard", sun = "day", wx = "overcast") => `${BASE_URL}/kiosk?theme=${theme}&wx=${wx}&wxsun=${sun}&layout=${layout}`;
 const FV_LIGHT = ["Bedside", "Hallway ceiling lamp north", "Kitchen strip", "Reading light", "Porch", "Study desk", "Landing", "Wardrobe", "Garage", "Studio"];
 const FV_SWITCH = ["Fan", "Heater", "Kettle", "Dehumidifier", "Speaker", "Printer", "Router", "Radio", "Towel rail", "Pump"];
 /** An HA answer: `zones` climates, `lights` + `switches` toggles, `scenes`, `sensors` (names are invented, none share a prefix). */
@@ -195,8 +196,8 @@ const FV_DL = { status: "ok", items: Array.from({ length: 3 }, (_, i) => ({ hash
 const FV_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
 const FV_TIMER = (state) => `localStorage.setItem("kiosk-timers", JSON.stringify([{ id: "t1", name: "Roast", endsAt: ${new Date(calInstant(CAL_STATES[state].at)).getTime() + 5_025_000}, durationMs: 5025000, pausedRemainingMs: 5025000 }]));`; // 1:23:45
 /** A visit to the Standard view: the crowded evening by default (agenda 3 rows + more, bin night, now playing, alert, downloads, a camera, a timer, a list). */
-const fvVisit = (size, { state = "crowded", ha = fvHa(), extra = {}, theme = "sunroom", timer = true, setup = null, layout = "standard", np = true } = {}) =>
-  visit(FV_URL(theme, layout), {
+const fvVisit = (size, { state = "crowded", ha = fvHa(), extra = {}, theme = "sunroom", timer = true, setup = null, layout = "standard", np = true, sun = "day", wx = "overcast" } = {}) =>
+  visit(FV_URL(theme, layout, sun, wx), {
     viewport: size.viewport, weather: calWeatherFor(state), fixedTime: true, instant: calInstant(CAL_STATES[state].at), ha: true, nowPlaying: np, initScript: timer ? FV_TIMER(state) : null, setup,
     routes: { "/kiosk/api/calendar": CAL_STATES[state].body, "/kiosk/api/bins": BIN_STATES.crowded.body, "/kiosk/api/ha/states": ha, "/kiosk/api/doorbell": FV_DOOR, "/kiosk/api/downloads": FV_DL, "/kiosk/api/attention": FV_ALERT, "/kiosk/api/list": LIST_STATES.crowded.body, ...extra },
   });
@@ -372,12 +373,25 @@ async function fullViewBoard() {
   });
   await guarded("fullview night", async () => {
     const size = SIZES[1];
-    const { context, page } = await fvVisit(size, { state: "woken-night" });
+    // fvpolish item 6: the night pin is wxsun=night with wx=off (clear: no cloud greying of the palette, so --sr-bg is the night stop's own bg).
+    const { context, page } = await fvVisit(size, { state: "woken-night", sun: "night", wx: "off" });
     await fvWake(page, size, "woken-night");
     await page.waitForTimeout(1200);
     const d = await page.evaluate(FV_READ);
     fvChecks(d, size, "night-1024x768", { crowded: false });
-    await page.screenshot({ path: join(OUT_DIR, "fullview-1024x768-night.png"), fullPage: true });
+    const srBg = (p) => p.evaluate(() => getComputedStyle(document.querySelector("[data-kiosk-theme]")).getPropertyValue("--sr-bg").trim().toLowerCase());
+    const nightBg = await srBg(page);
+    // fvpolish fix 1 item 6: the day read and the assert come before the night shot, so a wrong pin is recorded before the capture exists.
+    const day = await fvVisit(size, { sun: "day", wx: "off" });
+    await seen(day.page, "section.panel h2", 15_000);
+    await day.page.waitForTimeout(1200);
+    const dayBg = await srBg(day.page);
+    await day.context.close();
+    // The stop's bg is read from the source, never typed here.
+    const src = readFileSync(new URL("../src/lib/sunroom-light.ts", import.meta.url), "utf8");
+    const stopBg = src.match(/name: "night"[\s\S]*?bg: "(#[0-9a-fA-F]{6})"/)?.[1]?.toLowerCase();
+    fvRec("night capture: Sunroom --sr-bg is the night stop's bg and differs from day", !!stopBg && nightBg === stopBg && dayBg !== nightBg, { nightBg, stopBg, dayBg });
+    await page.screenshot({ path: join(OUT_DIR, "fullview-night-1024.png"), fullPage: true });
     await context.close();
   });
   // aerogel (a glass .panel theme): the dock's left and bottom equal the viewport insets, and the page fits or scrolls without an inner scroller
@@ -527,6 +541,157 @@ async function fullViewBoard() {
     fvRec("elevated dock: Glance hidden, gap to the cluster", !labels.some((l) => /glance/i.test(l)) && (!d.cluster || !d.dock || d.cluster.left - d.dock.rect.right >= d.tok.sp6 - 0.5), { labels, gap: d.cluster && d.dock ? d.cluster.left - d.dock.rect.right : null });
     await fvCrop(page, page.locator('[data-rain-zone="dock"]'), "dock-elevated");
     await page.screenshot({ path: join(OUT_DIR, "fullview-elevated-1024x768.png") });
+    await context.close();
+  });
+  // ---- fvpolish (2026-11-16): seven polish items. Every number cites a token or house class; each false lands in FV.failed. ----
+  const FP_SIZES = { w1024: SIZES[1], w390: FV_SIZES.find((z) => z.name === "390x844"), w640: { name: "640x960", viewport: { width: 640, height: 960 } } };
+  const fpGuarded = (name, fn) => guarded(name, async () => { try { await fn(); } catch (e) { FV.failed.push(`${name}: ${String(e?.message ?? e).split("\n")[0]}`); throw e; } }); // a missing mark fails the run, not just results.errors
+  /** Page-side: the pill, tiles, unavailable chips, forecast rail and the first-paint boxes in one read (tokens from probes, never typed). */
+  const FP_READ = () => {
+    const scope = document.querySelector("[data-kiosk-theme]");
+    const tok = (css) => { const el = document.createElement("span"); el.style.cssText = `position:absolute;visibility:hidden;${css}`; scope.append(el); const w = parseFloat(getComputedStyle(el).width); el.remove(); return w; };
+    const box = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
+    const pill = document.querySelector('button[aria-label^="AC auto-off"]');
+    const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
+    const heading = [...document.querySelectorAll("section.panel h2")].find((h) => /^climate/i.test(h.textContent ?? ""));
+    const cluster = document.querySelector('div[data-rain-zone="corner"]:not([role])');
+    const dayCells = rail ? [...rail.children].filter((c) => c.offsetParent !== null && getComputedStyle(c).display !== "none") : [];
+    return {
+      vw: innerWidth, scrollY, docW: document.documentElement.scrollWidth, sp3: tok("width:var(--sr-space-3)"), hitMin: tok("width:var(--sr-hit-min)"),
+      theme: scope.getAttribute("data-kiosk-theme"),
+      pill: box(pill), tiles: [...document.querySelectorAll(".sr-climate")].map(box), settings: [...document.querySelectorAll('button[aria-label^="Advanced controls for"]')].map(box),
+      heading: box(heading), cluster: box(cluster),
+      unavail: [...document.querySelectorAll('button[role="switch"]:disabled')].map((b) => { const sub = b.querySelector(".sr-chip-sub"); return { rect: box(b), text: sub?.textContent ?? null, clipped: sub ? sub.scrollWidth > sub.clientWidth : true, ellipsis: sub ? getComputedStyle(sub).textOverflow === "ellipsis" : null, hidden: sub ? sub.offsetParent === null : true }; }),
+      days: dayCells.length, rail: rail ? { sw: rail.scrollWidth, cw: rail.clientWidth } : null,
+    };
+  };
+  const fpGap = (a, b) => Math.hypot(Math.max(a.left - b.right, b.left - a.right, 0), Math.max(a.top - b.bottom, b.top - a.bottom, 0));
+  /** Page-side: the composed alpha of each element's background over its whole box: colour layer under every image layer (gradient stops included), and any mask. */
+  const FP_ALPHA = (sels) => {
+    const cv = document.createElement("canvas"); cv.width = cv.height = 1; const cx = cv.getContext("2d", { willReadFrequently: true });
+    const alpha = (c) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = "rgba(0, 0, 0, 0)"; cx.fillStyle = c; cx.fillRect(0, 0, 1, 1); return cx.getImageData(0, 0, 1, 1).data[3] / 255; }; // an unparsable colour stays transparent, so it fails safe
+    const layers = (img) => { const out = []; let depth = 0, cur = ""; for (const ch of img) { if (ch === "(") depth++; if (ch === ")") depth--; if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch; } if (cur.trim()) out.push(cur.trim()); return out; };
+    const COLOUR = /(?:rgba?|hsla?|oklab|oklch|lab|lch|color)\((?:[^()]|\([^()]*\))*\)/g;
+    return sels.flatMap((sel) => [...document.querySelectorAll(sel)]).map((el) => {
+      const s = getComputedStyle(el);
+      const base = alpha(s.backgroundColor);
+      const imgs = s.backgroundImage === "none" ? [] : layers(s.backgroundImage).map((l) => { const stops = (l.match(COLOUR) ?? []).map(alpha); return stops.length ? Math.min(...stops) : 1; });
+      const masked = (s.maskImage && s.maskImage !== "none") || (s.webkitMaskImage && s.webkitMaskImage !== "none");
+      const composed = 1 - (1 - base) * imgs.reduce((p, a) => p * (1 - a), 1);
+      return { label: (el.getAttribute("aria-label") ?? el.tagName).slice(0, 24), alpha: +composed.toFixed(3), base: +base.toFixed(3), imageLayers: imgs.map((a) => +a.toFixed(3)), masked: !!masked, position: s.position };
+    });
+  };
+  const fpOpaque = (rows) => rows.length > 0 && rows.every((r) => r.alpha >= 0.95 && !r.masked);
+
+  /** Page-side (fvpolish fix 1 item 2): what could fade the auto-off pill: opacity and mask on the pill and every ancestor up to the Climate cell, its own paint, its lit layer's box, and unfinished animations. */
+  const PILL_READ = () => {
+    const pill = document.querySelector('button[aria-label^="AC auto-off"]');
+    const cell = pill.closest("section.panel");
+    const chain = []; for (let el = pill; el; el = el.parentElement) { chain.push(el); if (el === cell) break; }
+    const mask = (s) => (s.maskImage && s.maskImage !== "none") || (s.webkitMaskImage && s.webkitMaskImage !== "none");
+    const lit = pill.querySelector(".sr-lit"), disc = pill.querySelector(".sr-catch");
+    const b = (el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, left: r.left, top: r.top }; };
+    const ps = getComputedStyle(pill), ds = disc ? getComputedStyle(disc) : null;
+    return {
+      opacities: chain.map((el) => +getComputedStyle(el).opacity), masked: chain.filter((el) => mask(getComputedStyle(el))).length,
+      bgColor: ps.backgroundColor, bgImage: ps.backgroundImage, discBg: ds?.backgroundColor ?? null, discOpacity: ds ? +ds.opacity : null, discTransform: ds?.transform ?? null,
+      pill: b(pill), lit: lit ? b(lit) : null, running: pill.getAnimations({ subtree: true }).filter((a) => a.playState !== "finished").length,
+    };
+  };
+  // 1, 2, 3: the auto-off pill gap, the unavailable chip, the forecast days, at 1024 and 390 (the 1024 count is what 390 must equal)
+  let days1024 = null, pill1024 = null;
+  for (const [key, size] of [["1024", FP_SIZES.w1024], ["390", FP_SIZES.w390]]) {
+    await fpGuarded(`fullview polish ${key}`, async () => {
+      const { context, page } = await fvVisit(size);
+      await seen(page, ".sr-climate", 15_000);
+      await page.waitForTimeout(1500);
+      const d = await page.evaluate(FP_READ);
+      if (!d.pill || !d.tiles.length) throw new Error("mark missing: the auto-off pill or a climate tile is not on screen");
+      const gap = Math.min(...d.tiles.map((t) => fpGap(d.pill, t)));
+      fvRec(`fullview-pill-gap-${key}`, gap >= d.sp3 - 0.5, { gap: +gap.toFixed(1), want: d.sp3, token: "--sr-space-3 (the Board's tile gap)" });
+      if (!d.unavail.length) throw new Error("mark missing: no unavailable chip (the fixture's 4th light is unavailable)");
+      fvRec(`fullview-unavailable-${key}`, d.unavail.every((u) => u.text === "unavailable" && !u.clipped && !u.hidden && !u.ellipsis && u.rect.h >= d.hitMin - 0.5), { chips: d.unavail.map((u) => ({ text: u.text, clipped: u.clipped, hidden: u.hidden, ellipsis: u.ellipsis, h: +u.rect.h.toFixed(1) })), hitMin: d.hitMin });
+      if (key === "1024") days1024 = d.days;
+      else fvRec("fullview-forecast-390", d.days === days1024 && days1024 > 0 && !!d.rail && d.rail.sw <= d.rail.cw && d.docW <= d.vw, { days: d.days, days1024, rail: d.rail, docW: d.docW, vw: d.vw });
+      FV.states[`polish-${key}`] = { pill: d.pill && { top: d.pill.top, bottom: d.pill.bottom }, days: d.days, unavailable: d.unavail.length };
+      // item 2: below 640 px scroll the Climate header to mid-viewport (no fixed chrome over it), let the sun catch settle, then read before the shot
+      if (key === "390") { await page.evaluate(() => document.querySelector('button[aria-label^="AC auto-off"]').scrollIntoView({ block: "center" })); await page.waitForTimeout(1200); }
+      const pr = await page.evaluate(PILL_READ);
+      if (key === "1024") pill1024 = pr;
+      else if (pill1024) {
+        const eq1 = (a, b) => Math.abs(a - b) <= 1;
+        fvRec("fullview-pill-paint-390", pr.opacities.every((o) => o === 1) && pr.masked === 0 && pr.running === 0 && pr.bgColor === pill1024.bgColor && pr.bgImage === pill1024.bgImage && pr.discBg === pill1024.discBg && pr.discOpacity === pill1024.discOpacity && pr.discTransform === pill1024.discTransform && !!pr.lit && eq1(pr.lit.w, pr.pill.w) && eq1(pr.lit.h, pr.pill.h) && eq1(pr.lit.left, pr.pill.left) && eq1(pr.lit.top, pr.pill.top), { at390: pr, at1024: pill1024 });
+      }
+      await fvCrop(page, fvCell(page, "climate"), `pill-gap-${key}`);
+      await fvCrop(page, fvCell(page, "lights"), `unavailable-${key}`);
+      if (key === "390") await fvCrop(page, page.locator('[data-testid="kiosk-forecast-rail"]'), "forecast-390");
+      await context.close();
+    });
+  }
+
+  // 5: first paint (scrollTop 0) at 390 and 640: the corner cluster meets none of the Climate heading, the pill, a tile's settings button
+  for (const [key, size] of [["390", FP_SIZES.w390], ["640", FP_SIZES.w640]]) {
+    await fpGuarded(`fullview first paint ${key}`, async () => {
+      const { context, page } = await fvVisit(size);
+      await seen(page, ".sr-climate", 15_000);
+      await page.waitForTimeout(1500);
+      const d = await page.evaluate(FP_READ);
+      if (d.scrollY !== 0) throw new Error(`mark missing: first paint must be scrollTop 0 (is ${d.scrollY})`);
+      if (!d.cluster || d.cluster.w < 1 || !d.pill || !d.heading) throw new Error("mark missing: the corner cluster (downloads and alert fixtures), the pill or the Climate heading is absent");
+      const hits = [["heading", d.heading], ["pill", d.pill], ...d.settings.map((b, i) => [`settings-${i}`, b])].filter(([, b]) => fvHits(b, d.cluster)).map(([n]) => n);
+      fvRec(`fullview-first-paint-${key}`, hits.length === 0, { hits, cluster: d.cluster, pillLeft: d.pill.left, headingBottom: d.heading.bottom });
+      await page.screenshot({ path: join(OUT_DIR, `fullview-first-paint-${key}.png`) });
+      await context.close();
+    });
+  }
+
+  // 4: 20 lights, end of scroll, the pinned hero is opaque (alpha >= 0.95 composed over its whole box) in four themes
+  for (const [theme, label, sun, state] of [["sunroom", "sunroom-day", "day", "crowded"], ["sunroom", "sunroom-night", "night", "woken-night"], ["aurora", "aurora", "day", "crowded"], ["aerogel", "aerogel", "day", "crowded"]]) {
+    await fpGuarded(`fullview lights 20 end ${label}`, async () => {
+      const size = FP_SIZES.w1024;
+      const { context, page } = await fvVisit(size, { theme, sun, wx: sun === "night" ? "off" : "overcast", state, ha: fvHa({ lights: 10, switches: 10, scenes: 4, sensors: 2 }) });
+      await fvWake(page, size, state);
+      await seen(page, 'button[role="switch"]', 15_000);
+      await page.waitForTimeout(1500);
+      await page.evaluate(() => scrollTo(0, document.scrollingElement.scrollHeight));
+      await page.waitForTimeout(500);
+      const m = await page.evaluate(() => ({ theme: document.querySelector("[data-kiosk-theme]").getAttribute("data-kiosk-theme"), y: scrollY, end: scrollY + innerHeight >= document.scrollingElement.scrollHeight - 1, pinned: !!document.querySelector("header.kiosk-hdr-grid[data-pinned]"), top: document.querySelector("header.kiosk-hdr-grid").getBoundingClientRect().top }));
+      if (m.theme !== theme || m.y <= 0 || !m.end || !m.pinned || Math.abs(m.top) > 1) throw new Error(`mark missing: ${JSON.stringify(m)}`);
+      const rows = await page.evaluate(FP_ALPHA, ["header.kiosk-hdr-grid"]);
+      fvRec(`fullview-lights-20-end-${label}`, fpOpaque(rows), { want: ">= 0.95 composed over the whole pinned box", rows });
+      await page.screenshot({ path: join(OUT_DIR, `fullview-lights-20-end-${label}.png`) });
+      await context.close();
+    });
+  }
+
+  // 7: the dock is opaque in Aurora and Aerogel at 1024x768 (colour under gradient stops; the running timer's tint is a gradient layer), plus one Glance capture with a running timer
+  for (const theme of ["aurora", "aerogel"]) {
+    await fpGuarded(`fullview dock ${theme}`, async () => {
+      const { context, page } = await fvVisit(FP_SIZES.w1024, { theme });
+      await seen(page, '[data-rain-zone="dock"] button', 15_000);
+      await page.waitForTimeout(1500);
+      const rows = await page.evaluate(FP_ALPHA, ['[data-rain-zone="dock"] button']);
+      const timer = rows.find((r) => /^Timers?/.test(r.label));
+      const running = await page.locator('[data-rain-zone="dock"] button', { hasText: /\d:\d\d/ }).count();
+      if (!running) throw new Error("mark missing: no running timer on the dock");
+      fvRec(`fullview-dock-${theme}-1024`, fpOpaque(rows) && !!timer && timer.imageLayers.length >= 2, { rows });
+      await fvCrop(page, page.locator('[data-rain-zone="dock"]'), `dock-${theme}-1024`);
+      await context.close();
+    });
+  }
+  await fpGuarded("fullview glance timer running", async () => {
+    const { context, page } = await fvVisit(FP_SIZES.w1024, { layout: "glance" });
+    // fvpolish fix 1 item 4: Glance has no dock (data-rain-zone="dock" is Full only); its Timers button is the first button of the "tiles" zone (kiosk-glance.tsx), so the mark is read there.
+    const TILES = '[data-rain-zone="tiles"] button';
+    await seen(page, TILES, 15_000);
+    await page.waitForTimeout(1500);
+    const running = await page.locator(TILES, { hasText: /\d:\d\d/ }).count();
+    const mode = await page.evaluate(() => document.querySelector("header")?.getAttribute("data-mode"));
+    const rows = await page.evaluate(FP_ALPHA, [TILES]);
+    const timer = rows.find((r) => /^Timers?/.test(r.label));
+    if (!running || mode !== "glance" || !timer) throw new Error(`mark missing: running ${running}, header mode ${mode}, timer row ${!!timer}`);
+    fvRec("glance-timer-running-1024", timer.imageLayers.some((a) => a > 0 && a < 1), { timer, buttons: rows.length });
+    await page.screenshot({ path: join(OUT_DIR, "glance-timer-running-1024.png") });
     await context.close();
   });
   // 13: contrast at midday and night, in node (the same ink-on-surface tokens the other sections check)

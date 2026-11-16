@@ -98,8 +98,9 @@ export const SIZE: Record<
     low: "text-xs",
     icon: "h-4 w-4",
     gap: "gap-x-5",
-    revealFourth: "hidden min-[560px]:flex",
-    revealFifth: "hidden min-[680px]:flex",
+    // Below 640 px the rail wraps, so all five days show; 640-679 keeps its old reveal (the fifth waits for 680).
+    revealFourth: "flex",
+    revealFifth: "flex min-[641px]:max-[679px]:hidden",
   },
   glance: {
     day: "text-xs min-[480px]:text-sm",
@@ -180,7 +181,7 @@ export function KioskForecastRail({
       )}
       <div
         data-testid="kiosk-forecast-rail"
-        className={cn("flex items-start overflow-hidden px-1 -mx-1", s.gap)}
+        className={cn("flex items-start overflow-hidden px-1 -mx-1", size === "full" && "max-[640px]:flex-wrap max-[640px]:gap-y-2", s.gap)}
       >
         {days.map((day, i) => {
           const Icon = WEATHER_ICON[day.code];

@@ -78,3 +78,54 @@ test("Full view cell header: the heading never wraps and the stale note truncate
   assert.match(h, /min-w-0 flex-1 truncate[^"]*@max-\[24rem\]:sr-only" title=\{note\}/);
   assert.match(h, /<StaleTag title=\{note\} \/>/);
 });
+
+// ---- fvpolish (2026-11-16): seven full view polish items ----
+const hubChip = () => {
+  const s = read("./kiosk-hub.tsx");
+  return s.slice(s.indexOf("function ToggleChip"), s.indexOf("function SceneChip"));
+};
+
+test("fvpolish 2: an unavailable chip's sub text is never truncated and wraps under the name; other states keep their classes", () => {
+  const c = hubChip();
+  const unavail = c.match(/unavailable\s*\?\s*"(sr-chip-sub [^"]*)"/)?.[1] ?? "";
+  assert.match(unavail, /shrink-0 whitespace-nowrap/);
+  assert.doesNotMatch(unavail, /truncate|max-w-/);
+  assert.match(c, /flex min-w-0 flex-wrap items-baseline/);
+  assert.match(c, /sr-chip-sub min-w-0 max-w-24 shrink-\[8\] truncate/); // every other state is unchanged
+  assert.match(c, /unavailable && "h-auto min-h-11/);
+});
+
+test("fvpolish 3: below 640 px the forecast wraps and shows every day; from 640 up the reveal points are unchanged", () => {
+  const f = read("./kiosk-forecast.tsx");
+  const full = f.slice(f.indexOf("  full: {"), f.indexOf("  glance: {"));
+  assert.match(full, /revealFourth: "flex"/);
+  assert.match(full, /revealFifth: "flex min-\[641px\]:max-\[679px\]:hidden"/);
+  assert.match(f, /data-testid="kiosk-forecast-rail"[\s\S]{0,200}max-\[640px\]:flex-wrap/);
+  assert.match(f.slice(f.indexOf("  glance: {"), f.indexOf("export function KioskForecastRail")), /revealFourth: "hidden min-\[640px\]:flex"/);
+});
+
+test("fvpolish 1 and 5: the auto-off pill clears the tiles by the tile gap; below 640 px it is on its own line and the row reserves the corner cluster", () => {
+  const h = read("./kiosk-hub.tsx");
+  const head = h.slice(h.indexOf("<SectionHeader icon={Thermometer}") - 400, h.indexOf("<ClimateAutoOffBanner"));
+  assert.match(head, / pb-3\.5 [^"]*max-\[640px\]:pb-1 /);
+  assert.match(head, /max-\[640px\]:flex-col max-\[640px\]:items-start/);
+  assert.match(head, /max-\[640px\]:pr-\[calc\(2\*3\.5rem\+0\.75rem\)\]/);
+  assert.match(read("./kiosk-climate-auto-off.tsx"), /-my-2\.5 max-\[640px\]:my-0/);
+});
+
+test("fvpolish 4 and 7: Aurora and Aerogel get an opaque backing under the panel colour on the pinned hero and the dock, above the motion block", () => {
+  const css = read("../../app/globals.css");
+  assert.match(css, /\[data-kiosk-theme="aurora"\] \[data-mode="full"\]\[data-pinned\]/);
+  assert.match(css, /\[data-kiosk-theme="aerogel"\] \[data-mode="full"\]\[data-pinned\]/);
+  const back = css.match(/\[data-kiosk-theme="aurora"\] \[data-rain-zone="dock"\] button,\s*\[data-kiosk-theme="aerogel"\] \[data-rain-zone="dock"\] button \{[^}]*\}/g) ?? [];
+  assert.ok(back.some((b) => /linear-gradient\(var\(--tw-gradient-from[\s\S]*var\(--color-panel\)[\s\S]*background-color: var\(--color-bg\)/.test(b)), "dock backing keeps the timer tint gradient above the panel layer");
+  assert.ok(css.lastIndexOf('[data-pinned]') < css.indexOf("/* nw motion */"));
+  assert.ok(css.lastIndexOf('[data-rain-zone="dock"] button') < css.indexOf("/* nw motion */"), "every dock rule sits above the motion block");
+  assert.match(read("./kiosk-surface.tsx"), /data-pinned=\{heroPinned \|\| undefined\}/);
+});
+
+test("fvpolish fix 1 item 1: an idle dock button keeps its hover background in Aurora and Aerogel (panel-2 over bg, tint stays the top layer)", () => {
+  const css = read("../../app/globals.css");
+  const hover = css.match(/@media \(hover: hover\) \{\s*\[data-kiosk-theme="aurora"\] \[data-rain-zone="dock"\] button:hover,\s*\[data-kiosk-theme="aerogel"\] \[data-rain-zone="dock"\] button:hover \{[^}]*\}/)?.[0] ?? "";
+  assert.match(hover, /linear-gradient\(var\(--tw-gradient-from[\s\S]*linear-gradient\(var\(--color-panel-2\), var\(--color-panel-2\)\)/);
+});

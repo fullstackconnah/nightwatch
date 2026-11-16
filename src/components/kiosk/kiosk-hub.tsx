@@ -264,6 +264,20 @@ function ToggleChip({
   onToggle: () => void;
 }) {
   const sr = useKioskTheme() === "sunroom";
+  const unavailable = !available;
+  const nameEl = <span className="sr-chip-name min-w-[5ch] truncate text-sm text-ink">{name}</span>;
+  const subEl = (
+    <span
+      className={cn(
+        unavailable ? "sr-chip-sub shrink-0 whitespace-nowrap font-mono text-2xs" : "sr-chip-sub min-w-0 max-w-24 shrink-[8] truncate font-mono text-2xs",
+        error ? "text-bad" : "text-ink-faint",
+      )}
+      title={error}
+      data-sr-tone={error ? "bad" : undefined}
+    >
+      {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
+    </span>
+  );
   return (
     <button
       type="button"
@@ -276,7 +290,7 @@ function ToggleChip({
       onPointerDown={aimCatch}
       className={cn(
         "sr-chip sr-chip-sm kiosk-press relative flex h-11 w-full min-w-0 items-center gap-2 rounded-full border pl-3 pr-3.5 outline-none focus-visible:ring-1 focus-visible:ring-accent",
-        !available && "pointer-events-none opacity-40",
+        unavailable && "h-auto min-h-11 pointer-events-none opacity-40",
         on ? "border-accent/40 bg-accent/10" : "border-line bg-panel-2 hover:border-line-bright",
       )}
       // The "elastic toggle" half of the brief lands HERE rather than on a
@@ -293,10 +307,8 @@ function ToggleChip({
       <SunCatch />
       <Icon size={15} className={cn("shrink-0", on ? "text-accent" : "text-ink-faint")} aria-hidden />
       {/* The name outranks the sub: the sub (62%, unavailable) gives way first (shrink-8), the name keeps 5 characters. */}
-      <span className="sr-chip-name min-w-[5ch] truncate text-sm text-ink">{name}</span>
-      <span className={cn("sr-chip-sub min-w-0 max-w-24 shrink-[8] truncate font-mono text-2xs", error ? "text-bad" : "text-ink-faint")} title={error} data-sr-tone={error ? "bad" : undefined}>
-        {error ?? (sr && !showSub(subtitle, chipWord({ on }).word) ? "" : subtitle)}
-      </span>
+      {/* An unavailable chip's "unavailable" is never cut: name and sub share a wrapping line, so a narrow chip puts the sub under the name. */}
+      {unavailable ? <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">{nameEl}{subEl}</span> : <>{nameEl}{subEl}</>}
       {!sr && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", on ? "dot dot-running" : "bg-line-bright")} />}
       <SunChipMarks on={on} error={!!error} bare />
     </button>
@@ -615,7 +627,9 @@ const ClimateSection = memo(function ClimateSection({
   const [adjustingId, setAdjustingId] = useState<string | null>(null);
   return (
     <Cell className={className} riseIndex={2}>
-      <div className="flex items-center justify-between gap-2">
+      {/* Row 1 is one line from 641 px. The pill is 44 px in a 24 px row (-my-2.5 = 10 px over each edge): pb-3.5 = 10 + the tile gap (gap-3, 12) - this cell's gap-2 (8), so it clears the tiles by the tile gap.
+          Below 640 px the pill is its own left-aligned line (pb-1 = 12 - 8) and the row keeps the fixed bottom-right cluster's width (two min-w-14 buttons and gap-3) clear on its right. */}
+      <div className="flex items-center justify-between gap-2 pb-3.5 max-[640px]:flex-col max-[640px]:items-start max-[640px]:pb-1 max-[640px]:pr-[calc(2*3.5rem+0.75rem)]">
         <SectionHeader icon={Thermometer} label="Climate" stale={stale} />
         <ClimateAutoOffPill autoOff={autoOff} />
       </div>
