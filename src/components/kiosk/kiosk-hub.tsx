@@ -904,7 +904,7 @@ export function KioskHub() {
   if (total === 0) return <HubEmpty />;
 
   return (
-    <div className={afterCalendar ? "space-y-2.5 [&>section:first-child]:border-t [&>section:first-child]:pt-2" : "space-y-2.5"}>
+    <div className={afterCalendar ? "space-y-2.5 [&>section:first-of-type]:border-t [&>section:first-of-type]:pt-2" : "space-y-2.5"}>
       <ClimateAutoOffBanner autoOff={autoOff} />
       {stale && (
         <div className="flex items-center gap-2 px-1">

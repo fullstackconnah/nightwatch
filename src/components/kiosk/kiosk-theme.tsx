@@ -24,6 +24,8 @@ import { useEffect, useState } from "react";
 import { DEFAULT_THEME_FONTS, kioskFontValue, useKioskFonts } from "@/lib/kiosk-fonts";
 import {
   Archivo,
+  Atkinson_Hyperlegible_Mono,
+  Atkinson_Hyperlegible_Next,
   Bodoni_Moda,
   Bricolage_Grotesque,
   Chakra_Petch,
@@ -32,6 +34,8 @@ import {
   Figtree,
   Fragment_Mono,
   Fraunces,
+  Geist,
+  Geist_Mono,
   IBM_Plex_Mono,
   Instrument_Serif,
   JetBrains_Mono,
@@ -40,10 +44,12 @@ import {
   Lora,
   Manrope,
   Newsreader,
+  Nunito,
   Orbitron,
   Plus_Jakarta_Sans,
   Quicksand,
   Red_Hat_Mono,
+  Roboto_Mono,
   Silkscreen,
   Sora,
   Source_Serif_4,
@@ -93,6 +99,13 @@ const fLexend = Lexend({ subsets: ["latin"], display: "swap", preload: false, va
 const fFigtree = Figtree({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-figtree" });
 const fManrope = Manrope({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-manrope" });
 const fChivoMono = Chivo_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-chivo-mono" });
+// Type PR 2: three Text faces and three Numerals faces, all variable (no weight list), latin only.
+const fAtkinsonNext = Atkinson_Hyperlegible_Next({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-atkinson-next" });
+const fNunito = Nunito({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-nunito" });
+const fGeist = Geist({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-geist" });
+const fAtkinsonMono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-atkinson-mono" });
+const fGeistMono = Geist_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-geist-mono" });
+const fRobotoMono = Roboto_Mono({ subsets: ["latin"], display: "swap", preload: false, variable: "--font-t-roboto-mono" });
 
 const FONT_VARIABLE_CLASSES = [
   fTerminal, fJournal, fLounge,
@@ -100,6 +113,7 @@ const FONT_VARIABLE_CLASSES = [
   fBulletinSerif, fBulletinSans, fUnderstorySerif, fUnderstorySans, fDuotoneSerif, fCinderSans, fCinderMono,
   fAuroraSans, fAuroraMono, fChromeSans, fNeonMono, fPixelMono,
   fLexend, fFigtree, fManrope, fChivoMono,
+  fAtkinsonNext, fNunito, fGeist, fAtkinsonMono, fGeistMono, fRobotoMono,
 ].map((f) => f.variable);
 
 export type KioskTheme =
