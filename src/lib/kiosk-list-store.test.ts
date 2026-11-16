@@ -343,32 +343,45 @@ const rows = (open: number, ticked: number) => [
   ...Array.from({ length: ticked }, (_, i) => mk(i + 1 + open, `Tick ${i}`, { done: true, doneAt: T - 500 })),
 ];
 
-test("52a clear all then undo brings back 27 rows (13 open, 14 ticked)", async () => {
+test("52a clear all of an older 27-row list buffers every row; undo restores up to 13 and reports the rest full", async () => {
   seed(rows(13, 14));
   const cleared = await post("clear-all", { listId: "shopping" }, T, await elevate());
   assert.equal(cleared.json.removed.length, 27);
   const ids = Array.from({ length: 27 }, (_, i) => ID(i + 1));
   const back = await post("restore", { listId: "shopping", ids }, T + 1000);
   assert.equal(back.status, 200);
-  assert.equal(back.json.restored.length, 27);
-  assert.equal(stored().items.length, 27);
+  assert.equal(back.json.restored.length, 13);
+  assert.deepEqual(back.json.skipped.map((s: { reason: string }) => s.reason), Array(14).fill("full"));
+  assert.equal(stored().items.length, 13);
 });
 
-test("52b undo of a 20-row clear (8 open, 12 ticked) puts all 20 back", async () => {
+test("52b undo of a 20-row clear (8 open, 12 ticked) puts 13 back and 7 report full", async () => {
   seed(rows(8, 12));
   await post("clear-all", { listId: "shopping" }, T, await elevate());
   const back = await post("restore", { listId: "shopping", ids: Array.from({ length: 20 }, (_, i) => ID(i + 1)) }, T + 1000);
-  assert.equal(back.json.restored.length, 20);
-  assert.equal(stored().items.length, 20);
+  assert.equal(back.json.restored.length, 13);
+  assert.equal(back.json.skipped.length, 7);
+  assert.equal(stored().items.length, 13);
 });
 
-test("52c with 13 open rows, a ticked row restores and an open row reports full", async () => {
+test("52c with 13 rows present, neither a ticked nor an open row restores: both report full", async () => {
   seed([mk(1, "Gone open"), mk(2, "Gone tick", { done: true, doneAt: T - 500 })]);
   await post("clear-all", { listId: "shopping" }, T, await elevate());
-  for (let i = 0; i < 13; i++) await add(`Other ${i}`, T);
+  for (let i = 0; i < 11; i++) await add(`Other ${i}`, T);
+  for (const id of [ID(500), ID(501)]) { await add(`Tick ${id}`, T, id); await post("done", { listId: "shopping", id, done: true }, T); }
   const back = await post("restore", { listId: "shopping", ids: [ID(2), ID(1)] }, T + 1000);
-  assert.deepEqual(back.json.restored.map((i: ListItem) => i.id), [ID(2)]);
-  assert.deepEqual(back.json.skipped, [{ id: ID(1), reason: "full" }]);
+  assert.deepEqual(back.json.restored, []);
+  assert.deepEqual(back.json.skipped, [{ id: ID(2), reason: "full" }, { id: ID(1), reason: "full" }]);
+});
+
+test("52f 11 open + 2 ticked is full: an add is refused 409 full and the file is unchanged", async () => {
+  seed(rows(11, 2));
+  const before = bytes();
+  const r = await add("Eggs", T);
+  assert.deepEqual([r.status, r.json], [409, { error: "full" }]);
+  assert.equal(bytes(), before);
+  seed(rows(10, 2));
+  assert.equal((await add("Eggs", T)).status, 200);
 });
 
 test("52d the undo buffer trims to the newest 39 rows inside the restore window", async () => {
@@ -386,7 +399,8 @@ test("52d the undo buffer trims to the newest 39 rows inside the restore window"
   const gone = await post("restore", { listId: "shopping", ids: [oldest] }, T + 1000);
   assert.deepEqual(gone.json.skipped, [{ id: oldest, reason: "expired" }]);
   const back = await post("restore", { listId: "shopping", ids: buf.map((i) => i.id) }, T + 1000);
-  assert.equal(back.json.restored.length, 39);
+  assert.equal(back.json.restored.length, 13); // the buffer holds all 39; the list takes 13 in all
+  assert.equal(back.json.skipped.length, 26);
 });
 
 test("52e a ticked row is refused as full when 39 rows are present", async () => {
