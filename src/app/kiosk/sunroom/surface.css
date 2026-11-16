@@ -13,6 +13,12 @@
   -webkit-backdrop-filter: none;
 }
 
+/* Full view board cell headings are --sr-type-micro (shape check N3); .microlabel alone is 11px. */
+[data-kiosk-theme="sunroom"] .grid-cols-12 > section.panel h2.microlabel {
+  font: var(--sr-type-micro);
+  letter-spacing: var(--sr-track-micro);
+}
+
 /* The press: the face sits down 2 px along the sun's vector and keeps only the 1 px contact. No colour tween. */
 [data-kiosk-theme="sunroom"] :is(button, .kiosk-press) {
   transition: transform var(--sr-m-press-out) var(--sr-m-ease-spring);

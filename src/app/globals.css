@@ -1130,14 +1130,15 @@ body {
   }
   .kiosk-hdr-grid > *:nth-child(3) {
     grid-column: 4;
-    grid-row: 1 / span 2;
+    grid-row: 1;
   }
   .kiosk-hdr-grid > *:nth-child(4) {
     grid-column: 1;
     grid-row: 2;
   }
   .kiosk-hdr-grid > *:nth-child(5) {
-    grid-column: 2 / span 2;
+    /* Runs under the forecast rail (the rail ends in row 1) so all three readings fit at 1024. */
+    grid-column: 2 / -1;
     grid-row: 2;
     min-width: 0;
   }

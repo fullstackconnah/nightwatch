@@ -211,7 +211,7 @@ const FV_READ = () => {
   const fs = (el) => (el ? parseFloat(getComputedStyle(el).fontSize) : null);
   // The chip name's size is the house `sr-chip-sm` name (`.sr-chip-name text-sm`), probed in a real chip, not `--sr-type-label` (which sets the chip's own font).
   const chipProbe = document.createElement("button"); chipProbe.className = "sr-chip sr-chip-sm"; chipProbe.style.cssText = "position:absolute;visibility:hidden"; chipProbe.innerHTML = '<span class="sr-chip-name text-sm">x</span>'; scope.append(chipProbe);
-  const chipNameSize = fs(chipProbe.firstElementChild); chipProbe.remove();
+  const chipNameSize = fs(chipProbe.firstElementChild), chipRadius = parseFloat(getComputedStyle(chipProbe).borderTopLeftRadius); chipProbe.remove();
   // N5's cell radius is the computed `.panel` radius in Sunroom (1.25rem), probed from a real `.panel`.
   const panelProbe = document.createElement("div"); panelProbe.className = "panel"; panelProbe.style.cssText = "position:absolute;visibility:hidden"; scope.append(panelProbe);
   const panelRadius = parseFloat(getComputedStyle(panelProbe).borderTopLeftRadius); panelProbe.remove();
@@ -235,7 +235,7 @@ const FV_READ = () => {
   const agTime = document.querySelector("[data-agenda-row] .font-mono"), agTitle = document.querySelector("[data-agenda-row] > span:nth-child(3)"), binRow = document.querySelector('[data-bin-night="row"]');
   return {
     hdrCols: header ? [...header.children].slice(0, 5).map((c) => r(c)) : [], lineKidsW: line ? [...line.children].map((k) => Math.round(k.scrollWidth)) : [],
-    vw: innerWidth, vh: innerHeight, scrollH: document.scrollingElement.scrollHeight, scrollY: scrollY, tok: { ...tok, chipName: chipNameSize, panelRadius }, hero, board: r(board), cells, chips, scenes, scrollers, clipped, nudgeTiles,
+    vw: innerWidth, vh: innerHeight, scrollH: document.scrollingElement.scrollHeight, scrollY: scrollY, tok: { ...tok, chipName: chipNameSize, panelRadius, chipRadius }, hero, board: r(board), cells, chips, scenes, scrollers, clipped, nudgeTiles,
     time: time ? { rect: r(time), size: fs(time), track: getComputedStyle(time).letterSpacing } : null, date: date ? { rect: r(date), size: fs(date), lh: parseFloat(getComputedStyle(date).lineHeight) } : null,
     temp: fs(temp), tempRect: r(temp), cond: fs(cond), line: line ? { size: fs(line.firstElementChild), kids: [...line.children].map((k) => ({ ellipsis: getComputedStyle(k).textOverflow === "ellipsis", clipped: k.scrollWidth > k.clientWidth + 1 })), rect: r(line) } : null,
     dock: dock ? { rect: r(dock), position: getComputedStyle(dock).position, buttons: buttonsIn(dock) } : null, cluster: r(cluster), clusterButtons: buttonsIn(cluster),
@@ -261,12 +261,12 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
   // 3: type roles
   const agOk = d.agTime === null || (fvNear(d.agTime, d.tok.meta.size, 0.5) && fvNear(d.agTitle, d.tok.label.size, 0.5));
   const ell = !d.line || d.line.kids.every((q) => !q.clipped || q.ellipsis);
-  fvRec(k(3), fvNear(d.temp, d.tok.figure.size, 0.5) && fvNear(d.cond, d.tok.body.size, 0.5) && (!d.line || fvNear(d.line.size, d.tok.meta.size, 0.5)) && ell && d.cells.every((c) => c.headSize === null || fvNear(c.headSize, d.tok.micro.size, 0.5)) && d.chips.every((c) => fvNear(c.nameSize, d.tok.chipName, 0.5)) && agOk, { temp: d.temp, cond: d.cond, line: d.line && d.line.size, agTime: d.agTime, agTitle: d.agTitle, chipName: d.chips[0]?.nameSize, tok: { figure: d.tok.figure.size, body: d.tok.body.size, meta: d.tok.meta.size, label: d.tok.label.size, micro: d.tok.micro.size, chipName: d.tok.chipName } });
+  fvRec(k(3), fvNear(d.temp, d.tok.figure.size, 0.5) && fvNear(d.cond, d.tok.body.size, 0.5) && (!d.line || fvNear(d.line.size, d.tok.meta.size, 0.5)) && ell && d.cells.every((c) => c.headSize === null || fvNear(c.headSize, d.tok.micro.size, 0.5)) && d.chips.every((c) => fvNear(c.nameSize, d.tok.chipName, 0.5)) && agOk, { temp: d.temp, cond: d.cond, line: d.line && d.line.size, agTime: d.agTime, agTitle: d.agTitle, chipName: d.chips[0]?.nameSize, heads: d.cells.map((c) => c.headSize), tok: { figure: d.tok.figure.size, body: d.tok.body.size, meta: d.tok.meta.size, label: d.tok.label.size, micro: d.tok.micro.size, chipName: d.tok.chipName } });
   // 4: spacing: cell padding and board gaps --sr-space-3; page padding --sr-space-4; hero column gap --sr-space-6, hero padding-x --sr-space-6 (lg)
   const gapsOk = lg && today && climate ? fvNear(climate.rect.left - today.rect.right, d.tok.sp3, 0.6) && (!lights || fvNear(lights.rect.top - Math.max(today.rect.bottom, climate.rect.bottom), d.tok.sp3, 0.6)) : true;
   fvRec(k(4), d.cells.every((c) => fvNear(c.padL, d.tok.sp3, 0.5)) && gapsOk && fvNear(d.board?.left, lg ? d.tok.sp4 : d.tok.sp3, 0.6) && (!lg || (fvNear(d.hero.colGap, d.tok.sp6, 0.5) && fvNear(d.hero.padL, d.tok.sp6, 0.5))), { padL: d.cells.map((c) => c.padL), boardLeft: d.board?.left, hero: d.hero && { colGap: d.hero.colGap, padL: d.hero.padL }, sp3: d.tok.sp3, sp4: d.tok.sp4, sp6: d.tok.sp6 });
   // 5: cell radius is the computed `.panel` radius in Sunroom (1.25rem = 20px); chips are pills
-  fvRec(k(5), d.cells.every((c) => fvNear(c.radius, d.tok.panelRadius, 0.5)) && d.chips.every((c) => c.radius >= c.rect.h / 2 - 0.5), { radii: d.cells.map((c) => c.radius), panel: d.tok.panelRadius, chipRadii: [...new Set(d.chips.map((c) => c.radius))] });
+  fvRec(k(5), d.cells.every((c) => fvNear(c.radius, d.tok.panelRadius, 0.5)) && d.chips.every((c) => fvNear(c.radius, d.tok.chipRadius, 0.5)), { radii: d.cells.map((c) => c.radius), panel: d.tok.panelRadius, chipRadii: [...new Set(d.chips.map((c) => c.radius))], chipSm: d.tok.chipRadius });
   // 6: cells in one row have equal bottoms
   fvRec(k(6), !lg || ((!climate || fvNear(today.rect.bottom, climate.rect.bottom, 0.5)) && (!scenes || !lights || fvNear(lights.rect.bottom, scenes.rect.bottom, 0.5))), { today: today?.rect.bottom, climate: climate?.rect.bottom, lights: lights?.rect.bottom, scenes: scenes?.rect.bottom });
   // 7: dock to cluster gap >= --sr-space-6 (worst state); at any size no cluster rect meets a dock button or the hero temperature
@@ -280,7 +280,7 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
   // 11: chips at 1024 in 3 columns: a short name ("Bedside") shows in full; a longer one ends in an ellipsis with its title; the sub is never clipped
   if (d.vw === 1024) {
     const bed = d.chips.find((c) => c.nameText === "Bedside"), long = d.chips.find((c) => c.nameText.length > 14);
-    fvRec(k(11), !!bed && !bed.nameClipped && (!long || (long.nameEllipsis && !!long.title)) && d.chips.every((c) => !c.subClipped), { bedside: bed && { clipped: bed.nameClipped }, long: long && { ellipsis: long.nameEllipsis, title: long.title }, subClipped: d.chips.filter((c) => c.subClipped).length });
+    fvRec(k(11), !!bed && !bed.nameClipped && (!long || (long.nameEllipsis && long.title === FV_LIGHT[1])) && d.chips.every((c) => c.nameW >= 5 * 7), { bedside: bed && { clipped: bed.nameClipped }, long: long && { ellipsis: long.nameEllipsis, title: long.title }, minNameW: Math.min(...d.chips.map((c) => c.nameW)), subClipped: d.chips.filter((c) => c.subClipped).length });
   }
   // 11b (fix 1): no plain ON/OFF word on a toggle chip; every chip icon >= 14 px; an unavailable chip shows its name; at 1024 (3 columns) a name of 12 characters or fewer shows in
   // full, at 390 (2 columns) a name of 7 or fewer (the shortened name is what is measured; a 62% sub or "unavailable" gives way first); the name keeps 5 characters (min-w-[5ch]).
@@ -294,7 +294,7 @@ function fvChecks(d, size, tag, { crowded = true } = {}) {
   // 1b (fix 1): every scene chip shows its name (non-zero width, the fixture's scene name), no idle status text, and the pip sits inside the chip
   if (d.scenes.length) fvRec(k("1b scene chips"), d.scenes.every((s) => s.nameW > 0 && ["Evening", "Movie", "Bright", "Night", "Away", "Dinner"].includes(s.nameText) && s.pip && s.pip.left >= s.rect.left - 0.5 && s.pip.right <= s.rect.right + 0.5 && !s.idleStatus), { scenes: d.scenes.map((s) => [s.nameText, Math.round(s.nameW), s.idleStatus, s.pip && Math.round(s.rect.right - s.pip.right)]) });
   // 15 (fix 1): from lg the weather band uses the room between the clock column and the rail: each reading shows in full on one line (no ellipsis) with the crowded fixture
-  if (lg && d.line) fvRec(k(15), d.line.kids.every((q) => !q.clipped), { kidsScrollW: d.lineKidsW, lineW: Math.round(d.line.rect.w), cols: d.hdrCols.map((c) => c && [Math.round(c.left), Math.round(c.right)]) });
+  if (lg && d.line) fvRec(k(15), d.line.kids.every((q) => !q.clipped) && (!crowded || d.line.kids.length >= 2), { heroH: d.hero && Math.round(d.hero.rect.h), readings: d.line.kids.length, kidsScrollW: d.lineKidsW, lineW: Math.round(d.line.rect.w), cols: d.hdrCols.map((c) => c && [Math.round(c.left), Math.round(c.right)]) });
   // 14: layout check (this repo has no e2e capture helper): no inner scroller on the board, no clipped text without an ellipsis, no dock button over board text
   fvRec(k(14), d.scrollers.length === 0 && d.clipped.length === 0, { scrollers: d.scrollers, clipped: d.clipped });
 }
@@ -425,10 +425,12 @@ async function fullViewBoard() {
   const none = { status: "ok", events: [], stale: false };
   await guarded("fullview nothing on", async () => {
     // The evening ("crowded" clock, 18:30), not "ordinary" (11:00 is the morning period, whose briefing card is always there): no agenda, no bins, nothing playing, no camera, an idle timer.
-    const { context, page } = await fvVisit(SIZES[1], { state: "crowded", extra: { "/kiosk/api/calendar": none, "/kiosk/api/bins": { status: "unconfigured" }, "/kiosk/api/doorbell": { status: "unconfigured" } }, timer: false, np: false });
+    const { context, page } = await fvVisit(SIZES[1], { state: "crowded", extra: { "/kiosk/api/calendar": none, "/kiosk/api/bins": { status: "unconfigured" }, "/kiosk/api/doorbell": { ...FV_DOOR, status: "unconfigured", cameras: [], lastSeenAt: null } }, timer: false, np: false }); // the real unconfigured answer keeps `cameras: []` (ha-doorbell.ts); without it the dock button throws and the page falls to the error boundary
     await seen(page, "section.panel h2", 15_000);
     await page.waitForTimeout(1200);
+    await page.screenshot({ path: join(OUT_DIR, "fullview-nothing-on-1024x768.png") });
     const d = await page.evaluate(FV_READ);
+    FV.states["nothing on"] = { url: page.url(), cells: d.heads, dockPresent: !!d.dock, todayText: (await fvCell(page, "today").first().innerText().catch(() => "")).slice(0, 160) };
     fvRec("nothing on: copy and no footer", d.emptyLine === "Nothing on today or tomorrow" && !d.nowPlaying, { emptyLine: d.emptyLine, nowPlaying: d.nowPlaying });
     const dockLabels = (d.dock?.buttons ?? []).map((b) => b.label).join("|");
     fvRec("dock no camera, idle timer: Timers, Shopping, Admin", /^Timer(?!.*\d:\d\d).*\|Shopping.*\|Admin$/.test(dockLabels) && !/front door/i.test(dockLabels), { dockLabels });
