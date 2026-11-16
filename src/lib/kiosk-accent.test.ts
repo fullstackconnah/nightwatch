@@ -73,13 +73,21 @@ describe("kiosk accent storage", () => {
     store.data.set(KEY, "{not json");
     assert.deepEqual(readKioskAccents(), {});
   });
-  it("storage that throws on get reads {} and on set still broadcasts", () => {
+  it("storage that throws on get reads {}", () => {
     store.throwGet = true;
     assert.deepEqual(readKioskAccents(), {});
+  });
+  it("storage that throws on set still broadcasts and the pick holds for the session", () => {
     store.throwSet = true;
     setKioskThemeAccent("folio", "iris");
     assert.equal(broadcasts, 1);
     assert.equal(store.data.size, 0);
+    assert.deepEqual(readKioskAccents(), { folio: "iris" }); // what the hook re-reads on the broadcast
+    setKioskThemeAccent("aurora", "fern");
+    assert.deepEqual(readKioskAccents(), { folio: "iris", aurora: "fern" });
+    store.throwSet = false;
+    setKioskThemeAccent("folio", null); // storage is back: a good write ends the session copy
+    assert.deepEqual(readKioskAccents(), { aurora: "fern" });
   });
   it("never touches the fonts key", () => {
     store.data.set("kiosk-fonts", "{\"folio\":{\"sans\":\"journal\"}}");
@@ -178,14 +186,15 @@ describe("sunroom ramp takes the swatch half", () => {
       assert.equal(s.palette.accent, half.accent, `t=${t}`);
     }
   });
-  it("with no swatch the output is byte-identical to the swatch-less call", () => {
-    for (const t of [0, 0.4, 1, 2.5, 3, 4.5, 5.9]) {
-      const none = sunroomStateAt(t, { cloud01: 0.3, rain01: 0.5 });
-      const nullAccent = sunroomStateAt(t, { cloud01: 0.3, rain01: 0.5, accent: null });
-      assert.deepEqual(nullAccent, none);
-      // the ramp's own accent still comes straight from the nearer stop
-      assert.equal(none.palette.accent, none.palette.blue);
-    }
+  it("with no swatch the output equals the shipped stop palettes, apart from the new blue", () => {
+    // pinned to the stop table itself, not to a second call through the new code
+    SUNROOM_STOPS.forEach((stop, i) => {
+      for (const opts of [undefined, { accent: null }]) {
+        const { blue, ...rest } = sunroomStateAt(i, opts).palette;
+        assert.deepEqual(rest, stop.palette, `stop ${stop.name}`);
+        assert.equal(blue, stop.palette.accent);
+      }
+    });
   });
   it("check 12: --sr-blue is the ramp's own accent, never the swatch", () => {
     for (const i of [midday, night]) {

@@ -307,7 +307,9 @@ function ThemeChip({ theme, active }: { theme: KioskTheme; active: boolean }) {
  *  box, aria-pressed, SunCatch). `id` null is Theme default: the disc shows the
  *  theme's own accent and the label gets "· default" like FontChip. The disc is
  *  the swatch half for this theme's ground; Sunroom's ground follows the sun, so
- *  its disc shows both halves, day and night, split on the diagonal. */
+ *  its disc shows both halves, day and night, split on the diagonal. Colour
+ *  transition only (`transition-colors`): Tailwind's bare `transition` also names
+ *  transform, translate and scale, which the reduced-motion check forbids. */
 function AccentChip({ theme, id, active }: { theme: KioskTheme; id: KioskAccentId | null; active: boolean }) {
   const swatch = KIOSK_ACCENTS.find((s) => s.id === id);
   const ground = KIOSK_THEME_GROUND[theme];
@@ -324,7 +326,7 @@ function AccentChip({ theme, id, active }: { theme: KioskTheme; id: KioskAccentI
       data-accent-chip={id ?? "default"}
       className={cn(
         "sr-chip sr-chip-sm",
-        "flex h-11 items-center gap-2 rounded-md border px-3 text-xs outline-none transition focus-visible:ring-1 focus-visible:ring-accent",
+        "flex h-11 items-center gap-2 rounded-md border px-3 text-xs outline-none transition-colors focus-visible:ring-1 focus-visible:ring-accent",
         active
           ? "border-accent bg-accent/10 text-ink ring-1 ring-accent"
           : "border-line text-ink-dim hover:border-line-bright hover:text-ink",

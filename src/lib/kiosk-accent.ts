@@ -78,9 +78,14 @@ function isKioskTheme(v: unknown): v is KioskTheme {
   return typeof v === "string" && Object.hasOwn(KIOSK_THEME_GROUND, v);
 }
 
+/** Set only while a write has failed (private mode, blocked storage): the session's
+ *  choices live here so a pick still holds and a later read sees it. */
+let memory: KioskAccentChoices | null = null;
+
 /** Defensive parse, like kiosk-fonts.ts: corrupt JSON, a non-object, an unknown
  *  theme key or an unknown swatch id is dropped, never trusted or thrown. */
 export function readKioskAccents(): KioskAccentChoices {
+  if (memory) return memory;
   let raw: string | null;
   try {
     raw = window.localStorage.getItem(STORAGE_KEY);
@@ -110,8 +115,9 @@ export function setKioskThemeAccent(theme: KioskTheme, id: KioskAccentId | null)
   else next[theme] = id;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    memory = null;
   } catch {
-    // non-persistent is fine (private mode); the broadcast below still fires
+    memory = next; // non-persistent is fine (private mode): the choice holds for the session
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
