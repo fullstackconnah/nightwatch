@@ -293,7 +293,7 @@ export const CAL_STATES = {
     want: ["NEXT UP", "12:30", "pm", "Lunch with Ana", "and 5 more today · 4 tomorrow"],
     std: ["Today", "12:30 pm", "Lunch with Ana", "2:00 pm", "School pickup", "3:15 pm", "Piano", "and 3 more today · 4 tomorrow"], rows: 3, more: true,
   },
-  "long-title": { at: "11:00", body: calOk([ev(T, "15:00", "16:00", "Parent-teacher interviews at Bellwood Primary"), DENTIST]), want: ["NEXT UP", "3:00", "Parent-teacher interviews at Bellwood Primary"], std: ["3:00 pm", "Parent-teacher interviews at Bellwood Primary"], rows: 2 },
+  "long-title": { at: "11:00", body: calOk([ev(T, "15:00", "16:00", "Parent-teacher interviews at Bellwood Primary followed by the term two swimming carnival planning meeting in the library"), DENTIST]), want: ["NEXT UP", "3:00", "Parent-teacher interviews at Bellwood Primary followed by the term two swimming carnival planning meeting in the library"], std: ["3:00 pm", "Parent-teacher interviews at Bellwood Primary followed by the term two swimming carnival planning meeting in the library"], rows: 2 },
   // all-day first, a multi-day event already running (ends Wednesday), and a busy-only event
   mixed: {
     at: "08:00",

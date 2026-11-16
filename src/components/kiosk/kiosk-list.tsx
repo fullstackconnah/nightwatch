@@ -519,7 +519,10 @@ export function KioskListSheet({
             />
             <button type="submit" disabled={disabled || !text.trim()} className={ACCENT_BTN}>Add</button>
           </form>
-          <p role="status" className="min-h-[22px] text-sm text-ink-dim">{shownHint}</p>
+          <div className="grid text-sm text-ink-dim">
+            <p role="status" className="col-start-1 row-start-1">{shownHint}</p>
+            <span aria-hidden="true" className="invisible col-start-1 row-start-1">{FULL_HINT}</span>
+          </div>
 
           {suggestions.length > 0 && (
             <div>

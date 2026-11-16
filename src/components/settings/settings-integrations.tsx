@@ -604,7 +604,7 @@ export function CalendarCard({ data, mutate }: PanelProps) {
           updatedAt={status?.updatedAt ?? undefined}
           draft={link}
           onDraftChange={setLink}
-          placeholder={configured ? undefined : "Paste the private calendar link"}
+          placeholder={configured ? "Paste the new link" : "Paste the private calendar link"}
           describedBy={error ? errorId : undefined}
           maxLength={MAX_CALENDAR_LINK}
         />
@@ -1043,8 +1043,8 @@ function BinRowEditor({
   const everyLabel = `${uid}-every`;
   return (
     <div className="grid grid-cols-1 gap-3">
-      <Field label="Bin" required error={errors.name}>
-        <Input placeholder="Recycling" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
+      <Field label="Bin" required error={errors.name} errorClassName="text-bad">
+        <Input placeholder="Bin name" maxLength={MAX_NAME} value={row.name} onChange={(e) => onChange({ name: e.target.value })} />
       </Field>
       <div>
         <Label id={dayLabel}>
@@ -1057,7 +1057,7 @@ function BinRowEditor({
             </SegmentButton>
           ))}
         </div>
-        <p id={dayNote} className={errors.weekday ? "mt-1 text-[0.7rem] text-warn/80" : "mt-1 text-[0.7rem] text-ink-dim"}>
+        <p id={dayNote} className={errors.weekday ? "mt-1 text-[0.7rem] text-bad" : "mt-1 text-[0.7rem] text-ink-dim"}>
           {errors.weekday ?? "The day the truck comes."}
         </p>
       </div>
@@ -1073,6 +1073,7 @@ function BinRowEditor({
           label="A collection date"
           required
           error={errors.anchor}
+          errorClassName="text-bad"
           hint="Any past or coming date this bin is collected. It sets which week."
         >
           <Input type="date" min="2000-01-01" max="2099-12-31" value={row.anchor} onChange={(e) => onChange({ anchor: e.target.value })} />
@@ -1142,7 +1143,7 @@ export function BinNightCard({ data, mutate }: PanelProps) {
           <Plus size={13} /> Add a bin
         </Button>
       )}
-      {cardError && <p className="text-[0.7rem] text-warn/80">{cardError}</p>}
+      {cardError && <p className="text-[0.7rem] text-bad">{cardError}</p>}
       {data && <p className="text-[0.7rem] text-ink-dim">{preview}</p>}
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {stored ? (
