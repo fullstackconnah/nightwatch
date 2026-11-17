@@ -13,7 +13,7 @@
    SecretField. Each form reports its draft and last error upward
    (useFormReport) so the page head can name them. */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, RefreshCw, Save } from "lucide-react";
 import { WriteAction } from "@/components/strips/write-action";
@@ -29,6 +29,21 @@ import { ClearAction, SecretField, type SettingsFullResponse } from "@/component
 
 type Data = SettingsFullResponse | undefined;
 type Mutate = () => Promise<unknown>;
+
+const STEP_UP_STATUSES = [400, 403, 429];
+const NO_PASSWORD_WARNING = "No admin password is set, so changes here don't ask for one. Set ADMIN_PASSWORD_HASH to protect them.";
+
+/** The current password a save of sign-in settings must carry; the hint is the same line the Generate button points at. */
+function StepUpField({ value, onChange, inputRef, hint, hintId }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null>; hint: string; hintId: string }) {
+  return (
+    <div>
+      <Field label="Current password" required describedBy={hintId}>
+        <Input ref={inputRef} type="password" autoComplete="current-password" value={value} onChange={(e) => onChange(e.target.value)} />
+      </Field>
+      <p id={hintId} className="mt-1 text-[0.7rem] text-ink-faint">{hint}</p>
+    </div>
+  );
+}
 
 /** A subhead inside the Access detail; the first one has no rule above it. */
 function Sub({ title, badge, first, children }: { title: string; badge?: ReactNode; first?: boolean; children: ReactNode }) {
@@ -154,20 +169,34 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const [error, setError] = useState<string | null>(null);
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
+  const authConfigured = data?.meta.authConfigured ?? false;
+  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
   useFormReport("system", { dirty: Boolean(mcpDraft.trim() || pinDraft.trim()), error });
 
-  /** Throws on failure so the WriteAction frame shows the reason (K10: nothing is sent before Yes). */
+  /** A wrong password clears the field and puts the cursor back in it; 429 and 400 keep the text. */
+  function stepUpFailed(e: ApiError) {
+    setError(plainReason(e.message));
+    if (e.status === 403) {
+      setPassword("");
+      passwordRef.current?.focus();
+    }
+  }
+
+  /** Throws on failure so the WriteAction frame shows the reason (K10: nothing is sent before Yes). A step-up refusal goes to the footer instead: the cleared field disables Generate, which would drop a frame error. */
   async function generate() {
     setError(null);
     setSyncFailed(false);
     try {
-      const res = (await postJson("/api/settings/system", { generateMcpToken: true })) as { generatedMcpToken?: string; hermesSyncFailed?: boolean };
+      const res = (await postJson("/api/settings/system", { generateMcpToken: true, currentPassword: password })) as { generatedMcpToken?: string; hermesSyncFailed?: boolean };
       setSyncFailed(res.hermesSyncFailed === true);
       await mutate();
       setMcpDraft("");
       setSaveVersion((v) => v + 1);
       setRevealedToken(res.generatedMcpToken ?? null);
+      setPassword("");
     } catch (e) {
+      if (e instanceof ApiError && STEP_UP_STATUSES.includes(e.status)) return stepUpFailed(e);
       throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
   }
@@ -180,15 +209,18 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       const body: Record<string, unknown> = {};
       if (mcpDraft.trim()) body.mcpToken = mcpDraft.trim();
       if (pinDraft.trim()) body.kioskPin = pinDraft.trim();
+      body.currentPassword = password;
       const res = (await postJson("/api/settings/system", body)) as { hermesSyncFailed?: boolean } | undefined;
       setSyncFailed(res?.hermesSyncFailed === true);
       await mutate();
       setMcpDraft("");
       setPinDraft("");
       setRevealedToken(null);
+      setPassword("");
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
+      if (e instanceof ApiError && STEP_UP_STATUSES.includes(e.status)) stepUpFailed(e);
+      else setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
     }
@@ -215,6 +247,8 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
               yes="Yes, generate"
               flight="Generating…"
               failure="Couldn’t generate a token"
+              disabled={authConfigured && !password}
+              describedBy="system-step-up-hint"
               run={generate}
             />
           }
@@ -264,9 +298,14 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         {pinConfigured ? "Clear it and save to fall back to KIOSK_PIN in the environment." : "No PIN set — kiosk elevation stays locked until you save one."}
       </p>
 
+      {authConfigured && (
+        <StepUpField value={password} onChange={setPassword} inputRef={passwordRef} hintId="system-step-up-hint" hint="Needed to generate a token or save anything in this card." />
+      )}
+      {data && !authConfigured && <p className="text-[0.7rem] text-warn/80">{NO_PASSWORD_WARNING}</p>}
+
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
         {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-        <Button size="sm" disabled={saving || (!mcpDraft.trim() && !pinDraft.trim())} onClick={handleSave}>
+        <Button size="sm" disabled={saving || (!mcpDraft.trim() && !pinDraft.trim()) || (authConfigured && !password)} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
       </div>
@@ -448,6 +487,9 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const [saveVersion, setSaveVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const authConfigured = data?.meta.authConfigured ?? false;
+  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (data && !seeded) {
@@ -457,10 +499,10 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
     }
   }, [data, seeded]);
   const sys = data?.config.system;
-  useFormReport("sso", {
-    dirty: seeded && (issuer !== (sys?.oidcIssuer ?? "") || clientId !== (sys?.oidcClientId ?? "") || clientSecret !== ""),
-    error,
-  });
+  const dirty = seeded && (issuer !== (sys?.oidcIssuer ?? "") || clientId !== (sys?.oidcClientId ?? "") || clientSecret !== "");
+  // Only a pending change asks for the password; an untouched resend does not.
+  const askPassword = dirty && authConfigured;
+  useFormReport("sso", { dirty, error });
 
   async function handleSave() {
     setSaving(true);
@@ -468,13 +510,19 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
     try {
       const body: Record<string, unknown> = { oidcIssuer: issuer, oidcClientId: clientId };
       if (clientSecret.trim()) body.oidcClientSecret = clientSecret.trim();
+      if (askPassword) body.currentPassword = password;
       await postJson("/api/settings/system", body);
       await mutate();
       setSeeded(false);
       setClientSecret("");
+      setPassword("");
       setSaveVersion((v) => v + 1);
     } catch (e) {
       setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
+      if (e instanceof ApiError && e.status === 403) {
+        setPassword("");
+        passwordRef.current?.focus();
+      }
     } finally {
       setSaving(false);
     }
@@ -500,9 +548,13 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         draft={clientSecret}
         onDraftChange={setClientSecret}
       />
+      {askPassword && (
+        <StepUpField value={password} onChange={setPassword} inputRef={passwordRef} hintId="sso-step-up-hint" hint="Changing sign-in settings needs your current password." />
+      )}
+      {data && !authConfigured && <p className="text-[0.7rem] text-warn/80">{NO_PASSWORD_WARNING}</p>}
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
         {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-        <Button size="sm" disabled={saving} onClick={handleSave}>
+        <Button size="sm" disabled={saving || (askPassword && !password)} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
       </div>

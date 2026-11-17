@@ -4,13 +4,9 @@ import { candidatePasswordHashes } from "@/lib/auth-server";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { epochOf, loadConfigForSave, readAuthStateForSave, saveAuthState, saveConfig, saveErrorText, type AppConfig, type AuthState } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
-import { matchesAny } from "@/lib/password-hash";
-import { createAttemptLimiter } from "@/lib/attempt-limiter";
+import { checkCurrentPassword, currentPasswordLimiter } from "@/lib/step-up";
 
 export const dynamic = "force-dynamic";
-
-// Same damper as login: the current-password check is otherwise a free bcrypt oracle.
-const limiter = createAttemptLimiter();
 
 // Auth: gated by src/middleware.ts, same as every other /api/* route — this
 // only rotates the password for the session that is already logged in.
@@ -59,18 +55,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Current password is required" }, { status: 400 });
   }
 
-  // Only a request that reaches the compare uses up an attempt; no await sits between this and matchesAny.
-  if (!limiter.attempt()) {
+  // One damper shared with the system route: the current-password check is otherwise a free bcrypt oracle.
+  const check = await checkCurrentPassword(currentPassword, candidates.map((c) => c.hash), {
+    limiter: currentPasswordLimiter,
+    compare: bcrypt.compare,
+  });
+  if (check === "limited") {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
-
-  const verified = await matchesAny(currentPassword, candidates.map((c) => c.hash), bcrypt.compare);
-  if (!verified) {
-    await new Promise((r) => setTimeout(r, 1000));
+  if (check !== "ok") {
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
   }
-
-  limiter.reset();
   const newHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
   const now = new Date().toISOString();
   let current: AppConfig;
