@@ -22,10 +22,9 @@ const BCRYPT_ROUNDS = 12;
 /**
  * The one writer of config.json's system.adminPasswordHash (GOAL A's
  * "Change password" flow). Requires the CURRENT password and verifies it
- * against candidatePasswordHashes() — the SAME both-sources check the login
- * route uses, so this can never be bypassed by a stale config value, and a
- * broken config hash can still be rotated as long as the env hash still
- * verifies. There is no "no current password" bootstrap path here: if
+ * against candidatePasswordHashes() — the SAME stored-hash-else-env choice the
+ * login route uses, so the password that signs in is the one that can be
+ * changed. There is no "no current password" bootstrap path here: if
  * nothing is configured yet (candidates.length === 0), the owner sets
  * ADMIN_PASSWORD_HASH once via the environment/CLI (see
  * `npm run hash-password`), then manages it here from then on — mirroring

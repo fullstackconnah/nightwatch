@@ -27,6 +27,11 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    # OIDC_ALLOWED_USERS=<your-oidc-sub>   # optional, see README "Single sign-on (OIDC)"
    ```
 
+   `ADMIN_PASSWORD_HASH` signs in only until a password is changed in Settings;
+   from then on the stored `system.adminPasswordHash` is the only one that
+   works. Forgotten it? Remove that key from the server's config file and the
+   `.env` hash signs in again.
+
    **Escape every `$` as `$$`.** Compose expands `$` sequences while parsing
    `.env`, so a raw bcrypt hash arrives at the container truncated (60 chars →
    38) and *every login fails even with the correct password* — with no error
@@ -79,6 +84,7 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    those two fields into the PC file. Never ship a file whose `sessionEpoch` is lower than the
    server's. Changing the password once after the copy only bumps the epoch relative to the shipped
    value, so old stolen sessions can stay valid until the counter passes the old server value.
+   A copied file without `adminPasswordHash` puts the `.env` password back in force.
 
    (uid 1000 = the `node` user in the container; the data dir must stay
    writable or Settings saves will fail.)

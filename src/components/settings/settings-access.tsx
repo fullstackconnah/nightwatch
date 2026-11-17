@@ -50,9 +50,8 @@ function AuthPanel({ data }: { data: Data }) {
         Checked against a bcrypt hash — either set once via{" "}
         <span className="font-mono text-accent">npm run hash-password -- &apos;pass&apos;</span> and{" "}
         <span className="font-mono">ADMIN_PASSWORD_HASH</span> in the compose file, or rotated any time
-        from the <span className="text-ink">Change password</span> form below. A config value set there
-        wins on login; the environment hash stays as a fallback, so a bad config value can never lock
-        you out as long as the env hash still verifies.
+        from the <span className="text-ink">Change password</span> form below. A password set there
+        replaces the one from the compose file, which then stops signing in.
       </p>
       <p>The dashboard should also sit behind an NPM access list — two layers, always.</p>
       {data && !data.meta.authConfigured && <p className="text-bad">No password is set, so login is disabled outside dev.</p>}
