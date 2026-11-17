@@ -567,14 +567,26 @@ export function saveAuthState(state: AuthState): void {
   }
 }
 
-/** At start: create auth.json from the config's epoch, only when the file is missing and that epoch is above 0. Never overwrites. */
+/**
+ * At start, once: when auth.json is missing or readable without v 2, write it with v 2, the higher epoch
+ * and the config's hash (if any); from then on the file owns the hash. A malformed or unreadable file is
+ * never overwritten (the strict read throws), and a v 2 file is never touched.
+ */
 export function seedAuthState(): void {
   try {
-    if (fs.statSync(authStatePath(), { throwIfNoEntry: false })) return;
-    const epoch = epochOf(loadConfig().system?.sessionEpoch);
-    if (epoch > 0) saveAuthState({ sessionEpoch: epoch, updatedAt: new Date().toISOString() });
+    const existing = readAuthStateForSave();
+    if (existing.v === 2) return;
+    const sys = loadConfig().system;
+    const hash = sys?.adminPasswordHash?.trim();
+    saveAuthState({
+      ...existing,
+      v: 2,
+      sessionEpoch: Math.max(epochOf(existing.sessionEpoch), epochOf(sys?.sessionEpoch)),
+      ...(hash ? { adminPasswordHash: hash } : {}),
+      updatedAt: new Date().toISOString(),
+    });
   } catch (e) {
-    console.error("[config] could not seed auth.json:", errCode(e));
+    console.error("[config] auth.json was not seeded:", errCode(e));
   }
 }
 

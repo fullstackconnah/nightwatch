@@ -15,7 +15,7 @@ import { mergeDashPut } from "@/lib/settings/dash-put";
 import { checkBaseVersion, dashVersions } from "@/lib/settings/dash-version";
 import { sanitizeConfig } from "@/lib/settings/public-config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
-import { candidatePasswordHashes } from "@/lib/auth-server";
+import { isPasswordConfigured } from "@/lib/auth-server";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { calendarMeta } from "@/lib/calendar-feed";
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       publicHost: publicHost(),
       dockgeUrl: dockgeUrl(),
       // Same answer as login: a stored hash replaces the env one (#266), blanks count as unset.
-      authConfigured: candidatePasswordHashes().length > 0,
+      authConfigured: isPasswordConfigured(),
       dataDir: process.env.DATA_DIR || "./data",
       hermesModelUpdatedAt: readHermesModelFile()?.updatedAt ?? null,
       // Surfaced on the Settings "System access" panel — never the token
