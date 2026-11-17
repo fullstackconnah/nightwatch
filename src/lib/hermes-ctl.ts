@@ -6,7 +6,7 @@ import type {
   HermesStatusOk,
   HermesStatusResponse,
 } from "@/lib/types/hermes";
-import { systemSetting } from "@/lib/config";
+import { secretForSettingUrl, systemSetting } from "@/lib/config";
 import { JOB_ID_RE, mapJobBody } from "@/lib/hermes-job-map";
 import { readCapped } from "@/lib/read-capped";
 
@@ -38,9 +38,9 @@ interface HermesCredentials {
   token: string;
 }
 
-function hermesCredentials(): HermesCredentials | null {
+export function hermesCredentials(): HermesCredentials | null {
   const url = systemSetting("hermesApiUrl", "HERMES_API_URL");
-  const token = systemSetting("hermesApiToken", "HERMES_API_TOKEN");
+  const token = secretForSettingUrl("hermesApiUrl", "HERMES_API_URL", "hermesApiToken", "HERMES_API_TOKEN");
   if (!url || !token) return null;
   return { url: url.replace(/\/+$/, ""), token };
 }
