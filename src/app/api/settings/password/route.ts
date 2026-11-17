@@ -4,6 +4,7 @@ import { candidatePasswordHashes } from "@/lib/auth-server";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { epochOf, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
+import { matchesAny } from "@/lib/password-hash";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
@@ -63,13 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
 
-  let verified = false;
-  for (const candidate of candidates) {
-    if (await bcrypt.compare(currentPassword, candidate.hash)) {
-      verified = true;
-      break;
-    }
-  }
+  const verified = await matchesAny(currentPassword, candidates.map((c) => c.hash), bcrypt.compare);
   if (!verified) {
     await new Promise((r) => setTimeout(r, 1000));
     return NextResponse.json({ error: "Current password is incorrect" }, { status: 401 });
