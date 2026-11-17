@@ -100,6 +100,17 @@ describe("hunt 64: config.json.bak last-good copy", () => {
       assert.match(readFileSync(file(), "utf8"), /after/);
     }
   });
+  it("hunt 71: an empty-object config.json beside a .bak refuses every save through the route path, and the .bak is untouched", () => {
+    config.saveConfig(withIcon("one"));
+    config.saveConfig(withIcon("two"));
+    const good = readFileSync(bak(), "utf8");
+    writeFileSync(file(), "{}");
+    for (let i = 0; i < 2; i++) {
+      assert.throws(() => config.saveConfig(config.loadConfigForSave()), { message: config.CONFIG_UNREADABLE });
+      assert.equal(readFileSync(bak(), "utf8"), good, `save ${i + 1}`);
+      assert.equal(readFileSync(file(), "utf8"), "{}", `file after save ${i + 1}`);
+    }
+  });
   it("a non-empty object config.json is still copied to .bak", () => {
     config.saveConfig(withIcon("one"));
     config.saveConfig(withIcon("two"));

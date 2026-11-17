@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { DATA_DIR_UNWRITABLE, configProblem, saveConfig } from "./config.ts";
+import { CONFIG_UNREADABLE, DATA_DIR_UNWRITABLE, configProblem, loadConfig, loadConfigForSave, saveConfig } from "./config.ts";
 import type { AppConfig } from "./config.ts";
 
 // Windows ignores POSIX mode bits, so the mode assertions only run on Linux (CI).
@@ -103,6 +103,41 @@ describe("configProblem", () => {
   });
   it("is null for an empty object", () => {
     put("config.json", "{}");
+    assert.equal(configProblem(), null);
+  });
+  it("reports an empty object beside a last-good copy as blank", () => {
+    put("config.json.bak", '{"widgets":[]}');
+    for (const body of ["{}", "{ }\n"]) {
+      put("config.json", body);
+      assert.equal(configProblem(), "blank", JSON.stringify(body));
+    }
+  });
+  it("an empty object beside a last-good copy: a strict read throws, a plain read gives defaults", () => {
+    put("config.json", "{}");
+    put("config.json.bak", '{"widgets":[]}');
+    assert.throws(() => loadConfigForSave(), { message: CONFIG_UNREADABLE });
+    assert.throws(() => loadConfigForSave(), { message: CONFIG_UNREADABLE }); // not cached after the first read
+    assert.doesNotThrow(() => loadConfig());
+    assert.equal(configProblem(), "blank");
+  });
+  it("an empty object with no last-good copy still saves over defaults", () => {
+    put("config.json", "{}");
+    assert.doesNotThrow(() => loadConfigForSave());
+    assert.equal(configProblem(), null);
+  });
+  it("an object with one key or more is not a problem, with or without a copy", () => {
+    put("config.json.bak", '{"widgets":[]}');
+    put("config.json", '{"system":{}}');
+    assert.doesNotThrow(() => loadConfigForSave());
+    assert.equal(configProblem(), null);
+  });
+  it("an empty object beside a copy clears once the file holds a real object", () => {
+    put("config.json", "{}");
+    put("config.json.bak", '{"widgets":[]}');
+    assert.equal(configProblem(), "blank");
+    put("config.json", '{"system":{}}');
+    utimesSync(join(dir, "config.json"), new Date(), new Date(Date.now() + 5000));
+    assert.doesNotThrow(() => loadConfigForSave());
     assert.equal(configProblem(), null);
   });
   it("clears once the file is fixed", () => {
