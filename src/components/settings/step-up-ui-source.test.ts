@@ -70,9 +70,9 @@ test("secrets that are not the login password opt out of autofill; step-up and c
   assert.equal(src.match(/autoComplete="new-password"/g)?.length, 2);
 });
 
-test("the kiosk PIN hint names no control the field lacks", () => {
-  assert.doesNotMatch(sys, /Clear it/);
-  assert.ok(sys.includes("Replace it to change the PIN; KIOSK_PIN in the environment applies only when none is saved."));
+test("the kiosk PIN hint names only controls the field has: Clear shows for a saved PIN, so only then does the hint say so", () => {
+  assert.ok(sys.includes("Replace it to change the PIN, or clear it. KIOSK_PIN in the environment applies only when none is saved."));
+  assert.match(sys, /pinSaved\s*\?\s*"Replace it to change the PIN, or clear it\./);
 });
 
 test("client.ts copies the route's step-up tag onto ApiError (dropping the third argument fails this)", () => {

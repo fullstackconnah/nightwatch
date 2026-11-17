@@ -19,7 +19,7 @@
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
  * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
- * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440).
+ * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440), stepup-pin-clear (1440), stepup-pin-clear-disabled (390), stepup-pin-clear-ask (both).
  */
 
 import { chromium } from "playwright";
@@ -684,6 +684,32 @@ await guarded("stepup", () =>
       await fontOf(c.locator("#system-step-up-hint"));
       await fits(page, "system-untouched", c, null);
       await cropEl(page, s, c, "stepup-system-untouched", false);
+      await page.close();
+    }
+    // Kiosk PIN Clear (saved PIN in the fixture): the trigger beside the label, disabled until the password is typed, the ask frame open.
+    // Numeric: height at or above the C12 floor (43.5 px at 390, the house Button tap minimum) and equal to Generate's (same WriteAction trigger); right edge inside the card (no sideways scroll).
+    {
+      const { page, sent } = await open();
+      const c = card(page, "System");
+      const clr = c.getByRole("button", { name: "Clear kiosk PIN" });
+      const gen = c.getByRole("button", { name: "Generate", exact: true });
+      su("pin clear: one control, disabled with an empty password", s.name, (await clr.count()) === 1 && (await clr.isDisabled()));
+      const b = await boxOf(clr), g = await boxOf(gen), box = await boxOf(c);
+      su("pin clear: control height meets the C12 tap floor and equals Generate's", s.name, (s.name !== "390" || b.h >= 43.5) && b.h === g.h);
+      su("pin clear: control inside the card, no sideways scroll", s.name, b.right <= box.right && (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)));
+      if (!desk) await cropEl(page, s, c, "stepup-pin-clear-disabled", false);
+      else await cropEl(page, s, c, "stepup-pin-clear", false);
+      await pw(c).fill("not-the-password");
+      su("pin clear: enabled once the password is typed", s.name, await clr.isEnabled());
+      await clr.click();
+      const yes = c.getByRole("button", { name: "Yes, clear" });
+      await yes.waitFor({ timeout: SLOW });
+      const y = await boxOf(yes), ask = await boxOf(yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]"));
+      su("pin clear: ask frame states the consequence, Yes meets the C12 tap floor, frame inside the card", s.name, /KIOSK_PIN from the environment/.test(await c.innerText()) && (s.name !== "390" || y.h >= 43.5) && ask.right <= box.right);
+      await cropEl(page, s, c, "stepup-pin-clear-ask", false);
+      await yes.click();
+      await wrong(page, c, sent, "pin clear wrong");
+      su("pin clear wrong: the body held only clearKioskPin and the password", s.name, sent.length === 1 && JSON.stringify(Object.keys(JSON.parse(sent[0])).sort()) === JSON.stringify(["clearKioskPin", "currentPassword"]));
       await page.close();
     }
     if (desk) {

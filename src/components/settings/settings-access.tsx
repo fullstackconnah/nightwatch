@@ -160,6 +160,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
 function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const mcpConfigured = data?.system.mcpTokenConfigured ?? false;
   const pinConfigured = data?.system.kioskPinConfigured ?? false;
+  const pinSaved = data?.system.kioskPinSaved ?? false;
   const mcpEndpoint = data?.meta.mcpEndpoint;
   const updatedAt = data?.system.updatedAt;
 
@@ -195,6 +196,19 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       setMcpDraft("");
       setSaveVersion((v) => v + 1);
       setRevealedToken(res.generatedMcpToken ?? null);
+      setPassword("");
+    } catch (e) {
+      if (isStepUpRefusal(e)) return stepUpFailed(e);
+      throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
+    }
+  }
+
+  /** Throws on failure so the WriteAction frame shows the reason; a step-up refusal goes to the footer like Generate's. Sends only the clear: text typed in either field stays for Save. */
+  async function clearPin() {
+    setError(null);
+    try {
+      await postJson("/api/settings/system", { clearKioskPin: true, currentPassword: password });
+      await mutate();
       setPassword("");
     } catch (e) {
       if (isStepUpRefusal(e)) return stepUpFailed(e);
@@ -288,6 +302,18 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       <SecretField
         key={`pin-${saveVersion}`}
         label="Kiosk PIN"
+        action={
+          pinSaved && (
+            <ClearAction
+              ariaLabel="Clear kiosk PIN"
+              say="Removes the saved kiosk PIN. The kiosk then uses KIOSK_PIN from the environment if one is set, and stays locked if not."
+              failure="Couldn’t clear the PIN"
+              disabled={authConfigured && !password}
+              describedBy="system-step-up-hint"
+              run={clearPin}
+            />
+          )
+        }
         configured={pinConfigured}
         updatedAt={updatedAt}
         draft={pinDraft}
@@ -296,7 +322,11 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         describedBy="kiosk-pin-hint"
       />
       <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
-        {pinConfigured ? "Replace it to change the PIN; KIOSK_PIN in the environment applies only when none is saved." : "No PIN set — kiosk elevation stays locked until you save one."}
+        {pinSaved
+          ? "Replace it to change the PIN, or clear it. KIOSK_PIN in the environment applies only when none is saved."
+          : pinConfigured
+            ? "This PIN comes from KIOSK_PIN in the environment. A PIN saved here replaces it."
+            : "No PIN set — kiosk elevation stays locked until you save one."}
       </p>
 
       {authConfigured && (
