@@ -69,3 +69,39 @@ describe("oidcAllowDecision (logging)", () => {
     assert.deepEqual([warns, logs], [[], []]);
   });
 });
+
+describe("oidcAllowDecision with a config problem (blank-config guard)", () => {
+  let warns: string[];
+  let logs: string[];
+  beforeEach(() => {
+    resetOidcAllowWarning();
+    warns = [];
+    logs = [];
+  });
+  const sink = { warn: (m: string) => warns.push(m), error: (m: string) => logs.push(m) };
+
+  for (const problem of ["blank", "unreadable", "unreadable-no-copy"]) {
+    it(`an empty list refuses when the config is ${problem}, logging the problem and the env name, no open warning`, () => {
+      assert.equal(oidcAllowDecision({ sub: "x" }, undefined, sink, problem), false);
+      assert.equal(oidcAllowDecision({ sub: "x" }, " , ", sink, problem), false);
+      assert.deepEqual(warns, []);
+      assert.equal(logs.length, 2);
+      assert.ok(logs[0].includes(problem) && logs[0].includes("OIDC_ALLOWED_USERS"));
+      assert.ok(!logs[0].includes("x\""), "no claims in the problem line");
+    });
+    it(`a list naming the account still admits it when the config is ${problem}`, () => {
+      assert.equal(oidcAllowDecision({ sub: "x" }, "x", sink, problem), true);
+      assert.deepEqual([warns, logs], [[], []]);
+    });
+    it(`a list naming someone else still refuses with the normal line when the config is ${problem}`, () => {
+      assert.equal(oidcAllowDecision({ sub: "x" }, "y", sink, problem), false);
+      assert.equal(logs.length, 1);
+      assert.match(logs[0], /is not in the allow-list/);
+    });
+  }
+  it("no problem keeps an empty list open with the one warning (healthy, missing or fresh-install config)", () => {
+    assert.equal(oidcAllowDecision({ sub: "x" }, undefined, sink, null), true);
+    assert.equal(warns.length, 1);
+    assert.deepEqual(logs, []);
+  });
+});
