@@ -66,6 +66,14 @@ describe("POST /kiosk/api/climate-auto-off save limit", () => {
     assert.equal(res.status, 200);
   });
 
+  it("does not spend the limit on POSTs that change nothing", async () => {
+    // The first POST creates the stored record (a real save), so store it, then reset the count.
+    assert.equal((await post({ enabled: false })).status, 200);
+    resetAutoOffSaves();
+    for (let i = 0; i < 5; i++) assert.equal((await post({ enabled: false })).status, 200, `no-op ${i + 1}`);
+    for (let i = 0; i < 10; i++) assert.equal((await flip(i)).status, 200, `save ${i + 1}`);
+  });
+
   it("does not spend the limit on invalid patches", async () => {
     for (let i = 0; i < 3; i++) assert.equal((await post({ nope: 1 })).status, 400);
     for (let i = 0; i < 10; i++) assert.equal((await flip(i)).status, 200, `save ${i + 1}`);

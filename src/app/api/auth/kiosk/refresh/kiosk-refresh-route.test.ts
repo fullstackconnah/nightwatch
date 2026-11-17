@@ -72,7 +72,10 @@ describe("POST /api/auth/kiosk/refresh", () => {
   it("locks an unlocked kiosk once the PIN changes", async () => {
     const token = await createKioskElevationToken(sessionEpoch(), await kioskPinTag("123456"));
     process.env.KIOSK_PIN = "654321";
-    assert.deepEqual(await (await refresh(token)).json(), { elevated: false });
+    const res = await refresh(token);
+    assert.deepEqual(await res.json(), { elevated: false });
+    // The route does not clear the now-dead cookie here (only the no-PIN branch does); it just stops renewing it.
+    assert.equal(res.cookies.get(KIOSK_ELEVATION_COOKIE), undefined);
   });
 
   it("clears the cookie when no PIN is configured", async () => {

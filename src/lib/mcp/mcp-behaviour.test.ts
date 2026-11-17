@@ -176,4 +176,16 @@ describe("POST /api/mcp", () => {
     assert.equal((await post(`[${ping}]`, auth)).status, 400);
     assert.equal((await post("{not json", auth)).status, 400);
   });
+
+  // The cap runs after auth, so these carry a valid token: only the cap can refuse them.
+  it("answers 411 with no Content-Length and 413 one byte over the 256 KB cap, with a valid token", async () => {
+    process.env.MCP_TOKEN = "test-only-mcp-token";
+    const auth = { authorization: "Bearer test-only-mcp-token" };
+    const url = "http://localhost/api/mcp";
+    const missing = await route.POST(new NextRequest(url, { method: "POST", body: ping, headers: auth }));
+    assert.equal(missing.status, 411);
+    const over = await post(ping, { ...auth, "content-length": String(256 * 1024 + 1) });
+    assert.equal(over.status, 413);
+    assert.equal((await over.json()).error.code, JSON_RPC_ERROR_CODES.INVALID_REQUEST);
+  });
 });

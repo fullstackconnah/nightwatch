@@ -65,5 +65,18 @@ for (const r of ROUTES) {
       }));
       assert.equal(res.status, 413);
     });
+
+    // Every handler refuses a non-JSON body (400, or 401 for auth) before it saves or sends anything.
+    it(`lets a Content-Length of exactly ${r.cap / KB} KB through the cap (the boundary is > not >=)`, async () => {
+      const { POST } = await r.load();
+      const res = await POST(new NextRequest(`http://localhost${r.url}`, {
+        method: "POST",
+        body: NOT_JSON,
+        headers: { "content-length": String(r.cap) },
+      }));
+      assert.notEqual(res.status, 411);
+      assert.notEqual(res.status, 413);
+      assert.ok([400, 401].includes(res.status), `status ${res.status}`);
+    });
   });
 }
