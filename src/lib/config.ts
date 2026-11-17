@@ -272,14 +272,28 @@ function logFallback(cause: unknown): void {
   console.error("[config] config.json could not be read; using defaults until it is fixed", cause);
 }
 
+/** Why the last readConfig fell back to defaults, or null when it read the file (or there is none to read). */
+let lastProblem: "blank" | "unreadable" | null = null;
+
+/** statSync with throwIfNoEntry, never existsSync: Node 22 on Windows leaks native memory per existing path. */
+function lastGoodExists(): boolean {
+  try {
+    return fs.statSync(backupPath(), { throwIfNoEntry: false }) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 function readConfig(strict: boolean): AppConfig {
+  lastProblem = null;
   try {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const text = fs.readFileSync(configPath(), "utf8");
     if (!text.trim()) {
       // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults.
-      if (fs.statSync(backupPath(), { throwIfNoEntry: false })) {
+      if (lastGoodExists()) {
+        lastProblem = "blank";
         if (strict) throw new Error(CONFIG_UNREADABLE);
         logFallback("config.json is empty and a last-good copy is at data/config.json.bak");
       }
@@ -287,6 +301,7 @@ function readConfig(strict: boolean): AppConfig {
     }
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      lastProblem = "unreadable";
       if (strict) throw new Error("config.json is not an object");
       logFallback("config.json is not an object");
       return DEFAULT_CONFIG; // never cached, so a later strict read re-reads the file and refuses
@@ -296,6 +311,7 @@ function readConfig(strict: boolean): AppConfig {
     cache = { mtimeMs: stat.mtimeMs, config };
     return config;
   } catch (e) {
+    lastProblem = (e as NodeJS.ErrnoException).code === "ENOENT" ? null : lastProblem ?? "unreadable";
     // A save must never build on defaults it fell back to: only a missing file (first run) is safe.
     if (strict && (e as NodeJS.ErrnoException).code !== "ENOENT") {
       console.error("config read for save failed:", errCode(e));
@@ -306,7 +322,16 @@ function readConfig(strict: boolean): AppConfig {
   }
 }
 
-export const CONFIG_UNREADABLE = "Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
+export type ConfigProblem = "blank" | "unreadable" | "unreadable-no-copy";
+
+/** Why config.json is being ignored right now (the Settings notice), or null. Read-only: never throws, writes nothing. */
+export function configProblem(): ConfigProblem | null {
+  readConfig(false);
+  if (lastProblem === "unreadable") return lastGoodExists() ? "unreadable" : "unreadable-no-copy";
+  return lastProblem;
+}
+
+export const CONFIG_UNREADABLE ="Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
 
 export function loadConfig(): AppConfig {
   return readConfig(false);

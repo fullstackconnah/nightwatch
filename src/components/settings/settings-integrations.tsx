@@ -26,7 +26,7 @@ import { relativeTime } from "@/lib/format";
 import { DAY_NAMES, MAX_BINS, MAX_NAME, binLine, checkBins, nextBinNight, nightLabel, type BinsConfig } from "@/lib/bin-night";
 import { localDateString } from "@/lib/local-time";
 import { checkRestoreDate, drillAge, drillAgeText, drillDateText, validStoredDrill } from "@/lib/backup-status";
-import type { AppConfig } from "@/lib/config";
+import type { AppConfig, ConfigProblem } from "@/lib/config";
 import { plainReason } from "@/lib/settings/page-model";
 import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar-status";
 import { MAX_CALENDAR_LINK } from "@/lib/settings-checks";
@@ -66,6 +66,8 @@ export interface SettingsFullResponse {
     outsideCheckConfigured?: boolean;
     ssoConfigured?: boolean;
     ssoIssuerHost?: string | null;
+    /** Set when data/config.json could not be read, so the page is showing defaults. */
+    configProblem?: ConfigProblem | null;
   };
   integrations: {
     homeassistant: IntegrationStatus;
