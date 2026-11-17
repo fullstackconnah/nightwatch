@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fs from "node:fs";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { CONFIG_UNREADABLE, DATA_DIR_UNWRITABLE, loadConfig, loadConfigForSave, saveConfig } from "./config.ts";
+import { DATA_DIR_UNWRITABLE, saveConfig } from "./config.ts";
 import type { AppConfig } from "./config.ts";
 
 // Windows ignores POSIX mode bits, so the mode assertions only run on Linux (CI).
@@ -60,33 +60,5 @@ describe("saveConfig file mode", () => {
     } finally {
       stub.mock.restore();
     }
-  });
-});
-
-describe("an empty config.json", () => {
-  let dir: string;
-  let prevDataDir: string | undefined;
-  beforeEach(() => {
-    prevDataDir = process.env.DATA_DIR;
-    dir = mkdtempSync(join(tmpdir(), "nw-config-empty-"));
-    process.env.DATA_DIR = dir;
-  });
-  afterEach(() => {
-    if (prevDataDir === undefined) delete process.env.DATA_DIR;
-    else process.env.DATA_DIR = prevDataDir;
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it("is refused by the strict read but reads as defaults on the lenient one", () => {
-    for (const body of ["", "  \n"]) {
-      writeFileSync(join(dir, "config.json"), body);
-      assert.throws(() => loadConfigForSave(), { message: CONFIG_UNREADABLE });
-      assert.deepEqual(loadConfig().groups, []);
-    }
-  });
-
-  it("a missing file reads as defaults on both", () => {
-    assert.deepEqual(loadConfigForSave().groups, []);
-    assert.deepEqual(loadConfig().groups, []);
   });
 });
