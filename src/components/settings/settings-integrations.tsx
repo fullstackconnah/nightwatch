@@ -201,6 +201,7 @@ export function SecretField({
           <div
             role="group"
             aria-labelledby={label ? labelId : undefined}
+            aria-describedby={describedBy}
             className="h-11 md:h-8 flex-1 min-w-0 flex items-center rounded-md border border-line bg-bg px-2.5 font-mono text-sm md:text-xs text-ink-faint tracking-widest"
           >
             <span aria-hidden="true">••••••••••••</span>
