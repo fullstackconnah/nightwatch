@@ -37,5 +37,5 @@ export function mapJobBody(raw: unknown): HermesJob {
   };
 }
 
-/** A daemon job id as a single URL path segment: no dots or slashes, so `..` cannot climb to the daemon root. */
-export const JOB_ID_RE = /^[\w-]{1,64}$/;
+/** A daemon job id as one URL path segment (sent through encodeURIComponent): no slashes or `%`, and not only dots, so `..` cannot climb to the daemon root. */
+export const JOB_ID_RE = /^(?!\.+$)[\w.:-]{1,128}$/;

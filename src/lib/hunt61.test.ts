@@ -60,8 +60,8 @@ describe("hunt 61: tailLogBytes", () => {
 
 describe("hunt 61: hermes job id", () => {
   it("accepts ids and rejects traversal", () => {
-    for (const ok of ["job-1", "abc_DEF-123", "a".repeat(64)]) assert.ok(JOB_ID_RE.test(ok), ok);
-    for (const bad of ["..", ".", "a/b", "", "a".repeat(65), "a b", "a.b"]) assert.ok(!JOB_ID_RE.test(bad), bad);
+    for (const ok of ["job-1", "abc_DEF-123", "a".repeat(128)]) assert.ok(JOB_ID_RE.test(ok), ok);
+    for (const bad of ["..", ".", "a/b", "", "a".repeat(129), "a b"]) assert.ok(!JOB_ID_RE.test(bad), bad);
   });
   it("the jobs route rejects before any outbound call", () => {
     const s = src("src/app/api/hermes-ctl/jobs/[id]/route.ts");
@@ -108,5 +108,23 @@ describe("hunt 61: source guards", () => {
   it("MCP logs are byte-capped before redaction", () => {
     const s = src("src/lib/mcp/resources.ts");
     assert.match(s, /redactLogText\(tailLogBytes\(/);
+  });
+});
+
+describe("hunt 61 fix 1", () => {
+  for (const h of ["Authorization", "Proxy-Authorization"]) {
+    it(`masks Basic in ${h}`, () => assert.ok(!redactLogText(`${h}: Basic dXNlcjpwYXNz`).includes("dXNlcjpwYXNz")));
+  }
+  it("Bearer unchanged, Basic prose unchanged", () => {
+    assert.equal(redactLogText("Bearer abc123def"), "Bearer ***");
+    assert.equal(redactLogText("Basic settings loaded"), "Basic settings loaded");
+  });
+  it("tailLogBytes returns only the marker for one huge line", () => {
+    assert.equal(tailLogBytes("x".repeat(300 * 1024), 1024), "[earlier output dropped]\n");
+    assert.equal(tailLogBytes("a\nb\nc\n", 4), "[earlier output dropped]\nc\n");
+  });
+  it("job id pattern", () => {
+    for (const ok of ["job-1", "j1", "run_2026-11-17T10:00:00.000Z", "a.b", "a".repeat(128)]) assert.ok(JOB_ID_RE.test(ok), ok);
+    for (const bad of [".", "..", "a/b", "a%2Fb", "a b", "", "a".repeat(129), "a\\b", "a?b", "a#b"]) assert.ok(!JOB_ID_RE.test(bad), bad);
   });
 });
