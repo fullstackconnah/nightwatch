@@ -52,6 +52,22 @@ describe("hunt 64: config.json.bak last-good copy", () => {
     assert.match(readFileSync(bak(), "utf8"), /recognisable/);
     assert.equal(statSync(file()).size, 0);
   });
+  it("a blanked config.json with a .bak logs once, not on every read", () => {
+    config.saveConfig(withIcon("one"));
+    config.saveConfig(withIcon("two"));
+    truncateSync(file(), 0);
+    utimesSync(file(), new Date(), new Date(Date.now() + 987654)); // a unique mtime, so an earlier test's logged version cannot hide the line
+    const lines: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      for (let i = 0; i < 5; i++) config.loadConfig();
+    } finally {
+      console.error = orig;
+    }
+    assert.equal(lines.length, 1, lines.join(" | "));
+    assert.match(lines[0], /config.json.bak/);
+  });
   it("a blank file with no .bak is a fresh install: strict read returns defaults and a save works", () => {
     writeFileSync(file(), "");
     assert.deepEqual(config.loadConfigForSave().widgets, []);

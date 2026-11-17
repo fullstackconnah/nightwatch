@@ -280,9 +280,8 @@ function readConfig(strict: boolean): AppConfig {
     if (!text.trim()) {
       // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults.
       if (fs.existsSync(backupPath())) {
-        console.error("[config] config.json is empty and a last-good copy is at data/config.json.bak");
         if (strict) throw new Error(CONFIG_UNREADABLE);
-        logFallback("config.json is empty");
+        logFallback("config.json is empty and a last-good copy is at data/config.json.bak");
       }
       return DEFAULT_CONFIG;
     }
