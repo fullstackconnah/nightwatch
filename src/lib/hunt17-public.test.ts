@@ -46,5 +46,5 @@ test("auto-off skips a save that changes nothing", () => {
 });
 
 test("auto-off route skips saveConfig through the helper", () => {
-  assert.match(src("kiosk/api/climate-auto-off/route.ts"), /^\s+if \(!autoOffUnchanged\(prev, next\)\) saveConfig/m);
+  assert.match(src("kiosk/api/climate-auto-off/route.ts"), /^\s+if \(!autoOffUnchanged\(prev, next\)\) \{[\s\S]*?\n\s+saveConfig\(/m);
 });
