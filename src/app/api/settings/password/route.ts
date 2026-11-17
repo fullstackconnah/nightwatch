@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
-import { epochOf, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { epochOf, loadConfigForSave, readAuthStateForSave, saveAuthState, saveConfig, saveErrorText, type AppConfig, type AuthState } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
 import { matchesAny } from "@/lib/password-hash";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
@@ -74,17 +74,27 @@ export async function POST(req: NextRequest) {
   const newHash = bcrypt.hashSync(newPassword, BCRYPT_ROUNDS);
   const now = new Date().toISOString();
   let current: AppConfig;
+  let auth: AuthState;
   try {
     current = loadConfigForSave();
+    auth = readAuthStateForSave();
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
+  // The higher of both stores, so a stale config copy can never hand out an epoch an old session already holds.
+  const nextEpoch = Math.max(epochOf(auth.sessionEpoch), epochOf(current.system?.sessionEpoch)) + 1;
   const next: AppConfig = {
     ...current,
-    // Same save as the hash: every session minted before this change stops verifying.
-    system: { ...current.system, adminPasswordHash: newHash, sessionEpoch: epochOf(current.system?.sessionEpoch) + 1, updatedAt: now },
+    system: { ...current.system, adminPasswordHash: newHash, sessionEpoch: nextEpoch, updatedAt: now },
   };
 
+  // auth.json first: it is what revokes. A crash between the two writes leaves the epoch raised and the old password (safe side).
+  try {
+    saveAuthState({ ...auth, sessionEpoch: nextEpoch, updatedAt: now });
+  } catch (e) {
+    console.error("settings/password save auth state", e);
+    return NextResponse.json({ error: saveErrorText(e) }, { status: 500 });
+  }
   try {
     saveConfig(next);
   } catch (e) {
@@ -98,7 +108,7 @@ export async function POST(req: NextRequest) {
   const res = NextResponse.json({ ok: true, updatedAt: now });
   // The changing browser would otherwise be signed out by its own change; if minting fails the password is saved, sign in again.
   try {
-    res.cookies.set(SESSION_COOKIE, await createSessionToken(epochOf(next.system?.sessionEpoch)), sessionCookieOptions(isSecureRequest(req)));
+    res.cookies.set(SESSION_COOKIE, await createSessionToken(epochOf(nextEpoch)), sessionCookieOptions(isSecureRequest(req)));
   } catch (e) {
     console.error("settings/password re-issue session", e);
   }

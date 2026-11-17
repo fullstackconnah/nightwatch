@@ -79,6 +79,9 @@ route. The socket proxy never exposes `EXEC`, so the app cannot shell into
 containers even if compromised. Changing the password in Settings signs out
 every other login session (the browser that changed it stays signed in). A wall kiosk
 unlocked with its PIN stays unlocked until that unlock lapses, and the MCP token is not changed.
+The sign-out counter lives in its own file, `data/auth.json`, so copying a config
+file over the server's cannot undo a sign-out. The copy still replaces the stored password until a later
+change; see DEPLOY.md. Don't copy `auth.json`; deleting it is the reset (the counter then restarts from the config's value).
 The password set in Settings replaces the one in `.env`: once it is stored, only
 it signs in, and `ADMIN_PASSWORD_HASH` counts only until then (first setup).
 Forgotten it? On the server, remove `system.adminPasswordHash` from the stored

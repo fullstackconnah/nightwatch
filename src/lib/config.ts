@@ -498,9 +498,89 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
 /** A stored epoch: a non-negative safe integer, else 0 (a malformed counter un-revokes, never locks anyone out). */
 export const epochOf = (v: unknown): number => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
 
-/** Current session epoch; an mtime-cached read, so cheap per request. */
+/**
+ * Sign-out state, kept in its own file: the documented deploy step copies a config.json over the
+ * server's, which can lower a counter stored there. Nothing copies auth.json.
+ */
+export type AuthState = { sessionEpoch?: number; updatedAt?: string; [key: string]: unknown };
+
+export const AUTH_STATE_UNREADABLE = "Couldn't read the saved sign-in state, so nothing was saved. Check data/auth.json.";
+
+function authStatePath(): string {
+  return path.join(dataDir(), "auth.json");
+}
+
+// Keyed by path as well as mtime: the last good state is only ever served for the file it came from.
+let authCache: { file: string; mtimeMs: number; state: AuthState } | null = null;
+let authFailedAt: { file: string; mtimeMs: number } | null = null;
+
+/** Missing file: {}. Unreadable or malformed: strict throws, else the last good state (or {}), logged once per mtime. */
+function readAuthState(strict: boolean): AuthState {
+  const file = authStatePath();
+  const lastGood = authCache?.file === file ? authCache.state : {};
+  let mtimeMs: number | undefined;
+  try {
+    const stat = fs.statSync(file, { throwIfNoEntry: false });
+    if (!stat) return {};
+    mtimeMs = stat.mtimeMs;
+    if (authCache?.file === file && authCache.mtimeMs === mtimeMs) return authCache.state;
+    if (!strict && authFailedAt?.file === file && authFailedAt.mtimeMs === mtimeMs) return lastGood;
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("auth.json is not an object");
+    authCache = { file, mtimeMs, state: parsed };
+    return parsed;
+  } catch (e) {
+    if (strict) {
+      console.error("auth state read for save failed:", errCode(e));
+      throw new Error(AUTH_STATE_UNREADABLE);
+    }
+    if (mtimeMs !== undefined) {
+      authFailedAt = { file, mtimeMs };
+      console.error("[config] auth.json could not be read; using the last good value or the config's until it is fixed:", errCode(e));
+    }
+    return lastGood;
+  }
+}
+
+export function loadAuthState(): AuthState {
+  return readAuthState(false);
+}
+
+/** For the password change: throws AUTH_STATE_UNREADABLE instead of writing over a file it cannot read. */
+export function readAuthStateForSave(): AuthState {
+  return readAuthState(true);
+}
+
+export function saveAuthState(state: AuthState): void {
+  const file = authStatePath();
+  authCache = null;
+  try {
+    writeJsonAtomic(file, state, 0o600);
+  } catch (e) {
+    throw mapWriteError(e);
+  }
+  // Keep what was just written as the last good state; a failed stat just leaves the cache empty.
+  try {
+    authCache = { file, mtimeMs: fs.statSync(file).mtimeMs, state };
+  } catch {
+    /* best effort */
+  }
+}
+
+/** At start: create auth.json from the config's epoch, only when the file is missing and that epoch is above 0. Never overwrites. */
+export function seedAuthState(): void {
+  try {
+    if (fs.statSync(authStatePath(), { throwIfNoEntry: false })) return;
+    const epoch = epochOf(loadConfig().system?.sessionEpoch);
+    if (epoch > 0) saveAuthState({ sessionEpoch: epoch, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    console.error("[config] could not seed auth.json:", errCode(e));
+  }
+}
+
+/** Current session epoch: the higher of auth.json's and the config's; both mtime-cached, so cheap per request. */
 export function sessionEpoch(): number {
-  return epochOf(loadConfig().system?.sessionEpoch);
+  return Math.max(epochOf(loadAuthState().sessionEpoch), epochOf(loadConfig().system?.sessionEpoch));
 }
 
 export function publicHost(): string {
