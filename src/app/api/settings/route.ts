@@ -19,7 +19,7 @@ import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { isPasswordConfigured } from "@/lib/auth-server";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { hermesCredentials } from "@/lib/hermes-ctl";
-import { orchestraCredentials } from "@/lib/orchestra";
+import { orchestraCredentials, orchestraTokenSet } from "@/lib/orchestra";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { calendarMeta } from "@/lib/calendar-feed";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
@@ -70,7 +70,7 @@ function systemMeta(config: AppConfig) {
     ),
     voiceConfigured: Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL")),
     orchestraConfigured: orchestraConfigured(),
-    orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN")),
+    orchestraTokenSet: orchestraTokenSet(),
     outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
     oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     updatedAt: config.system?.updatedAt,
@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
       // client secret is ever read for real. Host only, never the full
       // issuer URL or the secret, mirrors mcpEndpoint's "safe to show" bar.
       orchestraConfigured: orchestraConfigured(),
-      orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN")),
+      orchestraTokenSet: orchestraTokenSet(),
       outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
       ssoConfigured: oidcConfig() !== null,
       ssoIssuerHost: oidcIssuerHost(),

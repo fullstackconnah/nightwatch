@@ -33,6 +33,10 @@ export function orchestraCredentials(): OrchestraCredentials | null {
   return { url: url.replace(/\/+$/, ""), token };
 }
 
+/** Whether a token would actually be sent (an env token only counts for the env URL's origin). */
+export const orchestraTokenSet = (): boolean =>
+  Boolean(secretForSettingUrl("orchestraUrl", "ORCHESTRA_URL", "orchestraToken", "ORCHESTRA_TOKEN"));
+
 const UNCONFIGURED =
   "The orchestra service is not connected. Set ORCHESTRA_URL (the service's literal IP:port) and ORCHESTRA_TOKEN in the server environment.";
 

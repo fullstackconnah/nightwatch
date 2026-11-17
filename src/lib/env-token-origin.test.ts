@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
 import { saveConfig, secretForSettingUrl, systemSetting } from "./config.ts";
 import type { AppConfig } from "./config.ts";
-import { orchestraCredentials } from "./orchestra.ts";
+import { orchestraCredentials, orchestraTokenSet } from "./orchestra.ts";
 
 const ENV_KEYS = ["ORCHESTRA_URL", "ORCHESTRA_TOKEN", "HERMES_API_URL", "HERMES_API_TOKEN", "DATA_DIR"];
 const saved: Record<string, string | undefined> = {};
@@ -76,6 +76,46 @@ for (const c of cases) {
     });
   });
 }
+
+describe("orchestraTokenSet matches what orchestraCredentials would use", () => {
+  it("saved URL on another origin, token only in env: not set", () => {
+    process.env.ORCHESTRA_URL = "http://10.0.0.5:8001";
+    process.env.ORCHESTRA_TOKEN = "env-tok";
+    save({ orchestraUrl: "http://10.9.9.9:8001" });
+    assert.equal(orchestraTokenSet(), false);
+    assert.equal(orchestraCredentials(), null);
+  });
+
+  it("saved URL on the env URL's origin, token in env: set", () => {
+    process.env.ORCHESTRA_URL = "http://10.0.0.5:8001";
+    process.env.ORCHESTRA_TOKEN = "env-tok";
+    save({ orchestraUrl: "http://10.0.0.5:8001/x" });
+    assert.equal(orchestraTokenSet(), true);
+    assert.notEqual(orchestraCredentials(), null);
+  });
+
+  it("token saved in Settings, URL on another origin: set", () => {
+    process.env.ORCHESTRA_URL = "http://10.0.0.5:8001";
+    process.env.ORCHESTRA_TOKEN = "env-tok";
+    save({ orchestraUrl: "http://10.9.9.9:8001", orchestraToken: "saved-tok" });
+    assert.equal(orchestraTokenSet(), true);
+    assert.notEqual(orchestraCredentials(), null);
+  });
+});
+
+describe("settings replies use the origin-aware readers", () => {
+  const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+  const raw = /systemSetting\("orchestraToken"|systemSetting\("orchestraUrl"|systemSetting\("hermesApiToken"|systemSetting\("hermesApiUrl"/;
+  for (const [name, file] of [["GET /api/settings", "../app/api/settings/route.ts"], ["the system save reply", "../app/api/settings/system/route.ts"]]) {
+    it(`${name} reports hermes, orchestra and the token from the readers`, () => {
+      const src = read(file);
+      assert.doesNotMatch(src, raw);
+      assert.match(src, /orchestraTokenSet\(\)/);
+      assert.match(src, /hermesCredentials\(\)/);
+      assert.match(src, /orchestraCredentials\(\)/);
+    });
+  }
+});
 
 describe("hermes-ctl reads its token through the origin rule", () => {
   it("calls secretForSettingUrl for the token", () => {
