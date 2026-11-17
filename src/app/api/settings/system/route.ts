@@ -185,9 +185,9 @@ export async function POST(req: NextRequest) {
       limiter: currentPasswordLimiter,
       compare: bcrypt.compare,
     });
-    if (check === "missing") return NextResponse.json({ error: "Enter your current password to change this." }, { status: 400 });
-    if (check === "limited") return NextResponse.json({ error: "Too many attempts. Wait a minute and try again." }, { status: 429 });
-    if (check === "wrong") return NextResponse.json({ error: "Current password is incorrect." }, { status: 403 });
+    if (check === "missing") return NextResponse.json({ error: "Enter your current password to change this.", stepUp: "missing" }, { status: 400 });
+    if (check === "limited") return NextResponse.json({ error: "Too many attempts. Wait a minute and try again.", stepUp: "limited" }, { status: 429 });
+    if (check === "wrong") return NextResponse.json({ error: "Current password is incorrect.", stepUp: "wrong" }, { status: 403 });
   }
 
   const now = new Date().toISOString();

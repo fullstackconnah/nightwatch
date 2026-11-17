@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
+import { isStepUpRefusal } from "@/lib/api-error";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { plainReason } from "@/lib/settings/page-model";
 import { useFormReport } from "@/components/settings/form-report";
@@ -30,7 +31,6 @@ import { ClearAction, SecretField, type SettingsFullResponse } from "@/component
 type Data = SettingsFullResponse | undefined;
 type Mutate = () => Promise<unknown>;
 
-const STEP_UP_STATUSES = [400, 403, 429];
 const NO_PASSWORD_WARNING = "No admin password is set, so changes here don't ask for one. Set ADMIN_PASSWORD_HASH to protect them.";
 
 /** The current password a save of sign-in settings must carry; the hint is the same line the Generate button points at. */
@@ -117,7 +117,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
   return (
     <div className="space-y-3">
       <p className="text-[0.7rem] text-ink-dim">
-        Requires the current password. The new one is bcrypt-hashed and stored in config.json —
+        Requires the current password. The new one is bcrypt-hashed and stored on the server —
         nothing here is ever echoed back.
       </p>
       <Field label="Current password" required>
@@ -174,10 +174,10 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const passwordRef = useRef<HTMLInputElement>(null);
   useFormReport("system", { dirty: Boolean(mcpDraft.trim() || pinDraft.trim()), error });
 
-  /** A wrong password clears the field and puts the cursor back in it; 429 and 400 keep the text. */
+  /** A wrong password clears the field and puts the cursor back in it; a missing or rate-limited refusal keeps the text. */
   function stepUpFailed(e: ApiError) {
     setError(plainReason(e.message));
-    if (e.status === 403) {
+    if (e.stepUp === "wrong") {
       setPassword("");
       passwordRef.current?.focus();
     }
@@ -196,7 +196,7 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       setRevealedToken(res.generatedMcpToken ?? null);
       setPassword("");
     } catch (e) {
-      if (e instanceof ApiError && STEP_UP_STATUSES.includes(e.status)) return stepUpFailed(e);
+      if (isStepUpRefusal(e)) return stepUpFailed(e);
       throw new Error(e instanceof Error && e.message ? plainReason(e.message) : "no reason given");
     }
   }
@@ -219,7 +219,7 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       setPassword("");
       setSaveVersion((v) => v + 1);
     } catch (e) {
-      if (e instanceof ApiError && STEP_UP_STATUSES.includes(e.status)) stepUpFailed(e);
+      if (isStepUpRefusal(e)) stepUpFailed(e);
       else setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
       setSaving(false);
@@ -519,7 +519,7 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       setSaveVersion((v) => v + 1);
     } catch (e) {
       setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
-      if (e instanceof ApiError && e.status === 403) {
+      if (isStepUpRefusal(e) && e.stepUp === "wrong") {
         setPassword("");
         passwordRef.current?.focus();
       }

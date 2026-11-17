@@ -28,6 +28,12 @@ test("system route: wrong is 403, missing 400, locked 429, with the final copy, 
   assert.doesNotMatch(sys, /status: 401/);
 });
 
+test("system route: each step-up refusal carries its stepUp tag so the client can tell it from a middleware 403", () => {
+  assert.match(sys, /Current password is incorrect\.", stepUp: "wrong"/);
+  assert.match(sys, /Enter your current password to change this\.", stepUp: "missing"/);
+  assert.match(sys, /Too many attempts\. Wait a minute and try again\.", stepUp: "limited"/);
+});
+
 test("system route: a typed currentPassword that is not a string counts as missing", () => {
   assert.match(sys, /typeof body\.currentPassword === "string" \? body\.currentPassword : ""/);
 });

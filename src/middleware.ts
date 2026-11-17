@@ -58,7 +58,7 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Node runtime, not Edge: the session epoch is read from data/config.json (node:fs).
+  // Node runtime, not Edge: the session epoch is read from data/auth.json and its config.json mirror (node:fs).
   runtime: "nodejs",
   // Everything except static assets, and the Minecraft pack upload: Next 15.5
   // buffers (and truncates at 10 MB) the body of any matched path, but that

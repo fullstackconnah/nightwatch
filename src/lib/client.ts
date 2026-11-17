@@ -388,7 +388,7 @@ export async function postJson(url: string, body?: unknown, opts?: { own401?: bo
   });
   if (!opts?.own401) redirectOn401(res);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || `HTTP ${res.status}`, res.status);
+  if (!res.ok) throw new ApiError(data.error || `HTTP ${res.status}`, res.status, typeof data.stepUp === "string" ? data.stepUp : undefined);
   return data;
 }
 

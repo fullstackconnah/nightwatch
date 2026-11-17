@@ -32,11 +32,17 @@ test("SSO: the field shows only while a protected change is pending, and Save wa
   assert.match(sso, /disabled=\{saving \|\| \(askPassword && !password\)\}/);
 });
 
-test("a refusal goes to the footer: Generate does not rethrow a step-up status, 403 clears and focuses the field", () => {
-  assert.match(sys, /STEP_UP_STATUSES\.includes\(e\.status\)\) return stepUpFailed\(e\)/);
-  assert.match(sys, /e\.status === 403\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
-  assert.match(sso, /e\.status === 403\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
-  assert.match(src, /STEP_UP_STATUSES = \[400, 403, 429\]/);
+test("a refusal goes to the footer: only the route's step-up tag counts, so a middleware 403 or a field 400 takes the normal error path", () => {
+  assert.match(sys, /isStepUpRefusal\(e\)\) return stepUpFailed\(e\)/);
+  assert.match(sys, /isStepUpRefusal\(e\)\) stepUpFailed\(e\);\s*else setError/);
+  assert.match(sys, /e\.stepUp === "wrong"\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
+  assert.match(sso, /isStepUpRefusal\(e\) && e\.stepUp === "wrong"\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
+  assert.doesNotMatch(src, /STEP_UP_STATUSES|e\.status === 403/);
+});
+
+test("the password hint no longer names the config file", () => {
+  assert.ok(src.includes("stored on the server"));
+  assert.doesNotMatch(src, /stored in config\.json/);
 });
 
 test("the step-up input is the only one with current-password; only it carries the field, with the final copy", () => {

@@ -90,7 +90,9 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    Once `auth.json` has `"v": 2`, a copied config's `adminPasswordHash` is ignored: the password
    set in Settings stays in force. Settings still mirrors it into the config file, so a rollback to
    the previous image keeps the new password. To reset a forgotten one, set `adminPasswordHash`
-   to `""` in `auth.json` (keep `"v": 2`) and restart.
+   to `""` in `auth.json` (keep `"v": 2`) and restart. Check that the file is still valid JSON after
+   the edit: a file the server cannot read is ignored, so the older password in `config.json` applies
+   instead (the container log names the unreadable file once).
 
    After a rollback to an older image, a password changed there is only in the config. Before
    upgrading again, remove `"v": 2` from `data/auth.json` so the next start copies the config's
