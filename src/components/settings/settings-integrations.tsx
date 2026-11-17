@@ -231,6 +231,7 @@ export function SecretField({
           ref={inputRef}
           id={id}
           type="password"
+          autoComplete="off"
           className="flex-1"
           value={draft}
           disabled={disabled}

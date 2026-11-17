@@ -27,7 +27,7 @@ test("System: Generate and Save wait for the password; the hint is wired to Gene
 });
 
 test("SSO: the field shows only while a protected change is pending, and Save waits for it", () => {
-  assert.match(sso, /const askPassword = dirty && authConfigured;/);
+  assert.match(sso, /const askPassword = authConfigured && seeded && ssoStepUpPending\(\{ issuer, clientId, clientSecret \}, sys \?\? \{\}\);/);
   assert.match(sso, /\{askPassword && \(\s*<StepUpField/);
   assert.match(sso, /disabled=\{saving \|\| \(askPassword && !password\)\}/);
 });
@@ -57,5 +57,25 @@ test("numeric checks that need no browser: hint, warning and error lines share k
   assert.match(src, /<p id=\{hintId\} className="mt-1 text-\[0\.7rem\] text-ink-faint">/);
   assert.equal(src.match(/<p className="text-\[0\.7rem\] text-warn\/80">\{NO_PASSWORD_WARNING\}<\/p>/g)?.length, 2);
   for (const c of [sso, sys]) assert.match(c, /<span className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
-  assert.ok(!/(autoComplete="off"|data-1p-ignore)/.test(sso + sys), "autofill attributes are out of scope here");
+  assert.ok(!/data-1p-ignore/.test(sso + sys), "no password-manager vendor attributes");
+});
+
+test("secrets that are not the login password opt out of autofill; step-up and change-password keep theirs", () => {
+  const integ = readFileSync(new URL("./settings-integrations.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const field = integ.slice(integ.indexOf("export function SecretField("), integ.indexOf("export function ClearAction"));
+  assert.match(field, /type="password"\n\s+autoComplete="off"/);
+  assert.match(sso, /<Input autoComplete="off" placeholder="http:\/\/homelab\.local:9091"/);
+  assert.match(sso, /<Input autoComplete="off" placeholder="nightwatch"/);
+  assert.equal(src.match(/autoComplete="current-password"/g)?.length, 2);
+  assert.equal(src.match(/autoComplete="new-password"/g)?.length, 2);
+});
+
+test("the kiosk PIN hint names no control the field lacks", () => {
+  assert.doesNotMatch(sys, /Clear it/);
+  assert.ok(sys.includes("Replace it to change the PIN; KIOSK_PIN in the environment applies only when none is saved."));
+});
+
+test("client.ts copies the route's step-up tag onto ApiError (dropping the third argument fails this)", () => {
+  const client = readFileSync(new URL("../../lib/client.ts", import.meta.url), "utf8");
+  assert.match(client, /new ApiError\([^;]*typeof data\.stepUp === "string" \? data\.stepUp : undefined\)/);
 });
