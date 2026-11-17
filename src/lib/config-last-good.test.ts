@@ -89,4 +89,25 @@ describe("hunt 64: config.json.bak last-good copy", () => {
     config.saveConfig(withIcon("two"));
     assert.equal(statSync(bak()).mode & 0o777, 0o600);
   });
+  it("an empty-object config.json never replaces a good .bak, and the save still lands", () => {
+    config.saveConfig(withIcon("one"));
+    config.saveConfig(withIcon("two"));
+    const good = readFileSync(bak(), "utf8");
+    for (const body of ["{}", "{ }\n  \n"]) {
+      writeFileSync(file(), body);
+      config.saveConfig(withIcon("after"));
+      assert.equal(readFileSync(bak(), "utf8"), good, JSON.stringify(body));
+      assert.match(readFileSync(file(), "utf8"), /after/);
+    }
+  });
+  it("a non-empty object config.json is still copied to .bak", () => {
+    config.saveConfig(withIcon("one"));
+    config.saveConfig(withIcon("two"));
+    writeFileSync(file(), '{"groups":[]}');
+    config.saveConfig(withIcon("three"));
+    assert.equal(readFileSync(bak(), "utf8"), '{"groups":[]}');
+  });
+  it("the blank-file branch does not call existsSync (it leaks native memory on Node 22 for Windows)", () => {
+    assert.doesNotMatch(readFileSync(new URL("./config.ts", import.meta.url), "utf8"), /existsSync\(backupPath\(\)\)/);
+  });
 });
