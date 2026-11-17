@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { readFileSync } from "node:fs";
-import { saveConfig, secretForSettingUrl, systemSetting } from "./config.ts";
+import { saveConfig, secretForSettingUrl, systemSetting, systemSettingSaved } from "./config.ts";
 import type { AppConfig } from "./config.ts";
 import { orchestraCredentials, orchestraTokenSet } from "./orchestra.ts";
 
@@ -100,6 +100,31 @@ describe("orchestraTokenSet matches what orchestraCredentials would use", () => 
     save({ orchestraUrl: "http://10.9.9.9:8001", orchestraToken: "saved-tok" });
     assert.equal(orchestraTokenSet(), true);
     assert.notEqual(orchestraCredentials(), null);
+  });
+});
+
+describe("orchestraTokenSaved: Clear only does something for a token saved in Settings", () => {
+  it("token only in the environment: set, but not saved", () => {
+    process.env.ORCHESTRA_URL = "http://10.0.0.5:8001";
+    process.env.ORCHESTRA_TOKEN = "env-tok";
+    assert.equal(orchestraTokenSet(), true);
+    assert.equal(systemSettingSaved("orchestraToken"), false);
+  });
+
+  it("token saved in Settings: set and saved; a blank saved value is not saved", () => {
+    save({ orchestraUrl: "http://10.9.9.9:8001", orchestraToken: "saved-tok" });
+    assert.equal(orchestraTokenSet(), true);
+    assert.equal(systemSettingSaved("orchestraToken"), true);
+    save({ orchestraUrl: "http://10.9.9.9:8001", orchestraToken: "  " });
+    assert.equal(systemSettingSaved("orchestraToken"), false);
+  });
+
+  it("the settings reply sends it twice and the card's Clear reads it, while the field stays on orchestraTokenSet", () => {
+    const route = readFileSync(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
+    assert.equal(route.match(/orchestraTokenSaved: systemSettingSaved\("orchestraToken"\),/g)?.length, 2);
+    const card = readFileSync(new URL("../components/settings/settings-access.tsx", import.meta.url), "utf8");
+    assert.match(card, /\{data\?\.meta\.orchestraTokenSaved \? \(\s*<ClearAction/);
+    assert.match(card, /configured=\{Boolean\(data\?\.meta\.orchestraTokenSet\)\}/);
   });
 });
 

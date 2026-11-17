@@ -71,6 +71,7 @@ function systemMeta(config: AppConfig) {
     voiceConfigured: Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL")),
     orchestraConfigured: orchestraConfigured(),
     orchestraTokenSet: orchestraTokenSet(),
+    orchestraTokenSaved: systemSettingSaved("orchestraToken"),
     outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
     oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     updatedAt: config.system?.updatedAt,
@@ -135,6 +136,7 @@ export async function GET(req: NextRequest) {
       // issuer URL or the secret, mirrors mcpEndpoint's "safe to show" bar.
       orchestraConfigured: orchestraConfigured(),
       orchestraTokenSet: orchestraTokenSet(),
+      orchestraTokenSaved: systemSettingSaved("orchestraToken"),
       outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
       ssoConfigured: oidcConfig() !== null,
       ssoIssuerHost: oidcIssuerHost(),
