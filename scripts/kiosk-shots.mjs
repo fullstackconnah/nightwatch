@@ -975,6 +975,45 @@ const pbFonts = (fonts) => `localStorage.setItem("kiosk-fonts", ${JSON.stringify
 const pbHits = (a, b) => a && b && a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
 const PB_ALERT = { status: "attention", severity: "warn", headline: "Backup is late", detail: "Last run was two days ago.", action: "Check the backup job." };
 const PB_DL = (n) => ({ status: "ok", items: Array.from({ length: n }, (_, i) => ({ hash: `pb${i}`, name: `Download number ${i + 1}`, progress: 0.2 + (i % 5) / 10, dlspeed: 1_500_000, size: 4_000_000_000, eta: 900 + i })) });
+/** One read of an open corner tray (by dialog label), its anchor (by aria-label pattern), the forecast slot and every thermostat "+", in viewport px. */
+const pbTrayRead = (page, label, anchorSrc) => page.evaluate(([label, anchorSrc]) => {
+  const T = document.querySelector(`[role="dialog"][aria-label="${label}"]`);
+  if (!T) return null;
+  const box = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
+  const hit = (a, b) => a.left < b.right - 0.5 && a.right > b.left + 0.5 && a.top < b.bottom - 0.5 && a.bottom > b.top + 0.5;
+  const wrap = document.querySelector('div[data-rain-zone="corner"]:not([role])');
+  const cluster = [...(wrap?.querySelectorAll("button") ?? [])];
+  const anchor = cluster.find((b) => new RegExp(anchorSrc, "i").test(b.getAttribute("aria-label") ?? ""));
+  const t = box(T), scrolls = T.scrollHeight > T.clientHeight + 1;
+  let cut = null; // how far into the row crossing the visible bottom edge the cut falls (0.5 = through its middle)
+  if (scrolls) {
+    const y = t.top + T.clientTop + T.clientHeight;
+    const rows = [...T.children].map((c) => c.getBoundingClientRect());
+    const R = rows.find((r) => r.top < y && r.bottom > y);
+    cut = R ? (y - R.top) / R.height : -1;
+  }
+  const covered = [...document.querySelectorAll("button")].filter((b) => !T.contains(b) && !wrap?.contains(b) && hit(t, box(b))).map((b) => b.getAttribute("aria-label") ?? b.textContent.trim().slice(0, 24));
+  const name = T.querySelector(".truncate");
+  return {
+    vw: innerWidth, vh: innerHeight, T: t, B: box(anchor), S: box(document.querySelector('[data-testid="kiosk-forecast-slot"]')), scrolls, cut, covered,
+    cluster: cluster.map(box), plusBottoms: [...document.querySelectorAll('[aria-label^="Raise target temperature"]')].map((b) => box(b).bottom),
+    firstRowH: box(T.children[0])?.h ?? null, nameClipped: name ? name.scrollWidth > name.clientWidth : null,
+  };
+}, [label, anchorSrc]);
+/** Numeric checks 1, 2, 3, 5, 6 and 9 of the tray shape brief for one read; M1/M3 land in PB.reported. `glance`: the slot bound is a reading (M3), not a failure. */
+const pbTrayChecks = (tag, d, { glance = false, mustScroll = false } = {}) => {
+  if (!d?.T || !d.B) return pbRec(`${tag} tray and anchor found`, false, { tray: !!d?.T, anchor: !!d?.B });
+  pbRec(`${tag} 1rem above its button (B.top - T.bottom == 16)`, Math.abs(d.B.top - d.T.bottom - 16) <= 1, { gap: d.B.top - d.T.bottom });
+  pbRec(`${tag} right edge 20 from the viewport`, Math.abs(d.vw - d.T.right - 20) <= 1, { right: d.T.right, vw: d.vw });
+  const floor = Math.abs(d.B.top - 16 - d.T.top - 128) <= 1, clear = !!d.S && d.T.top >= d.S.bottom + 12 - 1;
+  if (glance) PB.reported[`${tag} M3 slot vs tray`] = { trayTop: d.T.top, slotBottom: d.S?.bottom ?? null, atFloor: floor, clear };
+  else pbRec(`${tag} top clears the forecast slot by 12 (or sits at the 128 px floor)`, clear || floor, { top: d.T.top, slotBottom: d.S?.bottom, floor });
+  pbRec(`${tag} covers neither cluster button`, d.cluster.every((b) => !pbHits(d.T, b)), { tray: d.T, cluster: d.cluster });
+  pbRec(`${tag} cluster buttons keep 56 px`, d.cluster.length > 0 && d.cluster.every((b) => Math.abs(b.h - 56) <= 0.5), { h: d.cluster.map((b) => b.h) });
+  if (mustScroll) pbRec(`${tag} scrolls inside (many rows)`, d.scrolls, { scrolls: d.scrolls });
+  if (d.scrolls) pbRec(`${tag} last visible row cut through its middle (0.4-0.6)`, d.cut >= 0.4 && d.cut <= 0.6, { cut: d.cut });
+  PB.reported[`${tag} M1 cover`] = { trayTop: d.T.top, maxPlusBottomPlus12: d.plusBottoms.length ? Math.max(...d.plusBottoms) + 12 : null, slotBottom: d.S?.bottom ?? null, firstRowH: d.firstRowH, coveredButtons: d.covered };
+};
 /** Shoot one element with 16 px of padding, clipped to the viewport (the acShot clip). */
 const pbShot = async (page, loc, name, pad = 16) => {
   const b = await loc.evaluate((el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight }; });
@@ -1165,6 +1204,74 @@ async function polishbShots() {
     await context.close();
   });
 
+  // tray cover (2026-11-17): the shared useTrayCap. Checks 1-3, 5, 6, 9 per read; M1 (what the tray covers at rest) and M3 (glance slot) are readings in PB.reported.
+  // Shots tray-6-full-1024, tray-6-full-1180, tray-1-full-1024, tray-glance-np-1024, alerts-10-full-1024, tray-longname-1024 (padded crops).
+  const openTray = async (page, name, dialog) => { await page.getByRole("button", { name }).click(); await seen(page, dialog, 5000); await page.waitForTimeout(700); };
+  for (const [tag, size, n] of [["tray-6-full-1024", SIZES[1], 6], ["tray-6-full-1180", { viewport: { width: 1180, height: 820 } }, 6], ["tray-many-full-1024", SIZES[1], 50]]) {
+    await pbRun(tag, async () => {
+      const { context, page } = await visit(FV_URL("sunroom", "standard"), { viewport: size.viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, routes: { "/kiosk/api/downloads": PB_DL(n), "/kiosk/api/attention": PB_ALERT } });
+      await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+      await page.waitForTimeout(600);
+      await openTray(page, /downloads in progress/i, '[role="dialog"][aria-label="Downloads"]');
+      pbTrayChecks(tag, await pbTrayRead(page, "Downloads", "download"), { mustScroll: n === 50 });
+      await pbShot(page, page.locator('[role="dialog"][aria-label="Downloads"]'), tag);
+      if (n === 50) { // D6: a tap on the tray body closes it, and the page behind did not scroll
+        const y0 = await page.evaluate(() => scrollY);
+        const t = await page.locator('[role="dialog"][aria-label="Downloads"]').boundingBox();
+        await page.mouse.click(t.x + t.width / 2, t.y + 24);
+        const closed = await page.locator('[role="dialog"][aria-label="Downloads"]').waitFor({ state: "detached", timeout: 3000 }).then(() => true, () => false);
+        pbRec("a tap on the downloads tray body closes it", closed && (await page.evaluate(() => scrollY)) === y0, { closed });
+      }
+      await context.close();
+    });
+  }
+  for (const [tag, n, items] of [["tray-1-full-1024", 1, PB_DL(1)], ["tray-3-full-1024", 3, PB_DL(3)], ["tray-longname-1024", 1, { status: "ok", items: [{ hash: "ln", name: "A".repeat(120) + ".mkv", progress: 0.4, dlspeed: 1_500_000, size: 4_000_000_000, eta: 900 }] }]]) {
+    await pbRun(tag, async () => {
+      const { context, page } = await visit(FV_URL("sunroom", "standard"), { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, routes: { "/kiosk/api/downloads": items, "/kiosk/api/attention": PB_ALERT } });
+      await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+      await page.waitForTimeout(600);
+      await openTray(page, /download/i, '[role="dialog"][aria-label="Downloads"]');
+      const d = await pbTrayRead(page, "Downloads", "download");
+      pbTrayChecks(tag, d);
+      pbRec(`${tag} no scroll when the rows fit`, d?.scrolls === false, { scrolls: d?.scrolls });
+      if (tag === "tray-longname-1024") pbRec("long name: one line with an ellipsis and the tray keeps min(320, vw - 32)", d?.nameClipped === true && Math.abs(d.T.w - Math.min(320, d.vw - 32)) <= 1, { clipped: d?.nameClipped, w: d?.T.w });
+      await pbShot(page, page.locator('[role="dialog"][aria-label="Downloads"]'), tag);
+      await context.close();
+    });
+  }
+  // Glance with the now-playing pill: the corner cluster lifts to 5.25rem (84) at every width (kiosk-surface.tsx data-lifted). One context per tray: a keydown (the old Escape) hands the surface to Full, which unmounts the pill and drops the lift.
+  for (const [tag, label, anchorSrc, btn] of [["tray-glance-np-1024", "Downloads", "download", /downloads in progress/i], ["alerts-glance-np-1024", "Alerts", "alert", /alert/i]]) {
+    await pbRun(tag, async () => {
+      const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, nowPlaying: true, routes: { "/kiosk/api/downloads": PB_DL(6), "/kiosk/api/attention": PB_ALERT } });
+      await seen(page, "[data-sr-np]", 15_000);
+      await page.waitForTimeout(800);
+      await openTray(page, btn, `[role="dialog"][aria-label="${label}"]`);
+      const d = await pbTrayRead(page, label, anchorSrc);
+      pbRec(`${tag} precondition: the pill plays and the cluster is lifted (button bottom == vh - 84)`, !!d?.B && Math.abs(d.vh - 84 - d.B.bottom) <= 1, { bottom: d?.B?.bottom, vh: d?.vh });
+      pbTrayChecks(tag, d, { glance: true });
+      if (label === "Downloads") await pbShot(page, page.locator('[role="dialog"][aria-label="Downloads"]'), tag);
+      await context.close();
+    });
+  }
+  await pbRun("alerts-10-full-1024", async () => { // M2: ten entries (the poll shows one condition at a time, so each focus-refetch adds one to the history)
+    let n = 0;
+    const { context, page } = await visit(FV_URL("sunroom", "standard"), {
+      viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: "ticking", ha: true, routes: { "/kiosk/api/downloads": { status: "unconfigured" } },
+      setup: (p) => p.route("**/kiosk/api/attention", (r) => r.fulfill({ json: { ...PB_ALERT, headline: `Backup is late ${++n}` } })),
+    });
+    await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
+    // fixedTime true freezes Date.now, so SWR's 5 s focus throttle swallowed every refetch after the first (rows: 1). A ticking clock, moved 6 s per focus, lets each one through.
+    for (let i = 0; i < 9; i++) { await page.clock.fastForward(6000); await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await page.waitForTimeout(400); }
+    await page.clock.fastForward(9000); // the last takeover (TAKEOVER_MS 8 s) minimises, so the button is clear
+    await page.waitForTimeout(800);
+    await openTray(page, /alert/i, '[role="dialog"][aria-label="Alerts"]');
+    const rows = await page.locator('[role="dialog"][aria-label="Alerts"]').evaluate((el) => el.children.length);
+    pbRec("alerts-10: the popover holds enough rows to scroll", rows >= 6, { rows });
+    pbTrayChecks("alerts-10-full-1024", await pbTrayRead(page, "Alerts", "alert"), { mustScroll: true });
+    await pbShot(page, page.locator('[role="dialog"][aria-label="Alerts"]'), "alerts-10-full-1024");
+    await context.close();
+  });
+
   // item 5: Glance at 390 px with the now-playing pill, plus the unchanged wide case
   for (const size of [{ name: "390x844", viewport: { width: 390, height: 844 } }, { name: "1024x768", viewport: SIZES[1].viewport }]) {
     await pbRun(`glance ${size.name}`, async () => {
@@ -1179,7 +1286,7 @@ async function polishbShots() {
       pbRec(`glance-${size.name} left controls present (Timers and a lamp)`, d.tiles.length >= 2, { tiles: d.tiles.map((t) => t.label) });
       pbRec(`glance-${size.name} no left control under the now-playing pill`, d.tiles.length > 0 && d.tiles.every((t) => !pbHits(t, d.pill)), { pill: d.pill, hits: d.tiles.filter((t) => pbHits(t, d.pill)).map((t) => t.label) });
       pbRec(`glance-${size.name} left controls clear of the centre column`, d.tiles.length > 0 && d.sentence.length > 0 && d.tiles.every((t) => d.sentence.every((s) => !pbHits(t, s))), { hits: d.tiles.filter((t) => d.sentence.some((s) => pbHits(t, s))).map((t) => t.label) });
-      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster unchanged (bottom 16 above the viewport edge)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 16 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
+      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster lifted with the pill (bottom 84 above the viewport edge, 5.25rem; #258)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 84 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
       await page.screenshot({ path: join(OUT_DIR, `polishb-glance-${size.name}.png`), fullPage: true });
       await context.close();
     });

@@ -146,7 +146,10 @@ test("polish B item 4: the downloads pill is 56 px like the alert pill, and the 
   const src = read("./kiosk-downloads.tsx");
   assert.match(src, /"flex h-14 min-w-14 [^"]*"/);
   assert.doesNotMatch(src, /min-h-14|py-2 text-ink-dim/);
-  assert.match(src, /node\.style\.maxHeight = [^\n]*Math\.max\(128, [^\n]*rail\.getBoundingClientRect\(\)\.bottom/);
+  const cap = read("./kiosk-tray-cap.ts");
+  assert.match(cap, /node\.style\.maxHeight = /);
+  assert.match(cap, /Math\.max\(MIN_CAP, vh - bottom - top\)/);
+  assert.match(cap, /slot\.getBoundingClientRect\(\)\.bottom \+ GAP_TO_SLOT/);
 });
 
 test("polish B item 5: below 641 px the bottom-left Glance cluster takes the lifted row the corner cluster uses", () => {
@@ -172,14 +175,51 @@ test("polish B item 7: the default marker is one text run with a space either si
   assert.doesNotMatch(src, />· default</);
 });
 
-test("hunt 54: the open downloads tray re-measures its cap when the forecast slot resizes or the window does, and cleans up", () => {
-  const src = read("./kiosk-downloads.tsx");
+test("hunt 54: the shared tray cap re-measures when the forecast slot resizes or the window does, and cleans up", () => {
+  const src = read("./kiosk-tray-cap.ts");
   assert.match(src, /new ResizeObserver\(cap\)/);
   assert.match(src, /\.observe\(slot\)/);
   assert.match(src, /addEventListener\("resize", cap\)/);
   assert.match(src, /ro\?\.disconnect\(\)/);
   assert.match(src, /removeEventListener\("resize", cap\)/);
-  assert.match(src, /: ""/); // rail gone: back to the class default max-h-[60vh]
   assert.doesNotMatch(src, /shortcut: no resize listener/);
   assert.match(read("./kiosk-surface.tsx"), /data-testid="kiosk-forecast-slot"/);
+});
+
+test("tray cap: measured against the always-mounted slot, never the rail that unmounts with the pane", () => {
+  const src = read("./kiosk-tray-cap.ts");
+  assert.match(src, /kiosk-forecast-slot/);
+  assert.doesNotMatch(src, /kiosk-forecast-rail/);
+});
+
+test("tray cap: the bottom follows the anchor button, 1rem above it, so a lifted button is never covered", () => {
+  const src = read("./kiosk-tray-cap.ts");
+  assert.match(src, /bottom = vh - anchor\.getBoundingClientRect\(\)\.top \+ GAP_TO_ANCHOR/);
+  assert.match(src, /node\.style\.bottom = `\$\{bottom\}px`/);
+  assert.match(src, /GAP_TO_ANCHOR = 16/);
+});
+
+test("tray cap: snaps to half a row and re-measures when the row count changes while open", () => {
+  const src = read("./kiosk-tray-cap.ts");
+  assert.match(src, /snapToHalfRow\(/);
+  assert.match(src, /\[open, rowCount, anchorRef, nodeRef\]/);
+});
+
+test("both corner trays use the shared cap, contain their overscroll", () => {
+  for (const f of ["./kiosk-downloads.tsx", "./kiosk-alerts.tsx"]) {
+    const src = read(f);
+    assert.match(src, /useTrayCap\(nodeRef, anchorRef, open, /, f);
+    assert.match(src, /overflow-y-auto overscroll-contain/, f);
+  }
+});
+
+test("downloads tray: a tap on its body closes it (rows are read-only); the stale comment is gone", () => {
+  const src = read("./kiosk-downloads.tsx");
+  assert.match(src, /onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onClose\(\);\s*\}\}/);
+  assert.doesNotMatch(src, /only\s+\/\/ closes on Escape or its own 20s timeout/);
+});
+
+test("alerts button: its pointerdown stops at the button, so a tap in lifted Glance neither promotes to Full nor drops the lift from under the finger", () => {
+  const src = read("./kiosk-alerts.tsx");
+  assert.match(src, /type="button"\s+onPointerDown=\{\(e\) => e\.stopPropagation\(\)\}\s+onClick=\{onPress\}/);
 });

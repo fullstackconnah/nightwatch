@@ -2,6 +2,7 @@
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { useTrayCap } from "@/components/kiosk/kiosk-tray-cap";
 import { useKioskTheme } from "@/components/kiosk/kiosk-theme";
 import { playChime, unlockAudio } from "@/lib/sunroom-overlays";
 
@@ -500,6 +501,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
     <button
       ref={setRefs}
       type="button"
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={onPress}
       aria-expanded={trayOpen}
       aria-label={
@@ -690,6 +692,9 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
     return () => document.removeEventListener("pointerdown", onDocPointerDown, true);
   }, [open, anchorRef, onClose]);
 
+  // Anchored 1rem above its button and one house gap below the forecast slot, last visible row cut through its middle (shared with the downloads tray).
+  useTrayCap(nodeRef, anchorRef, open, entries.length + resolved.length);
+
   // Slide+fade in, WAAPI so it can be skipped outright under reduced motion
   // rather than authoring a second no-motion CSS path for the same rule.
   useLayoutEffect(() => {
@@ -736,7 +741,7 @@ export function KioskAlertTray({ entries, resolved, open, onClose, onDismissAler
       onKeyDownCapture={resetAutoClose}
       data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(22rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto overscroll-contain p-2 outline-none"
     >
       {entries.map((entry, i) => (
         <AlertRow key={entry.id} entry={entry} ref={i === 0 ? firstRowRef : undefined} onDismiss={() => onDismissAlert(entry.id)} />
