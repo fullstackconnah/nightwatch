@@ -2,6 +2,7 @@
 
 import { KioskPortal } from "@/components/kiosk/kiosk-overlay-host";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
+import { useTrayCap } from "@/components/kiosk/kiosk-tray-cap";
 
 /* THESIS: qBittorrent downloads get the same button+tray shape as
    kiosk-alerts.tsx (fixed corner icon, badge, anchored non-modal popover) —
@@ -301,9 +302,8 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
     wasOpenRef.current = open;
   }, [open, anchorRef]);
 
-  // Explicit tap-outside close: unlike kiosk-alerts.tsx's tray (which only
-  // closes on Escape or its own 20s timeout), this one is specced to close
-  // immediately on an outside tap. A document-level listener rather than a
+  // Explicit tap-outside close, like kiosk-alerts.tsx's tray (which has its own
+  // capture-phase listener). A document-level listener rather than a
   // blur/focus trick, since a kiosk's fixed overlays sit outside any single
   // focus-trap boundary. Excludes the anchor button itself defensively —
   // in practice its own onPointerDown already stops propagation before this
@@ -321,26 +321,8 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
     return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, [open, anchorRef, onClose]);
 
-  // Keep the tray anchored to its pill but under the forecast rail: cap its height so its top sits one house gap (12 px) below the rail's bottom; it already scrolls inside.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const node = nodeRef.current;
-    if (!node) return;
-    const cap = () => {
-      const rail = document.querySelector('[data-testid="kiosk-forecast-rail"]');
-      node.style.maxHeight = rail ? `min(60vh, ${Math.max(128, node.getBoundingClientRect().bottom - rail.getBoundingClientRect().bottom - 12)}px)` : "";
-    };
-    cap();
-    // Re-measured while open: the slot grows when a late forecast mounts the rail and shrinks when it goes; the window resize covers a rotated kiosk.
-    const slot = document.querySelector('[data-testid="kiosk-forecast-slot"]');
-    const ro = slot ? new ResizeObserver(cap) : null;
-    if (slot) ro?.observe(slot);
-    window.addEventListener("resize", cap);
-    return () => {
-      ro?.disconnect();
-      window.removeEventListener("resize", cap);
-    };
-  }, [open]);
+  // Anchored 1rem above its pill and one house gap below the forecast slot, last visible row cut through its middle (shared with the alerts tray).
+  useTrayCap(nodeRef, anchorRef, open, items.length + Number(stale));
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -377,11 +359,15 @@ export function KioskDownloadsTray({ items, stale = false, open, onClose, anchor
         e.stopPropagation();
         resetAutoClose();
       }}
-      onClick={(e) => e.stopPropagation()}
+      // Rows are read-only, so a tap anywhere on the tray closes it: a tap aimed at a control the tray covers is not lost (a scroll fires no click).
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
       onKeyDownCapture={resetAutoClose}
       data-rain-zone="corner"
       data-sr-face="float"
-      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto p-2 outline-none"
+      className="fixed z-(--z-toast) bottom-[calc(5.5rem+env(safe-area-inset-bottom))] max-[640px]:bottom-[calc(9.75rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] panel w-[min(20rem,calc(100vw-2rem))] max-h-[60vh] overflow-y-auto overscroll-contain p-2 outline-none"
     >
       {stale && <div className="flex justify-end px-2 pb-1"><StaleTag /></div>}
       {items.map((item, i) => (
