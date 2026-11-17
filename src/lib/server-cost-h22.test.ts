@@ -92,7 +92,7 @@ describe("hunt 22 server cost", () => {
 
   it("assistant route checks content-length before req.json", () => {
     const src = read("../app/kiosk/api/assistant/route.ts");
-    const len = src.search(/^\s+const declared = Number\(req\.headers\.get\("content-length"\)\)/m);
+    const len = src.search(/^\s+const tooBig = contentLengthError\(req\.headers\.get\("content-length"\)/m);
     const json = src.search(/^\s+const raw = await req\.json\(\)/m);
     assert.ok(len > 0 && json > len);
   });

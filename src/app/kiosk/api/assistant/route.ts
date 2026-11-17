@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { getHaStates, getHiddenSettingsIds, performHaAction } from "@/lib/ha";
 import { kioskVoiceEntities } from "@/lib/ha-settings-entities";
 import { getHermesJob, runHermesJob } from "@/lib/hermes-ctl";
@@ -91,10 +92,10 @@ async function askHermes(question: string): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   try {
-    // Refuse a big body before Next buffers and parses it; a missing header falls through to the utterance check.
-    const declared = Number(req.headers.get("content-length"));
-    if (declared > MAX_BODY_BYTES) {
-      return reply({ ok: false, say: "That was a bit long for me.", kind: "unresolved" }, 400);
+    // Refuse a missing or big body before Next buffers and parses it (the client always sends a JSON string).
+    const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+    if (tooBig) {
+      return reply({ ok: false, say: tooBig.status === 411 ? "I didn't catch that." : "That was a bit long for me.", kind: "unresolved" }, tooBig.status);
     }
     const raw = await req.json().catch(() => null);
     const utterance = raw && typeof raw === "object" ? (raw as Record<string, unknown>).utterance : null;

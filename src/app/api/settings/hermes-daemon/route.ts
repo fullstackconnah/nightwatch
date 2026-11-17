@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { HERMES_SETTINGS_UNREADABLE, readHermesSettingsFileForSave, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
 import { budgetChangeError, discordChannelIdError, discordUserIdsError, modelNameError, webhookError } from "@/lib/settings-checks";
 
@@ -59,7 +60,11 @@ function intInRange(v: unknown, min: number, max: number): number | undefined | 
   return v;
 }
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   let body: Body;
   try {
     const parsed = await req.json();

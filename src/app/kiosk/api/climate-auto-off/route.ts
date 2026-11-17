@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
@@ -23,7 +24,11 @@ export async function GET() {
   return NextResponse.json(responseShape(loadConfig().climateAutoOff));
 }
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   const parsed = parseClimateAutoOffPatch(await req.json().catch(() => null));
   if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 

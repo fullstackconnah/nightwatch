@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { getHiddenSettingsIds, performHaAction } from "@/lib/ha";
 import { kioskActionRefusal } from "@/lib/ha-settings-entities";
 import type { HaActionRequest, HaActionResult } from "@/lib/types/ha";
@@ -167,7 +168,11 @@ function statusCodeFor(status: HaActionResult["status"]): number {
   }
 }
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   const raw = await req.json().catch(() => null);
   const parsed = parseBody(raw);
   if ("error" in parsed) return validationError(parsed.error);
