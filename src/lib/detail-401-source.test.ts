@@ -29,6 +29,19 @@ describe("401 goes to login in the plain fetches", () => {
   }
 });
 
+describe("401 goes to login in the shared POST and PUT helpers", () => {
+  for (const name of ["postJson", "putJson"]) {
+    it(`${name} calls redirectOn401`, () => {
+      const body = client.slice(client.indexOf(`export async function ${name}(`)).split(/\r?\n}\r?\n/)[0];
+      assert.match(body, /redirectOn401\(res\)/);
+    });
+  }
+  it("only the password post keeps its own 401 (wrong current password)", () => {
+    assert.match(client, /opts\?: \{ own401\?: boolean \}/);
+    assert.match(read("components/settings/settings-access.tsx"), /postJson\("\/api\/settings\/password",[^\n]*\{ own401: true \}\)/);
+  });
+});
+
 describe("env row control", () => {
   it("announces the error and keeps one width", () => {
     assert.match(page, /role="status"[^>]*>Couldn&apos;t load/);
