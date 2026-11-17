@@ -77,6 +77,12 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    copy is picked up without a restart, even with preserved times (`scp -p`). It would be missed
    only if the copy's modification time were exactly equal to the cached one.
 
+   Every save first copies the previous `data/config.json` to `data/config.json.bak` (0600). If
+   `config.json` is ever blank, saves are refused until it is restored with
+   `cp data/config.json.bak data/config.json` (no restart needed). Restore it, do not delete it:
+   a deleted file counts as a fresh install, and later saves replace the copy. For a deliberate
+   fresh start, remove both files.
+
    The sign-out counter lives in `data/auth.json`, a separate file this copy never touches, and the
    app uses the higher of that value and the config's. So the copy cannot sign anyone back in,
    whatever `system.sessionEpoch` the PC file holds. Do not copy or delete `auth.json`: after a delete

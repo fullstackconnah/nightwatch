@@ -246,6 +246,10 @@ function configPath(): string {
   return path.join(dataDir(), "config.json");
 }
 
+function backupPath(): string {
+  return configPath() + ".bak";
+}
+
 let cache: { mtimeMs: number; config: AppConfig } | null = null;
 let loggedFallbackMtime: number | null = null;
 
@@ -273,7 +277,14 @@ function readConfig(strict: boolean): AppConfig {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const text = fs.readFileSync(configPath(), "utf8");
-    if (!text.trim()) return DEFAULT_CONFIG; // a 0-byte file (touch data/config.json) is a fresh install, like a missing one (on purpose, hunt 32 F4: strict saves too)
+    if (!text.trim()) {
+      // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults.
+      if (fs.existsSync(backupPath())) {
+        if (strict) throw new Error(CONFIG_UNREADABLE);
+        logFallback("config.json is empty and a last-good copy is at data/config.json.bak");
+      }
+      return DEFAULT_CONFIG;
+    }
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       if (strict) throw new Error("config.json is not an object");
@@ -319,8 +330,30 @@ export function saveErrorText(e: unknown): string {
   return e instanceof Error && e.message === DATA_DIR_UNWRITABLE ? e.message : "save failed";
 }
 
+/** Copy the current config.json to config.json.bak (0600, tmp+rename) before a save replaces it, but only when it is a non-blank JSON object, so a damaged file never displaces a good copy. A failed copy never blocks the save. */
+function keepLastGood(): void {
+  try {
+    const text = fs.readFileSync(configPath(), "utf8");
+    const parsed = text.trim() ? JSON.parse(text) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    const tmp = backupPath() + ".tmp";
+    fs.rmSync(tmp, { force: true }); // the mode applies only when the file is created
+    const fd = fs.openSync(tmp, "w", 0o600);
+    try {
+      fs.writeFileSync(fd, text, "utf8");
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, backupPath());
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT" && !(e instanceof SyntaxError)) console.error("[config] could not keep a last-good copy:", errCode(e));
+  }
+}
+
 export function saveConfig(config: AppConfig): void {
   try {
+    keepLastGood();
     writeJsonAtomic(configPath(), config, 0o600);
   } catch (e) {
     throw mapWriteError(e);
