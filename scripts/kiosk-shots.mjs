@@ -1239,26 +1239,31 @@ async function polishbShots() {
       await context.close();
     });
   }
-  await pbRun("tray-glance-np-1024", async () => {
-    const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, nowPlaying: true, routes: { "/kiosk/api/downloads": PB_DL(6), "/kiosk/api/attention": PB_ALERT } });
-    await seen(page, "[data-sr-np]", 15_000);
-    await page.waitForTimeout(800);
-    await openTray(page, /downloads in progress/i, '[role="dialog"][aria-label="Downloads"]');
-    pbTrayChecks("tray-glance-np-1024", await pbTrayRead(page, "Downloads", "download"), { glance: true });
-    await pbShot(page, page.locator('[role="dialog"][aria-label="Downloads"]'), "tray-glance-np-1024");
-    await page.keyboard.press("Escape");
-    await openTray(page, /alert/i, '[role="dialog"][aria-label="Alerts"]');
-    pbTrayChecks("alerts-glance-np-1024", await pbTrayRead(page, "Alerts", "alert"), { glance: true });
-    await context.close();
-  });
+  // Glance with the now-playing pill: the corner cluster lifts to 5.25rem (84) at every width (kiosk-surface.tsx data-lifted). One context per tray: a keydown (the old Escape) hands the surface to Full, which unmounts the pill and drops the lift.
+  for (const [tag, label, anchorSrc, btn] of [["tray-glance-np-1024", "Downloads", "download", /downloads in progress/i], ["alerts-glance-np-1024", "Alerts", "alert", /alert/i]]) {
+    await pbRun(tag, async () => {
+      const { context, page } = await visit(MAIN_URL, { viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, nowPlaying: true, routes: { "/kiosk/api/downloads": PB_DL(6), "/kiosk/api/attention": PB_ALERT } });
+      await seen(page, "[data-sr-np]", 15_000);
+      await page.waitForTimeout(800);
+      await openTray(page, btn, `[role="dialog"][aria-label="${label}"]`);
+      const d = await pbTrayRead(page, label, anchorSrc);
+      pbRec(`${tag} precondition: the pill plays and the cluster is lifted (button bottom == vh - 84)`, !!d?.B && Math.abs(d.vh - 84 - d.B.bottom) <= 1, { bottom: d?.B?.bottom, vh: d?.vh });
+      pbTrayChecks(tag, d, { glance: true });
+      if (label === "Downloads") await pbShot(page, page.locator('[role="dialog"][aria-label="Downloads"]'), tag);
+      await context.close();
+    });
+  }
   await pbRun("alerts-10-full-1024", async () => { // M2: ten entries (the poll shows one condition at a time, so each focus-refetch adds one to the history)
     let n = 0;
     const { context, page } = await visit(FV_URL("sunroom", "standard"), {
-      viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: true, ha: true, routes: { "/kiosk/api/downloads": { status: "unconfigured" } },
+      viewport: SIZES[1].viewport, weather: weatherFor("midday"), fixedTime: "ticking", ha: true, routes: { "/kiosk/api/downloads": { status: "unconfigured" } },
       setup: (p) => p.route("**/kiosk/api/attention", (r) => r.fulfill({ json: { ...PB_ALERT, headline: `Backup is late ${++n}` } })),
     });
     await seen(page, 'div[data-rain-zone="corner"] button', 15_000);
-    for (let i = 0; i < 9; i++) { await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await page.waitForTimeout(2300); }
+    // fixedTime true freezes Date.now, so SWR's 5 s focus throttle swallowed every refetch after the first (rows: 1). A ticking clock, moved 6 s per focus, lets each one through.
+    for (let i = 0; i < 9; i++) { await page.clock.fastForward(6000); await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await page.waitForTimeout(400); }
+    await page.clock.fastForward(9000); // the last takeover (TAKEOVER_MS 8 s) minimises, so the button is clear
+    await page.waitForTimeout(800);
     await openTray(page, /alert/i, '[role="dialog"][aria-label="Alerts"]');
     const rows = await page.locator('[role="dialog"][aria-label="Alerts"]').evaluate((el) => el.children.length);
     pbRec("alerts-10: the popover holds enough rows to scroll", rows >= 6, { rows });
@@ -1281,7 +1286,7 @@ async function polishbShots() {
       pbRec(`glance-${size.name} left controls present (Timers and a lamp)`, d.tiles.length >= 2, { tiles: d.tiles.map((t) => t.label) });
       pbRec(`glance-${size.name} no left control under the now-playing pill`, d.tiles.length > 0 && d.tiles.every((t) => !pbHits(t, d.pill)), { pill: d.pill, hits: d.tiles.filter((t) => pbHits(t, d.pill)).map((t) => t.label) });
       pbRec(`glance-${size.name} left controls clear of the centre column`, d.tiles.length > 0 && d.sentence.length > 0 && d.tiles.every((t) => d.sentence.every((s) => !pbHits(t, s))), { hits: d.tiles.filter((t) => d.sentence.some((s) => pbHits(t, s))).map((t) => t.label) });
-      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster unchanged (bottom 16 above the viewport edge)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 16 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
+      if (size.viewport.width > 640) pbRec(`glance-${size.name} wide cluster lifted with the pill (bottom 84 above the viewport edge, 5.25rem; #258)`, d.tiles.length > 0 && d.tiles.every((t) => Math.abs(d.vh - 84 - t.bottom) <= 1), { bottoms: d.tiles.map((t) => t.bottom), vh: d.vh });
       await page.screenshot({ path: join(OUT_DIR, `polishb-glance-${size.name}.png`), fullPage: true });
       await context.close();
     });

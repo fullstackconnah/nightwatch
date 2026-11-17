@@ -8,6 +8,8 @@ const MIN_CAP = 128;
 // Shared by the downloads tray and the alerts popover. Keeps the open tray 1rem above its button and one house gap below the
 // forecast slot (always mounted, unlike the rail, which a glance pane swaps out), then snaps its height so the last visible row is cut
 // through its middle. Re-measured on open, on slot resize, on window resize and when the row count changes while open.
+// Rulings: the cut is measured at the visible bottom edge; when the cluster lifts while a tray is open (now playing starts) the cap is not
+// re-run (no signal reaches the trays; the next open measures it), shortcut: upgrade if a lift mid-open shows up on the wall.
 export function useTrayCap(nodeRef: RefObject<HTMLElement | null>, anchorRef: RefObject<HTMLElement | null>, open: boolean, rowCount: number) {
   useLayoutEffect(() => {
     if (!open) return;
