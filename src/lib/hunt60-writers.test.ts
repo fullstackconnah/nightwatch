@@ -29,3 +29,7 @@ test("change log store: the baseline temp file is synced before the rename", () 
   const sync = s.indexOf(".sync()");
   assert.ok(sync >= 0 && sync < s.indexOf("fs.rename(tmp, file)"));
 });
+
+test("hermes model file: a write failure goes through mapWriteError so the data-folder hint shows", () => {
+  assert.match(src("./config.ts"), /export function writeHermesModelFile\([^)]*\): void \{\s*try \{\s*writeJsonAtomic\(hermesModelPath\(\), data\);\s*\} catch \(e\) \{\s*throw mapWriteError\(e\);/);
+});

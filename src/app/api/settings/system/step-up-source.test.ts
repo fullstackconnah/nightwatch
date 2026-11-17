@@ -72,3 +72,19 @@ test("system route: no await sits between the load that feeds the saved object a
   assert.ok(load > at(sys, "checkCurrentPassword("), "the load feeding next comes after the step-up await");
   assert.doesNotMatch(sys.slice(load, save), /\bawait\b/);
 });
+
+test("system route: a system section changed during the password check is refused with 409, not reverted", () => {
+  const load = sys.lastIndexOf("loadConfigForSave()");
+  const save = at(sys, "saveConfig(next)");
+  const between = sys.slice(load, save);
+  assert.match(sys, /import \{ isDeepStrictEqual \} from "node:util"/);
+  assert.match(between, /isDeepStrictEqual\(/);
+  assert.match(between, /Settings changed while the password was checked\. Nothing was saved; try again\.[^]{0,60}status: 409/);
+  // not a password refusal: no stepUp tag, or the card would clear the password field
+  assert.doesNotMatch(sys, /Settings changed while[^}]*stepUp/);
+  // the saved object is built from the fresh copy, never from the first load
+  assert.match(sys.slice(load), /\.\.\.fresh,/);
+  assert.doesNotMatch(sys.slice(load), /\.\.\.current,/);
+  // the 409 comparison runs only when the check awaited
+  assert.ok(at(sys, "isDeepStrictEqual(") > at(sys, "checkCurrentPassword("));
+});

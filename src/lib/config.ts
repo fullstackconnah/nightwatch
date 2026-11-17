@@ -398,7 +398,11 @@ export function readHermesModelFile(): HermesModelFile | null {
 /** Same atomic tmp+rename pattern as saveConfig, so the daemon's hot-read
  *  never observes a half-written file. */
 export function writeHermesModelFile(data: HermesModelFile): void {
-  writeJsonAtomic(hermesModelPath(), data);
+  try {
+    writeJsonAtomic(hermesModelPath(), data);
+  } catch (e) {
+    throw mapWriteError(e);
+  }
 }
 
 /**
