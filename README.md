@@ -108,8 +108,11 @@ is an opaque id that never changes; match is exact) or an email (matched
 without regard to case, and only when the provider marks it verified). Unset
 or blank means any account the provider authenticates gets an owner session,
 and the server log says so once, except when the saved settings cannot be
-read (a blank or damaged `config.json`): then sign-in is refused until
-`OIDC_ALLOWED_USERS` is set or the file is fixed. A refused login is logged with its `sub`.
+read (a `config.json` that won't parse, or one blanked while a
+`config.json.bak` sits beside it): then sign-in is refused until
+`OIDC_ALLOWED_USERS` is set or the file is fixed. A blank `config.json` with
+no `config.json.bak` counts as a fresh install and stays open, so set
+`OIDC_ALLOWED_USERS` if the list must survive a blanked file. A refused login is logged with its `sub`.
 
 To find your `sub`: set the list to a throwaway value such as `placeholder`,
 sign in through SSO (it is refused), copy the `sub` from the server log line
