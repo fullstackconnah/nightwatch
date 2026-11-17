@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sessionEpoch } from "@/lib/config";
+import { kioskPinConfigured, sessionEpoch } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
 import {
   KIOSK_ELEVATION_COOKIE,
@@ -23,6 +23,12 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const token = req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value;
   const epoch = sessionEpoch();
+  // No PIN anywhere (it was cleared): the unlock route refuses, so an already-unlocked kiosk locks here too.
+  if (!kioskPinConfigured()) {
+    const res = NextResponse.json({ elevated: false });
+    res.cookies.set(KIOSK_ELEVATION_COOKIE, "", { ...kioskElevationCookieOptions(isSecureRequest(req)), maxAge: 0 });
+    return res;
+  }
   const ok = await verifyKioskElevationToken(token, epoch);
   if (!ok) {
     return NextResponse.json({ elevated: false });

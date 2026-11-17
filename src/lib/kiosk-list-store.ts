@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readCapped } from "./read-capped.ts";
-import { sessionEpoch } from "./config.ts";
+import { kioskPinConfigured, sessionEpoch } from "./config.ts";
 import {
   checkAdd, fold, isListId, norm, parseListFile, sortItems, suggestions, sweepBoundary, MAX_ROWS, isFull, UUID_RE,
   type AddHistory, type ListFile, type ListItem,
@@ -150,6 +150,7 @@ const idList = (v: unknown): string[] | null =>
 
 // Loaded lazily so a request with neither cookie never needs the JWT library.
 async function elevated(session?: string, elevation?: string): Promise<boolean> {
+  if (!kioskPinConfigured()) elevation = undefined; // no PIN: an old elevation is dead
   if (!session && !elevation) return false;
   const a = await import("./auth.ts");
   return (await a.verifySessionToken(session, sessionEpoch())) || (await a.verifyKioskElevationToken(elevation, sessionEpoch()));

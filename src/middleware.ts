@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { isDeskCameraPath, isDeskGlancePath } from "@/lib/desk-auth";
 import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "@/lib/auth";
-import { sessionEpoch } from "@/lib/config";
+import { kioskPinConfigured, sessionEpoch } from "@/lib/config";
 import { isPublicPath } from "@/lib/public-paths";
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
@@ -41,7 +41,7 @@ export async function middleware(req: NextRequest) {
   // lib/kiosk-access.ts); anything else it requests is refused like no login.
   const ok = await isRequestAuthenticated(
     req.cookies.get(SESSION_COOKIE)?.value,
-    req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value,
+    kioskPinConfigured() ? req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value : undefined, // no PIN: an old elevation is dead
     req.method,
     pathname,
     sessionEpoch(),
