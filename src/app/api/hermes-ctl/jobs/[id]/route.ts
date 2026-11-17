@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { sessionEpoch } from "@/lib/config";
 import { getHermesJob } from "@/lib/hermes-ctl";
+import { JOB_ID_RE } from "@/lib/hermes-job-map";
 import { jobVisible } from "@/lib/kiosk-access";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  // Same always-200-style body, 400 not 401, for the same SWR reason as below.
+  if (!JOB_ID_RE.test(id)) return NextResponse.json({ ok: false, status: "error", detail: "Invalid job id." }, { status: 400 });
   // Same always-200 "embed the problem state in the body" contract as
   // /api/hermes-ctl/status — this is polled via SWR's `fetcher`, which treats
   // a real 401 as this app's own session expiring, not Hermes'.

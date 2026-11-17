@@ -8,6 +8,7 @@ import type {
 } from "@/lib/types/hermes";
 import { systemSetting } from "@/lib/config";
 import { mapJobBody } from "@/lib/hermes-job-map";
+import { readCapped } from "@/lib/read-capped";
 
 /**
  * Server-only client for the Hermes ops daemon's HTTP control API.
@@ -29,6 +30,8 @@ import { mapJobBody } from "@/lib/hermes-job-map";
  */
 
 const TIMEOUT_MS = 5000;
+// POST /run waits for the daemon to accept the job, which can outlast a status read.
+const RUN_TIMEOUT_MS = 15000;
 
 interface HermesCredentials {
   url: string;
@@ -47,8 +50,8 @@ export const HERMES_UNCONFIGURED_DETAIL =
   "card (or HERMES_API_URL / HERMES_API_TOKEN in the server environment) — both are read " +
   "fresh on every request, so nothing else needs to change once they're set.";
 
-function unreachableDetail(url: string, extra?: string): string {
-  return extra ?? `Hermes at ${url} did not respond within ${TIMEOUT_MS / 1000}s.`;
+function unreachableDetail(url: string, timeoutMs: number): string {
+  return `Hermes at ${url} did not respond within ${timeoutMs / 1000}s.`;
 }
 
 function unauthorizedDetail(httpStatus: number): string {
@@ -62,17 +65,17 @@ type FetchResult =
   | { kind: "unreachable"; detail: string }
   | { kind: "unauthorized"; detail: string };
 
-async function hermesFetch(creds: HermesCredentials, path: string, init?: RequestInit): Promise<FetchResult> {
+async function hermesFetch(creds: HermesCredentials, path: string, init?: RequestInit, timeoutMs = TIMEOUT_MS): Promise<FetchResult> {
   let res: Response;
   try {
     res = await fetch(`${creds.url}${path}`, {
       ...init,
       headers: { Authorization: `Bearer ${creds.token}`, ...(init?.headers ?? {}) },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
   } catch {
-    return { kind: "unreachable", detail: unreachableDetail(creds.url) };
+    return { kind: "unreachable", detail: unreachableDetail(creds.url, timeoutMs) };
   }
   if (res.status === 401 || res.status === 403) {
     return { kind: "unauthorized", detail: unauthorizedDetail(res.status) };
@@ -201,7 +204,7 @@ export async function runHermesJob(kind: HermesJobKind, question?: string): Prom
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(question !== undefined ? { kind, question } : { kind }),
-  });
+  }, RUN_TIMEOUT_MS);
   if (r.kind === "unreachable") return { ok: false, status: "unreachable", detail: r.detail };
   if (r.kind === "unauthorized") return { ok: false, status: "unauthorized", detail: r.detail };
 
@@ -218,7 +221,7 @@ export async function runHermesJob(kind: HermesJobKind, question?: string): Prom
     return { ok: false, status: "conflict", detail };
   }
   if (res.status !== 202) {
-    const text = await res.text().catch(() => "");
+    const text = (await readCapped(res, 500).catch(() => "")) ?? "";
     return {
       ok: false,
       status: "error",
