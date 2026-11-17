@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { contentLengthError } from "@/lib/upload-limit";
-import { loadConfig, DATA_DIR_UNWRITABLE, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfig, CONFIG_UNREADABLE, DATA_DIR_UNWRITABLE, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { allowAutoOffSave, autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
   try {
     config = loadConfigForSave();
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const message = (e as Error).message;
+    return NextResponse.json({ error: message }, { status: message === CONFIG_UNREADABLE ? 503 : 500 });
   }
   const prev = config.climateAutoOff;
   const next = {
