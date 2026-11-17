@@ -19,7 +19,7 @@ test("valid session token is authorized", async () => {
 });
 
 test("kiosk elevation token presented as the session cookie is unauthorized", async () => {
-  assert.equal(await uploadAuthorized(await createKioskElevationToken(), 0), false);
+  assert.equal(await uploadAuthorized(await createKioskElevationToken(0), 0), false);
 });
 
 test("oidc-flow token presented as the session cookie is unauthorized", async () => {
