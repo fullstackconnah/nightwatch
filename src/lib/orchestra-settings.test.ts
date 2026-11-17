@@ -95,8 +95,8 @@ describe("settings GET wiring (source-level)", () => {
     assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "").replace(/orchestraTokenSet/g, "")), false);
   });
 
-  it("reports orchestraTokenSet from the token alone (URL empty), as a boolean only", () => {
-    assert.ok(src.includes('orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN"))'));
+  it("reports orchestraTokenSet from the token that would be used, as a boolean only", () => {
+    assert.ok(src.includes("orchestraTokenSet: orchestraTokenSet(),"));
   });
 });
 
