@@ -16,11 +16,8 @@ export async function POST(req: NextRequest) {
   if (!limiter.attempt()) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
-  // Tries every configured hash (config.json's system.adminPasswordHash, then
-  // env ADMIN_PASSWORD_HASH) and accepts a match against any of them — see
-  // candidatePasswordHashes()'s own comment for why this checks both rather
-  // than picking one by precedence: a broken config value must never lock
-  // the owner out of a still-good env hash.
+  // One hash: config.json's system.adminPasswordHash when set, else env
+  // ADMIN_PASSWORD_HASH (first setup) — see candidatePasswordHashes().
   const candidates = candidatePasswordHashes();
 
   let ok = false;

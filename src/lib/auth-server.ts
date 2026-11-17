@@ -6,29 +6,20 @@
  * are Node.js route handlers. (Observed live 2026-08-02: putting loadConfig
  * in auth.ts pulled node:fs into the client bundle and broke `next build`.)
  *
- * Precedence note: every other operational setting uses strict
- * config-wins-over-env (systemSetting() in config.ts). The admin password
- * hash deliberately does NOT — a corrupted config.json hash must never
- * shadow a still-good env hash, so callers try EVERY available hash and
- * accept a match against any of them, config first.
+ * Precedence: like every other operational setting (systemSetting() in
+ * config.ts) the stored hash wins; env ADMIN_PASSWORD_HASH counts only while
+ * none is stored. Recovery from a forgotten password: remove
+ * system.adminPasswordHash from the stored config file (README).
  */
 
 import { loadConfig } from "@/lib/config";
+import { choosePasswordHashes, type PasswordHashCandidate } from "@/lib/password-hash";
 
-export interface PasswordHashCandidate {
-  hash: string;
-  source: "config" | "env";
-}
+export type { PasswordHashCandidate };
 
-/** Every bcrypt hash a submitted password should be checked against, config
- *  first then env, filtered to only the ones actually set. */
+/** The one bcrypt hash a submitted password is checked against (none, or one). */
 export function candidatePasswordHashes(): PasswordHashCandidate[] {
-  const candidates: PasswordHashCandidate[] = [];
-  const configHash = loadConfig().system?.adminPasswordHash?.trim();
-  if (configHash) candidates.push({ hash: configHash, source: "config" });
-  const envHash = process.env.ADMIN_PASSWORD_HASH?.trim();
-  if (envHash) candidates.push({ hash: envHash, source: "env" });
-  return candidates;
+  return choosePasswordHashes(loadConfig().system?.adminPasswordHash, process.env.ADMIN_PASSWORD_HASH);
 }
 
 /** True once either source has a hash set — the "password set" vs

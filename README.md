@@ -78,8 +78,10 @@ Session = 7-day HttpOnly JWT cookie; middleware guards every page and API
 route. The socket proxy never exposes `EXEC`, so the app cannot shell into
 containers even if compromised. Changing the password in Settings signs out
 every other session and browser (the browser that changed it stays signed in).
-An `ADMIN_PASSWORD_HASH` set in `.env` still accepts the old password after a
-change, so update or remove it there too.
+The password set in Settings replaces the one in `.env`: once it is stored, only
+it signs in, and `ADMIN_PASSWORD_HASH` counts only until then (first setup).
+Forgotten it? On the server, remove `system.adminPasswordHash` from the stored
+config file; the `.env` password signs in again, and you can set a new one.
 
 The session, kiosk-unlock and SSO-flow cookies are marked `Secure` when the
 request reaches the app over https through the proxy (`X-Forwarded-Proto:
