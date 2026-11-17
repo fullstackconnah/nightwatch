@@ -726,6 +726,7 @@ await guarded("stepup", () =>
           };
         });
       await page.evaluate(() => { window.__pcMark = 1; document.querySelector(".st-frame").__pcMark = 1; });
+      await page.waitForTimeout(300); // at 1440 a crop taken straight after the frame opens finds the password emptied and the frame closed; with this settle every step of the crop keeps both (probed 2026-11-17). Cause not found.
       record("SU pin clear: state before the crop", s.name, JSON.stringify(await snap()));
       await cropEl(page, s, c, "stepup-pin-clear-ask", false);
       record("SU pin clear: state after the crop", s.name, JSON.stringify(await snap()));
