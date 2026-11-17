@@ -501,6 +501,7 @@ export const KioskAlertButton = forwardRef<HTMLButtonElement, KioskAlertButtonPr
     <button
       ref={setRefs}
       type="button"
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={onPress}
       aria-expanded={trayOpen}
       aria-label={

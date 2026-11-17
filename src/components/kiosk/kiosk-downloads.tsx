@@ -210,8 +210,7 @@ export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloads
         ref={setRefs}
         type="button"
         // Taps must not reach the surface's root promoter (glance→full) —
-        // copied from kiosk-glance.tsx's corner controls, not from
-        // kiosk-alerts.tsx (whose own button doesn't stop propagation).
+        // copied from kiosk-glance.tsx's corner controls; the alerts button does the same.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

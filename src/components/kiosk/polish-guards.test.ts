@@ -218,3 +218,8 @@ test("downloads tray: a tap on its body closes it (rows are read-only); the stal
   assert.match(src, /onClick=\{\(e\) => \{\s*e\.stopPropagation\(\);\s*onClose\(\);\s*\}\}/);
   assert.doesNotMatch(src, /only\s+\/\/ closes on Escape or its own 20s timeout/);
 });
+
+test("alerts button: its pointerdown stops at the button, so a tap in lifted Glance neither promotes to Full nor drops the lift from under the finger", () => {
+  const src = read("./kiosk-alerts.tsx");
+  assert.match(src, /type="button"\s+onPointerDown=\{\(e\) => e\.stopPropagation\(\)\}\s+onClick=\{onPress\}/);
+});
