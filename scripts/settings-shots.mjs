@@ -704,6 +704,7 @@ await guarded("stepup", () =>
       await clr.click();
       const yes = c.getByRole("button", { name: "Yes, clear" });
       await yes.waitFor({ timeout: SLOW });
+      await page.waitForTimeout(400); // settle: measured or cropped straight after the frame opens, the Yes height flickers at 390 and at 1440 the password empties and the frame closes; after a settle every crop step keeps both (probed 2026-11-17). Cause not found.
       // The frame takes focus on open (Cancel, the safe choice: WriteAction's autoFocus), so a focus-driven hold never lapses.
       su("pin clear: focus moves into the ask frame", s.name, await yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]").evaluate((f) => f.contains(document.activeElement)));
       su("pin clear: focus lands on Cancel", s.name, (await page.evaluate(() => document.activeElement?.textContent?.trim())) === "Cancel");
@@ -726,7 +727,6 @@ await guarded("stepup", () =>
           };
         });
       await page.evaluate(() => { window.__pcMark = 1; document.querySelector(".st-frame").__pcMark = 1; });
-      await page.waitForTimeout(300); // at 1440 a crop taken straight after the frame opens finds the password emptied and the frame closed; with this settle every step of the crop keeps both (probed 2026-11-17). Cause not found.
       record("SU pin clear: state before the crop", s.name, JSON.stringify(await snap()));
       await cropEl(page, s, c, "stepup-pin-clear-ask", false);
       record("SU pin clear: state after the crop", s.name, JSON.stringify(await snap()));
