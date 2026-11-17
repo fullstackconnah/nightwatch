@@ -46,3 +46,9 @@ test("ClearAction passes disabled and describedBy through to WriteAction; Secret
   assert.match(c, /describedBy=\{describedBy\}/);
   assert.match(integ, /setReplacing\(!configured\)/);
 });
+
+test("the label row wraps, so an open ask frame takes its own row and the label stays on one line", () => {
+  const integ = read("./settings-integrations.tsx");
+  assert.match(integ, /className="flex flex-wrap items-center justify-between gap-2 mb-1"/);
+  assert.match(integ, /<Label id=\{labelId\} htmlFor=\{id\} className="mb-0 whitespace-nowrap">/);
+});

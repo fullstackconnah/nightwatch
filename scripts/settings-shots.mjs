@@ -79,7 +79,7 @@ async function failShot(s, e) {
   const page = live[s.name];
   if (!page || page.isClosed()) return;
   const tag = `${stage}@${s.name}`;
-  diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => "unreadable") };
+  diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 1200)).catch(() => "unreadable") };
   await page.screenshot({ path: join(OUT_DIR, `${stage.replace(/[^\w@-]+/g, "_")}-FAIL-${s.name}.png`), fullPage: true }).catch(() => {});
   await page.close().catch(() => {});
 }
@@ -705,8 +705,15 @@ await guarded("stepup", () =>
       const yes = c.getByRole("button", { name: "Yes, clear" });
       await yes.waitFor({ timeout: SLOW });
       const y = await boxOf(yes), ask = await boxOf(yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]"));
-      su("pin clear: ask frame states the consequence, Yes meets the C12 tap floor, frame inside the card", s.name, /KIOSK_PIN from the environment/.test(await c.innerText()) && (s.name !== "390" || y.h >= 43.5) && ask.right <= box.right);
+      const lab = c.locator("label", { hasText: /^Kiosk PIN$/ });
+      const labelH = await lab.evaluate((e) => { const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight); return { h: e.getBoundingClientRect().height, line: Number.isNaN(lh) ? parseFloat(cs.fontSize) * 1.4 : lh }; });
+      su("pin clear: ask frame states the consequence", s.name, /KIOSK_PIN from the environment/.test(await c.innerText()));
+      su("pin clear: Yes meets the C12 tap floor", s.name, s.name !== "390" || y.h >= 43.5);
+      su("pin clear: ask frame inside the card", s.name, ask.right <= box.right);
+      su("pin clear: Kiosk PIN label stays on one line while the ask frame is open", s.name, labelH.h <= labelH.line + 1);
       await cropEl(page, s, c, "stepup-pin-clear-ask", false);
+      // Names the cause of a Yes click that times out: false here means the page lost its state during the crop (a reload), true means the click itself was blocked.
+      su("pin clear: ask frame and typed password survive the crop", s.name, (await yes.count()) === 1 && (await pw(c).inputValue()) === "not-the-password");
       await yes.click();
       await wrong(page, c, sent, "pin clear wrong");
       su("pin clear wrong: the body held only clearKioskPin and the password", s.name, sent.length === 1 && JSON.stringify(Object.keys(JSON.parse(sent[0])).sort()) === JSON.stringify(["clearKioskPin", "currentPassword"]));

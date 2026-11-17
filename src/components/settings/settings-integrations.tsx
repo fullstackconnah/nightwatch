@@ -180,9 +180,9 @@ export function SecretField({
   // 2026-08-03 — left every unconfigured secret field (the editable state, the
   // one you're in while actually typing a key) with no accessible name at all.
   const labelRow = (label || action) && (
-    <div className="flex items-center justify-between gap-2 mb-1">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
       {label && (
-        <Label id={labelId} htmlFor={id} className="mb-0">
+        <Label id={labelId} htmlFor={id} className="mb-0 whitespace-nowrap">
           {label}
         </Label>
       )}
