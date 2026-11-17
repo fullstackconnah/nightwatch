@@ -79,3 +79,21 @@ describe("POST /kiosk/api/climate-auto-off save limit", () => {
     for (let i = 0; i < 10; i++) assert.equal((await flip(i)).status, 200, `save ${i + 1}`);
   });
 });
+
+describe("POST /kiosk/api/climate-auto-off save failure", () => {
+  it("answers 500 JSON instead of throwing when the save fails", async () => {
+    assert.equal((await post({ enabled: true })).status, 200); // priming save
+    // A directory where the atomic writer wants its .tmp file makes saveConfig throw for real.
+    const obstruction = path.join(dir, "config.json.tmp");
+    fs.mkdirSync(obstruction);
+    try {
+      const res = await post({ enabled: false });
+      assert.equal(res.status, 500);
+      const body = await res.json();
+      // Not the unwritable-folder kind: no error text, so the tablet keeps its own "Couldn't save" message.
+      assert.equal(body.error, undefined);
+    } finally {
+      fs.rmSync(obstruction, { recursive: true, force: true });
+    }
+  });
+});

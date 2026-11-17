@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { contentLengthError } from "@/lib/upload-limit";
-import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfig, DATA_DIR_UNWRITABLE, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { allowAutoOffSave, autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,13 @@ export async function POST(req: NextRequest) {
         { status: 429, headers: { "Retry-After": "60" } },
       );
     }
-    saveConfig({ ...config, climateAutoOff: next });
+    try {
+      saveConfig({ ...config, climateAutoOff: next });
+    } catch (e) {
+      // Only the unwritable-folder sentence is useful on the tablet; the bare "save failed" would replace its own message.
+      const unwritable = e instanceof Error && e.message === DATA_DIR_UNWRITABLE;
+      return NextResponse.json(unwritable ? { error: DATA_DIR_UNWRITABLE } : {}, { status: 500 });
+    }
   }
   return NextResponse.json(responseShape(next));
 }
