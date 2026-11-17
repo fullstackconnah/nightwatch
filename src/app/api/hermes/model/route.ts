@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { loadConfigForSave, saveConfig, writeHermesModelFile, type AppConfig } from "@/lib/config";
+import { loadConfigForSave, saveConfig, saveErrorText, writeHermesModelFile, type AppConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
@@ -81,11 +81,12 @@ export async function POST(req: NextRequest) {
 
   const updatedAt = new Date().toISOString();
   try {
-    saveConfig(next);
+    // Daemon file first: if saveConfig then fails the file is new and config old, and a re-save reconciles.
     writeHermesModelFile({ tier: tierTyped, model, openrouterApiKey, anthropicApiKey, updatedAt });
+    saveConfig(next);
   } catch (e) {
     console.error("hermes model save failed", e);
-    return NextResponse.json({ error: "Save failed." }, { status: 500 });
+    return NextResponse.json({ error: saveErrorText(e) }, { status: 500 });
   }
 
   return NextResponse.json({
