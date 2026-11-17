@@ -11,7 +11,7 @@ import { useState } from "react";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/use-confirm-focus";
-import { ApiError } from "@/lib/client";
+import { ApiError, redirectOn401 } from "@/lib/client";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -89,6 +89,7 @@ export function ImageDeleteAction({
       const res = await fetch(`/api/docker/images/${encodeURIComponent(imageId)}`, {
         method: "DELETE",
       });
+      redirectOn401(res);
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
       setStep("idle");

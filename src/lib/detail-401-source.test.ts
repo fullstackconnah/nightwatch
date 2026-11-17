@@ -22,6 +22,11 @@ describe("401 goes to login in the plain fetches", () => {
   it("the container remove DELETE calls it", () => {
     assert.match(remove, /redirectOn401\(res\)/);
   });
+  for (const f of ["components/minecraft/pack-browser.tsx", "components/minecraft/upload-pack.tsx", "components/resources/image-delete-action.tsx"]) {
+    it(`${f} calls it right after its fetch`, () => {
+      assert.match(read(f), /await fetch\([\s\S]*?\);\r?\n\s*redirectOn401\(res\);/);
+    });
+  }
 });
 
 describe("env row control", () => {
