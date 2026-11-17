@@ -37,6 +37,14 @@ test("system route: the helper gets the route's trimmed values, not the raw body
   assert.doesNotMatch(sys, /stepUpNeeded\(body/);
 });
 
+test("system route: the call site names every input of the helper, so dropping one fails", () => {
+  const helper = readFileSync(new URL("../../../../lib/step-up.ts", import.meta.url), "utf8");
+  const inputs = [...(helper.match(/interface StepUpChange \{([^}]*)\}/)?.[1] ?? "").matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1]);
+  assert.equal(inputs.length, 9, "helper inputs read from the interface");
+  const call = sys.match(/stepUpNeeded\(\s*\{([^}]*)\}/)?.[1] ?? "";
+  for (const name of inputs) assert.match(call, new RegExp(`(^|[\\s,])${name}\\b`), `route does not pass ${name}`);
+});
+
 test("password route: shared helper and limiter, own limiter gone, contract byte-identical", () => {
   assert.match(pw, /checkCurrentPassword\(/);
   assert.match(pw, /currentPasswordLimiter/);
