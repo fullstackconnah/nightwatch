@@ -1,5 +1,16 @@
 import type { ContainerInspectInfo } from "dockerode";
 
+const envName = (entry: string) => {
+  const i = entry.indexOf("=");
+  return i < 0 ? entry : entry.slice(0, i);
+};
+
+/** Value of the first variable called `name` (everything after its first "="), or undefined when there is none. */
+export function envValue(env: string[], name: string): string | undefined {
+  const entry = env.find((e) => envName(e) === name);
+  return entry === undefined ? undefined : entry.slice(name.length + 1);
+}
+
 // Labels are not sent: the page never reads them and they can hold proxy rules or credentials.
 export function shapeContainerDetail(info: ContainerInspectInfo) {
   return {
@@ -30,7 +41,7 @@ export function shapeContainerDetail(info: ContainerInspectInfo) {
       rw: m.RW,
       type: m.Type,
     })),
-    env: info.Config.Env || [],
+    env: (info.Config.Env || []).map(envName).filter(Boolean), // names only: a value is read one at a time via /env; an "=x" entry has no name to reveal
     cmd: (info.Config.Cmd || []).join(" "),
     tty: info.Config.Tty,
   };
