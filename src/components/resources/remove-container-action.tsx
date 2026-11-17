@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { RotateCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useConfirmFocus } from "@/components/use-confirm-focus";
+import { redirectOn401 } from "@/lib/client";
 import { removeConfirmText } from "@/lib/container-remove";
 
 type Step = "idle" | "confirm" | "busy" | "error";
@@ -29,6 +30,7 @@ export function RemoveContainerAction({ id, name, onRemoved }: { id: string; nam
     setGone(false);
     try {
       const res = await fetch(`/api/docker/containers/${encodeURIComponent(id)}`, { method: "DELETE" });
+      redirectOn401(res);
       const body = await res.json().catch(() => ({}));
       if (res.status === 404) setGone(true);
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);

@@ -18,7 +18,7 @@ import {
 } from "@/components/resources/container-controls";
 import { RemoveContainerAction } from "@/components/resources/remove-container-action";
 import { WidgetActionRow } from "@/components/widget-actions";
-import { fetcher, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
+import { fetcher, redirectOn401, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
 import { processesHref } from "@/lib/container-rank";
 import { STATS_STALE_AFTER, nextFailCount } from "@/lib/poll-fails";
@@ -64,6 +64,7 @@ function useStatsHistory(id: string, running: boolean) {
     async function tick() {
       try {
         const res = await fetch(`/api/docker/containers/${id}/stats`);
+        redirectOn401(res);
         fails = nextFailCount(res.ok, fails);
         if (res.ok && alive) {
           const snap = (await res.json()) as ContainerStatsSnapshot;
@@ -99,6 +100,7 @@ function EnvRows({ id, names }: { id: string; names: string[] }) {
     set(i, { s: "loading" });
     try {
       const res = await fetch(`/api/docker/containers/${id}/env?name=${encodeURIComponent(names[i])}`, { cache: "no-store" });
+      redirectOn401(res);
       if (!res.ok) throw new Error(String(res.status));
       set(i, { s: "shown", v: (await res.json()).value as string });
     } catch {
@@ -120,14 +122,14 @@ function EnvRows({ id, names }: { id: string; names: string[] }) {
               ) : (
                 <div className="flex gap-2">
                   <span data-env-val aria-hidden>{ENV_MASK}</span>
-                  {c?.s === "error" && <span className="text-warn">Couldn&apos;t load</span>}
+                  {c?.s === "error" && <span role="status" className="text-warn">Couldn&apos;t load</span>}
                 </div>
               )}
             </div>
             <Button
               size="sm"
               variant="ghost"
-              className="min-w-11 shrink-0"
+              className="min-w-24 shrink-0"
               disabled={c?.s === "loading"}
               aria-label={`${shown ? "Hide" : "Show"} value of ${n}`}
               onClick={() => (shown ? set(i, undefined) : reveal(i))}
