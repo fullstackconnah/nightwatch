@@ -41,7 +41,7 @@ export function shapeContainerDetail(info: ContainerInspectInfo) {
       rw: m.RW,
       type: m.Type,
     })),
-    env: (info.Config.Env || []).map(envName), // names only: a value is read one at a time via /env
+    env: (info.Config.Env || []).map(envName).filter(Boolean), // names only: a value is read one at a time via /env; an "=x" entry has no name to reveal
     cmd: (info.Config.Cmd || []).join(" "),
     tty: info.Config.Tty,
   };

@@ -473,7 +473,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                 >
                   Environment ({info.env.length}) {showEnv ? "▾" : "▸ show names"}
                 </button>
-                {showEnv && <EnvRows key={info.env.join("\n")} id={id} names={info.env} />}
+                {showEnv && <EnvRows key={id + "\n" + info.env.join("\n")} id={id} names={info.env} />}
               </div>
             )}
           </CardContent>

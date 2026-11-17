@@ -7,7 +7,7 @@
  * fold at 12 with "Show all"; write buttons are disabled when Docker is down; /containers redirects with 307.
  *
  *   BASE_URL=http://host:3006 OUT_DIR=shots node scripts/docker-shots.mjs
- *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=envmask node scripts/docker-shots.mjs   (container env masking, real API, 1280 and 390)
+ *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=envmask (or ONLY=envmask) node scripts/docker-shots.mjs   (container env masking, real API, 1280 and 390)
  *
  * Needs Playwright, which is not a dependency of this repo; run it where one is installed.
  */
@@ -19,7 +19,7 @@ import { containersFor, imagesFor, volumesFor, diskFor } from "./fixtures/docker
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
-const ONLY = process.env.SHOTS_ONLY; // "envmask" runs only the container-detail env section, against the real API (no mocks)
+const ONLY = process.env.SHOTS_ONLY || process.env.ONLY; // (the server helper passes ONLY; empty = unset) "envmask" runs only the container-detail env section, against the real API (no mocks)
 const VIEWPORTS = [
   { name: "1440", viewport: { width: 1440, height: 900 } },
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },

@@ -60,6 +60,11 @@ test("shaped env lists the name of an entry without = and splits at the first ="
   assert.deepEqual(out.env, ["BARE", "C"]);
 });
 
+test("shaped env drops an entry whose name is empty", () => {
+  const out = shapeContainerDetail({ ...info, Config: { ...info.Config, Env: ["=x", "A=1"] } } as never);
+  assert.deepEqual(out.env, ["A"]);
+});
+
 test("the env route is no-store, validates name, uses envValue, and is not on the kiosk allow-list", () => {
   const src = readFileSync(fileURLToPath(new URL("../app/api/docker/containers/[id]/env/route.ts", import.meta.url)), "utf8");
   assert.match(src, /no-store/);
@@ -77,4 +82,5 @@ test("the page fetches values one at a time and never renders NAME=VALUE entries
     assert.ok(src.includes(s), `page holds "${s}"`);
   }
   assert.doesNotMatch(src, /localStorage/);
+  assert.match(src, /<EnvRows key=\{id \+ "\\n" \+ info\.env\.join/); // a reveal never reads another container by an old name list
 });
