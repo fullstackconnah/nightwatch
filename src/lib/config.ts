@@ -387,7 +387,7 @@ function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
 function readJsonBestEffort<T>(filePath: string): T | null {
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (parsed && typeof parsed === "object") return parsed as T;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as T;
     return null;
   } catch {
     return null;
