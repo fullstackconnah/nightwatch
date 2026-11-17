@@ -90,8 +90,8 @@ describe("POST /kiosk/api/climate-auto-off save failure", () => {
       const res = await post({ enabled: false });
       assert.equal(res.status, 500);
       const body = await res.json();
-      assert.equal(typeof body.error, "string");
-      assert.ok(body.error.length > 0);
+      // Not the unwritable-folder kind: no error text, so the tablet keeps its own "Couldn't save" message.
+      assert.equal(body.error, undefined);
     } finally {
       fs.rmSync(obstruction, { recursive: true, force: true });
     }
