@@ -7,7 +7,7 @@ import type {
   HermesStatusResponse,
 } from "@/lib/types/hermes";
 import { systemSetting } from "@/lib/config";
-import { mapJobBody } from "@/lib/hermes-job-map";
+import { JOB_ID_RE, mapJobBody } from "@/lib/hermes-job-map";
 import { readCapped } from "@/lib/read-capped";
 
 /**
@@ -236,7 +236,7 @@ export async function runHermesJob(kind: HermesJobKind, question?: string): Prom
     return { ok: false, status: "error", detail: "Hermes accepted the run but returned a non-JSON response." };
   }
   const jobId = str(obj(body).jobId);
-  if (!jobId) return { ok: false, status: "error", detail: "Hermes accepted the run but returned no jobId." };
+  if (!jobId || !JOB_ID_RE.test(jobId)) return { ok: false, status: "error", detail: "Hermes accepted the run but returned no usable jobId." };
   return { ok: true, jobId };
 }
 
@@ -253,6 +253,8 @@ export type HermesJobFetchResult =
 export async function getHermesJob(id: string): Promise<HermesJobFetchResult> {
   const creds = hermesCredentials();
   if (!creds) return { ok: false, status: "unconfigured", detail: HERMES_UNCONFIGURED_DETAIL };
+
+  if (!JOB_ID_RE.test(id)) return { ok: false, status: "error", detail: "Invalid job id." };
 
   const r = await hermesFetch(creds, `/jobs/${encodeURIComponent(id)}`);
   if (r.kind === "unreachable") return { ok: false, status: "unreachable", detail: r.detail };

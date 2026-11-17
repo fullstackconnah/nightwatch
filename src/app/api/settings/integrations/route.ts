@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { loadConfigForSave, saveConfig, saveErrorText, type AppConfig } from "@/lib/config";
 import { mergeBins } from "@/lib/bin-night";
@@ -69,7 +70,11 @@ function mergedSecret(newValue: string | undefined, existing: string | undefined
   return newValue ? newValue : existing;
 }
 
+const MAX_BODY_BYTES = 256 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   let body: Body;
   try {
     const parsed = await req.json();

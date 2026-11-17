@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { checkCurrentPassword, currentPasswordLimiter, stepUpNeeded } from "@/lib/step-up";
@@ -77,7 +78,11 @@ function mergedSecret(newValue: string | undefined, existing: string | undefined
 
 const KIOSK_PIN_RE = /^\d{4,8}$/;
 
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   let body: Body;
   try {
     const parsed = await req.json();

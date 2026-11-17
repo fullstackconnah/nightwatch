@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import bcrypt from "bcryptjs";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
@@ -29,7 +30,11 @@ const BCRYPT_ROUNDS = 12;
  * affordance and deliberately does not extend to this destructive write.
  * A change signs out every other session (system.sessionEpoch); this browser gets a fresh cookie.
  */
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   let body: { currentPassword?: unknown; newPassword?: unknown };
   try {
     const parsed = await req.json();
