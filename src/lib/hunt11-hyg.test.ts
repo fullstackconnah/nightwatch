@@ -32,7 +32,7 @@ describe("hunt 11 fixed error text", () => {
   it("rcon, hermes model and docker volumes send fixed text and log the real error", () => {
     for (const [f, text] of [
       ["../app/api/minecraft/rcon/route.ts", '"RCON command failed."'],
-      ["../app/api/hermes/model/route.ts", '"Save failed."'],
+      ["../app/api/hermes/model/route.ts", "saveErrorText(e)"],
       ["../app/api/docker/volumes/route.ts", '"Docker unreachable."'],
     ] as const) {
       const src = read(f);

@@ -203,7 +203,7 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
 
   try {
     await fsp.mkdir(dir, { recursive: true });
-    await fsp.appendFile(filePathForDate(date), JSON.stringify(sample) + "\n", "utf8");
+    await fsp.appendFile(filePathForDate(date), `\n${JSON.stringify(sample)}\n`, "utf8");
   } catch (err) {
     warnOnce("write failed — history dir unwritable", err);
     return;

@@ -273,7 +273,7 @@ function readConfig(strict: boolean): AppConfig {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const text = fs.readFileSync(configPath(), "utf8");
-    if (!text.trim()) return DEFAULT_CONFIG; // a 0-byte file (touch data/config.json) is a fresh install, like a missing one
+    if (!text.trim()) return DEFAULT_CONFIG; // a 0-byte file (touch data/config.json) is a fresh install, like a missing one (on purpose, hunt 32 F4: strict saves too)
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       if (strict) throw new Error("config.json is not an object");
@@ -398,7 +398,11 @@ export function readHermesModelFile(): HermesModelFile | null {
 /** Same atomic tmp+rename pattern as saveConfig, so the daemon's hot-read
  *  never observes a half-written file. */
 export function writeHermesModelFile(data: HermesModelFile): void {
-  writeJsonAtomic(hermesModelPath(), data);
+  try {
+    writeJsonAtomic(hermesModelPath(), data);
+  } catch (e) {
+    throw mapWriteError(e);
+  }
 }
 
 /**
