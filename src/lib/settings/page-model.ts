@@ -86,6 +86,9 @@ function head(chip: Model["chip"], answer: string, evidence: string, extra: Part
   return { chip, answer, evidence, notice: null, strips: [], autoTarget: "keep", detailLead: null, writable: false, ...extra };
 }
 
+const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+const CFG_NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
+
 export function settingsModel(i: ModelInput): Model {
   const { data, now } = i;
   if (!data) {
@@ -146,6 +149,14 @@ export function settingsModel(i: ModelInput): Model {
     answer = `Couldn’t save ${FORM_TITLE[failed]}: ${plainReason(i.forms[failed]!.error!)}. Your changes are kept, so you can try again.`;
     autoTarget = FORMS[failed];
   }
+  // An unreadable config.json is the root cause of the rows above (defaults make sign-in look off, saves fail), so it wins.
+  const cfg = meta.configProblem ?? null;
+  if (cfg) {
+    chip = { tone: "bad", label: "Using defaults" };
+    answer = cfg === "blank" ? "The settings file is empty, so this page shows defaults." : "The settings file can’t be read, so this page shows defaults.";
+    autoTarget = "keep";
+  }
+  const cfgNotice = !cfg ? null : cfg === "unreadable-no-copy" ? CFG_NO_COPY : CFG_COPY;
   const refreshFailed = i.loadError !== null;
   if (refreshFailed) autoTarget = "keep";
 
@@ -192,7 +203,7 @@ export function settingsModel(i: ModelInput): Model {
     chip,
     answer,
     evidence: CALM_EVIDENCE,
-    notice: refreshFailed ? `Couldn’t refresh: showing what loaded ${i.loadedAt === null ? "earlier" : ago(now - i.loadedAt)}.` : null,
+    notice: [cfgNotice, refreshFailed ? `Couldn’t refresh: showing what loaded ${i.loadedAt === null ? "earlier" : ago(now - i.loadedAt)}.` : null].filter(Boolean).join(" ") || null,
     strips,
     autoTarget,
     detailLead: typeof autoTarget === "string" && autoTarget !== "keep" ? answer : null,

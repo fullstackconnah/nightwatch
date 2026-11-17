@@ -18,6 +18,7 @@
  *
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
  *   ONLY=stepup-discord ... runs only the Discord step-up section on the Hermes daemon card (idle, asking, wrong, no-password)
+ *   ONLY=config-notice ... runs only the config.json-unreadable head (blank, unreadable, unreadable-no-copy, healthy), from fixtures
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
  * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
  * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440), stepup-pin-clear (1440), stepup-pin-clear-disabled (390), stepup-pin-clear-ask (both).
@@ -1023,13 +1024,63 @@ await guarded("stepup-discord", () =>
   }),
 );
 
+// ---- config.json could not be read: head chip, answer and notice (ONLY=config-notice runs just this) ----
+// States come from fixtures (the calm GET with meta.configProblem set), so no config file on any server is touched: blank, unreadable, unreadable-no-copy, plus healthy (null).
+// The Sign-in off chip and the refresh-failed notice are the house references the numeric checks compare against.
+for (const [key, problem] of [["cfgBlank", "blank"], ["cfgUnreadable", "unreadable"], ["cfgNoCopy", "unreadable-no-copy"], ["cfgHealthy", null]]) {
+  FIXTURES[key] ??= (() => {
+    const f = structuredClone(FIXTURES.calm);
+    f.get.meta.configProblem = problem;
+    return f;
+  })();
+}
+await guarded("config-notice", () =>
+  each(async (s) => {
+    const cn = (name, ok) => record(`CN ${name}`, s.name, ok);
+    const COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+    const NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
+    const BLANK = "The settings file is empty, so this page shows defaults.";
+    const BAD = "The settings file can’t be read, so this page shows defaults.";
+    const noteStyle = (page) => page.locator("[data-feature=notice]").evaluate((e) => { const c = getComputedStyle(e); return { pad: c.padding, color: c.color, bg: c.backgroundColor, mt: parseFloat(c.marginTop) }; });
+    const lum = (rgb) => { const [r, g, b] = rgb.match(/[\d.]+/g).slice(0, 3).map((v) => { const x = Number(v) / 255; return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+    // References: the existing Sign-in off chip classes and the refresh-failed notice style.
+    const refChip = await (async () => { const { page } = await visit(s, "noPassword"); const c = await page.locator("[data-feature=chip]").getAttribute("class"); await page.close(); return c; })();
+    const refNote = await (async () => { const { page } = await visit(s, "refreshFailed"); await page.waitForTimeout(5300); await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await page.waitForFunction(() => /Couldn’t refresh/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 15_000 }); const st = await noteStyle(page); await page.close(); return st; })();
+    for (const [key, name, answer, notice] of [["cfgBlank", "blank", BLANK, COPY], ["cfgUnreadable", "unreadable", BAD, COPY], ["cfgNoCopy", "unreadable-no-copy", BAD, NO_COPY]]) {
+      const { page } = await visit(s, key);
+      const chip = page.locator("[data-feature=chip]");
+      cn(`${name}: chip text`, (await chip.innerText()).trim() === "Using defaults");
+      cn(`${name}: chip classes equal Sign-in off`, (await chip.getAttribute("class")) === refChip);
+      const a = await page.locator("[data-feature=answer]").evaluate((e) => ({ t: e.textContent, clamped: e.scrollHeight > e.clientHeight + 1 }));
+      cn(`${name}: answer text exact, no em dash`, a.t === answer && !a.t.includes("—"));
+      cn(`${name}: answer not clamped`, !a.clamped);
+      const n = page.locator("[data-feature=notice]");
+      cn(`${name}: notice text exact, no em dash`, (await n.textContent()) === notice && !notice.includes("—"));
+      const st = await noteStyle(page);
+      cn(`${name}: notice padding, color, background equal refresh-failed`, st.pad === refNote.pad && st.color === refNote.color && st.bg === refNote.bg);
+      cn(`${name}: notice contrast >= 4.5`, ratio(st.color, st.bg) >= 4.5);
+      const gap = await page.evaluate(() => { const e = document.querySelector("[data-feature=evidence]").getBoundingClientRect(), n = document.querySelector("[data-feature=notice]").getBoundingClientRect(); return n.top - e.bottom; });
+      cn(`${name}: gap equals margin-top (0.5rem) within 1 px`, Math.abs(gap - st.mt) <= 1 && Math.abs(st.mt - 8) <= 0.5);
+      cn(`${name}: notice does not overflow`, await n.evaluate((e) => e.scrollWidth <= e.clientWidth));
+      await cropEl(page, s, page.locator("[data-feature=head]"), `config-notice-${name}`, name === "blank");
+      await page.close();
+    }
+    const { page } = await visit(s, "cfgHealthy");
+    cn("healthy: no notice", (await page.locator("[data-feature=notice]").count()) === 0);
+    cn("healthy: chip is not Using defaults", (await page.locator("[data-feature=chip]").innerText()).trim() !== "Using defaults");
+    await cropEl(page, s, page.locator("[data-feature=head]"), "config-notice-healthy", false);
+    await page.close();
+  }),
+);
+
 // The final records print even after failures, and on a runner kill.
 function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
   record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
   console.log(JSON.stringify({ ...checks, diag }));
   // A failed step-up check (or any FAIL record in a single-section run) fails the run.
-  const bad = Object.entries(checks).some(([k, v]) => (k.startsWith("SU ") && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
+  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
   if (bad) process.exitCode = 1;
 }
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));
