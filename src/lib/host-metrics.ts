@@ -34,7 +34,7 @@ export interface HostVitals {
 
 function hostProcAvailable(): boolean {
   try {
-    return fs.existsSync(`${HOST_PROC}/1/net/dev`);
+    return !!fs.statSync(`${HOST_PROC}/1/net/dev`, { throwIfNoEntry: false });
   } catch {
     return false;
   }
