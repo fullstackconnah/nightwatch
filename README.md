@@ -77,7 +77,8 @@ Two layers, both required for exposure beyond the LAN:
 Session = 7-day HttpOnly JWT cookie; middleware guards every page and API
 route. The socket proxy never exposes `EXEC`, so the app cannot shell into
 containers even if compromised. Changing the password in Settings signs out
-every other session and browser (the browser that changed it stays signed in).
+every other login session (the browser that changed it stays signed in). A wall kiosk
+unlocked with its PIN stays unlocked until that unlock lapses, and the MCP token is not changed.
 The password set in Settings replaces the one in `.env`: once it is stored, only
 it signs in, and `ADMIN_PASSWORD_HASH` counts only until then (first setup).
 Forgotten it? On the server, remove `system.adminPasswordHash` from the stored

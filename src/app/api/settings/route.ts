@@ -15,6 +15,7 @@ import { mergeDashPut } from "@/lib/settings/dash-put";
 import { checkBaseVersion, dashVersions } from "@/lib/settings/dash-version";
 import { sanitizeConfig } from "@/lib/settings/public-config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
+import { candidatePasswordHashes } from "@/lib/auth-server";
 import { mcpEnabled } from "@/lib/mcp/auth";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { calendarMeta } from "@/lib/calendar-feed";
@@ -105,10 +106,8 @@ export async function GET(req: NextRequest) {
       widgetTypes: WIDGET_TYPE_NAMES,
       publicHost: publicHost(),
       dockgeUrl: dockgeUrl(),
-      // Config-over-env, same as every field below: a password rotated on
-      // the settings page (system.adminPasswordHash) counts the same as
-      // ADMIN_PASSWORD_HASH.
-      authConfigured: Boolean(process.env.ADMIN_PASSWORD_HASH || config.system?.adminPasswordHash),
+      // Same answer as login: a stored hash replaces the env one (#266), blanks count as unset.
+      authConfigured: candidatePasswordHashes().length > 0,
       dataDir: process.env.DATA_DIR || "./data",
       hermesModelUpdatedAt: readHermesModelFile()?.updatedAt ?? null,
       // Surfaced on the Settings "System access" panel — never the token
