@@ -199,14 +199,19 @@ test("15b clear-all with cookies (needs the jose package)", async () => {
   assert.equal(bytes(), JSON.stringify({ v: 1, items: [mk(1, "Bread"), mk(2, "Eggs")], history: [] }));
   process.env.SESSION_SECRET = "test-secret-for-kiosk-list";
   const auth = await import("./auth.ts");
-  const elev = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0) });
+  const elev = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0, await auth.kioskPinTag("123456")) });
   assert.equal(elev.status, 200);
   assert.equal(elev.json.removed.length, 2);
   assert.equal(stored().items.length, 0);
   seed([mk(1, "Bread"), mk(2, "Eggs")]);
   delete process.env.KIOSK_PIN; // the PIN was cleared: the same still-valid elevation no longer counts
-  const noPin = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0) });
+  const noPin = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0, await auth.kioskPinTag("123456")) });
   assert.equal(noPin.status, 403);
+  assert.equal(stored().items.length, 2);
+  seed([mk(1, "Bread"), mk(2, "Eggs")]);
+  process.env.KIOSK_PIN = "654321"; // the PIN was changed: an elevation unlocked with the old one is dead
+  const changed = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0, await auth.kioskPinTag("123456")) });
+  assert.equal(changed.status, 403);
   assert.equal(stored().items.length, 2);
   process.env.KIOSK_PIN = "123456";
   seed([mk(1, "Bread")]);
@@ -344,7 +349,7 @@ test("19b a second corrupt file keeps the first copy; only the 3 newest stay", a
 const elevate = async () => {
   process.env.SESSION_SECRET = "test-secret-for-kiosk-list";
   const auth = await import("./auth.ts");
-  return { elevationCookie: await auth.createKioskElevationToken(0) };
+  return { elevationCookie: await auth.createKioskElevationToken(0, await auth.kioskPinTag("123456")) };
 };
 const rows = (open: number, ticked: number) => [
   ...Array.from({ length: open }, (_, i) => mk(i + 1, `Open ${i}`)),

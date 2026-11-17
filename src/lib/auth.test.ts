@@ -87,25 +87,25 @@ describe("auth", () => {
     });
 
     it("refuses kiosk-elevation and oidc-flow tokens", async () => {
-      assert.equal(await verifySessionToken(await createKioskElevationToken(0), 0), false);
+      assert.equal(await verifySessionToken(await createKioskElevationToken(0, "test-tag"), 0), false);
       assert.equal(await verifySessionToken(await createOidcFlowToken({ state: "s", nonce: "n", verifier: "v" }), 0), false);
     });
   });
 
   describe("kiosk elevation token", () => {
     it("round-trips through createKioskElevationToken and verifyKioskElevationToken", async () => {
-      assert.equal(await verifyKioskElevationToken(await createKioskElevationToken(0), 0), true);
+      assert.equal(await verifyKioskElevationToken(await createKioskElevationToken(0, "test-tag"), 0, "test-tag"), true);
     });
 
     it("refuses a missing token, an expired token, and one without the kiosk claim", async () => {
-      assert.equal(await verifyKioskElevationToken(undefined, 0), false);
-      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, FAKE_SECRET, nowSeconds() - 60), 0), false);
-      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", typ: "kiosk" }), 0), false);
+      assert.equal(await verifyKioskElevationToken(undefined, 0, "test-tag"), false);
+      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, FAKE_SECRET, nowSeconds() - 60), 0, "test-tag"), false);
+      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", typ: "kiosk" }), 0, "test-tag"), false);
     });
 
     it("a session token is not accepted as an elevation token, and the reverse", async () => {
-      assert.equal(await verifyKioskElevationToken(await createSessionToken(0), 0), false);
-      assert.equal(await verifySessionToken(await createKioskElevationToken(0), 0), false);
+      assert.equal(await verifyKioskElevationToken(await createSessionToken(0), 0, "test-tag"), false);
+      assert.equal(await verifySessionToken(await createKioskElevationToken(0, "test-tag"), 0), false);
     });
   });
 
@@ -119,22 +119,22 @@ describe("auth", () => {
 
   describe("isRequestAuthenticated", () => {
     it("a session passes any route", async () => {
-      assert.equal(await isRequestAuthenticated(await createSessionToken(0), undefined, "POST", "/api/anything", 0), true);
+      assert.equal(await isRequestAuthenticated(await createSessionToken(0), undefined, "POST", "/api/anything", 0, "test-tag"), true);
     });
 
     it("an elevated kiosk passes an allowlisted route with its method", async () => {
-      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(0), "GET", "/api/docker/containers", 0), true);
+      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(0, "test-tag"), "GET", "/api/docker/containers", 0, "test-tag"), true);
     });
 
     it("an elevated kiosk is refused off the allowlist, and on an allowlisted path with the wrong method", async () => {
-      const elevated = await createKioskElevationToken(0);
-      assert.equal(await isRequestAuthenticated(undefined, elevated, "GET", "/api/config", 0), false);
-      assert.equal(await isRequestAuthenticated(undefined, elevated, "DELETE", "/api/docker/containers", 0), false);
+      const elevated = await createKioskElevationToken(0, "test-tag");
+      assert.equal(await isRequestAuthenticated(undefined, elevated, "GET", "/api/config", 0, "test-tag"), false);
+      assert.equal(await isRequestAuthenticated(undefined, elevated, "DELETE", "/api/docker/containers", 0, "test-tag"), false);
     });
 
     it("no tokens, or a kiosk token in the session slot, is refused", async () => {
-      assert.equal(await isRequestAuthenticated(undefined, undefined, "GET", "/api/docker/containers", 0), false);
-      assert.equal(await isRequestAuthenticated(await createKioskElevationToken(0), undefined, "GET", "/api/config", 0), false);
+      assert.equal(await isRequestAuthenticated(undefined, undefined, "GET", "/api/docker/containers", 0, "test-tag"), false);
+      assert.equal(await isRequestAuthenticated(await createKioskElevationToken(0, "test-tag"), undefined, "GET", "/api/config", 0, "test-tag"), false);
     });
   });
 
@@ -193,8 +193,8 @@ describe("auth", () => {
       const forged = await sign({ sub: "admin", typ: "session" }, "homelab-dashboard-dev-secret");
       assert.equal(await verifySessionToken(forged, 0), false);
       const forgedKiosk = await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, "homelab-dashboard-dev-secret");
-      assert.equal(await verifyKioskElevationToken(forgedKiosk, 0), false);
-      assert.equal(await isRequestAuthenticated(forged, forgedKiosk, "POST", "/api/anything", 0), false);
+      assert.equal(await verifyKioskElevationToken(forgedKiosk, 0, "test-tag"), false);
+      assert.equal(await isRequestAuthenticated(forged, forgedKiosk, "POST", "/api/anything", 0, "test-tag"), false);
     });
 
     // No minimum length is enforced; a short secret is used as-is.

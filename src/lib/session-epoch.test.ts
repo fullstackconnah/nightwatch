@@ -47,24 +47,24 @@ describe("session epoch: token (PR B)", () => {
   });
   it("isRequestAuthenticated honours the epoch for sessions and for kiosk elevation", async () => {
     const old = await createSessionToken(0);
-    assert.equal(await isRequestAuthenticated(old, undefined, "GET", "/api/x", 1), false);
-    const k = await createKioskElevationToken(0);
-    assert.equal(await isRequestAuthenticated(undefined, k, "GET", "/api/docker/containers", 0), true);
-    assert.equal(await isRequestAuthenticated(undefined, k, "GET", "/api/docker/containers", 1), false);
+    assert.equal(await isRequestAuthenticated(old, undefined, "GET", "/api/x", 1, "test-tag"), false);
+    const k = await createKioskElevationToken(0, "test-tag");
+    assert.equal(await isRequestAuthenticated(undefined, k, "GET", "/api/docker/containers", 0, "test-tag"), true);
+    assert.equal(await isRequestAuthenticated(undefined, k, "GET", "/api/docker/containers", 1, "test-tag"), false);
   });
   it("an elevation minted at 0 is refused at epoch 1", async () => {
-    assert.equal(await verifyKioskElevationToken(await createKioskElevationToken(0), 1), false);
+    assert.equal(await verifyKioskElevationToken(await createKioskElevationToken(0, "test-tag"), 1, "test-tag"), false);
   });
   it("an elevation minted at 9 is accepted at 9 and refused at 10", async () => {
-    const t = await createKioskElevationToken(9);
-    assert.equal(await verifyKioskElevationToken(t, 9), true);
-    assert.equal(await verifyKioskElevationToken(t, 10), false);
+    const t = await createKioskElevationToken(9, "test-tag");
+    assert.equal(await verifyKioskElevationToken(t, 9, "test-tag"), true);
+    assert.equal(await verifyKioskElevationToken(t, 10, "test-tag"), false);
   });
   it("an elevation with no ep counts as 0: accepted at 0, refused at 1; a malformed ep is refused", async () => {
-    const t = await signRaw({ sub: "kiosk", kiosk: true, typ: "kiosk" });
-    assert.equal(await verifyKioskElevationToken(t, 0), true);
-    assert.equal(await verifyKioskElevationToken(t, 1), false);
-    for (const ep of ["5", -1, 1.5, null]) assert.equal(await verifyKioskElevationToken(await signRaw({ sub: "kiosk", kiosk: true, typ: "kiosk", ep }), 0), false, String(ep));
+    const t = await signRaw({ sub: "kiosk", kiosk: true, typ: "kiosk", pt: "test-tag" });
+    assert.equal(await verifyKioskElevationToken(t, 0, "test-tag"), true);
+    assert.equal(await verifyKioskElevationToken(t, 1, "test-tag"), false);
+    for (const ep of ["5", -1, 1.5, null]) assert.equal(await verifyKioskElevationToken(await signRaw({ sub: "kiosk", kiosk: true, typ: "kiosk", ep, pt: "test-tag" }), 0, "test-tag"), false, String(ep));
   });
 });
 
@@ -328,14 +328,14 @@ describe("session epoch: source guards (PR B)", () => {
   it("the kiosk refresh route verifies against sessionEpoch() before it re-mints", () => {
     const s = read("../app/api/auth/kiosk/refresh/route.ts");
     assert.match(s, /const epoch = sessionEpoch\(\);/);
-    assert.match(s, /verifyKioskElevationToken\(token, epoch\)/);
-    assert.match(s, /createKioskElevationToken\(epoch\)/);
+    assert.match(s, /verifyKioskElevationToken\(token, epoch, pinTag\)/);
+    assert.match(s, /createKioskElevationToken\(epoch, pinTag\)/);
     assert.ok(s.indexOf("verifyKioskElevationToken(") < s.indexOf("createKioskElevationToken("));
   });
   it("the middleware runs on Node and passes the epoch", () => {
     const s = read("../middleware.ts");
     assert.match(s, /runtime: "nodejs"/);
-    assert.match(s, /sessionEpoch\(\),\s*\)/);
+    assert.match(s, /sessionEpoch\(\),\s*elevation \? await kioskPinTag/);
   });
   it("the password route bumps the higher of both stores, writes auth.json first, mirrors into the config, then re-issues the cookie", () => {
     const s = read("../app/api/settings/password/route.ts");

@@ -9,7 +9,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 // Exported so src/lib/oidc.ts can sign/verify its own short-lived transient
 // cookie (state/nonce/PKCE verifier) with the same secret/pattern as the
 // session and kiosk-elevation tokens below — no behavior change here.
-export function secretKey(): Uint8Array {
+export function secretKey(): Uint8Array<ArrayBuffer> {
   const secret = process.env.SESSION_SECRET; // never the password hash: anyone who saw the hash could mint a session
   if (secret) return new TextEncoder().encode(secret);
   // The literal below is public; production must never sign with it. The verify functions catch this and fail closed.
@@ -68,9 +68,25 @@ export function sessionCookieOptions(secure: boolean) {
 export const KIOSK_ELEVATION_COOKIE = "hd_kiosk_elevated";
 export const KIOSK_ELEVATION_TTL_SECONDS = 5 * 60; // 5 minutes, slides on activity (see /api/auth/kiosk/refresh)
 
-// Carries the session epoch like createSessionToken, so a password change locks a PIN-unlocked kiosk.
-export async function createKioskElevationToken(epoch: number): Promise<string> {
-  return new SignJWT({ sub: "kiosk", kiosk: true, typ: "kiosk", ep: epoch })
+/**
+ * A short keyed tag of the effective kiosk PIN, carried by the elevation token (`pt`) so changing the PIN locks
+ * kiosks unlocked with the old one. HMAC under the token-signing secret: the JWT is only signed, so a bare hash of a
+ * short PIN could be guessed offline by anyone holding the cookie. Empty for no PIN (or no usable secret): verify refuses "".
+ */
+export async function kioskPinTag(pin: string | undefined): Promise<string> {
+  if (!pin) return "";
+  try {
+    const key = await crypto.subtle.importKey("raw", secretKey(), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode("kiosk-pin:" + pin));
+    return Array.from(new Uint8Array(mac).slice(0, 8), (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return "";
+  }
+}
+
+// Carries the session epoch like createSessionToken, so a password change locks a PIN-unlocked kiosk; `pinTag` (kioskPinTag) does the same for a PIN change.
+export async function createKioskElevationToken(epoch: number, pinTag: string): Promise<string> {
+  return new SignJWT({ sub: "kiosk", kiosk: true, typ: "kiosk", ep: epoch, pt: pinTag })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${KIOSK_ELEVATION_TTL_SECONDS}s`)
@@ -78,12 +94,13 @@ export async function createKioskElevationToken(epoch: number): Promise<string> 
 }
 
 // ep >= epoch, a missing ep counts as 0 (same rule as verifySessionToken).
-export async function verifyKioskElevationToken(token: string | undefined, epoch: number): Promise<boolean> {
-  if (!token || !Number.isSafeInteger(epoch)) return false;
+// A token with no `pt` claim (minted before PIN binding), or one that differs from the current PIN's tag, is refused.
+export async function verifyKioskElevationToken(token: string | undefined, epoch: number, pinTag: string): Promise<boolean> {
+  if (!token || !pinTag || !Number.isSafeInteger(epoch)) return false;
   try {
     const { payload } = await jwtVerify(token, secretKey());
     const ep = payload.ep === undefined ? 0 : payload.ep;
-    return payload.typ === "kiosk" && payload.kiosk === true && typeof ep === "number" && Number.isSafeInteger(ep) && ep >= 0 && ep >= epoch;
+    return payload.typ === "kiosk" && payload.kiosk === true && payload.pt === pinTag && typeof ep === "number" && Number.isSafeInteger(ep) && ep >= 0 && ep >= epoch;
   } catch {
     return false;
   }
@@ -112,9 +129,10 @@ export async function isRequestAuthenticated(
   method: string,
   pathname: string,
   epoch: number,
+  kioskPinTag: string,
 ): Promise<boolean> {
   if (await verifySessionToken(sessionToken, epoch)) return true;
-  return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken, epoch));
+  return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken, epoch, kioskPinTag));
 }
 
 // --- OIDC transient flow token ------------------------------------------------
