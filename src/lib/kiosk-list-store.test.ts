@@ -35,10 +35,12 @@ const names = (n: number) => Array.from({ length: n }, (_, i) => `Item ${i}`);
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "kiosk-list-"));
   process.env.DATA_DIR = dir;
+  process.env.KIOSK_PIN = "123456"; // an elevation only counts while a kiosk PIN exists
   resetKioskListState();
 });
 afterEach(() => {
   delete process.env.DATA_DIR;
+  delete process.env.KIOSK_PIN;
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -201,6 +203,12 @@ test("15b clear-all with cookies (needs the jose package)", async () => {
   assert.equal(elev.status, 200);
   assert.equal(elev.json.removed.length, 2);
   assert.equal(stored().items.length, 0);
+  seed([mk(1, "Bread"), mk(2, "Eggs")]);
+  delete process.env.KIOSK_PIN; // the PIN was cleared: the same still-valid elevation no longer counts
+  const noPin = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0) });
+  assert.equal(noPin.status, 403);
+  assert.equal(stored().items.length, 2);
+  process.env.KIOSK_PIN = "123456";
   seed([mk(1, "Bread")]);
   const sess = await post("clear-all", { listId: "shopping" }, T, { sessionCookie: await auth.createSessionToken(0) });
   assert.equal(sess.status, 200);
