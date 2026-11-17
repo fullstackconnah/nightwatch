@@ -273,7 +273,10 @@ function readConfig(strict: boolean): AppConfig {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const text = fs.readFileSync(configPath(), "utf8");
-    if (!text.trim()) return DEFAULT_CONFIG; // a 0-byte file (touch data/config.json) is a fresh install, like a missing one
+    if (!text.trim()) {
+      if (strict) throw new Error("config.json is empty"); // a save must not build on defaults over a damaged file
+      return DEFAULT_CONFIG; // lenient: a 0-byte file (touch data/config.json) reads as a fresh install
+    }
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       if (strict) throw new Error("config.json is not an object");

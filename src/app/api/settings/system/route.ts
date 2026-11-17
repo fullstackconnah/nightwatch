@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
-  const existing = current.system ?? {};
+  let existing = current.system ?? {}; // re-read from a fresh load after the step-up check
 
   // --- MCP token: manual set, explicit clear, or server-generated ---------
   const generated = body.generateMcpToken === true;
@@ -190,9 +190,17 @@ export async function POST(req: NextRequest) {
     if (check === "wrong") return NextResponse.json({ error: "Current password is incorrect.", stepUp: "wrong" }, { status: 403 });
   }
 
+  // The check above awaits bcrypt; another save may have landed meanwhile, so build from a fresh copy (no await from here to saveConfig).
+  let fresh: AppConfig;
+  try {
+    fresh = loadConfigForSave();
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
   const now = new Date().toISOString();
+  existing = fresh.system ?? {};
   const next: AppConfig = {
-    ...current,
+    ...fresh,
     system: {
       ...existing, // a field this build doesn't know survives; the keys below override it, so a cleared (undefined) secret stays cleared
       mcpToken,

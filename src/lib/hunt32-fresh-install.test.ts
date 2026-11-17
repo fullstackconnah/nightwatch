@@ -50,10 +50,10 @@ describe("hunt 32 F4/F5/F1: config.ts under a temp DATA_DIR", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("F4: an empty or whitespace-only config.json is a fresh install (saves allowed)", () => {
+  it("F4: an empty or whitespace-only config.json reads as defaults, but a save refuses it", () => {
     for (const body of ["", "  \n\t "]) {
       writeFileSync(file(), body);
-      assert.deepEqual(config.loadConfigForSave().widgets, []);
+      assert.throws(() => config.loadConfigForSave(), new RegExp(config.CONFIG_UNREADABLE.slice(0, 20)));
       assert.deepEqual(config.loadConfig().groups, []);
     }
   });

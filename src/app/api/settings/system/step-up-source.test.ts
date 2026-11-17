@@ -65,3 +65,10 @@ test("password route: shared helper and limiter, own limiter gone, contract byte
   // the new-password length check stays before the helper call
   assert.ok(at(pw, "New password must be at least") < at(pw, "checkCurrentPassword("));
 });
+
+test("system route: no await sits between the load that feeds the saved object and saveConfig", () => {
+  const load = sys.lastIndexOf("loadConfigForSave()");
+  const save = at(sys, "saveConfig(next)");
+  assert.ok(load > at(sys, "checkCurrentPassword("), "the load feeding next comes after the step-up await");
+  assert.doesNotMatch(sys.slice(load, save), /\bawait\b/);
+});

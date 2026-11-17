@@ -59,7 +59,13 @@ async function readBaseline(): Promise<Baseline | null> {
 async function writeBaseline(b: Baseline): Promise<void> {
   const file = path.join(historyDir(), BASELINE_FILE);
   const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(b));
+  const fh = await fs.open(tmp, "w");
+  try {
+    await fh.writeFile(JSON.stringify(b));
+    await fh.sync(); // so a power cut cannot leave the renamed file empty
+  } finally {
+    await fh.close();
+  }
   await fs.rename(tmp, file);
 }
 

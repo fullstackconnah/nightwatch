@@ -76,7 +76,13 @@ async function write(next: ListFile): Promise<void> {
   const tmp = `${file}.${process.pid}.${st().seq++}.tmp`;
   try {
     await fs.mkdir(dataDir(), { recursive: true });
-    await fs.writeFile(tmp, JSON.stringify(next));
+    const fh = await fs.open(tmp, "w");
+    try {
+      await fh.writeFile(JSON.stringify(next));
+      await fh.sync(); // so a power cut cannot leave the renamed file empty
+    } finally {
+      await fh.close();
+    }
     await fs.rename(tmp, file);
   } catch {
     await fs.rm(tmp, { force: true }).catch(() => {});
