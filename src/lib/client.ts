@@ -23,12 +23,16 @@ import { shouldRedirectToLogin } from "@/lib/login-redirect";
 import { afterClosedProbe } from "@/lib/log-reconnect";
 export { ApiError, serverMessage } from "@/lib/api-error";
 
+/** The one 401 rule: a signed-out tab goes to /login (never the kiosk). True on a browser 401; the caller keeps its own handling. */
+export function redirectOn401(res: Response): boolean {
+  if (res.status !== 401 || typeof window === "undefined") return false;
+  if (shouldRedirectToLogin(window.location.pathname)) window.location.href = "/login";
+  return true;
+}
+
 export const fetcher = async (url: string) => {
   const res = await fetch(url);
-  if (res.status === 401 && typeof window !== "undefined") {
-    if (shouldRedirectToLogin(window.location.pathname)) window.location.href = "/login";
-    throw new ApiError("unauthorized", 401);
-  }
+  if (redirectOn401(res)) throw new ApiError("unauthorized", 401);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
   return body;

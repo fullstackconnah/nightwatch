@@ -493,12 +493,16 @@ try {
         check(`envmask ${name} (3): every Show control is at least 44 wide and ${minH} tall`, boxes.every(([w, h]) => w >= 43.5 && h >= minH - 0.5), JSON.stringify(boxes.filter(([w, h]) => w < 43.5 || h < minH - 0.5).slice(0, 3)));
         const topNames = await top();
 
-        await page.getByRole("button", { name: "Show value of PATH", exact: true }).click();
+        const pathBtn = (label) => page.getByRole("button", { name: `${label} value of PATH`, exact: true });
+        const showW = (await pathBtn("Show").boundingBox()).width;
+        await pathBtn("Show").click();
         await page.waitForFunction(() => [...document.querySelectorAll("[data-env-row]")].some((r) => r.querySelector("[data-env-name]").textContent === "PATH" && r.querySelector("[data-env-val]").textContent.trim() !== "••••••••"), null, { timeout: 15_000 });
         const shown = (await vals()).filter((v) => v !== MASK);
         check(`envmask ${name} (2): exactly one row shows a value and it starts with /`, shown.length === 1 && shown[0].startsWith("/"), `${shown.length} shown`);
         check(`envmask ${name} (5): the Environment header moves 0 px between names and shown`, (await top()) === topNames, `${topNames} -> ${await top()}`);
         if (name === "390") check("envmask 390 (4): section scrollWidth <= clientWidth", await section.evaluate((el) => el.scrollWidth <= el.clientWidth));
+        const hideW = (await pathBtn("Hide").boundingBox()).width;
+        check(`envmask ${name} (8): envControlWidthStable: Show width equals Hide width (within 0.5) and is at least 64`, Math.abs(showW - hideW) <= 0.5 && showW >= 64, `show ${showW} hide ${hideW}`);
         await shot("shown");
 
         await page.getByRole("button", { name: "Hide value of PATH", exact: true }).click();

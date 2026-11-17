@@ -117,8 +117,9 @@ The container change log lives in `data/history/changes-YYYY-MM-DD.jsonl` (30 da
 
 - **Port**: 3005. Homepage (3001) was retired on 2026-11-12 and its service is
   gone from the homelab stack; keep the `3005:3000` mapping.
-- **Login disabled?** `ADMIN_PASSWORD_HASH` missing/empty in `.env` — production
-  refuses all logins rather than running open.
+- **Login disabled?** Only when `ADMIN_PASSWORD_HASH` is missing/empty in `.env` AND
+  no password is stored in Settings — production refuses all logins rather than
+  running open.
 - **qBittorrent widget** works only in prod (its WebUI whitelists the docker
   subnet; auth is bypassed from the container, and the old admin password no
   longer works from the LAN).

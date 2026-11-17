@@ -4,6 +4,7 @@ import { createSessionToken, isMissingSecretError, SESSION_COOKIE, sessionCookie
 import { sessionEpoch } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
 import { candidatePasswordHashes } from "@/lib/auth-server";
+import { matchesAny } from "@/lib/password-hash";
 import { createAttemptLimiter } from "@/lib/attempt-limiter";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,7 @@ export async function POST(req: NextRequest) {
 
   let ok = false;
   if (candidates.length && typeof password === "string" && password) {
-    for (const candidate of candidates) {
-      if (await bcrypt.compare(password, candidate.hash)) {
-        ok = true;
-        break;
-      }
-    }
+    ok = await matchesAny(password, candidates.map((c) => c.hash), bcrypt.compare);
   } else if (!candidates.length && process.env.NODE_ENV === "development") {
     ok = true; // dev only: no hash configured anywhere
   }
