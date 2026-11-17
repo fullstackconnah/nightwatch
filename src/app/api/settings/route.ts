@@ -7,6 +7,7 @@ import {
   readHermesModelFile,
   readHermesSettingsFile,
   systemSetting,
+  systemSettingSaved,
   dockgeUrl,
   publicHost,
   type AppConfig,
@@ -61,6 +62,7 @@ function systemMeta(config: AppConfig) {
   return {
     mcpTokenConfigured: Boolean(systemSetting("mcpToken", "MCP_TOKEN")),
     kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
+    kioskPinSaved: systemSettingSaved("kioskPin"),
     hermesApiConfigured: Boolean(
       systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
     ),

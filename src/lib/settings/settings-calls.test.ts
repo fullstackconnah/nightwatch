@@ -10,9 +10,9 @@ const walk = (d: string): string[] =>
 const files = DIRS.flatMap((d) => walk(join(SRC, d)));
 const text = files.map((f) => readFileSync(f, "utf8")).join("\n");
 
-test("C2s: the page keeps its 13 write call sites and 6 URLs", () => {
+test("C2s: the page keeps its 14 write call sites and 6 URLs", () => {
   const calls = [...text.matchAll(/\b(?:postJson|putJson)\(\s*(["`])([^"`]+)\1/g)];
-  assert.equal(calls.length, 13);
+  assert.equal(calls.length, 14);
   assert.deepEqual([...new Set(calls.map((c) => c[2]))].sort(), [
     "/api/hermes/model",
     "/api/settings",

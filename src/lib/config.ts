@@ -499,6 +499,12 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
   return fromEnv?.trim() ? fromEnv.trim() : undefined;
 }
 
+/** Whether the value is saved in config.json itself (systemSetting() also says yes for the env var): a Clear only does something when it is. */
+export function systemSettingSaved(key: keyof SystemSettings): boolean {
+  const v = loadConfig().system?.[key];
+  return typeof v === "string" && v.trim() !== "";
+}
+
 /** A stored epoch: a non-negative safe integer, else 0 (a malformed counter un-revokes, never locks anyone out). */
 export const epochOf = (v: unknown): number => (Number.isSafeInteger(v) && (v as number) >= 0 ? (v as number) : 0);
 

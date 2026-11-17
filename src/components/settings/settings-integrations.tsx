@@ -83,6 +83,8 @@ export interface SettingsFullResponse {
   system: {
     mcpTokenConfigured: boolean;
     kioskPinConfigured: boolean;
+    /** Saved in config.json, not only KIOSK_PIN in the environment: the only case a Clear can act on. */
+    kioskPinSaved: boolean;
     hermesApiConfigured: boolean;
     voiceConfigured: boolean;
     oidcClientSecretConfigured: boolean;
@@ -168,7 +170,7 @@ export function SecretField({
   // `configured` unchanged, so this never fires — and the typed draft
   // survives for another try.
   useEffect(() => {
-    if (configured) setReplacing(false);
+    setReplacing(!configured); // also reopens the input when a Clear removes the saved value
   }, [configured]);
 
   // Both `id` AND `htmlFor`, because this one label serves two different
@@ -178,9 +180,9 @@ export function SecretField({
   // 2026-08-03 — left every unconfigured secret field (the editable state, the
   // one you're in while actually typing a key) with no accessible name at all.
   const labelRow = (label || action) && (
-    <div className="flex items-center justify-between gap-2 mb-1">
+    <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
       {label && (
-        <Label id={labelId} htmlFor={id} className="mb-0">
+        <Label id={labelId} htmlFor={id} className="mb-0 whitespace-nowrap">
           {label}
         </Label>
       )}
@@ -263,7 +265,7 @@ export function SecretField({
 
 /** Clear: an outlined trigger, one plain question, then "Yes, clear". The request fires only on Yes (K10); `run`
  *  throws on failure so the frame shows it with Try again. */
-export function ClearAction({ say, failure, run, ariaLabel }: { say: string; failure: string; run: () => Promise<void>; ariaLabel?: string }) {
+export function ClearAction({ say, failure, run, ariaLabel, disabled, describedBy }: { say: string; failure: string; run: () => Promise<void>; ariaLabel?: string; disabled?: boolean; describedBy?: string }) {
   return (
     <WriteAction
       label="Clear"
@@ -274,6 +276,8 @@ export function ClearAction({ say, failure, run, ariaLabel }: { say: string; fai
       danger
       flight="Clearing…"
       failure={failure}
+      disabled={disabled}
+      describedBy={describedBy}
       run={run}
     />
   );

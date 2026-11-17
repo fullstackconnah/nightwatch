@@ -19,7 +19,7 @@
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
  * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
- * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440).
+ * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440), stepup-pin-clear (1440), stepup-pin-clear-disabled (390), stepup-pin-clear-ask (both).
  */
 
 import { chromium } from "playwright";
@@ -79,7 +79,7 @@ async function failShot(s, e) {
   const page = live[s.name];
   if (!page || page.isClosed()) return;
   const tag = `${stage}@${s.name}`;
-  diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => "unreadable") };
+  diag[tag] = { url: page.url(), consoleErrors: (page.consoleErrors ?? []).slice(0, 5), body: await page.evaluate(() => document.body.innerText.slice(0, 1200)).catch(() => "unreadable") };
   await page.screenshot({ path: join(OUT_DIR, `${stage.replace(/[^\w@-]+/g, "_")}-FAIL-${s.name}.png`), fullPage: true }).catch(() => {});
   await page.close().catch(() => {});
 }
@@ -684,6 +684,57 @@ await guarded("stepup", () =>
       await fontOf(c.locator("#system-step-up-hint"));
       await fits(page, "system-untouched", c, null);
       await cropEl(page, s, c, "stepup-system-untouched", false);
+      await page.close();
+    }
+    // Kiosk PIN Clear (saved PIN in the fixture): the trigger beside the label, disabled until the password is typed, the ask frame open.
+    // Numeric: height at or above the C12 floor (43.5 px at 390, the house Button tap minimum) and equal to Generate's (same WriteAction trigger); right edge inside the card (no sideways scroll).
+    {
+      const { page, sent } = await open();
+      const c = card(page, "System");
+      const clr = c.getByRole("button", { name: "Clear kiosk PIN" });
+      const gen = c.getByRole("button", { name: "Generate", exact: true });
+      su("pin clear: one control, disabled with an empty password", s.name, (await clr.count()) === 1 && (await clr.isDisabled()));
+      const b = await boxOf(clr), g = await boxOf(gen), box = await boxOf(c);
+      su("pin clear: control height meets the C12 tap floor and equals Generate's", s.name, (s.name !== "390" || b.h >= 43.5) && b.h === g.h);
+      su("pin clear: control inside the card, no sideways scroll", s.name, b.right <= box.right && (await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)));
+      if (!desk) await cropEl(page, s, c, "stepup-pin-clear-disabled", false);
+      else await cropEl(page, s, c, "stepup-pin-clear", false);
+      await pw(c).fill("not-the-password");
+      su("pin clear: enabled once the password is typed", s.name, await clr.isEnabled());
+      await clr.click();
+      const yes = c.getByRole("button", { name: "Yes, clear" });
+      await yes.waitFor({ timeout: SLOW });
+      await page.waitForTimeout(400); // settle: measured or cropped straight after the frame opens, the Yes height flickers at 390 and at 1440 the password empties and the frame closes; after a settle every crop step keeps both (probed 2026-11-17). Cause not found.
+      // The frame takes focus on open (Cancel, the safe choice: WriteAction's autoFocus), so a focus-driven hold never lapses.
+      su("pin clear: focus moves into the ask frame", s.name, await yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]").evaluate((f) => f.contains(document.activeElement)));
+      su("pin clear: focus lands on Cancel", s.name, (await page.evaluate(() => document.activeElement?.textContent?.trim())) === "Cancel");
+      const y = await boxOf(yes), ask = await boxOf(yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]"));
+      const lab = c.locator("label", { hasText: /^Kiosk PIN$/ });
+      const labelH = await lab.evaluate((e) => { const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight); return { h: e.getBoundingClientRect().height, line: Number.isNaN(lh) ? parseFloat(cs.fontSize) * 1.4 : lh }; });
+      su("pin clear: ask frame states the consequence", s.name, /KIOSK_PIN from the environment/.test(await c.innerText()));
+      su("pin clear: Yes meets the C12 tap floor", s.name, s.name !== "390" || y.h >= 43.5);
+      su("pin clear: ask frame inside the card", s.name, ask.right <= box.right);
+      su("pin clear: Kiosk PIN label stays on one line while the ask frame is open", s.name, labelH.h <= labelH.line + 1);
+      // Records, not checks: what the page looked like either side of the crop. `doc` false = the document reloaded; `frame` false with `doc` true = the React tree remounted or the frame closed.
+      const snap = () =>
+        page.evaluate(() => {
+          const a = document.activeElement, f = document.querySelector(".st-frame");
+          return {
+            open: (document.querySelector(".st-pane h2") ?? document.querySelector(".st-strip[data-on] .st-name"))?.textContent?.trim() ?? null,
+            innerWidth, scrollY: Math.round(scrollY), hash: location.hash,
+            active: a ? `${a.tagName.toLowerCase()}:${(a.getAttribute("aria-label") ?? a.textContent ?? "").trim().slice(0, 24)}` : null,
+            doc: window.__pcMark === 1, frame: !!f && f.__pcMark === 1, frames: document.querySelectorAll(".st-frame").length,
+          };
+        });
+      await page.evaluate(() => { window.__pcMark = 1; document.querySelector(".st-frame").__pcMark = 1; });
+      record("SU pin clear: state before the crop", s.name, JSON.stringify(await snap()));
+      await cropEl(page, s, c, "stepup-pin-clear-ask", false);
+      record("SU pin clear: state after the crop", s.name, JSON.stringify(await snap()));
+      // Names the cause of a Yes click that times out: false here means the page lost its state during the crop (a reload), true means the click itself was blocked.
+      su("pin clear: ask frame and typed password survive the crop", s.name, (await yes.count()) === 1 && (await pw(c).inputValue()) === "not-the-password");
+      await yes.click();
+      await wrong(page, c, sent, "pin clear wrong");
+      su("pin clear wrong: the body held only clearKioskPin and the password", s.name, sent.length === 1 && JSON.stringify(Object.keys(JSON.parse(sent[0])).sort()) === JSON.stringify(["clearKioskPin", "currentPassword"]));
       await page.close();
     }
     if (desk) {

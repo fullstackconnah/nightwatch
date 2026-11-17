@@ -31,7 +31,7 @@ const calm = () => ({
     calendar: { configured: false, updatedAt: null, lastSyncAt: null, eventsThisWeek: null, problem: null },
     hermes: { openrouterConfigured: true, anthropicConfigured: true },
   },
-  system: { mcpTokenConfigured: true, kioskPinConfigured: true, hermesApiConfigured: true, voiceConfigured: true, oidcClientSecretConfigured: true, updatedAt: ago(7) },
+  system: { mcpTokenConfigured: true, kioskPinConfigured: true, kioskPinSaved: true, hermesApiConfigured: true, voiceConfigured: true, oidcClientSecretConfigured: true, updatedAt: ago(7) },
   hermesDaemon: { discordWebhookConfigured: true, discordBotTokenConfigured: true, discordChannelId: "100", discordAllowedUserIds: ["200"], dryRun: false, digestHour: 7, digestMinute: 30, pipelineEnabled: true, pipelineDailyBudgetUsd: 2, updatedAt: ago(30) },
 });
 
@@ -39,7 +39,7 @@ const none = () => {
   const f = calm();
   for (const k of ["homeassistant", "npm", "forgejo", "github", "media", "minecraft"]) f.integrations[k] = { configured: false };
   f.integrations.minecraft = { configured: false };
-  f.system = { ...f.system, voiceConfigured: false, mcpTokenConfigured: false, kioskPinConfigured: false, oidcClientSecretConfigured: false };
+  f.system = { ...f.system, voiceConfigured: false, mcpTokenConfigured: false, kioskPinConfigured: false, kioskPinSaved: false, oidcClientSecretConfigured: false };
   f.hermesDaemon.updatedAt = null;
   return f;
 };
