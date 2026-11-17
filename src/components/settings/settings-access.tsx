@@ -26,6 +26,7 @@ import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { plainReason } from "@/lib/settings/page-model";
 import { useFormReport } from "@/components/settings/form-report";
 import { CopyButton, ScopesPanel } from "@/components/settings/settings-reference";
+import { ssoStepUpPending } from "@/lib/sso-step-up";
 import { ClearAction, SecretField, type SettingsFullResponse } from "@/components/settings/settings-integrations";
 
 type Data = SettingsFullResponse | undefined;
@@ -295,7 +296,7 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         describedBy="kiosk-pin-hint"
       />
       <p id="kiosk-pin-hint" className="text-[0.7rem] text-ink-faint -mt-2">
-        {pinConfigured ? "Clear it and save to fall back to KIOSK_PIN in the environment." : "No PIN set — kiosk elevation stays locked until you save one."}
+        {pinConfigured ? "Replace it to change the PIN; KIOSK_PIN in the environment applies only when none is saved." : "No PIN set — kiosk elevation stays locked until you save one."}
       </p>
 
       {authConfigured && (
@@ -501,7 +502,7 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const sys = data?.config.system;
   const dirty = seeded && (issuer !== (sys?.oidcIssuer ?? "") || clientId !== (sys?.oidcClientId ?? "") || clientSecret !== "");
   // Only a pending change asks for the password; an untouched resend does not.
-  const askPassword = dirty && authConfigured;
+  const askPassword = authConfigured && seeded && ssoStepUpPending({ issuer, clientId, clientSecret }, sys ?? {});
   useFormReport("sso", { dirty, error });
 
   async function handleSave() {
@@ -536,10 +537,10 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         the environment — it&apos;s a process-start trust setting this page can&apos;t override.
       </p>
       <Field label="Issuer">
-        <Input placeholder="http://homelab.local:9091" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
+        <Input autoComplete="off" placeholder="http://homelab.local:9091" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
       </Field>
       <Field label="Client ID">
-        <Input placeholder="nightwatch" value={clientId} onChange={(e) => setClientId(e.target.value)} />
+        <Input autoComplete="off" placeholder="nightwatch" value={clientId} onChange={(e) => setClientId(e.target.value)} />
       </Field>
       <SecretField
         key={saveVersion}

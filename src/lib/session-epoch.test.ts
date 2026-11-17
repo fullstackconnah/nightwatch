@@ -302,6 +302,15 @@ describe("session epoch: source guards (PR B)", () => {
       for (const m of s.matchAll(/createSessionToken\((.{0,16})/g)) assert.match(m[1], /^(sessionEpoch\(\)|epochOf\()/, f);
     }
   });
+  // Guard regexes: a longer identifier that merely contains the name must not count as a caller.
+  const CREATE_KIOSK = /\bcreateKioskElevationToken\((.{0,16})/g;
+  const VERIFY_KIOSK = /\bverifyKioskElevationToken\(/g;
+  it("the kiosk guard regexes match the exact identifier only", () => {
+    for (const [re, name] of [[CREATE_KIOSK, "createKioskElevationToken"], [VERIFY_KIOSK, "verifyKioskElevationToken"]] as const) {
+      assert.equal([...`x = ${name}(epoch)`.matchAll(re)].length, 1, `${name} matches`);
+      assert.equal([...`x = re${name}(epoch)`.matchAll(re)].length, 0, `re${name} must not match`);
+    }
+  });
   it("every kiosk elevation create/verify caller passes the stored epoch", () => {
     let n = 0;
     for (const f of sources.filter((f) => !f.endsWith(`${path.sep}auth.ts`))) {
@@ -309,10 +318,10 @@ describe("session epoch: source guards (PR B)", () => {
       // `epoch` is allowed only where the file binds it to sessionEpoch() (the refresh route reads it once).
       const epochOk = /const epoch = sessionEpoch\(\);/.test(s) ? "epoch|" : "";
       const okArg = new RegExp(`^(${epochOk}sessionEpoch\\(\\)|epochOf\\()`);
-      for (const m of s.matchAll(/createKioskElevationToken\((.{0,16})/g)) { n++; assert.match(m[1], okArg, f); }
-      const verifies = s.split("verifyKioskElevationToken(").length - 1;
+      for (const m of s.matchAll(CREATE_KIOSK)) { n++; assert.match(m[1], okArg, f); }
+      const verifies = [...s.matchAll(VERIFY_KIOSK)].length;
       n += verifies;
-      assert.equal(s.match(new RegExp(`verifyKioskElevationToken\\(\\w+, (${epochOk}sessionEpoch\\(\\)|epochOf\\()`, "g"))?.length ?? 0, verifies, f);
+      assert.equal(s.match(new RegExp(`\\bverifyKioskElevationToken\\(\\w+, (${epochOk}sessionEpoch\\(\\)|epochOf\\()`, "g"))?.length ?? 0, verifies, f);
     }
     assert.ok(n >= 4, `found ${n} callers`);
   });
