@@ -197,7 +197,7 @@ test("15b clear-all with cookies (needs the jose package)", async () => {
   assert.equal(bytes(), JSON.stringify({ v: 1, items: [mk(1, "Bread"), mk(2, "Eggs")], history: [] }));
   process.env.SESSION_SECRET = "test-secret-for-kiosk-list";
   const auth = await import("./auth.ts");
-  const elev = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken() });
+  const elev = await post("clear-all", { listId: "shopping" }, T, { elevationCookie: await auth.createKioskElevationToken(0) });
   assert.equal(elev.status, 200);
   assert.equal(elev.json.removed.length, 2);
   assert.equal(stored().items.length, 0);
@@ -336,7 +336,7 @@ test("19b a second corrupt file keeps the first copy; only the 3 newest stay", a
 const elevate = async () => {
   process.env.SESSION_SECRET = "test-secret-for-kiosk-list";
   const auth = await import("./auth.ts");
-  return { elevationCookie: await auth.createKioskElevationToken() };
+  return { elevationCookie: await auth.createKioskElevationToken(0) };
 };
 const rows = (open: number, ticked: number) => [
   ...Array.from({ length: open }, (_, i) => mk(i + 1, `Open ${i}`)),

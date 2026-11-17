@@ -146,7 +146,7 @@ const idList = (v: unknown): string[] | null =>
 async function elevated(session?: string, elevation?: string): Promise<boolean> {
   if (!session && !elevation) return false;
   const a = await import("./auth.ts");
-  return (await a.verifySessionToken(session, sessionEpoch())) || (await a.verifyKioskElevationToken(elevation));
+  return (await a.verifySessionToken(session, sessionEpoch())) || (await a.verifyKioskElevationToken(elevation, sessionEpoch()));
 }
 
 /** Reads a request body capped at MAX_BODY bytes whatever content-length says (chunked or bogus headers included). */
