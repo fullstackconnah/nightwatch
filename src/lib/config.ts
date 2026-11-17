@@ -290,16 +290,19 @@ function readConfig(strict: boolean): AppConfig {
     const stat = fs.statSync(configPath());
     if (cache && cache.mtimeMs === stat.mtimeMs) return cache.config;
     const text = fs.readFileSync(configPath(), "utf8");
-    if (!text.trim()) {
-      // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults.
+    const blank = !text.trim();
+    const parsed = blank ? null : JSON.parse(text);
+    const emptyObject = !!parsed && typeof parsed === "object" && !Array.isArray(parsed) && Object.keys(parsed).length === 0;
+    if (blank || emptyObject) {
+      // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults. `{}` is the same (hunt 71).
       if (lastGoodExists()) {
         lastProblem = "blank";
         if (strict) throw new Error(CONFIG_UNREADABLE);
         logFallback("config.json is empty and a last-good copy is at data/config.json.bak");
+        return DEFAULT_CONFIG;
       }
-      return DEFAULT_CONFIG;
+      if (blank) return DEFAULT_CONFIG;
     }
-    const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       lastProblem = "unreadable";
       if (strict) throw new Error("config.json is not an object");
