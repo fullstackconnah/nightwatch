@@ -1,4 +1,4 @@
-import { systemSetting } from "./config.ts";
+import { secretForSettingUrl, systemSetting } from "./config.ts";
 import type {
   OrchestraDetailResponse,
   OrchestraSnapshot,
@@ -28,7 +28,7 @@ export interface OrchestraCredentials {
 
 export function orchestraCredentials(): OrchestraCredentials | null {
   const url = systemSetting("orchestraUrl", "ORCHESTRA_URL");
-  const token = systemSetting("orchestraToken", "ORCHESTRA_TOKEN");
+  const token = secretForSettingUrl("orchestraUrl", "ORCHESTRA_URL", "orchestraToken", "ORCHESTRA_TOKEN");
   if (!url || !token) return null;
   return { url: url.replace(/\/+$/, ""), token };
 }

@@ -18,6 +18,8 @@ import { sanitizeConfig } from "@/lib/settings/public-config";
 import { WIDGET_TYPE_NAMES } from "@/lib/widgets";
 import { isPasswordConfigured } from "@/lib/auth-server";
 import { mcpEnabled } from "@/lib/mcp/auth";
+import { hermesCredentials } from "@/lib/hermes-ctl";
+import { orchestraCredentials } from "@/lib/orchestra";
 import { mcSecretFlags } from "@/lib/mc-secret-flags";
 import { calendarMeta } from "@/lib/calendar-feed";
 import { oidcConfig, oidcIssuerHost } from "@/lib/oidc";
@@ -33,7 +35,7 @@ interface IntegrationStatus {
 }
 
 const orchestraConfigured = () =>
-  Boolean(systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"));
+  orchestraCredentials() !== null;
 
 function integrationsMeta(config: AppConfig) {
   const status = (block: { updatedAt?: string } | undefined, secretPresent: boolean): IntegrationStatus => ({
@@ -64,7 +66,7 @@ function systemMeta(config: AppConfig) {
     kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
     kioskPinSaved: systemSettingSaved("kioskPin"),
     hermesApiConfigured: Boolean(
-      systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
+      hermesCredentials(),
     ),
     voiceConfigured: Boolean(systemSetting("voiceServerUrl", "VOICE_SERVER_URL")),
     orchestraConfigured: orchestraConfigured(),
@@ -125,7 +127,7 @@ export async function GET(req: NextRequest) {
       // Same "configured, never the value" idiom as mcpEnabled/kioskPinConfigured —
       // src/lib/hermes-ctl.ts is the only place the Hermes API token is ever read for real.
       hermesApiConfigured: Boolean(
-        systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
+        hermesCredentials(),
       ),
       // Additive: whether OIDC SSO (Authelia) is wired up. Same "configured,
       // never the value" idiom — src/lib/oidc.ts is the only place the OIDC

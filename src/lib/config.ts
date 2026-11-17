@@ -532,6 +532,31 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
   return fromEnv?.trim() ? fromEnv.trim() : undefined;
 }
 
+const originOf = (u: string | undefined): string | undefined => {
+  try {
+    return u ? new URL(u).origin : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * systemSetting() for an outbound secret: an ENVIRONMENT secret is only used for the environment URL's origin.
+ * When no secret is saved and the URL in use is a saved one on another origin (or the env has no URL), the env
+ * secret is dropped, so a signed-in session cannot point it at a new host. An unparsable URL is another origin.
+ */
+export function secretForSettingUrl(
+  urlKey: keyof SystemSettings,
+  urlEnv: string,
+  secretKey: keyof SystemSettings,
+  secretEnv: string,
+): string | undefined {
+  const secret = systemSetting(secretKey, secretEnv);
+  if (!secret || systemSettingSaved(secretKey)) return secret;
+  const url = originOf(systemSetting(urlKey, urlEnv));
+  return url !== undefined && url === originOf(process.env[urlEnv]) ? secret : undefined;
+}
+
 /** The effective kiosk PIN (saved wins over KIOSK_PIN), trimmed; undefined when neither is set. */
 export const kioskPin = (): string | undefined => systemSetting("kioskPin", "KIOSK_PIN");
 
