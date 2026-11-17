@@ -499,8 +499,11 @@ export function systemSetting(key: keyof SystemSettings, envName: string): strin
   return fromEnv?.trim() ? fromEnv.trim() : undefined;
 }
 
+/** The effective kiosk PIN (saved wins over KIOSK_PIN), trimmed; undefined when neither is set. */
+export const kioskPin = (): string | undefined => systemSetting("kioskPin", "KIOSK_PIN");
+
 /** Whether a kiosk PIN exists (saved or KIOSK_PIN): with none, an unlock is refused, so an existing elevation must not outlive it. */
-export const kioskPinConfigured = (): boolean => Boolean(systemSetting("kioskPin", "KIOSK_PIN"));
+export const kioskPinConfigured = (): boolean => Boolean(kioskPin());
 
 /** Whether the value is saved in config.json itself (systemSetting() also says yes for the env var): a Clear only does something when it is. */
 export function systemSettingSaved(key: keyof SystemSettings): boolean {

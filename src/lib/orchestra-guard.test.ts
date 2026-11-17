@@ -8,7 +8,7 @@ import { verifySessionToken as fullSessionAllowed } from "./auth.ts";
 describe("verifySessionToken (orchestra guard)", () => {
   it("allows a real session token only", async () => {
     assert.equal(await fullSessionAllowed(await createSessionToken(0), 0), true);
-    assert.equal(await fullSessionAllowed(await createKioskElevationToken(0), 0), false);
+    assert.equal(await fullSessionAllowed(await createKioskElevationToken(0, "test-tag"), 0), false);
     assert.equal(await fullSessionAllowed(await createOidcFlowToken({ state: "s", nonce: "n", verifier: "v" }), 0), false);
     assert.equal(await fullSessionAllowed(undefined, 0), false);
   });

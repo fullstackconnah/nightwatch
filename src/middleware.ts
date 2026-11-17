@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { isDeskCameraPath, isDeskGlancePath } from "@/lib/desk-auth";
-import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated } from "@/lib/auth";
-import { kioskPinConfigured, sessionEpoch } from "@/lib/config";
+import { KIOSK_ELEVATION_COOKIE, SESSION_COOKIE, isRequestAuthenticated, kioskPinTag } from "@/lib/auth";
+import { kioskPin, kioskPinConfigured, sessionEpoch } from "@/lib/config";
 import { isPublicPath } from "@/lib/public-paths";
 
 // /kiosk (and its own /kiosk/api/* vitals+counts endpoints) is deliberately
@@ -39,12 +39,14 @@ export async function middleware(req: NextRequest) {
   // A real session passes everywhere. A kiosk PIN elevation passes only the
   // API calls the elevated kiosk makes (container list/lifecycle, voice — see
   // lib/kiosk-access.ts); anything else it requests is refused like no login.
+  const elevation = kioskPinConfigured() ? req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value : undefined; // no PIN: an old elevation is dead
   const ok = await isRequestAuthenticated(
     req.cookies.get(SESSION_COOKIE)?.value,
-    kioskPinConfigured() ? req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value : undefined, // no PIN: an old elevation is dead
+    elevation,
     req.method,
     pathname,
     sessionEpoch(),
+    elevation ? await kioskPinTag(kioskPin()) : "", // a changed PIN fails the tag compare
   );
   if (ok) return NextResponse.next();
 

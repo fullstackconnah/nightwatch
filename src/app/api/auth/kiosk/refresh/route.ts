@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { kioskPinConfigured, sessionEpoch } from "@/lib/config";
+import { kioskPin, kioskPinConfigured, sessionEpoch } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
 import {
   KIOSK_ELEVATION_COOKIE,
   KIOSK_ELEVATION_TTL_SECONDS,
   createKioskElevationToken,
+  kioskPinTag,
   kioskElevationCookieOptions,
   verifyKioskElevationToken,
 } from "@/lib/auth";
@@ -29,13 +30,14 @@ export async function POST(req: NextRequest) {
     res.cookies.set(KIOSK_ELEVATION_COOKIE, "", { ...kioskElevationCookieOptions(isSecureRequest(req)), maxAge: 0 });
     return res;
   }
-  const ok = await verifyKioskElevationToken(token, epoch);
+  const pinTag = await kioskPinTag(kioskPin()); // the PIN may have changed since the unlock: then the token fails here
+  const ok = await verifyKioskElevationToken(token, epoch, pinTag);
   if (!ok) {
     return NextResponse.json({ elevated: false });
   }
 
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ elevated: true, expiresAt });
-  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(epoch), kioskElevationCookieOptions(isSecureRequest(req)));
+  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(epoch, pinTag), kioskElevationCookieOptions(isSecureRequest(req)));
   return res;
 }
