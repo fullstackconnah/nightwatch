@@ -409,6 +409,8 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
     }
   }
 
+  const tokenFromEnv = Boolean(data?.meta.orchestraTokenSet) && !data?.meta.orchestraTokenSaved;
+
   return (
     <div className="space-y-3">
       <p className="text-[0.7rem] text-ink-dim">
@@ -428,7 +430,13 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
         configured={Boolean(data?.meta.orchestraTokenSet)}
         draft={token}
         onDraftChange={setToken}
+        describedBy={tokenFromEnv ? "orchestra-token-hint" : undefined}
       />
+      {tokenFromEnv && (
+        <p id="orchestra-token-hint" className="text-[0.7rem] text-ink-faint -mt-2">
+          Using the token from the server environment. Entering one here replaces it.
+        </p>
+      )}
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
         {data?.meta.orchestraTokenSaved ? (
           <ClearAction
