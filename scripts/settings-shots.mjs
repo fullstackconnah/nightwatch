@@ -626,7 +626,7 @@ await guarded("stepup", () =>
       const { page } = await visit(s, key, { hash: "#access" });
       const sent = [];
       await page.route("**/api/settings/system", (route) =>
-        route.request().method() === "POST" ? (sent.push(route.request().postData()), route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Current password is incorrect." }) })) : route.fallback());
+        route.request().method() === "POST" ? (sent.push(route.request().postData()), route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Current password is incorrect.", stepUp: "wrong" }) })) : route.fallback());
       return { page, sent };
     };
     const wrong = async (page, c, sent, name) => {

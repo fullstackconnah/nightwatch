@@ -86,7 +86,9 @@ re-seeds the counter and the password from the config's copy.
 The password set in Settings replaces the one in `.env`: once it is stored, only
 it signs in, and `ADMIN_PASSWORD_HASH` counts only until then (first setup).
 Forgotten it? On the server, set `adminPasswordHash` to `""` in `data/auth.json` (keep `"v": 2`) and restart;
-the `.env` password signs in again, and you can set a new one in Settings. It also unlocks the SSO, MCP token and kiosk PIN settings, which ask for the current password to change.
+the `.env` password signs in again, and you can set a new one in Settings. After the edit, check that
+`auth.json` is still valid JSON: a file the server cannot read is ignored, so the older password in `config.json`
+applies instead (the container log names the unreadable file once). It also unlocks the SSO, MCP token and kiosk PIN settings, which ask for the current password to change.
 
 The session, kiosk-unlock and SSO-flow cookies are marked `Secure` when the
 request reaches the app over https through the proxy (`X-Forwarded-Proto:
