@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { sessionEpoch } from "@/lib/config";
+import { contentLengthError } from "@/lib/upload-limit";
 import { runAllowed } from "@/lib/kiosk-access";
 import { runHermesJob, type HermesRunResult } from "@/lib/hermes-ctl";
 import type { HermesJobKind } from "@/lib/types/hermes";
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 const VALID_KINDS: readonly HermesJobKind[] = ["digest", "alert-test", "ask"];
 const MAX_QUESTION_LENGTH = 500;
+const MAX_BODY_BYTES = 64 * 1024;
 
 interface RunBody {
   kind: HermesJobKind;
@@ -40,7 +42,7 @@ function statusCodeFor(status: Exclude<HermesRunResult, { ok: true }>["status"])
     case "unreachable":
       return 502;
     case "unauthorized":
-      return 401;
+      return 502; // Hermes' token was rejected; a real 401 would make the client treat the app session as expired
     case "conflict":
       return 409; // Hermes' own "already running" — passed straight through
     case "error":
@@ -50,6 +52,8 @@ function statusCodeFor(status: Exclude<HermesRunResult, { ok: true }>["status"])
 }
 
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   const body = await req.json().catch(() => null);
   if (!isValidBody(body)) {
     return NextResponse.json(

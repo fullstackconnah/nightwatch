@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { contentLengthError } from "@/lib/upload-limit";
 import { speakText, type VoiceSpeakResult } from "@/lib/voice";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 // same note in transcribe/route.ts.
 
 const MAX_TEXT_LENGTH = 800;
+const MAX_BODY_BYTES = 64 * 1024;
 
 function statusCodeFor(status: Exclude<VoiceSpeakResult, { status: "ok" }>["status"]): number {
   switch (status) {
@@ -21,6 +23,8 @@ function statusCodeFor(status: Exclude<VoiceSpeakResult, { status: "ok" }>["stat
 }
 
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ status: "error", detail: tooBig.detail }, { status: tooBig.status });
   const body = await req.json().catch(() => null);
   const text = body && typeof body === "object" && typeof (body as Record<string, unknown>).text === "string"
     ? ((body as Record<string, unknown>).text as string).trim()

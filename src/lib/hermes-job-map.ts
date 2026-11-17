@@ -36,3 +36,6 @@ export function mapJobBody(raw: unknown): HermesJob {
     error: str(r.error) ?? (str(r.state) ? null : "Hermes sent no job state."),
   };
 }
+
+/** A daemon job id as one URL path segment (sent through encodeURIComponent): no slashes or `%`, and not only dots, so `..` cannot climb to the daemon root. */
+export const JOB_ID_RE = /^(?!\.+$)[\w.:-]{1,128}$/;

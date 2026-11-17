@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorized, mcpEnabled } from "@/lib/mcp/auth";
 import { JSON_RPC_ERROR_CODES, McpError } from "@/lib/mcp/errors";
+import { contentLengthError } from "@/lib/upload-limit";
 import { handleJsonRpcRequest, parseJsonRpcRequest } from "@/lib/mcp/protocol";
 
 /**
@@ -16,6 +17,8 @@ import { handleJsonRpcRequest, parseJsonRpcRequest } from "@/lib/mcp/protocol";
 
 export const dynamic = "force-dynamic";
 
+const MAX_BODY_BYTES = 256 * 1024;
+
 function disabledResponse() {
   return NextResponse.json(
     { error: "MCP server disabled — set MCP_TOKEN in the server environment to enable /api/mcp." },
@@ -27,6 +30,14 @@ export async function POST(req: NextRequest) {
   if (!mcpEnabled()) return disabledResponse();
   if (!isAuthorized(req.headers.get("authorization"))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) {
+    return NextResponse.json(
+      { jsonrpc: "2.0", id: null, error: { code: JSON_RPC_ERROR_CODES.INVALID_REQUEST, message: tooBig.detail } },
+      { status: tooBig.status },
+    );
   }
 
   let raw: unknown;

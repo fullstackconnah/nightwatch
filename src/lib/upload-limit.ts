@@ -3,7 +3,7 @@ export function contentLengthError(header: string | null, max: number, noun = "A
   if (!header) return { status: 411, detail: "Content-Length is required." };
   const n = Number(header);
   if (!Number.isFinite(n) || n < 0 || n > max) {
-    return { status: 413, detail: `${noun} exceeds the ${max / (1024 * 1024)}MB limit.` };
+    return { status: 413, detail: `${noun} exceeds the ${max >= 1024 * 1024 ? `${max / (1024 * 1024)}MB` : `${max / 1024}KB`} limit.` };
   }
   return null;
 }
