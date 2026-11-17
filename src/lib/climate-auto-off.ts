@@ -167,3 +167,18 @@ export function parseClimateAutoOffPatch(value: unknown): ClimateAutoOffPatch | 
   if (Object.keys(patch).length === 0) return { error: "No recognized fields in request." };
   return patch;
 }
+
+const SAVES_PER_MINUTE = 10;
+let saveTimes: number[] = [];
+
+/** Process-wide cap on config saves from the public auto-off route: 10 per rolling 60 s. Refused saves are not recorded. */
+export function allowAutoOffSave(now: number = Date.now()): boolean {
+  saveTimes = saveTimes.filter((t) => t > now - 60_000);
+  if (saveTimes.length >= SAVES_PER_MINUTE) return false;
+  saveTimes.push(now);
+  return true;
+}
+
+export function resetAutoOffSaves() {
+  saveTimes = [];
+}

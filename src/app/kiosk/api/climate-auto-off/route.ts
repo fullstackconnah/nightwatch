@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { contentLengthError } from "@/lib/upload-limit";
 import { loadConfig, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
-import { autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
+import { allowAutoOffSave, autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
  * same exposure class as /kiosk/api/ha/action, which already lets any LAN
  * device flip these same ACs directly. parseClimateAutoOffPatch (lib) is
  * the whole write surface: four shape-checked fields, unknown keys
- * rejected, nothing else in config.json reachable from here. */
+ * rejected, nothing else in config.json reachable from here. Saves are
+ * capped at 10 a minute (allowAutoOffSave) so a caller can't churn config.json. */
 
 function responseShape(cfg: ReturnType<typeof loadConfig>["climateAutoOff"]) {
   return {
@@ -47,6 +48,14 @@ export async function POST(req: NextRequest) {
     lastRunDate: parsed.lastRunDate ?? prev?.lastRunDate,
     updatedAt: new Date().toISOString(),
   };
-  if (!autoOffUnchanged(prev, next)) saveConfig({ ...config, climateAutoOff: next });
+  if (!autoOffUnchanged(prev, next)) {
+    if (!allowAutoOffSave()) {
+      return NextResponse.json(
+        { error: "Too many changes. Try again in a minute." },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
+    }
+    saveConfig({ ...config, climateAutoOff: next });
+  }
   return NextResponse.json(responseShape(next));
 }
