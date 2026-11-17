@@ -19,7 +19,9 @@ const { GET, POST } = await import("./route.ts");
 // Same file URL the hook maps "@/lib/climate-auto-off" to, so this is the route's module instance and counter.
 const { resetAutoOffSaves } = await import("../../../../lib/climate-auto-off.ts");
 
-const ENV = ["DATA_DIR", "SESSION_SECRET"] as const;
+const { CONFIG_UNREADABLE } = await import("../../../../lib/config.ts");
+
+const ENV =["DATA_DIR", "SESSION_SECRET"] as const;
 const saved: Record<string, string | undefined> = {};
 let dir = "";
 beforeEach(() => {
@@ -77,6 +79,16 @@ describe("POST /kiosk/api/climate-auto-off save limit", () => {
   it("does not spend the limit on invalid patches", async () => {
     for (let i = 0; i < 3; i++) assert.equal((await post({ nope: 1 })).status, 400);
     for (let i = 0; i < 10; i++) assert.equal((await flip(i)).status, 200, `save ${i + 1}`);
+  });
+});
+
+describe("POST /kiosk/api/climate-auto-off unreadable settings", () => {
+  it("answers 503 with the unreadable-settings message when config.json is blank but a .bak exists", async () => {
+    fs.writeFileSync(path.join(dir, "config.json"), "");
+    fs.writeFileSync(path.join(dir, "config.json.bak"), JSON.stringify({ icons: { a: "b" } }));
+    const res = await post({ enabled: true });
+    assert.equal(res.status, 503);
+    assert.deepEqual(await res.json(), { error: CONFIG_UNREADABLE });
   });
 });
 

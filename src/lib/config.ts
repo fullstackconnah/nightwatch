@@ -331,7 +331,7 @@ export function configProblem(): ConfigProblem | null {
   return lastProblem;
 }
 
-export const CONFIG_UNREADABLE ="Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
+export const CONFIG_UNREADABLE = "Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
 
 export function loadConfig(): AppConfig {
   return readConfig(false);

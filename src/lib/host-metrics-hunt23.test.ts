@@ -31,7 +31,7 @@ test("sumHostNetCounters returns null when no interface is left", () => {
   assert.equal(sumHostNetCounters(NET.split("\n").slice(0, 3).join("\n")), null);
 });
 test("readHostNetDev and hostProcAvailable read the pid 1 namespace", () => {
-  assert.match(hostMetrics, /^\s+return fs\.existsSync\(`\$\{HOST_PROC\}\/1\/net\/dev`\);$/m);
+  assert.match(hostMetrics, /^\s+return !!fs\.statSync\(`\$\{HOST_PROC\}\/1\/net\/dev`, \{ throwIfNoEntry: false \}\);$/m);
   assert.match(hostMetrics, /^\s+const content = fs\.readFileSync\(`\$\{HOST_PROC\}\/1\/net\/dev`, "utf8"\);$/m);
   assert.doesNotMatch(hostMetrics, /\$\{HOST_PROC\}\/net\/dev/);
 });

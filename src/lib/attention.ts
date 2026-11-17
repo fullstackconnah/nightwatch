@@ -237,6 +237,15 @@ async function probeSmart(isLate: () => boolean): Promise<RawHit[]> {
 
 const MOUNT_READ_TIMEOUT_MS = 3_000;
 
+// statSync + throwIfNoEntry avoids existsSync's per-path native leak; other errors (EACCES, ENOTDIR) still read as absent.
+function present(p: string): boolean {
+  try {
+    return !!fs.statSync(p, { throwIfNoEntry: false });
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Is the mount's block device still on the bus? Reads the host sysfs bind
  * (HOST_SYS, as host-metrics.ts does). No host sysfs (dev mode), an alias
@@ -244,9 +253,9 @@ const MOUNT_READ_TIMEOUT_MS = 3_000;
  */
 function deviceGone(mount: string, device: string | undefined): MountVerdict | null {
   const name = blockDeviceName(device);
-  if (!name || !fs.existsSync(`${HOST_SYS}/class/block`)) return null;
+  if (!name || !present(`${HOST_SYS}/class/block`)) return null;
   const node = `${HOST_SYS}/class/block/${name}`;
-  if (!fs.existsSync(node)) return classifyDeviceGone(mount, name, false, null);
+  if (!present(node)) return classifyDeviceGone(mount, name, false, null);
   let real: string;
   try {
     real = fs.realpathSync(node);
@@ -254,7 +263,7 @@ function deviceGone(mount: string, device: string | undefined): MountVerdict | n
     return null;
   }
   // A partition's sysfs dir sits inside its disk's dir; the disk owns device/state.
-  const disk = fs.existsSync(`${real}/partition`) ? path.dirname(real) : real;
+  const disk = present(`${real}/partition`) ? path.dirname(real) : real;
   let state: string | null = null;
   try {
     state = fs.readFileSync(`${disk}/device/state`, "utf8");
