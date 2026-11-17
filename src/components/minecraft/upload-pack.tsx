@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { WriteAction } from "@/components/strips/write-action";
 import { Field, Input, Select } from "@/components/ui/input";
-import { ApiError } from "@/lib/client";
+import { ApiError, redirectOn401 } from "@/lib/client";
 import { memoryGbError } from "@/lib/minecraft/memory-gb";
 
 const LOADERS = ["neoforge", "forge", "fabric"] as const;
@@ -62,6 +62,7 @@ export function UploadPack({
     form.set("file", file);
 
     const res = await fetch(`/api/minecraft/instances/upload?${params.toString()}`, { method: "POST", body: form });
+    redirectOn401(res);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
 

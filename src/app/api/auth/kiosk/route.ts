@@ -8,7 +8,7 @@ import {
   kioskElevationCookieOptions,
 } from "@/lib/auth";
 import { isSecureRequest } from "@/lib/oidc-origin";
-import { systemSetting } from "@/lib/config";
+import { sessionEpoch, systemSetting } from "@/lib/config";
 import { createKioskLockout } from "@/lib/kiosk-lockout";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ ok: true, expiresAt });
   try {
-    res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(), kioskElevationCookieOptions(isSecureRequest(req)));
+    res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(sessionEpoch()), kioskElevationCookieOptions(isSecureRequest(req)));
   } catch (e) {
     if (!isMissingSecretError(e)) throw e;
     return NextResponse.json({ error: "SESSION_SECRET is not set. Set SESSION_SECRET in .env (a long random string), then restart." }, { status: 503 });

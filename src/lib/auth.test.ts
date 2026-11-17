@@ -87,25 +87,25 @@ describe("auth", () => {
     });
 
     it("refuses kiosk-elevation and oidc-flow tokens", async () => {
-      assert.equal(await verifySessionToken(await createKioskElevationToken(), 0), false);
+      assert.equal(await verifySessionToken(await createKioskElevationToken(0), 0), false);
       assert.equal(await verifySessionToken(await createOidcFlowToken({ state: "s", nonce: "n", verifier: "v" }), 0), false);
     });
   });
 
   describe("kiosk elevation token", () => {
     it("round-trips through createKioskElevationToken and verifyKioskElevationToken", async () => {
-      assert.equal(await verifyKioskElevationToken(await createKioskElevationToken()), true);
+      assert.equal(await verifyKioskElevationToken(await createKioskElevationToken(0), 0), true);
     });
 
     it("refuses a missing token, an expired token, and one without the kiosk claim", async () => {
-      assert.equal(await verifyKioskElevationToken(undefined), false);
-      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, FAKE_SECRET, nowSeconds() - 60)), false);
-      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", typ: "kiosk" })), false);
+      assert.equal(await verifyKioskElevationToken(undefined, 0), false);
+      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, FAKE_SECRET, nowSeconds() - 60), 0), false);
+      assert.equal(await verifyKioskElevationToken(await sign({ sub: "kiosk", typ: "kiosk" }), 0), false);
     });
 
     it("a session token is not accepted as an elevation token, and the reverse", async () => {
-      assert.equal(await verifyKioskElevationToken(await createSessionToken(0)), false);
-      assert.equal(await verifySessionToken(await createKioskElevationToken(), 0), false);
+      assert.equal(await verifyKioskElevationToken(await createSessionToken(0), 0), false);
+      assert.equal(await verifySessionToken(await createKioskElevationToken(0), 0), false);
     });
   });
 
@@ -123,18 +123,18 @@ describe("auth", () => {
     });
 
     it("an elevated kiosk passes an allowlisted route with its method", async () => {
-      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(), "GET", "/api/docker/containers", 0), true);
+      assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(0), "GET", "/api/docker/containers", 0), true);
     });
 
     it("an elevated kiosk is refused off the allowlist, and on an allowlisted path with the wrong method", async () => {
-      const elevated = await createKioskElevationToken();
+      const elevated = await createKioskElevationToken(0);
       assert.equal(await isRequestAuthenticated(undefined, elevated, "GET", "/api/config", 0), false);
       assert.equal(await isRequestAuthenticated(undefined, elevated, "DELETE", "/api/docker/containers", 0), false);
     });
 
     it("no tokens, or a kiosk token in the session slot, is refused", async () => {
       assert.equal(await isRequestAuthenticated(undefined, undefined, "GET", "/api/docker/containers", 0), false);
-      assert.equal(await isRequestAuthenticated(await createKioskElevationToken(), undefined, "GET", "/api/config", 0), false);
+      assert.equal(await isRequestAuthenticated(await createKioskElevationToken(0), undefined, "GET", "/api/config", 0), false);
     });
   });
 
@@ -193,7 +193,7 @@ describe("auth", () => {
       const forged = await sign({ sub: "admin", typ: "session" }, "homelab-dashboard-dev-secret");
       assert.equal(await verifySessionToken(forged, 0), false);
       const forgedKiosk = await sign({ sub: "kiosk", kiosk: true, typ: "kiosk" }, "homelab-dashboard-dev-secret");
-      assert.equal(await verifyKioskElevationToken(forgedKiosk), false);
+      assert.equal(await verifyKioskElevationToken(forgedKiosk, 0), false);
       assert.equal(await isRequestAuthenticated(forged, forgedKiosk, "POST", "/api/anything", 0), false);
     });
 

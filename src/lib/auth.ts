@@ -68,19 +68,22 @@ export function sessionCookieOptions(secure: boolean) {
 export const KIOSK_ELEVATION_COOKIE = "hd_kiosk_elevated";
 export const KIOSK_ELEVATION_TTL_SECONDS = 5 * 60; // 5 minutes, slides on activity (see /api/auth/kiosk/refresh)
 
-export async function createKioskElevationToken(): Promise<string> {
-  return new SignJWT({ sub: "kiosk", kiosk: true, typ: "kiosk" })
+// Carries the session epoch like createSessionToken, so a password change locks a PIN-unlocked kiosk.
+export async function createKioskElevationToken(epoch: number): Promise<string> {
+  return new SignJWT({ sub: "kiosk", kiosk: true, typ: "kiosk", ep: epoch })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${KIOSK_ELEVATION_TTL_SECONDS}s`)
     .sign(secretKey());
 }
 
-export async function verifyKioskElevationToken(token: string | undefined): Promise<boolean> {
-  if (!token) return false;
+// ep >= epoch, a missing ep counts as 0 (same rule as verifySessionToken).
+export async function verifyKioskElevationToken(token: string | undefined, epoch: number): Promise<boolean> {
+  if (!token || !Number.isSafeInteger(epoch)) return false;
   try {
     const { payload } = await jwtVerify(token, secretKey());
-    return payload.typ === "kiosk" && payload.kiosk === true;
+    const ep = payload.ep === undefined ? 0 : payload.ep;
+    return payload.typ === "kiosk" && payload.kiosk === true && typeof ep === "number" && Number.isSafeInteger(ep) && ep >= 0 && ep >= epoch;
   } catch {
     return false;
   }
@@ -111,7 +114,7 @@ export async function isRequestAuthenticated(
   epoch: number,
 ): Promise<boolean> {
   if (await verifySessionToken(sessionToken, epoch)) return true;
-  return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken));
+  return kioskMayCall(method, pathname) && (await verifyKioskElevationToken(kioskElevationToken, epoch));
 }
 
 // --- OIDC transient flow token ------------------------------------------------
