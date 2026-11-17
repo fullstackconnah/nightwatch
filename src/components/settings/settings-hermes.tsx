@@ -321,6 +321,10 @@ function HermesDaemonCard() {
       d ?? {},
     );
   const askPassword = stepUpAsked(pending, askedAt, draftKey);
+  // The field unmounts when the change is undone; a typed password must not wait in state for the next show.
+  useEffect(() => {
+    if (!askPassword) setPassword("");
+  }, [askPassword]);
   useFormReport("hermes-daemon", {
     dirty:
       seeded && !!d

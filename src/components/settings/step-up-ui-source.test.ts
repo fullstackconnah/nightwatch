@@ -108,3 +108,7 @@ test("Daemon: the final hint and the shared no-password warning, and the helpers
   assert.match(src, /export function StepUpField\(/);
   assert.doesNotMatch(hermesSrc, /function StepUpField|const NO_PASSWORD_WARNING/);
 });
+
+test("Daemon: the typed password is dropped when its field hides, so it never comes back on the next show", () => {
+  assert.match(daemon, /useEffect\(\(\) => \{\s*if \(!askPassword\) setPassword\(""\);\s*\}, \[askPassword\]\);/);
+});
