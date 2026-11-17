@@ -1,4 +1,4 @@
-// Brute-force damper shared by login and the Settings password check:
+// Brute-force damper, one instance per route group: login has its own; the Settings password and system routes share one (step-up.ts):
 // attempt() counts each try up front, so parallel guesses cannot all pass a
 // check made before the slow part; 'threshold' tries lock it for 'lockMs'.
 // The counter is global on purpose: this LAN host has no trustworthy client identity, and a per-IP key could be spoofed for unlimited guesses.

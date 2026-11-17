@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { candidatePasswordHashes } from "@/lib/auth-server";
+import { checkCurrentPassword, currentPasswordLimiter, stepUpNeeded } from "@/lib/step-up";
 import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfigForSave, saveConfig, saveErrorText, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
@@ -57,6 +60,8 @@ interface Body {
   oidcClientId?: unknown;
   oidcClientSecret?: unknown;
   clearOidcClientSecret?: unknown;
+
+  currentPassword?: unknown;
 }
 
 function str(v: unknown): string | undefined {
@@ -156,6 +161,34 @@ export async function POST(req: NextRequest) {
   const oidcClientSecret = body.clearOidcClientSecret === true
     ? undefined
     : mergedSecret(str(body.oidcClientSecret), secretForUrl(existing.oidcClientSecret, existing.oidcIssuer, oidcIssuer));
+
+  // --- Step-up: changing a way back in (SSO, MCP token, kiosk PIN) needs the current password. ---
+  // After every 400 above, so a typo never burns an attempt; before any save, Hermes sync or returned token.
+  if (
+    stepUpNeeded(
+      {
+        generateMcpToken: generated,
+        clearMcpToken: clearedMcpToken,
+        typedMcpToken,
+        clearKioskPin: clearedKioskPin,
+        typedKioskPin,
+        clearOidcClientSecret: body.clearOidcClientSecret === true,
+        typedOidcClientSecret: str(body.oidcClientSecret),
+        oidcIssuer,
+        oidcClientId,
+      },
+      existing,
+    )
+  ) {
+    const password = typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const check = await checkCurrentPassword(password, candidatePasswordHashes().map((c) => c.hash), {
+      limiter: currentPasswordLimiter,
+      compare: bcrypt.compare,
+    });
+    if (check === "missing") return NextResponse.json({ error: "Enter your current password to change this." }, { status: 400 });
+    if (check === "limited") return NextResponse.json({ error: "Too many attempts. Wait a minute and try again." }, { status: 429 });
+    if (check === "wrong") return NextResponse.json({ error: "Current password is incorrect." }, { status: 403 });
+  }
 
   const now = new Date().toISOString();
   const next: AppConfig = {
