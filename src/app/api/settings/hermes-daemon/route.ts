@@ -49,6 +49,7 @@ interface Body {
   pipelineDailyBudgetUsd?: unknown;
   pipelineModel?: unknown;
   pipelineModelHard?: unknown;
+  currentPassword?: unknown;
 }
 
 function str(v: unknown): string | undefined {

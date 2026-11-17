@@ -32,10 +32,10 @@ import { ClearAction, SecretField, type SettingsFullResponse } from "@/component
 type Data = SettingsFullResponse | undefined;
 type Mutate = () => Promise<unknown>;
 
-const NO_PASSWORD_WARNING = "No admin password is set, so changes here don't ask for one. Set ADMIN_PASSWORD_HASH to protect them.";
+export const NO_PASSWORD_WARNING = "No admin password is set, so changes here don't ask for one. Set ADMIN_PASSWORD_HASH to protect them.";
 
 /** The current password a save of sign-in settings must carry; the hint is the same line the Generate button points at. */
-function StepUpField({ value, onChange, inputRef, hint, hintId }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null>; hint: string; hintId: string }) {
+export function StepUpField({ value, onChange, inputRef, hint, hintId }: { value: string; onChange: (v: string) => void; inputRef: React.RefObject<HTMLInputElement | null>; hint: string; hintId: string }) {
   return (
     <div>
       <Field label="Current password" required describedBy={hintId}>

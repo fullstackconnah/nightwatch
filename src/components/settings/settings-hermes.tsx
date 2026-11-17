@@ -10,7 +10,7 @@
    mono for every model id/price/context figure, honest unreachable copy for
    the two live model-list fetches (ollama, openrouter). */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { Save, Search, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,9 @@ import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BUDGET_HINT } from "@/lib/settings-field-checks";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
+import { NO_PASSWORD_WARNING, StepUpField } from "@/components/settings/settings-access";
+import { isStepUpRefusal } from "@/lib/api-error";
+import { discordStepUpNeeded, splitUserIds } from "@/lib/discord-step-up";
 
 type Tier = "local" | "openrouter" | "anthropic";
 
@@ -302,7 +305,20 @@ function HermesDaemonCard() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [password, setPassword] = useState("");
+  const [asked, setAsked] = useState(false);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const d = daemon;
+  const authConfigured = data?.meta.authConfigured ?? false;
+  // Only a pending change to Discord access asks for the password; any refusal also shows the field.
+  const askPassword =
+    authConfigured &&
+    seeded &&
+    (asked ||
+      discordStepUpNeeded(
+        { botToken: botTokenDraft, webhookUrl: webhookDraft, allowedUserIds: splitUserIds(allowedUserIds), channelId },
+        d ?? {},
+      ));
   useFormReport("hermes-daemon", {
     dirty:
       seeded && !!d
@@ -341,10 +357,7 @@ function HermesDaemonCard() {
     try {
       const body: Record<string, unknown> = {
         discordChannelId: channelId,
-        discordAllowedUserIds: allowedUserIds
-          .split(",")
-          .map((x) => x.trim())
-          .filter(Boolean),
+        discordAllowedUserIds: splitUserIds(allowedUserIds),
         dryRun,
         digestHour,
         digestMinute,
@@ -359,16 +372,26 @@ function HermesDaemonCard() {
         if (!Number.isFinite(n) || n < 0) throw new Error("Daily budget must be a non-negative number");
         body.pipelineDailyBudgetUsd = n;
       }
+      if (askPassword) body.currentPassword = password;
       await postJson("/api/settings/hermes-daemon", body);
       await mutate();
       setSeeded(false); // reload the drafts from the stored (server-normalised) values
       setWebhookDraft("");
       setBotTokenDraft("");
+      setPassword("");
+      setAsked(false);
       setSaveVersion((v) => v + 1);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
+      if (isStepUpRefusal(e)) {
+        setAsked(true);
+        if (e.stepUp === "wrong") {
+          setPassword("");
+          passwordRef.current?.focus();
+        }
+      }
     } finally {
       setSaving(false);
     }
@@ -428,6 +451,10 @@ function HermesDaemonCard() {
                 >
                   <Input value={allowedUserIds} onChange={(e) => setAllowedUserIds(e.target.value)} placeholder="111…, 222…" />
                 </Field>
+                {askPassword && (
+                  <StepUpField value={password} onChange={setPassword} inputRef={passwordRef} hintId="discord-step-up-hint" hint="Changing Discord access needs your current password." />
+                )}
+                {data && !authConfigured && <p className="text-[0.7rem] text-warn/80">{NO_PASSWORD_WARNING}</p>}
                 <p id="discord-commands-hint" className="text-[0.7rem] text-ink-faint">
                   Bot token, channel ID and at least one allowed user ID are all required before Discord
                   commands work — the webhook alone only covers outbound digests/alerts.
@@ -506,7 +533,7 @@ function HermesDaemonCard() {
 
               <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
                 {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-                <Button size="sm" disabled={saving} onClick={handleSave}>
+                <Button size="sm" disabled={saving || (askPassword && !password)} onClick={handleSave}>
                   <Save size={13} /> Save
                 </Button>
               </div>
