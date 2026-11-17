@@ -379,12 +379,14 @@ export type {
   InterfaceRole,
 };
 
-export async function postJson(url: string, body?: unknown) {
+/** `own401`: the caller shows the server's 401 message itself (a wrong current password), so the tab stays put. */
+export async function postJson(url: string, body?: unknown, opts?: { own401?: boolean }) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  if (!opts?.own401) redirectOn401(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `HTTP ${res.status}`, res.status);
   return data;
@@ -396,6 +398,7 @@ export async function putJson(url: string, body: unknown) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  redirectOn401(res);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.error || `HTTP ${res.status}`, res.status);
   return data;

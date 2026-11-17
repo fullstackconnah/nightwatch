@@ -10,7 +10,7 @@ import { useEffect, useState } from "react";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { Input, Select } from "@/components/ui/input";
-import { ApiError, postJson, useMinecraftPackSearch } from "@/lib/client";
+import { ApiError, postJson, redirectOn401, useMinecraftPackSearch } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
 import { useClampedLead } from "@/components/strips/use-answer-clamped";
 import type { McInstance } from "@/lib/minecraft/manager";
@@ -88,6 +88,7 @@ export function PackBrowser({
 
   async function remove(slug: string) {
     const res = await fetch(`/api/minecraft/instances/${encodeURIComponent(slug)}`, { method: "DELETE" });
+    redirectOn401(res);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new ApiError(body.error || `HTTP ${res.status}`, res.status);
     onChanged();

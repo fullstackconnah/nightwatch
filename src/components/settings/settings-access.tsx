@@ -77,7 +77,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
     setSaving(true);
     setError(null);
     try {
-      await postJson("/api/settings/password", { currentPassword: current, newPassword: next });
+      await postJson("/api/settings/password", { currentPassword: current, newPassword: next }, { own401: true });
       setCurrent("");
       setNext("");
       setConfirm("");
