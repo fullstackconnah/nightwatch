@@ -15,6 +15,11 @@
  * C14 page errors and foreign requests, and the restore drill strip (blank, typed, invalid, future, saving, save-failed, offline, saved-due; tap target and contrast).
  * Captures, per width: calm, partial, none, loading, load-error, refresh-failed, save-failed, no-password,
  * hermes-key-missing, unsaved-draft: a padded crop of the open strip (else the head); plus one full page per width for calm.
+ *
+ *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
+ * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
+ * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
+ * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440).
  */
 
 import { chromium } from "playwright";
@@ -49,7 +54,8 @@ const foreignRequests = [];
 const diag = {};
 let stage = "";
 const fail = (vp, e) => record("FAIL", `${stage}@${vp}`, String(e?.message ?? e).split(/\r?\n/)[0]);
-const guarded = (label, fn) => { stage = label; return fn().catch((e) => fail("all", e)); };
+const ONLY = process.env.ONLY; // ONLY=stepup runs just that guarded section (the other sections are skipped)
+const guarded = (label, fn) => { if (ONLY && label !== ONLY) return Promise.resolve(); stage = label; return fn().catch((e) => fail("all", e)); };
 
 const browser = await chromium.launch({ headless: true });
 const sessions = [];
@@ -594,6 +600,147 @@ await guarded("access-stamp", () =>
   }),
 );
 
+// ---- step-up: the Current password field on the SSO and System cards (ONLY=stepup runs just this) ----
+// Every API call stays mocked; the system route answers 403 with its real wrong-password body where a state needs it.
+await guarded("stepup", () =>
+  each(async (s) => {
+    const su = (name, vp, ok) => record(`SU ${name}`, vp, ok);
+    const desk = s.name === "1440";
+    const sizes = [];
+    const card = (page, title) => visibleBody(page).first().locator(`section:has(> div > h3:text-is("${title}"))`);
+    const pw = (c) => field(c, "Current password");
+    const saveBtn = (c) => c.getByRole("button", { name: "Save", exact: true });
+    const fontOf = async (loc) => sizes.push(await loc.first().evaluate((e) => getComputedStyle(e).fontSize));
+    const focused = (loc) => loc.evaluate((e) => e === document.activeElement);
+    const boxOf = (loc) => loc.evaluate((e) => { const r = e.getBoundingClientRect(); return { h: r.height, right: r.right }; });
+    /** Numeric checks: no sideways scroll, the field inside its card, and the field as tall as the sibling Input. */
+    async function fits(page, name, c, sibling) {
+      su("no horizontal scroll", `${name}@${s.name}`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      if (await pw(c).count()) {
+        const f = await boxOf(pw(c)), box = await boxOf(c);
+        su("field right edge inside its card", `${name}@${s.name}`, f.right <= box.right);
+        if (sibling) su("field as tall as the sibling Input", `${name}@${s.name}`, f.h === (await boxOf(sibling)).h);
+      }
+    }
+    const open = async (key = "calm") => {
+      const { page } = await visit(s, key, { hash: "#access" });
+      const sent = [];
+      await page.route("**/api/settings/system", (route) =>
+        route.request().method() === "POST" ? (sent.push(route.request().postData()), route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Current password is incorrect." }) })) : route.fallback());
+      return { page, sent };
+    };
+    const wrong = async (page, c, sent, name) => {
+      await page.waitForTimeout(600);
+      const err = c.locator(".text-bad");
+      su(`${name}: one save sent, footer error shown`, s.name, sent.length === 1 && (await err.count()) === 1 && (await err.innerText()).includes("Current password is incorrect"));
+      su(`${name}: field empty and focused`, s.name, (await pw(c).inputValue()) === "" && (await focused(pw(c))));
+      await fontOf(c.locator("#sso-step-up-hint, #system-step-up-hint"));
+      await fontOf(err);
+    };
+    const pinReady = async (c) => {
+      await c.getByRole("group", { name: "Kiosk PIN" }).locator("xpath=..").getByRole("button", { name: "Replace" }).click();
+      await field(c, "Kiosk PIN").fill("1234");
+    };
+
+    // SSO untouched: no field. Dirty: the field above Save, Save disabled. Wrong: footer error, field cleared and focused.
+    if (desk) {
+      const { page } = await open();
+      const c = card(page, "SSO / OIDC");
+      su("sso untouched: no Current password field", s.name, (await pw(c).count()) === 0);
+      await cropEl(page, s, c, "stepup-sso-untouched", false);
+      await page.close();
+    }
+    {
+      const { page } = await open();
+      const c = card(page, "SSO / OIDC");
+      await field(c, "Issuer").pressSequentially("x");
+      await pw(c).waitFor({ timeout: SLOW });
+      const above = await c.evaluate((sec) => {
+        const f = sec.querySelector("input[type=password][autocomplete=current-password]").getBoundingClientRect();
+        return f.bottom <= [...sec.querySelectorAll("button")].find((b) => b.textContent.trim() === "Save").getBoundingClientRect().top;
+      });
+      su("sso dirty: field above Save, Save disabled", s.name, above && (await saveBtn(c).isDisabled()));
+      await fits(page, "sso-dirty", c, field(c, "Issuer"));
+      await cropEl(page, s, c, "stepup-sso-dirty", true);
+      await page.close();
+    }
+    if (desk) {
+      const { page, sent } = await open();
+      const c = card(page, "SSO / OIDC");
+      await field(c, "Issuer").pressSequentially("x");
+      await pw(c).fill("not-the-password");
+      await saveBtn(c).click();
+      await wrong(page, c, sent, "sso wrong");
+      await cropEl(page, s, c, "stepup-sso-wrong", false);
+      await page.close();
+    }
+
+    // System untouched: field empty with its hint, Generate and Save disabled.
+    {
+      const { page } = await open();
+      const c = card(page, "System");
+      const gen = c.getByRole("button", { name: "Generate", exact: true });
+      su("system untouched: field empty with hint, Generate and Save disabled", s.name, (await pw(c).inputValue()) === "" && (await c.locator("#system-step-up-hint").innerText()).length > 0 && (await gen.isDisabled()) && (await saveBtn(c).isDisabled()));
+      await fontOf(c.locator("#system-step-up-hint"));
+      await fits(page, "system-untouched", c, null);
+      await cropEl(page, s, c, "stepup-system-untouched", false);
+      await page.close();
+    }
+    if (desk) {
+      {
+        const { page } = await open();
+        const c = card(page, "System");
+        await pinReady(c);
+        su("system ready: Save disabled until the password is typed", s.name, await saveBtn(c).isDisabled());
+        await pw(c).fill("not-the-password");
+        su("system ready: Save enabled", s.name, await saveBtn(c).isEnabled());
+        await fits(page, "system-ready", c, field(c, "Kiosk PIN"));
+        await cropEl(page, s, c, "stepup-system-ready", false);
+        await page.close();
+      }
+      {
+        const { page, sent } = await open();
+        const c = card(page, "System");
+        await pinReady(c);
+        await pw(c).fill("not-the-password");
+        await saveBtn(c).click();
+        await wrong(page, c, sent, "system wrong");
+        await cropEl(page, s, c, "stepup-system-wrong", false);
+        await page.close();
+      }
+      {
+        const { page, sent } = await open();
+        const c = card(page, "System");
+        const gen = c.getByRole("button", { name: "Generate", exact: true });
+        await pw(c).fill("not-the-password");
+        await gen.click();
+        const yes = c.getByRole("button", { name: "Yes, generate" });
+        if (await yes.count()) await yes.click();
+        await wrong(page, c, sent, "generate wrong");
+        const idle = !/Generating…|Couldn’t generate a token/.test(await c.innerText());
+        su("generate wrong: Generate idle and disabled again", s.name, idle && (await gen.count()) === 1 && (await gen.isDisabled()));
+        await cropEl(page, s, c, "stepup-generate-wrong", false);
+        await page.close();
+      }
+      // No password configured: a standing warning in both cards, no field.
+      {
+        const { page } = await open("noPassword");
+        const both = [];
+        for (const t of ["System", "SSO / OIDC"]) {
+          const c = card(page, t);
+          const warn = c.getByText("No admin password is set");
+          both.push((await warn.count()) === 1 && (await pw(c).count()) === 0);
+          await fontOf(warn);
+        }
+        su("no password: both cards warn and show no field", s.name, both.every(Boolean));
+        await cropEl(page, s, card(page, "System"), "stepup-no-password", false);
+        await page.close();
+      }
+    }
+    su("hint, warning and error share one computed font size", s.name, new Set(sizes).size === 1);
+  }),
+);
+
 // ---- C3: sentinels against the REAL API (opt-in; the lead tears the stack's data volume down afterwards) ----
 if (process.env.SENTINELS) {
   await guarded("C3", async () => {
@@ -774,6 +921,9 @@ function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
   record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
   console.log(JSON.stringify({ ...checks, diag }));
+  // A failed step-up check (or any FAIL record in a single-section run) fails the run.
+  const bad = Object.entries(checks).some(([k, v]) => (k.startsWith("SU ") && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
+  if (bad) process.exitCode = 1;
 }
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));
 await browser.close().catch(() => {});
