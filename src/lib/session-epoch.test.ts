@@ -154,6 +154,12 @@ describe("session epoch: data/auth.json (revocation survives a config copy)", ()
     assert.equal(sessionEpoch(), 6);
     assert.equal(sessionEpoch(), 6); // not re-parsed, same answer
   });
+  it("a save keeps its state as the last good one when the file then turns malformed", () => {
+    writeConf(1);
+    saveAuthState({ sessionEpoch: 7 });
+    writeAuth("{");
+    assert.equal(sessionEpoch(), 7);
+  });
   it("auth.json is re-read after its mtime changes", () => {
     writeAuth('{"sessionEpoch":3}');
     assert.equal(sessionEpoch(), 3);

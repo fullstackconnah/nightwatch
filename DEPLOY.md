@@ -82,6 +82,10 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    whatever `system.sessionEpoch` the PC file holds. Do not copy or delete `auth.json`: deleting it
    is the documented reset, and the counter then restarts from the config's value.
 
+   Deploy this version (a container restart) before the next config copy: the first start copies the
+   server's counter into `auth.json`, and until that file exists a copied config with a lower counter
+   still signs old sessions back in.
+
    **This copy still overwrites the server's `system.adminPasswordHash`** with the PC file's value
    (until a later change moves the password out of the config). Before copying, fetch the server's
    file and bring that field into the PC file. A copied file without `adminPasswordHash` puts the

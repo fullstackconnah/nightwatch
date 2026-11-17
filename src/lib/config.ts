@@ -552,12 +552,18 @@ export function readAuthStateForSave(): AuthState {
 }
 
 export function saveAuthState(state: AuthState): void {
+  const file = authStatePath();
+  authCache = null;
   try {
-    writeJsonAtomic(authStatePath(), state, 0o600);
+    writeJsonAtomic(file, state, 0o600);
   } catch (e) {
     throw mapWriteError(e);
-  } finally {
-    authCache = null;
+  }
+  // Keep what was just written as the last good state; a failed stat just leaves the cache empty.
+  try {
+    authCache = { file, mtimeMs: fs.statSync(file).mtimeMs, state };
+  } catch {
+    /* best effort */
   }
 }
 
