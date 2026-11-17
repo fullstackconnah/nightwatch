@@ -21,7 +21,7 @@ const MIN_LENGTH = 8;
 const BCRYPT_ROUNDS = 12;
 
 /**
- * The one writer of config.json's system.adminPasswordHash (GOAL A's
+ * The one writer of the stored password hash (data/auth.json, mirrored into config.json) (GOAL A's
  * "Change password" flow). Requires the CURRENT password and verifies it
  * against candidatePasswordHashes() — the SAME stored-hash-else-env choice the
  * login route uses, so the password that signs in is the one that can be
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Current password is required" }, { status: 400 });
   }
 
-  // Only a request that reaches the compare uses up an attempt; no await sits between this and the loop.
+  // Only a request that reaches the compare uses up an attempt; no await sits between this and matchesAny.
   if (!limiter.attempt()) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
@@ -83,14 +83,17 @@ export async function POST(req: NextRequest) {
   }
   // The higher of both stores, so a stale config copy can never hand out an epoch an old session already holds.
   const nextEpoch = Math.max(epochOf(auth.sessionEpoch), epochOf(current.system?.sessionEpoch)) + 1;
+  if (!Number.isSafeInteger(nextEpoch)) {
+    return NextResponse.json({ error: "The sign-out counter is out of range, so nothing was saved." }, { status: 500 });
+  }
   const next: AppConfig = {
     ...current,
     system: { ...current.system, adminPasswordHash: newHash, sessionEpoch: nextEpoch, updatedAt: now },
   };
 
-  // auth.json first: it is what revokes. A crash between the two writes leaves the epoch raised and the old password (safe side).
+  // auth.json first: it owns the epoch and the hash. A crash between the two writes leaves the new password in force (the config is only a mirror for a rollback).
   try {
-    saveAuthState({ ...auth, sessionEpoch: nextEpoch, updatedAt: now });
+    saveAuthState({ ...auth, v: 2, adminPasswordHash: newHash, sessionEpoch: nextEpoch, updatedAt: now });
   } catch (e) {
     console.error("settings/password save auth state", e);
     return NextResponse.json({ error: saveErrorText(e) }, { status: 500 });
@@ -98,11 +101,8 @@ export async function POST(req: NextRequest) {
   try {
     saveConfig(next);
   } catch (e) {
-    console.error("settings/password save", e);
-    return NextResponse.json(
-      { error: "save failed" },
-      { status: 500 },
-    );
+    // The password HAS changed (auth.json is written), so this still answers ok; only the rollback mirror is stale.
+    console.error("settings/password mirror to config failed", e);
   }
 
   const res = NextResponse.json({ ok: true, updatedAt: now });

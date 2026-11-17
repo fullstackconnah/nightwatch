@@ -6,20 +6,21 @@
  * are Node.js route handlers. (Observed live 2026-08-02: putting loadConfig
  * in auth.ts pulled node:fs into the client bundle and broke `next build`.)
  *
- * Precedence: like every other operational setting (systemSetting() in
- * config.ts) the stored hash wins; env ADMIN_PASSWORD_HASH counts only while
- * none is stored. Recovery from a forgotten password: remove
- * system.adminPasswordHash from the stored config file (README).
+ * Precedence: once data/auth.json carries v 2 its adminPasswordHash is the
+ * stored hash and the config's is ignored (a config copied over the server's
+ * cannot bring a password back); before that the config's stored hash wins.
+ * Env ADMIN_PASSWORD_HASH counts only while none is stored. Recovery from a
+ * forgotten password: remove adminPasswordHash from data/auth.json (README).
  */
 
-import { loadConfig } from "@/lib/config";
-import { choosePasswordHashes, type PasswordHashCandidate } from "@/lib/password-hash";
+import { loadAuthState, loadConfig } from "@/lib/config";
+import { choosePasswordHashes, storedHashFor, type PasswordHashCandidate } from "@/lib/password-hash";
 
 export type { PasswordHashCandidate };
 
 /** The one bcrypt hash a submitted password is checked against (none, or one). */
 export function candidatePasswordHashes(): PasswordHashCandidate[] {
-  return choosePasswordHashes(loadConfig().system?.adminPasswordHash, process.env.ADMIN_PASSWORD_HASH);
+  return choosePasswordHashes(storedHashFor(loadAuthState(), loadConfig().system?.adminPasswordHash), process.env.ADMIN_PASSWORD_HASH);
 }
 
 /** True once either source has a hash set — the "password set" vs

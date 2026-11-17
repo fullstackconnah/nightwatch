@@ -22,13 +22,14 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest) {
   const token = req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value;
-  const ok = await verifyKioskElevationToken(token, sessionEpoch());
+  const epoch = sessionEpoch();
+  const ok = await verifyKioskElevationToken(token, epoch);
   if (!ok) {
     return NextResponse.json({ elevated: false });
   }
 
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
   const res = NextResponse.json({ elevated: true, expiresAt });
-  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(sessionEpoch()), kioskElevationCookieOptions(isSecureRequest(req)));
+  res.cookies.set(KIOSK_ELEVATION_COOKIE, await createKioskElevationToken(epoch), kioskElevationCookieOptions(isSecureRequest(req)));
   return res;
 }

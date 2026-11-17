@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { choosePasswordHashes, matchesAny } from "./password-hash.ts";
+import { choosePasswordHashes, matchesAny, storedHashFor } from "./password-hash.ts";
 
 // Placeholders only: the chooser never parses a hash.
 const STORED = "stored-hash-placeholder";
@@ -35,6 +35,22 @@ describe("choosePasswordHashes (stored hash wins over env)", () => {
   });
 });
 
+describe("storedHashFor (v 2: the auth file owns the hash)", () => {
+  it("v 2 with a hash: that hash, a copied config hash is ignored", () => assert.equal(storedHashFor({ v: 2, adminPasswordHash: "auth-h" }, STORED), "auth-h"));
+  for (const blank of [undefined, "", "  ", 5]) {
+    it(`v 2 with hash ${JSON.stringify(blank)}: none, the config hash is ignored (env then decides)`, () => {
+      assert.equal(storedHashFor({ v: 2, adminPasswordHash: blank }, STORED), undefined);
+      assert.deepEqual(choosePasswordHashes(storedHashFor({ v: 2, adminPasswordHash: blank }, STORED), ENV), [{ hash: ENV, source: "env" }]);
+    });
+  }
+  it("no v 2 (missing, pre-seed, v 1): the config hash, then env as before", () => {
+    for (const auth of [{}, { adminPasswordHash: "auth-h" }, { v: 1, adminPasswordHash: "auth-h" }, { v: "2" }]) assert.equal(storedHashFor(auth, STORED), STORED);
+  });
+  it("auth-server.ts feeds it the auth state", () => {
+    assert.match(readFileSync(new URL("./auth-server.ts", import.meta.url), "utf8"), /storedHashFor\(loadAuthState\(\), /);
+  });
+});
+
 describe("matchesAny (a hash that cannot be compared is a non-match)", () => {
   const compare = async (pw: string, hash: string) => {
     if (hash === "damaged") throw new Error("Illegal hash");
@@ -44,6 +60,18 @@ describe("matchesAny (a hash that cannot be compared is a non-match)", () => {
   it("no match", async () => assert.equal(await matchesAny("b", ["hash-of-a"], compare), false));
   it("compare rejects: false, not a throw", async () => assert.equal(await matchesAny("a", ["damaged"], compare), false));
   it("a damaged hash does not hide a later match", async () => assert.equal(await matchesAny("a", ["damaged", "hash-of-a"], compare), true));
+  it("a failed compare logs one generic line that carries no hash or message", async () => {
+    const lines: unknown[][] = [];
+    const orig = console.warn;
+    console.warn = (...a: unknown[]) => void lines.push(a);
+    try {
+      await matchesAny("pw", ["damaged"], compare);
+    } finally {
+      console.warn = orig;
+    }
+    assert.equal(lines.length, 1);
+    assert.doesNotMatch(JSON.stringify(lines), /damaged|Illegal|pw/);
+  });
   it("empty list", async () => assert.equal(await matchesAny("a", [], compare), false));
 });
 
@@ -57,11 +85,17 @@ describe("auth source guards", () => {
       .filter((f) => readFileSync(f, "utf8").includes("process.env.ADMIN_PASSWORD_HASH"));
     assert.deepEqual(hits.map((f) => f.replaceAll("\\", "/").split("/src/")[1]), ["lib/auth-server.ts"]);
   });
-  it("no api route calls bcrypt.compare directly; Settings authConfigured uses the login candidates", () => {
+  it("no api route calls bcrypt.compare directly; Settings authConfigured uses isPasswordConfigured()", () => {
     for (const f of walk(new URL("../app/api/", import.meta.url)).filter((f) => /\.ts$/.test(f))) {
       assert.doesNotMatch(readFileSync(f, "utf8"), /bcrypt\.compare\s*\(/, f);
     }
     const settings = readFileSync(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
-    assert.match(settings, /authConfigured: candidatePasswordHashes\(\)\.length > 0/);
+    assert.match(settings, /authConfigured: isPasswordConfigured\(\)/);
+  });
+  it("only the password route (mirror write) and the system route (carry-through) mention adminPasswordHash under api", () => {
+    const hits = walk(new URL("../app/api/", import.meta.url))
+      .filter((f) => /\.ts$/.test(f) && readFileSync(f, "utf8").includes("adminPasswordHash"))
+      .map((f) => f.replaceAll("\\", "/").split("/api/")[1]);
+    assert.deepEqual(hits.sort(), ["settings/password/route.ts", "settings/system/route.ts"]);
   });
 });

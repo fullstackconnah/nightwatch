@@ -5,7 +5,8 @@ import path from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { SignJWT } from "jose";
 import { createKioskElevationToken, createSessionToken, isRequestAuthenticated, verifyKioskElevationToken, verifySessionToken } from "./auth.ts";
-import { AUTH_STATE_UNREADABLE, epochOf, loadConfig, readAuthStateForSave, saveAuthState, saveConfig, seedAuthState, sessionEpoch } from "./config.ts";
+import { AUTH_STATE_UNREADABLE, epochOf, loadConfig, loadAuthState, readAuthStateForSave, saveAuthState, saveConfig, seedAuthState, sessionEpoch } from "./config.ts";
+import { storedHashFor } from "./password-hash.ts";
 import { ALLOW_ENV_NAME, ALLOW_SETTING_KEY, allowListSetting, parseAllowList } from "./oidc-allow.ts";
 
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
@@ -182,15 +183,89 @@ describe("session epoch: data/auth.json (revocation survives a config copy)", ()
     writeAuth('{"sessionEpoch":5}');
     assert.equal(sessionEpoch(), 5);
   });
-  it("seedAuthState writes the config epoch once and never overwrites", () => {
+  const writeConfHash = (hash: string, epoch = 0) => {
+    const f = path.join(dir, "config.json");
+    fs.writeFileSync(f, JSON.stringify({ system: { adminPasswordHash: hash, sessionEpoch: epoch } }));
+    stamp(f);
+  };
+  const authJson = () => JSON.parse(fs.readFileSync(authFile(), "utf8"));
+  const hashRule = () => storedHashFor(loadAuthState(), loadConfig().system?.adminPasswordHash);
+  it("the v2 seed copies the config hash once and never again", () => {
+    writeConfHash("hash-from-config", 4);
     seedAuthState();
-    assert.equal(fs.existsSync(authFile()), false, "config epoch 0 writes nothing");
-    writeConf(4);
+    const a = authJson();
+    assert.deepEqual([a.v, a.sessionEpoch, a.adminPasswordHash], [2, 4, "hash-from-config"]);
+    writeConfHash("copied-in-later", 9);
     seedAuthState();
-    assert.equal(JSON.parse(fs.readFileSync(authFile(), "utf8")).sessionEpoch, 4);
-    writeAuth('{"sessionEpoch":7}');
+    assert.deepEqual([authJson().sessionEpoch, authJson().adminPasswordHash], [4, "hash-from-config"]);
+  });
+  it("the seed creates the file at epoch 0 and without a config hash", () => {
     seedAuthState();
-    assert.equal(JSON.parse(fs.readFileSync(authFile(), "utf8")).sessionEpoch, 7);
+    const a = authJson();
+    assert.equal(a.v, 2);
+    assert.equal(a.sessionEpoch, 0);
+    assert.equal("adminPasswordHash" in a, false);
+  });
+  it("the seed writes nothing while config.json is unreadable, and seeds the hash once it is repaired", () => {
+    const f = path.join(dir, "config.json");
+    fs.writeFileSync(f, "{ not json");
+    stamp(f);
+    seedAuthState();
+    assert.equal(fs.existsSync(authFile()), false, "malformed config: nothing written");
+    fs.rmSync(f);
+    fs.mkdirSync(f); // EISDIR
+    seedAuthState();
+    assert.equal(fs.existsSync(authFile()), false, "unreadable config: nothing written");
+    fs.rmdirSync(f);
+    writeConfHash("hash-from-config", 3);
+    seedAuthState();
+    assert.deepEqual([authJson().v, authJson().sessionEpoch, authJson().adminPasswordHash], [2, 3, "hash-from-config"]);
+  });
+  it("the seed still seeds a fresh install with no config.json", () => {
+    fs.rmSync(path.join(dir, "config.json"));
+    seedAuthState();
+    const a = authJson();
+    assert.deepEqual([a.v, a.sessionEpoch, "adminPasswordHash" in a], [2, 0, false]);
+  });
+  it("the seed upgrades a readable file without v: keeps its keys and the higher epoch, skips a blank config hash", () => {
+    writeConfHash("  ", 2);
+    writeAuth('{"sessionEpoch":7,"keep":"x"}');
+    seedAuthState();
+    const a = authJson();
+    assert.deepEqual([a.v, a.sessionEpoch, a.keep], [2, 7, "x"]);
+    assert.equal("adminPasswordHash" in a, false);
+  });
+  it("the seed never touches a v 2 file", () => {
+    writeConfHash("from-config", 9);
+    const raw = '{"v":2,"sessionEpoch":1}';
+    writeAuth(raw);
+    seedAuthState();
+    assert.equal(fs.readFileSync(authFile(), "utf8"), raw);
+  });
+  it("the seed never overwrites a malformed or unreadable file", () => {
+    writeConfHash("from-config", 9);
+    writeAuth("{");
+    seedAuthState();
+    assert.equal(fs.readFileSync(authFile(), "utf8"), "{");
+    fs.rmSync(authFile());
+    fs.mkdirSync(authFile());
+    seedAuthState();
+    assert.ok(fs.statSync(authFile()).isDirectory());
+  });
+  it("with v 2 and a blank hash a config hash is ignored; a failed read after a good v 2 read keeps the rule", () => {
+    writeConfHash("from-config");
+    assert.equal(hashRule(), "from-config", "missing file: config");
+    writeAuth('{"v":2,"adminPasswordHash":"  "}');
+    assert.equal(hashRule(), undefined, "blank: none, and not the config hash");
+    writeAuth('{"v":2,"adminPasswordHash":"auth-hash"}');
+    assert.equal(hashRule(), "auth-hash");
+    writeAuth("{");
+    assert.equal(hashRule(), "auth-hash", "last good state");
+  });
+  it("a cold start with a malformed file falls back to the config hash", () => {
+    writeConfHash("from-config");
+    writeAuth("{");
+    assert.equal(hashRule(), "from-config");
   });
   it("the strict read returns {} when missing and throws on a malformed or unreadable file", () => {
     assert.deepEqual(readAuthStateForSave(), {});
@@ -231,16 +306,21 @@ describe("session epoch: source guards (PR B)", () => {
     let n = 0;
     for (const f of sources.filter((f) => !f.endsWith(`${path.sep}auth.ts`))) {
       const s = fs.readFileSync(f, "utf8");
-      for (const m of s.matchAll(/createKioskElevationToken\((.{0,16})/g)) { n++; assert.match(m[1], /^(sessionEpoch\(\)|epochOf\()/, f); }
+      // `epoch` is allowed only where the file binds it to sessionEpoch() (the refresh route reads it once).
+      const epochOk = /const epoch = sessionEpoch\(\);/.test(s) ? "epoch|" : "";
+      const okArg = new RegExp(`^(${epochOk}sessionEpoch\\(\\)|epochOf\\()`);
+      for (const m of s.matchAll(/createKioskElevationToken\((.{0,16})/g)) { n++; assert.match(m[1], okArg, f); }
       const verifies = s.split("verifyKioskElevationToken(").length - 1;
       n += verifies;
-      assert.equal(s.match(/verifyKioskElevationToken\(\w+, (sessionEpoch\(\)|epochOf\()/g)?.length ?? 0, verifies, f);
+      assert.equal(s.match(new RegExp(`verifyKioskElevationToken\\(\\w+, (${epochOk}sessionEpoch\\(\\)|epochOf\\()`, "g"))?.length ?? 0, verifies, f);
     }
     assert.ok(n >= 4, `found ${n} callers`);
   });
   it("the kiosk refresh route verifies against sessionEpoch() before it re-mints", () => {
     const s = read("../app/api/auth/kiosk/refresh/route.ts");
-    assert.match(s, /verifyKioskElevationToken\(token, sessionEpoch\(\)\)/);
+    assert.match(s, /const epoch = sessionEpoch\(\);/);
+    assert.match(s, /verifyKioskElevationToken\(token, epoch\)/);
+    assert.match(s, /createKioskElevationToken\(epoch\)/);
     assert.ok(s.indexOf("verifyKioskElevationToken(") < s.indexOf("createKioskElevationToken("));
   });
   it("the middleware runs on Node and passes the epoch", () => {
@@ -252,6 +332,9 @@ describe("session epoch: source guards (PR B)", () => {
     const s = read("../app/api/settings/password/route.ts");
     assert.match(s, /Math\.max\(epochOf\(auth\.sessionEpoch\), epochOf\(current\.system\?\.sessionEpoch\)\) \+ 1/);
     assert.match(s, /adminPasswordHash: newHash, sessionEpoch: nextEpoch/);
+    assert.match(s, /saveAuthState\(\{[^}]*v: 2, adminPasswordHash: newHash[^}]*\}\)/);
+    assert.match(s, /Number\.isSafeInteger\(nextEpoch\)/);
+    assert.doesNotMatch(s, /save failed/, "a failed config mirror no longer answers 500: the password has changed");
     assert.ok(s.indexOf("saveAuthState(") < s.indexOf("saveConfig(next)"));
     assert.ok(s.indexOf("saveConfig(next)") < s.indexOf("res.cookies.set(SESSION_COOKIE"));
     assert.match(s, /createSessionToken\(epochOf\(nextEpoch\)\)/);

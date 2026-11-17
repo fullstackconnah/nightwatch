@@ -28,9 +28,9 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    ```
 
    `ADMIN_PASSWORD_HASH` signs in only until a password is changed in Settings;
-   from then on the stored `system.adminPasswordHash` is the only one that
-   works. Forgotten it? Remove that key from the server's config file and the
-   `.env` hash signs in again.
+   from then on the stored hash (in `data/auth.json`) is the only one that
+   works. Forgotten it? Set `adminPasswordHash` to `""` in `data/auth.json` (keep
+   `"v": 2`) and restart; the `.env` hash signs in again.
 
    **Escape every `$` as `$$`.** Compose expands `$` sequences while parsing
    `.env`, so a raw bcrypt hash arrives at the container truncated (60 chars →
@@ -79,17 +79,22 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
 
    The sign-out counter lives in `data/auth.json`, a separate file this copy never touches, and the
    app uses the higher of that value and the config's. So the copy cannot sign anyone back in,
-   whatever `system.sessionEpoch` the PC file holds. Do not copy or delete `auth.json`: deleting it
-   is the documented reset, and the counter then restarts from the config's value.
+   whatever `system.sessionEpoch` the PC file holds. Do not copy or delete `auth.json`: after a delete
+   the next start re-seeds the counter and the password from the config's copy.
 
    Deploy this version (a container restart) before the next config copy: the first start copies the
-   server's counter into `auth.json`, and until that file exists a copied config with a lower counter
-   still signs old sessions back in.
+   server's counter and password hash into `auth.json` (marked `"v": 2`), and until that has run a
+   copied config with a lower counter still signs old sessions back in, and its
+   `system.adminPasswordHash` still replaces the server's password.
 
-   **This copy still overwrites the server's `system.adminPasswordHash`** with the PC file's value
-   (until a later change moves the password out of the config). Before copying, fetch the server's
-   file and bring that field into the PC file. A copied file without `adminPasswordHash` puts the
-   `.env` password back in force.
+   Once `auth.json` has `"v": 2`, a copied config's `adminPasswordHash` is ignored: the password
+   set in Settings stays in force. Settings still mirrors it into the config file, so a rollback to
+   the previous image keeps the new password. To reset a forgotten one, set `adminPasswordHash`
+   to `""` in `auth.json` (keep `"v": 2`) and restart.
+
+   After a rollback to an older image, a password changed there is only in the config. Before
+   upgrading again, remove `"v": 2` from `data/auth.json` so the next start copies the config's
+   password in; otherwise the password from before the rollback returns.
 
    (uid 1000 = the `node` user in the container; the data dir must stay
    writable or Settings saves will fail.)
