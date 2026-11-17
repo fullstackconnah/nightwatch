@@ -8,6 +8,6 @@ describe("oidcAllowListCheck wiring", () => {
   const fn = src.slice(src.indexOf("export function oidcAllowListCheck"), src.indexOf("/** Host only"));
   it("imports configProblem and passes it to oidcAllowDecision", () => {
     assert.match(src, /import \{[^}]*\bconfigProblem\b[^}]*\} from "@\/lib\/config"/);
-    assert.match(fn, /oidcAllowDecision\([^;]*console,\s*configProblem\(\)\)/s);
+    assert.match(fn, /oidcAllowDecision\([^;]*console,\s*configProblem\(\),?\s*\)/s);
   });
 });

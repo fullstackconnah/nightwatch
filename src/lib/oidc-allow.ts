@@ -35,8 +35,14 @@ export function oidcAllowDecision(
   claims: Claims,
   rawList: string | undefined,
   log: { warn(m: string): void; error(m: string): void } = console,
+  /** configProblem(): a damaged config.json may have hidden the stored list, so an empty list must not open sign-in. */
+  problem: string | null = null,
 ): boolean {
   const { allowed, open } = oidcLoginAllowed(claims, rawList);
+  if (open && problem) {
+    log.error(`OIDC login refused: the saved settings cannot be read (${problem}) and OIDC_ALLOWED_USERS is not set, so the allow-list cannot be read`);
+    return false;
+  }
   if (open && !warnedOpen) {
     warnedOpen = true;
     log.warn("OIDC: no sign-in allow-list is set; any account the provider authenticates gets an owner session");

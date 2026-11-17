@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims } from "@/lib/auth";
-import { loadConfig, systemSetting } from "@/lib/config";
+import { configProblem, loadConfig, systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
@@ -65,9 +65,15 @@ export function oidcConfig(): OidcConfig | null {
   return { issuer: checked.issuer, clientId, clientSecret };
 }
 
-/** Whether the verified id token's account may sign in (the allow-list setting; unset admits everyone, with one warning). */
+/** Whether the verified id token's account may sign in (the allow-list setting; unset admits everyone, with one warning,
+ *  except when the saved settings cannot be read: then an empty list refuses). */
 export function oidcAllowListCheck(payload: JWTPayload): boolean {
-  return oidcAllowDecision(payload, allowListSetting(loadConfig().system?.[ALLOW_SETTING_KEY], process.env[ALLOW_ENV_NAME]));
+  return oidcAllowDecision(
+    payload,
+    allowListSetting(loadConfig().system?.[ALLOW_SETTING_KEY], process.env[ALLOW_ENV_NAME]),
+    console,
+    configProblem(),
+  );
 }
 
 /** Host only (e.g. "homelab.local:9091") for the settings panel — never the
