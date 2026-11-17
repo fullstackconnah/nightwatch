@@ -60,6 +60,31 @@ function post(patch: unknown) {
 const bytes = () => fs.readFileSync(file);
 const stored = () => JSON.parse(fs.readFileSync(file, "utf8"));
 
+describe("POST /api/settings/hermes-daemon: keys it does not know survive a save (hunt 71)", () => {
+  it("keeps an unknown key in the file, and the named keys still win", async () => {
+    fs.writeFileSync(file, JSON.stringify({ ...STORED, futureKey: 1, digestHour: 3 }));
+    const res = await post({ digestHour: 7 });
+    assert.equal(res.status, 200);
+    assert.equal(stored().futureKey, 1);
+    assert.equal(stored().digestHour, 7);
+    assert.equal(stored().discordBotToken, "old-token");
+  });
+
+  it("a key the user clears in the save stays cleared", async () => {
+    fs.writeFileSync(file, JSON.stringify({ ...STORED, discordWebhookUrl: "https://discord.com/api/webhooks/1/abc", futureKey: "x" }));
+    const res = await post({ clearDiscordWebhookUrl: true, currentPassword: PASSWORD });
+    assert.equal(res.status, 200);
+    assert.equal("discordWebhookUrl" in stored(), false);
+    assert.equal(stored().futureKey, "x");
+  });
+
+  it("a file with only known keys keeps exactly its keys", async () => {
+    const res = await post({ digestHour: 7 });
+    assert.equal(res.status, 200);
+    assert.deepEqual(Object.keys(stored()).sort(), [...Object.keys(STORED), "digestHour"].sort());
+  });
+});
+
 describe("POST /api/settings/hermes-daemon: Discord access asks for the current password", () => {
   it("a new allowlist with no password is refused 400 and the file is byte-identical", async () => {
     const before = bytes();

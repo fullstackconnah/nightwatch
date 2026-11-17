@@ -178,6 +178,7 @@ export async function POST(req: NextRequest) {
 
   const now = new Date().toISOString();
   const next: HermesSettingsFile = {
+    ...existing, // keys this route does not know survive; the named keys below win, and an undefined one clears (JSON drops it)
     discordWebhookUrl,
     discordBotToken,
     discordChannelId,
