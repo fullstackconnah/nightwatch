@@ -279,7 +279,7 @@ function readConfig(strict: boolean): AppConfig {
     const text = fs.readFileSync(configPath(), "utf8");
     if (!text.trim()) {
       // A blank file is a fresh install (touch data/config.json, hunt 32 F4) unless a last-good copy sits beside it: then it was blanked (hunt 64), so a save must not build on defaults.
-      if (fs.existsSync(backupPath())) {
+      if (fs.statSync(backupPath(), { throwIfNoEntry: false })) {
         if (strict) throw new Error(CONFIG_UNREADABLE);
         logFallback("config.json is empty and a last-good copy is at data/config.json.bak");
       }
@@ -330,12 +330,12 @@ export function saveErrorText(e: unknown): string {
   return e instanceof Error && e.message === DATA_DIR_UNWRITABLE ? e.message : "save failed";
 }
 
-/** Copy the current config.json to config.json.bak (0600, tmp+rename) before a save replaces it, but only when it is a non-blank JSON object, so a damaged file never displaces a good copy. A failed copy never blocks the save. */
+/** Copy the current config.json to config.json.bak (0600, tmp+rename) before a save replaces it, but only when it is a non-empty JSON object (not blank, `{}` or damaged), so a damaged file never displaces a good copy. A failed copy never blocks the save. */
 function keepLastGood(): void {
   try {
     const text = fs.readFileSync(configPath(), "utf8");
     const parsed = text.trim() ? JSON.parse(text) : null;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length === 0) return;
     const tmp = backupPath() + ".tmp";
     fs.rmSync(tmp, { force: true }); // the mode applies only when the file is created
     const fd = fs.openSync(tmp, "w", 0o600);
