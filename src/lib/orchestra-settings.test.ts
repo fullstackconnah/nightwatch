@@ -92,7 +92,7 @@ describe("settings GET wiring (source-level)", () => {
   it("sanitizes through publicSystem and reports orchestraConfigured, never the token", () => {
     assert.match(readFileSync(new URL("./settings/public-config.ts", import.meta.url), "utf8"), /publicSystem\(config\.system\)/);
     assert.match(src, /orchestraConfigured/);
-    assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "").replace(/orchestraTokenSet/g, "")), false);
+    assert.equal(/orchestraToken/.test(src.replace(/systemSetting\("orchestraToken", "ORCHESTRA_TOKEN"\)/g, "").replace(/systemSettingSaved\("orchestraToken"\)/g, "").replace(/orchestraTokenS(et|aved)/g, "")), false);
   });
 
   it("reports orchestraTokenSet from the token that would be used, as a boolean only", () => {

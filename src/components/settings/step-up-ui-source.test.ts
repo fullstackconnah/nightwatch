@@ -86,7 +86,8 @@ const daemonStart = hermesSrc.indexOf("function HermesDaemonCard(");
 const daemon = hermesSrc.slice(daemonStart, hermesSrc.indexOf("\nfunction ", daemonStart + 10));
 
 test("Daemon: the field shows only while Discord access is pending or after a refusal, and Save waits for it", () => {
-  assert.match(daemon, /const askPassword =\s*asked \|\|\s*\(authConfigured &&\s*seeded &&\s*discordStepUpNeeded\(/);
+  assert.match(daemon, /const pending =\s*authConfigured &&\s*seeded &&\s*discordStepUpNeeded\(/);
+  assert.match(daemon, /const askPassword = stepUpAsked\(pending, askedAt, draftKey\);/);
   assert.match(daemon, /\{askPassword && \(\s*<StepUpField[^>]*hintId="discord-step-up-hint"/);
   assert.match(daemon, /disabled=\{saving \|\| \(askPassword && !password\)\}/);
   assert.match(daemon, /if \(askPassword\) body\.currentPassword = password;/);
@@ -95,8 +96,8 @@ test("Daemon: the field shows only while Discord access is pending or after a re
 test("Daemon: the pending check and the request share one allowlist split; any refusal shows the field, a wrong one empties and focuses it", () => {
   assert.equal(daemon.match(/splitUserIds\(allowedUserIds\)/g)?.length, 2);
   assert.doesNotMatch(daemon, /\.split\(","\)/);
-  assert.match(daemon, /isStepUpRefusal\(e\)\) \{\s*setAsked\(true\);\s*if \(e\.stepUp === "wrong"\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
-  assert.match(daemon, /setPassword\(""\);\s*setAsked\(false\);/);
+  assert.match(daemon, /isStepUpRefusal\(e\)\) \{\s*setAskedAt\(draftKey\);\s*if \(e\.stepUp === "wrong"\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
+  assert.match(daemon, /setPassword\(""\);\s*setAskedAt\(null\);/);
 });
 
 test("Daemon: the final hint and the shared no-password warning, and the helpers are the exported originals", () => {

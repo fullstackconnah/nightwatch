@@ -27,7 +27,7 @@ import { BUDGET_HINT } from "@/lib/settings-field-checks";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
 import { NO_PASSWORD_WARNING, StepUpField } from "@/components/settings/settings-access";
 import { isStepUpRefusal } from "@/lib/api-error";
-import { discordStepUpNeeded, splitUserIds } from "@/lib/discord-step-up";
+import { discordStepUpNeeded, splitUserIds, stepUpAsked } from "@/lib/discord-step-up";
 
 type Tier = "local" | "openrouter" | "anthropic";
 
@@ -306,20 +306,21 @@ function HermesDaemonCard() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [password, setPassword] = useState("");
-  const [asked, setAsked] = useState(false);
+  const [askedAt, setAskedAt] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const d = daemon;
   const authConfigured = data?.meta.authConfigured ?? false;
-  // Only a pending change to Discord access asks for the password; any refusal also shows the field.
-  // The server's refusal is the proof, so `asked` alone shows the field even when authConfigured is stale.
-  const askPassword =
-    asked ||
-    (authConfigured &&
-      seeded &&
-      discordStepUpNeeded(
-        { botToken: botTokenDraft, webhookUrl: webhookDraft, allowedUserIds: splitUserIds(allowedUserIds), channelId },
-        d ?? {},
-      ));
+  // Only a pending change to Discord access asks for the password. A refusal also shows the field while the drafts
+  // stay as refused (the server's refusal is the proof, even when authConfigured is stale); reverting them hides it.
+  const draftKey = JSON.stringify([botTokenDraft, webhookDraft, allowedUserIds, channelId]);
+  const pending =
+    authConfigured &&
+    seeded &&
+    discordStepUpNeeded(
+      { botToken: botTokenDraft, webhookUrl: webhookDraft, allowedUserIds: splitUserIds(allowedUserIds), channelId },
+      d ?? {},
+    );
+  const askPassword = stepUpAsked(pending, askedAt, draftKey);
   useFormReport("hermes-daemon", {
     dirty:
       seeded && !!d
@@ -380,14 +381,14 @@ function HermesDaemonCard() {
       setWebhookDraft("");
       setBotTokenDraft("");
       setPassword("");
-      setAsked(false);
+      setAskedAt(null);
       setSaveVersion((v) => v + 1);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
       if (isStepUpRefusal(e)) {
-        setAsked(true);
+        setAskedAt(draftKey);
         if (e.stepUp === "wrong") {
           setPassword("");
           passwordRef.current?.focus();

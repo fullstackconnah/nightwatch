@@ -62,6 +62,7 @@ export interface SettingsFullResponse {
     hermesApiConfigured?: boolean;
     orchestraConfigured?: boolean;
     orchestraTokenSet?: boolean;
+    orchestraTokenSaved?: boolean;
     outsideCheckConfigured?: boolean;
     ssoConfigured?: boolean;
     ssoIssuerHost?: string | null;

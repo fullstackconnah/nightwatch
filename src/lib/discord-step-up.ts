@@ -16,6 +16,15 @@ export function splitUserIds(text: string): string[] {
   return text.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
+/**
+ * Whether the card shows the password field. A pending Discord change always does; a refusal keeps it only while the
+ * drafts are the ones refused (the server can refuse when the card sees nothing pending, e.g. the file changed in
+ * another tab), so reverting the edits after a refusal drops the field and its disabled Save.
+ */
+export function stepUpAsked(pending: boolean, askedAt: string | null, draftKey: string): boolean {
+  return pending || (askedAt !== null && askedAt === draftKey);
+}
+
 /** A secret counts when it is typed (trimmed, non-empty) or cleared; the server never compares secrets. */
 export function discordStepUpNeeded(
   change: DiscordStepUpChange,

@@ -430,7 +430,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
         onDraftChange={setToken}
       />
       <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
-        {data?.meta.orchestraTokenSet ? (
+        {data?.meta.orchestraTokenSaved ? (
           <ClearAction
             say="Removes the saved Orchestra token. The AI lanes page can't reach it until you enter one again."
             failure="Couldn’t clear the token"

@@ -19,7 +19,7 @@ const calm = () => ({
   meta: {
     widgetTypes: ["generic"], publicHost: "homelab.local", dockgeUrl: "http://homelab.local:5001", authConfigured: true,
     dataDir: "/data", hermesModelUpdatedAt: ago(3), mcpEnabled: true, mcpEndpoint: "http://homelab.local:3005/api/mcp",
-    kioskPinConfigured: true, hermesApiConfigured: true, orchestraConfigured: true, orchestraTokenSet: true, ssoConfigured: true, ssoIssuerHost: "homelab.local",
+    kioskPinConfigured: true, hermesApiConfigured: true, orchestraConfigured: true, orchestraTokenSet: true, orchestraTokenSaved: true, ssoConfigured: true, ssoIssuerHost: "homelab.local",
   },
   integrations: {
     homeassistant: { configured: true, updatedAt: ago(9) },
@@ -58,6 +58,13 @@ const noPassword = () => {
   return f;
 };
 
+// The Orchestra token comes only from the server environment: configured, but nothing saved to Clear.
+const orchestraEnvOnly = () => {
+  const f = calm();
+  f.meta.orchestraTokenSaved = false;
+  return f;
+};
+
 const hermesKeyMissing = () => {
   const f = calm();
   f.config.hermes = { tier: "openrouter", model: "vendor/model" };
@@ -73,6 +80,7 @@ export const FIXTURES = {
   loading: { get: "hang" },
   loadError: { get: "fail" },
   noPassword: { get: noPassword() },
+  orchestraEnvOnly: { get: orchestraEnvOnly() },
   hermesKeyMissing: { get: hermesKeyMissing() },
   // Opens fine, then every later GET fails: the refresh-failed look.
   refreshFailed: { get: calm(), failAfter: 1 },

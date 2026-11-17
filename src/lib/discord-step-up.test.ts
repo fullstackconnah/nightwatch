@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { discordStepUpNeeded, splitUserIds } from "./discord-step-up.ts";
+import { discordStepUpNeeded, splitUserIds, stepUpAsked } from "./discord-step-up.ts";
 
 const stored = { discordAllowedUserIds: ["111", "222"], discordChannelId: "999" };
 
@@ -42,4 +42,15 @@ test("splitUserIds is the one comma split: trimmed, blanks dropped, order kept",
   assert.deepEqual(splitUserIds(" 111 ,222,, 333 "), ["111", "222", "333"]);
   assert.deepEqual(splitUserIds(""), []);
   assert.equal(discordStepUpNeeded({ allowedUserIds: splitUserIds("111,   222") }, stored), false);
+});
+
+test("stepUpAsked: a refusal keeps the field only while the drafts are the ones refused, a pending change always shows it", () => {
+  assert.equal(stepUpAsked(false, null, "a"), false);
+  assert.equal(stepUpAsked(true, null, "a"), true);
+  // refused with the drafts at "a": still shown while they stay "a" (a stale card the server disagrees with)
+  assert.equal(stepUpAsked(false, "a", "a"), true);
+  // the Discord edits were reverted (drafts moved on, nothing pending): the field goes away
+  assert.equal(stepUpAsked(false, "a", "b"), false);
+  // changed to something else that is pending: shown by the pending rule
+  assert.equal(stepUpAsked(true, "a", "b"), true);
 });

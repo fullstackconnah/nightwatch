@@ -18,6 +18,7 @@
  *
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
  *   ONLY=stepup-discord ... runs only the Discord step-up section on the Hermes daemon card (idle, asking, wrong, no-password)
+ *   ONLY=hunt69 ... runs only the Orchestra Clear section (saved token: Clear shown; environment-only token: no Clear)
  *   ONLY=config-notice ... runs only the config.json-unreadable head (blank, unreadable, unreadable-no-copy, healthy), from fixtures
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
  * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
@@ -1021,6 +1022,30 @@ await guarded("stepup-discord", () =>
       await cropEl(page, s, c, "stepup-discord-no-password", false);
       await page.close();
     }
+  }),
+);
+
+// ---- hunt 69: Clear on the Orchestra row shows only for a token saved in Settings (ONLY=hunt69 runs just this) ----
+// States: orchestra-saved (Clear shown), orchestra-env-only (GET mocked with orchestraTokenSaved false: no Clear, Save stays put).
+await guarded("hunt69", () =>
+  each(async (s) => {
+    const su = (name, ok) => record(`SU hunt69 ${name}`, s.name, ok);
+    const row = (page) => visibleBody(page).first().locator('section:has(> div > h3:text-is("Orchestra"))');
+    const measure = async (key, name) => {
+      const { page } = await visit(s, key, { hash: "#access" });
+      const c = row(page);
+      await c.waitFor({ timeout: SLOW });
+      const clear = await c.getByRole("button", { name: /^Clear/ }).count();
+      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((n) => Math.round(n * 100) / 100).join(","); });
+      await cropEl(page, s, c, name, true);
+      await page.close();
+      return { clear, save };
+    };
+    const saved = await measure("calm", "orchestra-saved");
+    const env = await measure("orchestraEnvOnly", "orchestra-env-only");
+    su("saved: Clear shown", saved.clear === 1);
+    su("env only: Clear absent", env.clear === 0);
+    su("Save control box identical in both states", saved.save === env.save);
   }),
 );
 
