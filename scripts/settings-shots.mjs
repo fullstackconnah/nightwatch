@@ -1046,7 +1046,7 @@ await guarded("config-notice", () =>
     const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
     // References: the existing Sign-in off chip classes and the refresh-failed notice style.
     const refChip = await (async () => { const { page } = await visit(s, "noPassword"); const c = await page.locator("[data-feature=chip]").getAttribute("class"); await page.close(); return c; })();
-    const refNote = await (async () => { const { page } = await visit(s, "refreshFailed"); await page.waitForFunction(() => /Couldn’t refresh/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 15_000 }); const st = await noteStyle(page); await page.close(); return st; })();
+    const refNote = await (async () => { const { page } = await visit(s, "refreshFailed"); await page.waitForTimeout(5300); await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await page.waitForFunction(() => /Couldn’t refresh/.test(document.querySelector("main")?.innerText ?? ""), null, { timeout: 15_000 }); const st = await noteStyle(page); await page.close(); return st; })();
     for (const [key, name, answer, notice] of [["cfgBlank", "blank", BLANK, COPY], ["cfgUnreadable", "unreadable", BAD, COPY], ["cfgNoCopy", "unreadable-no-copy", BAD, NO_COPY]]) {
       const { page } = await visit(s, key);
       const chip = page.locator("[data-feature=chip]");
