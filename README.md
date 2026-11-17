@@ -80,12 +80,13 @@ containers even if compromised. Changing the password in Settings signs out
 every other login session (the browser that changed it stays signed in). A wall kiosk
 unlocked with its PIN stays unlocked until that unlock lapses, and the MCP token is not changed.
 The sign-out counter lives in its own file, `data/auth.json`, so copying a config
-file over the server's cannot undo a sign-out. The copy still replaces the stored password until a later
-change; see DEPLOY.md. Don't copy `auth.json`; deleting it is the reset (the counter then restarts from the config's value).
+file over the server's cannot undo a sign-out. The stored password lives there too: after the first start of this version a copied
+config's password is ignored (see DEPLOY.md). Don't copy `auth.json`; deleting it is the reset (the counter and
+the password then restart from the config's values).
 The password set in Settings replaces the one in `.env`: once it is stored, only
 it signs in, and `ADMIN_PASSWORD_HASH` counts only until then (first setup).
-Forgotten it? On the server, remove `system.adminPasswordHash` from the stored
-config file; the `.env` password signs in again, and you can set a new one.
+Forgotten it? On the server, remove `adminPasswordHash` from `data/auth.json` (keep `v`), or delete
+`auth.json` and restart (it re-seeds from the config); the `.env` password signs in again, and you can set a new one.
 
 The session, kiosk-unlock and SSO-flow cookies are marked `Secure` when the
 request reaches the app over https through the proxy (`X-Forwarded-Proto:
