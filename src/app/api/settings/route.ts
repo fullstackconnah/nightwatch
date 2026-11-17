@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  configProblem,
   loadConfig,
   loadConfigForSave,
   saveConfig,
@@ -113,6 +114,7 @@ export async function GET(req: NextRequest) {
       // Same answer as login: a stored hash replaces the env one (#266), blanks count as unset.
       authConfigured: isPasswordConfigured(),
       dataDir: process.env.DATA_DIR || "./data",
+      configProblem: configProblem(),
       hermesModelUpdatedAt: readHermesModelFile()?.updatedAt ?? null,
       // Surfaced on the Settings "System access" panel — never the token
       // itself, just whether the feature is on and where it lives, computed

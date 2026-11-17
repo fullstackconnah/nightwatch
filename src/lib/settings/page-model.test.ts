@@ -386,3 +386,41 @@ test("a failed restore drill save names the date", () => {
   assert.match(m.answer, /^Couldn’t save the restore drill date: boom/);
   assert.equal(m.autoTarget, "restore");
 });
+
+// ---- config.json could not be read (cfgbanner) ----
+const CFG_BLANK_ANSWER = "The settings file is empty, so this page shows defaults.";
+const CFG_BAD_ANSWER = "The settings file can’t be read, so this page shows defaults.";
+const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+const CFG_NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
+
+test("config problem wins the head", () => {
+  const m = model({ d: { auth: false, meta: { configProblem: "blank" } }, forms: { minecraft: { dirty: true, error: "boom" } } });
+  assert.deepEqual(m.chip, { tone: "bad", label: "Using defaults" });
+  assert.equal(m.answer, CFG_BLANK_ANSWER);
+  assert.equal(m.notice, CFG_COPY);
+  assert.equal(m.autoTarget, "keep");
+});
+
+test("unreadable says it cannot be read and points at the copy", () => {
+  const m = model({ d: { meta: { configProblem: "unreadable" } } });
+  assert.equal(m.answer, CFG_BAD_ANSWER);
+  assert.equal(m.notice, CFG_COPY);
+});
+
+test("unreadable-no-copy uses the no-copy notice", () => {
+  const m = model({ d: { meta: { configProblem: "unreadable-no-copy" } } });
+  assert.equal(m.answer, CFG_BAD_ANSWER);
+  assert.equal(m.notice, CFG_NO_COPY);
+});
+
+test("config notice comes before the refresh note", () => {
+  const m = model({ d: { meta: { configProblem: "blank" } }, loadError: "Network down" });
+  assert.equal(m.notice, `${CFG_COPY} Couldn’t refresh: showing what loaded 5 s ago.`);
+});
+
+test("no config problem leaves the head as it was", () => {
+  const a = model({ d: { meta: { configProblem: null } } });
+  const b = model();
+  assert.deepEqual(a, b);
+  assert.equal(b.notice, null);
+});
