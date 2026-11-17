@@ -92,4 +92,10 @@ describe("auth source guards", () => {
     const settings = readFileSync(new URL("../app/api/settings/route.ts", import.meta.url), "utf8");
     assert.match(settings, /authConfigured: isPasswordConfigured\(\)/);
   });
+  it("only the password route (mirror write) and the system route (carry-through) mention adminPasswordHash under api", () => {
+    const hits = walk(new URL("../app/api/", import.meta.url))
+      .filter((f) => /\.ts$/.test(f) && readFileSync(f, "utf8").includes("adminPasswordHash"))
+      .map((f) => f.replaceAll("\\", "/").split("/api/")[1]);
+    assert.deepEqual(hits.sort(), ["settings/password/route.ts", "settings/system/route.ts"]);
+  });
 });

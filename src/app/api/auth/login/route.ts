@@ -17,8 +17,7 @@ export async function POST(req: NextRequest) {
   if (!limiter.attempt()) {
     return NextResponse.json({ error: "Too many attempts — wait a minute" }, { status: 429 });
   }
-  // One hash: config.json's system.adminPasswordHash when set, else env
-  // ADMIN_PASSWORD_HASH (first setup) — see candidatePasswordHashes().
+  // One hash: auth.json's when v 2, else config.json's, else env ADMIN_PASSWORD_HASH — see candidatePasswordHashes().
   const candidates = candidatePasswordHashes();
 
   let ok = false;

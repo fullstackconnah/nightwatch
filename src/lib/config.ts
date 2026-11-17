@@ -576,7 +576,7 @@ export function seedAuthState(): void {
   try {
     const existing = readAuthStateForSave();
     if (existing.v === 2) return;
-    const sys = loadConfig().system;
+    const sys = loadConfigForSave().system; // strict: an unreadable config writes nothing, the next start retries
     const hash = sys?.adminPasswordHash?.trim();
     saveAuthState({
       ...existing,

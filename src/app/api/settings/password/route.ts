@@ -21,7 +21,7 @@ const MIN_LENGTH = 8;
 const BCRYPT_ROUNDS = 12;
 
 /**
- * The one writer of config.json's system.adminPasswordHash (GOAL A's
+ * The one writer of the stored password hash (data/auth.json, mirrored into config.json) (GOAL A's
  * "Change password" flow). Requires the CURRENT password and verifies it
  * against candidatePasswordHashes() — the SAME stored-hash-else-env choice the
  * login route uses, so the password that signs in is the one that can be

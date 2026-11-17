@@ -206,6 +206,27 @@ describe("session epoch: data/auth.json (revocation survives a config copy)", ()
     assert.equal(a.sessionEpoch, 0);
     assert.equal("adminPasswordHash" in a, false);
   });
+  it("the seed writes nothing while config.json is unreadable, and seeds the hash once it is repaired", () => {
+    const f = path.join(dir, "config.json");
+    fs.writeFileSync(f, "{ not json");
+    stamp(f);
+    seedAuthState();
+    assert.equal(fs.existsSync(authFile()), false, "malformed config: nothing written");
+    fs.rmSync(f);
+    fs.mkdirSync(f); // EISDIR
+    seedAuthState();
+    assert.equal(fs.existsSync(authFile()), false, "unreadable config: nothing written");
+    fs.rmdirSync(f);
+    writeConfHash("hash-from-config", 3);
+    seedAuthState();
+    assert.deepEqual([authJson().v, authJson().sessionEpoch, authJson().adminPasswordHash], [2, 3, "hash-from-config"]);
+  });
+  it("the seed still seeds a fresh install with no config.json", () => {
+    fs.rmSync(path.join(dir, "config.json"));
+    seedAuthState();
+    const a = authJson();
+    assert.deepEqual([a.v, a.sessionEpoch, "adminPasswordHash" in a], [2, 0, false]);
+  });
   it("the seed upgrades a readable file without v: keeps its keys and the higher epoch, skips a blank config hash", () => {
     writeConfHash("  ", 2);
     writeAuth('{"sessionEpoch":7,"keep":"x"}');
@@ -285,16 +306,21 @@ describe("session epoch: source guards (PR B)", () => {
     let n = 0;
     for (const f of sources.filter((f) => !f.endsWith(`${path.sep}auth.ts`))) {
       const s = fs.readFileSync(f, "utf8");
-      for (const m of s.matchAll(/createKioskElevationToken\((.{0,16})/g)) { n++; assert.match(m[1], /^(sessionEpoch\(\)|epochOf\()/, f); }
+      // `epoch` is allowed only where the file binds it to sessionEpoch() (the refresh route reads it once).
+      const epochOk = /const epoch = sessionEpoch\(\);/.test(s) ? "epoch|" : "";
+      const okArg = new RegExp(`^(${epochOk}sessionEpoch\\(\\)|epochOf\\()`);
+      for (const m of s.matchAll(/createKioskElevationToken\((.{0,16})/g)) { n++; assert.match(m[1], okArg, f); }
       const verifies = s.split("verifyKioskElevationToken(").length - 1;
       n += verifies;
-      assert.equal(s.match(/verifyKioskElevationToken\(\w+, (sessionEpoch\(\)|epochOf\()/g)?.length ?? 0, verifies, f);
+      assert.equal(s.match(new RegExp(`verifyKioskElevationToken\\(\\w+, (${epochOk}sessionEpoch\\(\\)|epochOf\\()`, "g"))?.length ?? 0, verifies, f);
     }
     assert.ok(n >= 4, `found ${n} callers`);
   });
   it("the kiosk refresh route verifies against sessionEpoch() before it re-mints", () => {
     const s = read("../app/api/auth/kiosk/refresh/route.ts");
-    assert.match(s, /verifyKioskElevationToken\(token, sessionEpoch\(\)\)/);
+    assert.match(s, /const epoch = sessionEpoch\(\);/);
+    assert.match(s, /verifyKioskElevationToken\(token, epoch\)/);
+    assert.match(s, /createKioskElevationToken\(epoch\)/);
     assert.ok(s.indexOf("verifyKioskElevationToken(") < s.indexOf("createKioskElevationToken("));
   });
   it("the middleware runs on Node and passes the epoch", () => {
