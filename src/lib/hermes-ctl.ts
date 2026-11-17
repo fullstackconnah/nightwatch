@@ -38,7 +38,7 @@ interface HermesCredentials {
   token: string;
 }
 
-export function hermesCredentials():HermesCredentials | null {
+export function hermesCredentials(): HermesCredentials | null {
   const url = systemSetting("hermesApiUrl", "HERMES_API_URL");
   const token = secretForSettingUrl("hermesApiUrl", "HERMES_API_URL", "hermesApiToken", "HERMES_API_TOKEN");
   if (!url || !token) return null;

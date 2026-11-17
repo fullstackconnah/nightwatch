@@ -307,8 +307,9 @@ scope** — everything comes from bind mounts that already existed.
 
 ## Orchestra and Hermes API tokens
 
-An environment token (`ORCHESTRA_TOKEN`, `HERMES_API_TOKEN`, `OIDC_CLIENT_SECRET`) is only sent to the host of its environment URL (`ORCHESTRA_URL`, `HERMES_API_URL`, `OIDC_ISSUER`).
+An environment token (`ORCHESTRA_TOKEN`, `HERMES_API_TOKEN`) is only sent to the host of its environment URL (`ORCHESTRA_URL`, `HERMES_API_URL`).
 If Settings saves a URL on another host, save the token there too, or the service shows as not connected.
+The rule covers these two API tokens only. The SSO client secret (`OIDC_CLIENT_SECRET`) is not covered, because changing the issuer in Settings already asks for the current password.
 
 ## Outside check (Home, Settings > Access)
 

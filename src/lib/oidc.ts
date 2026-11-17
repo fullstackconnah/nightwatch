@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { OIDC_FLOW_TTL_SECONDS, createOidcFlowToken, verifyOidcFlowToken, type OidcFlowClaims } from "@/lib/auth";
-import { loadConfig, secretForSettingUrl, systemSetting } from "@/lib/config";
+import { loadConfig, systemSetting } from "@/lib/config";
 import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
@@ -53,7 +53,7 @@ let warnedBadIssuer = false;
 export function oidcConfig(): OidcConfig | null {
   const issuer = systemSetting("oidcIssuer", "OIDC_ISSUER");
   const clientId = systemSetting("oidcClientId", "OIDC_CLIENT_ID");
-  const clientSecret = secretForSettingUrl("oidcIssuer", "OIDC_ISSUER", "oidcClientSecret", "OIDC_CLIENT_SECRET");
+  const clientSecret = systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET");
   if (!issuer || !clientId || !clientSecret) return null;
   // The env fallback skips the save-time check; a login, query or fragment must not reach the discovery URL.
   const checked = checkedIssuer(issuer);
