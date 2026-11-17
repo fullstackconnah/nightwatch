@@ -78,16 +78,19 @@ describe("checkCurrentPassword", () => {
   });
 });
 
+// A query string makes a second module instance; a template keeps tsc from resolving it as a file.
+const load = (q: string): Promise<typeof import("./step-up.ts")> => import(`./step-up.ts?${q}`);
+
 describe("shared limiter", () => {
   it("survives a second module instance (one on globalThis)", async () => {
-    const a = await import("./step-up.ts?a");
-    const b = await import("./step-up.ts?b");
+    const a = await load("a");
+    const b = await load("b");
     assert.notEqual(a.checkCurrentPassword, b.checkCurrentPassword);
     assert.equal(a.currentPasswordLimiter, b.currentPasswordLimiter);
     assert.equal((globalThis as Record<string, unknown>).__nwStepUpLimiter, a.currentPasswordLimiter);
   });
   it("attempts through one instance count against the other", () => {
-    return Promise.all([import("./step-up.ts?c"), import("./step-up.ts?d")]).then(([c, d]) => {
+    return Promise.all([load("c"), load("d")]).then(([c, d]) => {
       c.currentPasswordLimiter.reset();
       for (let i = 0; i < 5; i++) assert.equal(c.currentPasswordLimiter.attempt(), true);
       assert.equal(d.currentPasswordLimiter.attempt(), false);
