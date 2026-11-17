@@ -52,3 +52,11 @@ test("the label row wraps, so an open ask frame takes its own row and the label 
   assert.match(integ, /className="flex flex-wrap items-center justify-between gap-2 mb-1"/);
   assert.match(integ, /<Label id=\{labelId\} htmlFor=\{id\} className="mb-0 whitespace-nowrap">/);
 });
+
+test("the ask frame takes focus on open (Cancel) and hands it back to the trigger on Cancel or Escape", () => {
+  const w = read("../strips/write-action.tsx");
+  assert.match(w, /<Button autoFocus aria-describedby=\{sayId\} size="sm" variant="ghost" onClick=\{cancel\}>/);
+  assert.match(w, /const cancel = \(\) => \{\s*refocus\.current = true;\s*setPhase\("idle"\);/);
+  assert.match(w, /if \(phase === "idle" && refocus\.current\) \{[\s\S]*?trigger\.current\?\.focus\(\)/);
+  assert.match(w, /e\.key === "Escape"[\s\S]*?cancel\(\)/);
+});

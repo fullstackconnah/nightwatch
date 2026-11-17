@@ -704,6 +704,9 @@ await guarded("stepup", () =>
       await clr.click();
       const yes = c.getByRole("button", { name: "Yes, clear" });
       await yes.waitFor({ timeout: SLOW });
+      // The frame takes focus on open (Cancel, the safe choice: WriteAction's autoFocus), so a focus-driven hold never lapses.
+      su("pin clear: focus moves into the ask frame", s.name, await yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]").evaluate((f) => f.contains(document.activeElement)));
+      su("pin clear: focus lands on Cancel", s.name, (await page.evaluate(() => document.activeElement?.textContent?.trim())) === "Cancel");
       const y = await boxOf(yes), ask = await boxOf(yes.locator("xpath=ancestor::div[contains(@class,'st-frame')]"));
       const lab = c.locator("label", { hasText: /^Kiosk PIN$/ });
       const labelH = await lab.evaluate((e) => { const cs = getComputedStyle(e), lh = parseFloat(cs.lineHeight); return { h: e.getBoundingClientRect().height, line: Number.isNaN(lh) ? parseFloat(cs.fontSize) * 1.4 : lh }; });
@@ -711,7 +714,21 @@ await guarded("stepup", () =>
       su("pin clear: Yes meets the C12 tap floor", s.name, s.name !== "390" || y.h >= 43.5);
       su("pin clear: ask frame inside the card", s.name, ask.right <= box.right);
       su("pin clear: Kiosk PIN label stays on one line while the ask frame is open", s.name, labelH.h <= labelH.line + 1);
+      // Records, not checks: what the page looked like either side of the crop. `doc` false = the document reloaded; `frame` false with `doc` true = the React tree remounted or the frame closed.
+      const snap = () =>
+        page.evaluate(() => {
+          const a = document.activeElement, f = document.querySelector(".st-frame");
+          return {
+            open: (document.querySelector(".st-pane h2") ?? document.querySelector(".st-strip[data-on] .st-name"))?.textContent?.trim() ?? null,
+            innerWidth, scrollY: Math.round(scrollY), hash: location.hash,
+            active: a ? `${a.tagName.toLowerCase()}:${(a.getAttribute("aria-label") ?? a.textContent ?? "").trim().slice(0, 24)}` : null,
+            doc: window.__pcMark === 1, frame: !!f && f.__pcMark === 1, frames: document.querySelectorAll(".st-frame").length,
+          };
+        });
+      await page.evaluate(() => { window.__pcMark = 1; document.querySelector(".st-frame").__pcMark = 1; });
+      record("SU pin clear: state before the crop", s.name, JSON.stringify(await snap()));
       await cropEl(page, s, c, "stepup-pin-clear-ask", false);
+      record("SU pin clear: state after the crop", s.name, JSON.stringify(await snap()));
       // Names the cause of a Yes click that times out: false here means the page lost its state during the crop (a reload), true means the click itself was blocked.
       su("pin clear: ask frame and typed password survive the crop", s.name, (await yes.count()) === 1 && (await pw(c).inputValue()) === "not-the-password");
       await yes.click();
