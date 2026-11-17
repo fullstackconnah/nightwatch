@@ -311,10 +311,11 @@ function HermesDaemonCard() {
   const d = daemon;
   const authConfigured = data?.meta.authConfigured ?? false;
   // Only a pending change to Discord access asks for the password; any refusal also shows the field.
+  // The server's refusal is the proof, so `asked` alone shows the field even when authConfigured is stale.
   const askPassword =
-    authConfigured &&
-    seeded &&
-    (asked ||
+    asked ||
+    (authConfigured &&
+      seeded &&
       discordStepUpNeeded(
         { botToken: botTokenDraft, webhookUrl: webhookDraft, allowedUserIds: splitUserIds(allowedUserIds), channelId },
         d ?? {},

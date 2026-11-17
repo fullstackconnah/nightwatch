@@ -113,6 +113,33 @@ describe("POST /api/settings/hermes-daemon: Discord access asks for the current 
     const res = await post({ discordBotToken: "new-token", digestHour: 99, currentPassword: "nope" });
     assert.equal(res.status, 400);
     assert.equal((await res.json()).stepUp, undefined);
+    // The limiter allows 5 wrong tries (the 6th is 429), so a slot spent by the 400 would make the 5th wrong try 429.
+    const patch = { discordBotToken: "new-token", currentPassword: "nope" };
+    for (let i = 0; i < 5; i++) assert.equal((await post(patch)).status, 403);
+    assert.equal((await post(patch)).status, 429);
+  });
+
+  it("an empty allowlist over an absent key is not gated and leaves the key absent", async () => {
+    fs.writeFileSync(file, JSON.stringify({ dryRun: false, updatedAt: "2026-01-01T00:00:00.000Z" }));
+    const res = await post({ discordAllowedUserIds: [], dryRun: true });
+    assert.equal(res.status, 200);
+    assert.equal("discordAllowedUserIds" in stored(), false);
+    assert.equal(stored().dryRun, true);
+  });
+
+  it("a blank channel id over an absent key is not gated and leaves the key absent", async () => {
+    fs.writeFileSync(file, JSON.stringify({ dryRun: false, updatedAt: "2026-01-01T00:00:00.000Z" }));
+    const res = await post({ discordChannelId: "  ", dryRun: true });
+    assert.equal(res.status, 200);
+    assert.equal("discordChannelId" in stored(), false);
+  });
+
+  it("a non-empty allowlist replaced by an empty one is gated and the file is untouched", async () => {
+    const before = bytes();
+    const res = await post({ discordAllowedUserIds: [] });
+    assert.equal(res.status, 400);
+    assert.equal((await res.json()).stepUp, "missing");
+    assert.ok(bytes().equals(before));
   });
 
   it("with no admin password configured a gated change saves", async () => {

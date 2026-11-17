@@ -115,9 +115,12 @@ export async function POST(req: NextRequest) {
   const discordBotToken = body.clearDiscordBotToken === true
     ? undefined
     : mergedSecret(str(body.discordBotToken), existing.discordBotToken);
-  const discordChannelId = "discordChannelId" in body ? (str(body.discordChannelId) ?? existing.discordChannelId) : existing.discordChannelId;
+  // An empty value over an absent key leaves it absent: the gate counts them equal, and a written "" or [] would override the daemon's env.
+  const typedChannelId = "discordChannelId" in body ? (str(body.discordChannelId) ?? existing.discordChannelId) : existing.discordChannelId;
+  const discordChannelId = existing.discordChannelId === undefined && typedChannelId === "" ? undefined : typedChannelId;
 
-  const discordAllowedUserIds = typedUserIds ?? existing.discordAllowedUserIds;
+  const discordAllowedUserIds =
+    existing.discordAllowedUserIds === undefined && typedUserIds?.length === 0 ? undefined : (typedUserIds ?? existing.discordAllowedUserIds);
 
   const dryRun = typeof body.dryRun === "boolean" ? body.dryRun : existing.dryRun;
   const pipelineEnabled = typeof body.pipelineEnabled === "boolean" ? body.pipelineEnabled : existing.pipelineEnabled;

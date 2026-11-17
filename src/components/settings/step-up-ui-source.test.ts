@@ -86,7 +86,7 @@ const daemonStart = hermesSrc.indexOf("function HermesDaemonCard(");
 const daemon = hermesSrc.slice(daemonStart, hermesSrc.indexOf("\nfunction ", daemonStart + 10));
 
 test("Daemon: the field shows only while Discord access is pending or after a refusal, and Save waits for it", () => {
-  assert.match(daemon, /const askPassword =\s*authConfigured &&\s*seeded &&\s*\(asked \|\|\s*discordStepUpNeeded\(/);
+  assert.match(daemon, /const askPassword =\s*asked \|\|\s*\(authConfigured &&\s*seeded &&\s*discordStepUpNeeded\(/);
   assert.match(daemon, /\{askPassword && \(\s*<StepUpField[^>]*hintId="discord-step-up-hint"/);
   assert.match(daemon, /disabled=\{saving \|\| \(askPassword && !password\)\}/);
   assert.match(daemon, /if \(askPassword\) body\.currentPassword = password;/);
