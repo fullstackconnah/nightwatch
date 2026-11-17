@@ -9,6 +9,8 @@ import { mergeOrchestraSettings } from "@/lib/orchestra-settings";
 import { loadConfigForSave, saveConfig, saveErrorText, syncHermesMcpToken, systemSetting, type AppConfig } from "@/lib/config";
 import { httpUrlError, mcpTokenError } from "@/lib/settings-checks";
 import { secretForUrl } from "@/lib/settings/dash-put";
+import { hermesCredentials } from "@/lib/hermes-ctl";
+import { orchestraCredentials, orchestraTokenSet } from "@/lib/orchestra";
 import { mergeOutsideHost } from "@/lib/outside-check";
 
 export const dynamic = "force-dynamic";
@@ -274,13 +276,10 @@ export async function POST(req: NextRequest) {
     system: {
       mcpTokenConfigured: Boolean(systemSetting("mcpToken", "MCP_TOKEN")),
       kioskPinConfigured: Boolean(systemSetting("kioskPin", "KIOSK_PIN")),
-      hermesApiConfigured: Boolean(
-        systemSetting("hermesApiUrl", "HERMES_API_URL") && systemSetting("hermesApiToken", "HERMES_API_TOKEN"),
-      ),
-      orchestraConfigured: Boolean(
-        systemSetting("orchestraUrl", "ORCHESTRA_URL") && systemSetting("orchestraToken", "ORCHESTRA_TOKEN"),
-      ),
-      orchestraTokenSet: Boolean(systemSetting("orchestraToken", "ORCHESTRA_TOKEN")),
+      // Same readers as GET /api/settings, so the reply matches a reload.
+      hermesApiConfigured: Boolean(hermesCredentials()),
+      orchestraConfigured: orchestraCredentials() !== null,
+      orchestraTokenSet: orchestraTokenSet(),
       outsideCheckConfigured: Boolean(systemSetting("outsideCheckHost", "OUTSIDE_CHECK_HOST")?.trim()),
       oidcClientSecretConfigured: Boolean(systemSetting("oidcClientSecret", "OIDC_CLIENT_SECRET")),
     },
