@@ -81,7 +81,8 @@ describe("hunt 25 F1/F4: config.ts under a temp DATA_DIR", () => {
 describe("hunt 25 route scans", () => {
   it("F1: hermes-daemon POST reads with the strict reader and answers 500 without writing", () => {
     const r = src("app/api/settings/hermes-daemon/route.ts");
-    assert.match(r, /^\s+existing = readHermesSettingsFileForSave\(\) \?\? \{/m);
+    // the raw read is kept so the step-up re-read can compare against it
+    assert.match(r, /^\s+raw = readHermesSettingsFileForSave\(\);\s*\n\s+existing = raw \?\? \{/m);
     assert.doesNotMatch(r, /readHermesSettingsFile\(\)/);
     assert.match(r, /HERMES_SETTINGS_UNREADABLE[\s\S]{0,80}status: 500/);
   });

@@ -1,5 +1,10 @@
+import { isDeepStrictEqual } from "node:util";
 import { NextRequest, NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 import { contentLengthError } from "@/lib/upload-limit";
+import { candidatePasswordHashes } from "@/lib/auth-server";
+import { checkCurrentPassword, currentPasswordLimiter } from "@/lib/step-up";
+import { discordStepUpNeeded } from "@/lib/discord-step-up";
 import { HERMES_SETTINGS_UNREADABLE, readHermesSettingsFileForSave, writeHermesSettingsFile, type HermesSettingsFile } from "@/lib/config";
 import { budgetChangeError, discordChannelIdError, discordUserIdsError, modelNameError, webhookError } from "@/lib/settings-checks";
 
@@ -44,6 +49,7 @@ interface Body {
   pipelineDailyBudgetUsd?: unknown;
   pipelineModel?: unknown;
   pipelineModelHard?: unknown;
+  currentPassword?: unknown;
 }
 
 function str(v: unknown): string | undefined {
@@ -92,9 +98,11 @@ export async function POST(req: NextRequest) {
     modelNameError("Hard-ticket model", str(body.pipelineModelHard));
   if (badInput) return NextResponse.json({ error: badInput }, { status: 400 });
 
+  let raw: HermesSettingsFile | null;
   let existing: HermesSettingsFile;
   try {
-    existing = readHermesSettingsFileForSave() ?? { updatedAt: new Date().toISOString() };
+    raw = readHermesSettingsFileForSave();
+    existing = raw ?? { updatedAt: new Date().toISOString() };
   } catch {
     return NextResponse.json({ error: HERMES_SETTINGS_UNREADABLE }, { status: 500 });
   }
@@ -107,9 +115,12 @@ export async function POST(req: NextRequest) {
   const discordBotToken = body.clearDiscordBotToken === true
     ? undefined
     : mergedSecret(str(body.discordBotToken), existing.discordBotToken);
-  const discordChannelId = "discordChannelId" in body ? (str(body.discordChannelId) ?? existing.discordChannelId) : existing.discordChannelId;
+  // An empty value over an absent key leaves it absent: the gate counts them equal, and a written "" or [] would override the daemon's env.
+  const typedChannelId = "discordChannelId" in body ? (str(body.discordChannelId) ?? existing.discordChannelId) : existing.discordChannelId;
+  const discordChannelId = existing.discordChannelId === undefined && typedChannelId === "" ? undefined : typedChannelId;
 
-  const discordAllowedUserIds = typedUserIds ?? existing.discordAllowedUserIds;
+  const discordAllowedUserIds =
+    existing.discordAllowedUserIds === undefined && typedUserIds?.length === 0 ? undefined : (typedUserIds ?? existing.discordAllowedUserIds);
 
   const dryRun = typeof body.dryRun === "boolean" ? body.dryRun : existing.dryRun;
   const pipelineEnabled = typeof body.pipelineEnabled === "boolean" ? body.pipelineEnabled : existing.pipelineEnabled;
@@ -128,6 +139,42 @@ export async function POST(req: NextRequest) {
 
   const pipelineModel = "pipelineModel" in body ? (str(body.pipelineModel) ?? existing.pipelineModel) : existing.pipelineModel;
   const pipelineModelHard = "pipelineModelHard" in body ? (str(body.pipelineModelHard) ?? existing.pipelineModelHard) : existing.pipelineModelHard;
+
+  // --- Step-up: changing who may command Hermes, or where it posts, needs the current password. ---
+  // After every 400 above, so a typo never burns an attempt; before the write.
+  if (
+    discordStepUpNeeded(
+      {
+        botToken: str(body.discordBotToken),
+        clearBotToken: body.clearDiscordBotToken === true,
+        webhookUrl: str(body.discordWebhookUrl),
+        clearWebhookUrl: body.clearDiscordWebhookUrl === true,
+        allowedUserIds: typedUserIds,
+        channelId: "discordChannelId" in body ? str(body.discordChannelId) : undefined,
+      },
+      existing,
+    )
+  ) {
+    const password = typeof body.currentPassword === "string" ? body.currentPassword : "";
+    const check = await checkCurrentPassword(password, candidatePasswordHashes().map((c) => c.hash), {
+      limiter: currentPasswordLimiter,
+      compare: bcrypt.compare,
+    });
+    if (check === "missing") return NextResponse.json({ error: "Enter your current password to change this.", stepUp: "missing" }, { status: 400 });
+    if (check === "limited") return NextResponse.json({ error: "Too many attempts. Wait a minute and try again.", stepUp: "limited" }, { status: 429 });
+    if (check === "wrong") return NextResponse.json({ error: "Current password is incorrect.", stepUp: "wrong" }, { status: 403 });
+    // The check awaited bcrypt; another save may have landed meanwhile. Nothing above wrote, so refuse rather than
+    // overwrite it with values built from the first read. No await from here to the write.
+    let fresh: HermesSettingsFile | null;
+    try {
+      fresh = readHermesSettingsFileForSave();
+    } catch {
+      return NextResponse.json({ error: HERMES_SETTINGS_UNREADABLE }, { status: 500 });
+    }
+    if (!isDeepStrictEqual(fresh, raw)) {
+      return NextResponse.json({ error: "Settings changed while the password was checked. Nothing was saved; try again." }, { status: 409 });
+    }
+  }
 
   const now = new Date().toISOString();
   const next: HermesSettingsFile = {

@@ -17,6 +17,7 @@
  * hermes-key-missing, unsaved-draft: a padded crop of the open strip (else the head); plus one full page per width for calm.
  *
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
+ *   ONLY=stepup-discord ... runs only the Discord step-up section on the Hermes daemon card (idle, asking, wrong, no-password)
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
  * stepup-sso-untouched (1440), stepup-sso-dirty (both widths, plus the section's one full page per width), stepup-sso-wrong (1440),
  * stepup-system-untouched (both), stepup-system-ready, stepup-system-wrong, stepup-generate-wrong, stepup-no-password (1440), stepup-pin-clear (1440), stepup-pin-clear-disabled (390), stepup-pin-clear-ask (both).
@@ -966,6 +967,61 @@ if (process.env.C10 || process.env.SENTINELS) {
     }),
   );
 }
+
+// ---- step-up for Discord access on the Hermes daemon card (ONLY=stepup-discord runs just this) ----
+// States: idle (no field), asking (allowlist edited: field shows, Save disabled), wrong (403: footer error, field empty and focused),
+// no-password (fixture with no admin password: warning, no field). Every API call stays mocked.
+await guarded("stepup-discord", () =>
+  each(async (s) => {
+    const su = (name, ok) => record(`SU discord ${name}`, s.name, ok);
+    const card = (page) => visibleBody(page).first().locator('section:has(> div > h2:text-is("Hermes · daemon"))');
+    const pw = (c) => field(c, "Current password");
+    const open = async (key) => {
+      const { page } = await visit(s, key, { hash: "#hermes" });
+      const sent = [];
+      await page.route("**/api/settings/hermes-daemon", (route) => {
+        sent.push(route.request().postData());
+        return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "Current password is incorrect.", stepUp: "wrong" }) });
+      });
+      return { page, sent, c: card(page) };
+    };
+    const box = (loc) => loc.evaluate((e) => { const r = e.getBoundingClientRect(); return { left: r.left, width: r.width, h: r.height, top: r.top, bottom: r.bottom }; });
+    {
+      const { page, c } = await open("calm");
+      su("idle: no Current password field", (await pw(c).count()) === 0);
+      await cropEl(page, s, c, "stepup-discord-idle", true);
+      await page.close();
+    }
+    {
+      const { page, c } = await open("calm");
+      const ids = field(c, "Allowed user IDs (comma-separated)");
+      await ids.pressSequentially(", 201");
+      await pw(c).waitFor({ timeout: SLOW });
+      const [a, p, ch] = [await box(ids), await box(pw(c)), await box(field(c, "Channel ID"))];
+      su("asking: Save disabled", await c.getByRole("button", { name: "Save", exact: true }).isDisabled());
+      su("asking: field as tall as Channel ID", p.h === ch.h);
+      su("asking: field left edge and width equal Allowed user IDs", p.left === a.left && p.width === a.width);
+      su("asking: no horizontal scroll", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      su("asking: hint is 0.7rem ink-faint", await c.locator("#discord-step-up-hint").evaluate((e) => getComputedStyle(e).fontSize === "11.2px"));
+      await cropEl(page, s, c, "stepup-discord-asking", true);
+      await pw(c).fill("not-the-password");
+      await c.getByRole("button", { name: "Save", exact: true }).click();
+      await page.waitForTimeout(600);
+      const err = c.locator(".text-bad");
+      su("wrong: footer error shown", (await err.count()) === 1 && (await err.innerText()).includes("Current password is incorrect"));
+      su("wrong: field empty and focused", (await pw(c).inputValue()) === "" && (await pw(c).evaluate((e) => e === document.activeElement)));
+      await cropEl(page, s, c, "stepup-discord-wrong", false);
+      await page.close();
+    }
+    {
+      const { page, c } = await open("noPassword");
+      await c.waitFor({ timeout: SLOW });
+      su("no password: warning shown, no field", (await c.getByText("No admin password is set").count()) === 1 && (await pw(c).count()) === 0);
+      await cropEl(page, s, c, "stepup-discord-no-password", false);
+      await page.close();
+    }
+  }),
+);
 
 // The final records print even after failures, and on a runner kill.
 function finish() {

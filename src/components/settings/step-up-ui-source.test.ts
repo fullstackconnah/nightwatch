@@ -79,3 +79,31 @@ test("client.ts copies the route's step-up tag onto ApiError (dropping the third
   const client = readFileSync(new URL("../../lib/client.ts", import.meta.url), "utf8");
   assert.match(client, /new ApiError\([^;]*typeof data\.stepUp === "string" \? data\.stepUp : undefined\)/);
 });
+
+// The daemon card: Discord access asks for the password the way the SSO card does (the shared pending rule lives in lib/discord-step-up.ts).
+const hermesSrc = readFileSync(new URL("./settings-hermes.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+const daemonStart = hermesSrc.indexOf("function HermesDaemonCard(");
+const daemon = hermesSrc.slice(daemonStart, hermesSrc.indexOf("\nfunction ", daemonStart + 10));
+
+test("Daemon: the field shows only while Discord access is pending or after a refusal, and Save waits for it", () => {
+  assert.match(daemon, /const askPassword =\s*asked \|\|\s*\(authConfigured &&\s*seeded &&\s*discordStepUpNeeded\(/);
+  assert.match(daemon, /\{askPassword && \(\s*<StepUpField[^>]*hintId="discord-step-up-hint"/);
+  assert.match(daemon, /disabled=\{saving \|\| \(askPassword && !password\)\}/);
+  assert.match(daemon, /if \(askPassword\) body\.currentPassword = password;/);
+});
+
+test("Daemon: the pending check and the request share one allowlist split; any refusal shows the field, a wrong one empties and focuses it", () => {
+  assert.equal(daemon.match(/splitUserIds\(allowedUserIds\)/g)?.length, 2);
+  assert.doesNotMatch(daemon, /\.split\(","\)/);
+  assert.match(daemon, /isStepUpRefusal\(e\)\) \{\s*setAsked\(true\);\s*if \(e\.stepUp === "wrong"\) \{\s*setPassword\(""\);\s*passwordRef\.current\?\.focus\(\)/);
+  assert.match(daemon, /setPassword\(""\);\s*setAsked\(false\);/);
+});
+
+test("Daemon: the final hint and the shared no-password warning, and the helpers are the exported originals", () => {
+  assert.ok(daemon.includes('hint="Changing Discord access needs your current password."'));
+  assert.match(daemon, /<p className="text-\[0\.7rem\] text-warn\/80">\{NO_PASSWORD_WARNING\}<\/p>/);
+  assert.match(daemon, /<span className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
+  assert.match(src, /export const NO_PASSWORD_WARNING = /);
+  assert.match(src, /export function StepUpField\(/);
+  assert.doesNotMatch(hermesSrc, /function StepUpField|const NO_PASSWORD_WARNING/);
+});
