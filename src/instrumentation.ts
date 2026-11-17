@@ -3,5 +3,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { startTelemetryRecorder } = await import("@/lib/telemetry");
     startTelemetryRecorder();
+    const { seedAuthState } = await import("@/lib/config");
+    seedAuthState();
   }
 }

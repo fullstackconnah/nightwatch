@@ -5,7 +5,7 @@ import path from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { SignJWT } from "jose";
 import { createKioskElevationToken, createSessionToken, isRequestAuthenticated, verifySessionToken } from "./auth.ts";
-import { epochOf, loadConfig, saveConfig, sessionEpoch } from "./config.ts";
+import { AUTH_STATE_UNREADABLE, epochOf, loadConfig, readAuthStateForSave, saveAuthState, saveConfig, seedAuthState, sessionEpoch } from "./config.ts";
 import { ALLOW_ENV_NAME, ALLOW_SETTING_KEY, allowListSetting, parseAllowList } from "./oidc-allow.ts";
 
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
@@ -89,6 +89,105 @@ describe("session epoch: stored value (PR B)", () => {
   });
 });
 
+describe("session epoch: data/auth.json (revocation survives a config copy)", () => {
+  let dir = "";
+  let prev: string | undefined;
+  let n = 0;
+  beforeEach(() => {
+    prev = process.env.DATA_DIR;
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "nw-auth-"));
+    process.env.DATA_DIR = dir;
+    saveConfig(loadConfig());
+  });
+  afterEach(() => {
+    if (prev === undefined) delete process.env.DATA_DIR;
+    else process.env.DATA_DIR = prev;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const stamp = (f: string) => {
+    const t = new Date(Date.now() + 10_000 * ++n); // a unique mtime so no cache can serve the previous content
+    fs.utimesSync(f, t, t);
+  };
+  const authFile = () => path.join(dir, "auth.json");
+  const writeAuth = (raw: string) => {
+    fs.writeFileSync(authFile(), raw);
+    stamp(authFile());
+  };
+  const writeConf = (epoch?: number) => {
+    const f = path.join(dir, "config.json");
+    fs.writeFileSync(f, JSON.stringify(epoch === undefined ? {} : { system: { sessionEpoch: epoch } }));
+    stamp(f);
+  };
+
+  it("a copied config with a lower epoch cannot lower the effective epoch", async () => {
+    writeAuth('{"sessionEpoch":3}');
+    writeConf(0);
+    assert.equal(sessionEpoch(), 3);
+    writeConf(); // a config with no system key at all
+    assert.equal(sessionEpoch(), 3);
+    assert.equal(await verifySessionToken(await createSessionToken(2), sessionEpoch()), false);
+  });
+  it("a saveConfig carrying a lower epoch leaves the effective epoch at the file's value", () => {
+    writeAuth('{"sessionEpoch":5}');
+    const c = loadConfig();
+    saveConfig({ ...c, system: { ...c.system, sessionEpoch: 1 } });
+    assert.equal(sessionEpoch(), 5);
+  });
+  it("a missing auth.json keeps the config epoch, and a higher config epoch still wins", () => {
+    writeConf(4);
+    assert.equal(sessionEpoch(), 4);
+    writeAuth('{"sessionEpoch":2}');
+    assert.equal(sessionEpoch(), 4);
+  });
+  it("an empty, malformed, non-object or wrongly typed auth.json falls back to the config epoch without throwing", () => {
+    writeConf(4);
+    for (const raw of ["", "{", "[]", '{"sessionEpoch":"9"}']) {
+      writeAuth(raw);
+      assert.equal(sessionEpoch(), 4, JSON.stringify(raw));
+    }
+  });
+  it("a file that turns malformed after a good read keeps the last good value", () => {
+    writeConf(1);
+    writeAuth('{"sessionEpoch":6}');
+    assert.equal(sessionEpoch(), 6);
+    writeAuth("{");
+    assert.equal(sessionEpoch(), 6);
+    assert.equal(sessionEpoch(), 6); // not re-parsed, same answer
+  });
+  it("auth.json is re-read after its mtime changes", () => {
+    writeAuth('{"sessionEpoch":3}');
+    assert.equal(sessionEpoch(), 3);
+    writeAuth('{"sessionEpoch":5}');
+    assert.equal(sessionEpoch(), 5);
+  });
+  it("seedAuthState writes the config epoch once and never overwrites", () => {
+    seedAuthState();
+    assert.equal(fs.existsSync(authFile()), false, "config epoch 0 writes nothing");
+    writeConf(4);
+    seedAuthState();
+    assert.equal(JSON.parse(fs.readFileSync(authFile(), "utf8")).sessionEpoch, 4);
+    writeAuth('{"sessionEpoch":7}');
+    seedAuthState();
+    assert.equal(JSON.parse(fs.readFileSync(authFile(), "utf8")).sessionEpoch, 7);
+  });
+  it("the strict read returns {} when missing and throws on a malformed or unreadable file", () => {
+    assert.deepEqual(readAuthStateForSave(), {});
+    writeAuth("{");
+    assert.throws(() => readAuthStateForSave(), { message: AUTH_STATE_UNREADABLE });
+    fs.rmSync(authFile());
+    fs.mkdirSync(authFile()); // a directory forces EISDIR without chmod
+    assert.throws(() => readAuthStateForSave(), { message: AUTH_STATE_UNREADABLE });
+    assert.equal(sessionEpoch(), 0, "the loose read still never throws");
+  });
+  it("saveAuthState writes atomically, keeps unknown keys and drops a leftover .tmp", () => {
+    fs.writeFileSync(authFile() + ".tmp", "stale");
+    saveAuthState({ sessionEpoch: 2, keep: "x" });
+    assert.deepEqual(readAuthStateForSave(), { sessionEpoch: 2, keep: "x" });
+    assert.equal(fs.existsSync(authFile() + ".tmp"), false);
+    assert.equal(sessionEpoch(), 2);
+  });
+});
+
 describe("session epoch: source guards (PR B)", () => {
   const srcRoot = path.join(here, "..");
   const walk = (d: string): string[] =>
@@ -111,11 +210,15 @@ describe("session epoch: source guards (PR B)", () => {
     assert.match(s, /runtime: "nodejs"/);
     assert.match(s, /sessionEpoch\(\),\s*\)/);
   });
-  it("the password route bumps the epoch in the same literal as the new hash, then re-issues the cookie after saving", () => {
+  it("the password route bumps the higher of both stores, writes auth.json first, mirrors into the config, then re-issues the cookie", () => {
     const s = read("../app/api/settings/password/route.ts");
-    assert.match(s, /adminPasswordHash: newHash, sessionEpoch: epochOf\(/);
+    assert.match(s, /Math\.max\(epochOf\(auth\.sessionEpoch\), epochOf\(current\.system\?\.sessionEpoch\)\) \+ 1/);
+    assert.match(s, /adminPasswordHash: newHash, sessionEpoch: nextEpoch/);
+    assert.ok(s.indexOf("saveAuthState(") < s.indexOf("saveConfig(next)"));
     assert.ok(s.indexOf("saveConfig(next)") < s.indexOf("res.cookies.set(SESSION_COOKIE"));
+    assert.match(s, /createSessionToken\(epochOf\(nextEpoch\)\)/);
   });
+  it("instrumentation seeds auth.json on the Node runtime", () => assert.match(read("../instrumentation.ts"), /seedAuthState\(\)/));
   it("the System-card save keeps the stored epoch by spreading the existing system", () => {
     assert.match(read("../app/api/settings/system/route.ts"), /\.\.\.existing/);
   });
