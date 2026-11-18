@@ -234,6 +234,36 @@ async function main() {
   const fail = (name, e) => (diag[`error@${name}`] = String(e).slice(0, 400));
   const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
 
+  // ---- unreadable-settings copy (PR 300), run alone: ONLY=unreadable-copy (SHOTS_ONLY reaches it through shots-json.sh) ----
+  // Jellyfin's detail shows on /resources?metric=gpu (TRANSCODE STREAMS panel), staged by answering /api/transcodes.
+  if ((process.env.ONLY ?? process.env.SHOTS_ONLY) === "unreadable-copy") {
+    const A = "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
+    await each(async (s) => {
+      const uc = (n, ok, what, m) => { record(`UC${n} ${what}`, s.name, ok); console.log(`UC${n} ${ok ? "pass" : "fail"} ${what}@${s.name} ${m}`); };
+      const page = await s.context.newPage();
+      watch(page, s.name);
+      await page.route("**/api/transcodes", (route) => json(route, { ok: false, reason: "not-configured", detail: A }));
+      await page.goto(`${BASE_URL}/resources?metric=gpu`, { waitUntil: "domcontentloaded" });
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      const panel = page.locator("div.space-y-2:has(> .microlabel:text-is('TRANSCODE STREAMS')) > .panel");
+      await panel.waitFor({ timeout: SLOW });
+      await page.waitForTimeout(500);
+      const text = (await panel.innerText()).trim();
+      const fit = await panel.evaluate((e) => ({ w: e.scrollWidth <= e.clientWidth, h: e.scrollHeight <= e.clientHeight + 1, sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight }));
+      uc(8, text.includes(A), "jellyfin-unreadable copy A in the panel", JSON.stringify(text.slice(0, 120)));
+      uc(6, fit.w, "jellyfin-unreadable no horizontal overflow", `scrollWidth ${fit.sw} clientWidth ${fit.cw}`);
+      uc(7, fit.h, "jellyfin-unreadable not clipped", `scrollHeight ${fit.sh} clientHeight ${fit.ch}`);
+      await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+      const b = await panel.evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height }; });
+      const x = Math.max(0, b.x - 16), y = Math.max(0, b.y - 16);
+      await page.screenshot({ path: join(OUT_DIR, `jellyfin-unreadable-${s.name}.png`), fullPage: true, clip: { x, y, width: Math.min(b.w + 32, page.viewportSize().width - x), height: b.h + 32 } });
+      await page.close();
+    });
+    await browser.close();
+    finish();
+    return;
+  }
+
   // Captured states, with the per-state checks.
   await each(async (s) => {
     for (const [name, key, chip, open] of STATES) {

@@ -1099,6 +1099,24 @@ await guarded("config-notice", () =>
   }),
 );
 
+// ---- unreadable-settings copy (PR 300): the empty-file notice, from the cfgBlank fixture (ONLY=unreadable-copy runs just this) ----
+await guarded("unreadable-copy", () =>
+  each(async (s) => {
+    const uc = (n, ok, what, m) => { record(`UC${n} ${what}`, s.name, ok); console.log(`UC${n} ${ok ? "pass" : "fail"} ${what}@${s.name} ${m}`); };
+    const B = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
+    const { page } = await visit(s, "cfgBlank");
+    const n = page.locator("[data-feature=notice]");
+    const text = (await n.textContent())?.trim();
+    const fit = await n.evaluate((e) => ({ w: e.scrollWidth <= e.clientWidth, h: e.scrollHeight <= e.clientHeight + 1, sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight }));
+    uc(12, text === B, "settings-empty-notice copy B exact", JSON.stringify(text?.slice(-60)));
+    uc(6, fit.w, "settings-empty-notice no horizontal overflow", `scrollWidth ${fit.sw} clientWidth ${fit.cw}`);
+    uc(7, fit.h, "settings-empty-notice not clipped", `scrollHeight ${fit.sh} clientHeight ${fit.ch}`);
+    await cropEl(page, s, page.locator("[data-feature=head]"), "settings-empty-notice", true);
+    await fullShot(page, s, "settings-empty-notice");
+    await page.close();
+  }),
+);
+
 // ---- Settings polish (PR 297): Orchestra token-from-environment hint, Hermes password cleared when its field hides (ONLY=settings-polish runs just this) ----
 // States: orchestra-env-only, orchestra-saved, orchestra-none, hermes-ask-shown, hermes-ask-hidden-after-typing. Every API call stays mocked; the password is made up.
 FIXTURES.orchestraNone ??= (() => { const f = structuredClone(FIXTURES.orchestraEnvOnly); f.get.meta.orchestraTokenSet = false; return f; })();

@@ -227,6 +227,65 @@ async function perState(page, name, vp) {
 }
 const shot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: s.name === "390" });
 
+// ---- unreadable-settings copy (PR 300), run alone: ONLY=unreadable-copy (SHOTS_ONLY reaches it through shots-json.sh) ----
+// Staged by route interception only. The page never renders the HA `detail` (page-model.ts: "never read"), so copy A cannot show here: UC1 and UC3 report `open` when it is absent.
+const ONLY = process.env.ONLY ?? process.env.SHOTS_ONLY;
+if (ONLY === "unreadable-copy") {
+  const A = "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
+  const OLD = "No Home Assistant connection configured.";
+  FIXTURES.ucUnreadable = { ha: { status: "unconfigured", detail: A }, autoOff: FIXTURES.calm.autoOff };
+  FIXTURES.ucUnconfigured = { ha: { status: "unconfigured", detail: `${OLD} In HA: Profile → Security → Long-lived access tokens.` }, autoOff: FIXTURES.calm.autoOff };
+  FIXTURES.ucAutoOff = { ha: FIXTURES.calm.ha, autoOff: { ...FIXTURES.calm.autoOff, enabled: false, unreadable: true } };
+  const C = "auto-off can't be read";
+  // Padded (16 px) crop of the union of the matched elements, clipped to the page; the bottom nav is hidden like the other scripts.
+  const crop = async (page, sel, name, vp) => {
+    await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+    const b = await page.locator(sel).evaluateAll((els) => {
+      const rs = els.map((e) => e.getBoundingClientRect());
+      const l = Math.min(...rs.map((r) => r.left)), t = Math.min(...rs.map((r) => r.top));
+      return { x: l + scrollX, y: t + scrollY, w: Math.max(...rs.map((r) => r.right)) - l, h: Math.max(...rs.map((r) => r.bottom)) - t };
+    });
+    const x = Math.max(0, b.x - 16), y = Math.max(0, b.y - 16);
+    await page.screenshot({ path: join(OUT_DIR, `${name}-${vp}.png`), fullPage: true, clip: { x, y, width: Math.min(b.w + 32, page.viewportSize().width - x), height: b.h + 32 } });
+  };
+  await guarded("unreadable-copy", () =>
+    each(async (s) => {
+      const uc = (n, ok, what, m) => { record(`UC${n} ${what}`, s.name, ok); console.log(`UC${n} ${ok === "open" ? "open" : ok ? "pass" : "fail"} ${what}@${s.name} ${m}`); };
+      const headFit = (page) => page.locator("[data-feature=head]").evaluate((e) => ({ w: e.scrollWidth <= e.clientWidth, h: e.scrollHeight <= e.clientHeight + 1, sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight }));
+      for (const [key, name, full] of [["ucUnreadable", "smarthome-unreadable", true], ["ucUnconfigured", "smarthome-unconfigured", false]]) {
+        const { page } = await visit(s, key);
+        const body = await page.locator("main").innerText();
+        const f = await headFit(page);
+        if (key === "ucUnreadable") {
+          uc(1, body.includes(A) ? true : "open", `${name} copy A in the DOM`, body.includes(A) ? "present" : "absent: the page does not render the HA detail");
+          uc(2, !body.includes(OLD), `${name} old "No Home Assistant connection configured" absent`, `present=${body.includes(OLD)}`);
+        } else uc(3, body.includes(OLD) ? true : "open", `${name} old setup text in the DOM`, body.includes(OLD) ? "present" : "absent: the page does not render the HA detail");
+        uc(6, f.w, `${name} no horizontal overflow`, `scrollWidth ${f.sw} clientWidth ${f.cw}`);
+        uc(7, f.h, `${name} not clipped`, `scrollHeight ${f.sh} clientHeight ${f.ch}`);
+        await crop(page, "[data-feature=head]", name, s.name);
+        if (full) await page.screenshot({ path: join(OUT_DIR, `${name}-full-${s.name}.png`), fullPage: true });
+        await page.close();
+      }
+      const { page } = await visit(s, "ucAutoOff");
+      await page.waitForTimeout(5300);
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.waitForFunction((c) => document.querySelector("[data-feature=answer]")?.textContent?.includes(c), C, { timeout: 15_000 }).catch(() => {});
+      const ans = (await page.locator("[data-feature=answer]").textContent()).trim();
+      const strip = (await page.locator("[data-row-id=climate] .st-state").first().innerText()).trim();
+      const f = await headFit(page);
+      uc(4, ans.endsWith(`, ${C}`), "smarthome-autooff-unreadable answer ends with the text", JSON.stringify(ans.slice(-40)));
+      uc(5, strip.includes(` · ${C}`), "smarthome-autooff-unreadable strip carries the text", JSON.stringify(strip.slice(-40)));
+      uc(6, f.w, "smarthome-autooff-unreadable no horizontal overflow", `scrollWidth ${f.sw} clientWidth ${f.cw}`);
+      uc(7, f.h, "smarthome-autooff-unreadable not clipped", `scrollHeight ${f.sh} clientHeight ${f.ch}`);
+      await crop(page, "[data-feature=head], [data-row-id=climate]", "smarthome-autooff-unreadable", s.name);
+      await page.close();
+    }),
+  );
+  await browser.close().catch(() => {});
+  finish();
+  process.exit(0);
+}
+
 for (const [key, chip, phrase, open] of STATES) {
   stage = key;
   const name = SHOT[key] ?? key;
