@@ -1,4 +1,4 @@
-import { secretForSettingUrl, systemSetting } from "./config.ts";
+import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "./config.ts";
 import type {
   OrchestraDetailResponse,
   OrchestraSnapshot,
@@ -128,7 +128,7 @@ function mapDetail(raw: unknown): OrchestratorDetail | null {
 
 export async function getOrchestraSnapshot(creds: OrchestraCredentials | null = orchestraCredentials()): Promise<OrchestraSnapshot> {
   const fetchedAt = new Date().toISOString();
-  if (!creds) return { status: "unconfigured", detail: UNCONFIGURED, fetchedAt, orchestrators: [] };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(UNCONFIGURED), fetchedAt, orchestrators: [] };
   const r = await get(creds, "/v1/orchestrators");
   if (r.kind !== "ok") return { status: r.kind, detail: r.detail, fetchedAt, orchestrators: [] };
   const list = obj(r.body).orchestrators;
@@ -146,7 +146,7 @@ export async function getOrchestraDetail(
 ): Promise<OrchestraDetailResponse> {
   const fetchedAt = new Date().toISOString();
   if (!ORCHESTRA_NAME.test(name)) return { status: "ok", detail: "Invalid orchestrator name.", fetchedAt, orchestrator: null };
-  if (!creds) return { status: "unconfigured", detail: UNCONFIGURED, fetchedAt, orchestrator: null };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(UNCONFIGURED), fetchedAt, orchestrator: null };
   const r = await get(creds, `/v1/orchestrators/${name}`);
   if (r.kind !== "ok") return { status: r.kind, detail: r.detail, fetchedAt, orchestrator: null };
   const orchestrator = mapDetail(r.body);

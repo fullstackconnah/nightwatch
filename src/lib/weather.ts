@@ -1,5 +1,5 @@
 // Relative `.ts` imports (not "@/…") so the node test runner can load this module.
-import { loadConfig } from "./config.ts";
+import { loadConfig, unconfiguredDetail } from "./config.ts";
 import { cachedByKey } from "./weather-cache.ts";
 import { readJsonCapped } from "./read-capped.ts";
 
@@ -523,7 +523,7 @@ async function fetchAir(cfg: DisplayConfig): Promise<WeatherAir | null> {
 
 export async function getWeather(): Promise<WeatherResponse> {
   const cfg = displayConfig();
-  if (!cfg) return { status: "unconfigured", detail: WEATHER_UNCONFIGURED_DETAIL };
+  if (!cfg) return { status: "unconfigured", detail: unconfiguredDetail(WEATHER_UNCONFIGURED_DETAIL) };
   const key = `${cfg.lat},${cfg.lon},${cfg.timezone}`;
   const airP = cachedAir(key, async () => {
     const a = await fetchAir(cfg);

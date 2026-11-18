@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { loadConfig } from "./config.ts";
+import { loadConfig, unconfiguredDetail } from "./config.ts";
 import { KeyedMemo } from "./cache.ts";
 import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
 import type {
@@ -317,9 +317,10 @@ async function probeRoutes(routes: ProxyRoute[]): Promise<void> {
 function unconfiguredSnapshot(): ProxyManagerSnapshot {
   return {
     status: "unconfigured",
-    detail:
+    detail: unconfiguredDetail(
       'No Nginx Proxy Manager connection configured. Add an "npm" block to data/config.json: ' +
-      '{ "npm": { "url": "http://homelab.local:81", "email": "<admin email>", "password": "<admin password>" } }',
+        '{ "npm": { "url": "http://homelab.local:81", "email": "<admin email>", "password": "<admin password>" } }',
+    ),
     routes: [],
     certificates: [],
     npmUrl: null,

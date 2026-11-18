@@ -1,4 +1,4 @@
-import { loadConfig } from "@/lib/config";
+import { configProblem, loadConfig, unconfiguredDetail } from "@/lib/config";
 import { IntegrationClient, type Probe } from "@/lib/integration-client";
 import type { PlayMethod, TranscodeSnapshot, TranscodeStream } from "@/lib/types/transcode";
 
@@ -244,11 +244,8 @@ export async function getTranscodeSnapshot(): Promise<TranscodeSnapshot> {
   if (!creds) {
     return {
       ok: false,
-      reason: "not-configured",
-      detail:
-        'No Jellyfin API key configured. Add a "jellyfin" block to data/config.json: ' +
-        '{ "jellyfin": { "url": "http://<host>:8096", "key": "<API key>" } } ' +
-        "— generate a key in Jellyfin under Dashboard -> API Keys.",
+      reason: configProblem() === null ? "not-configured" : "settings-unreadable",
+      detail: unconfiguredDetail(JELLYFIN_UNCONFIGURED_DETAIL),
     };
   }
 

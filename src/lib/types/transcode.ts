@@ -6,6 +6,8 @@
 export type TranscodeUnavailableReason =
   /** No Jellyfin API key in data/config.json. The reader has to add one. */
   | "not-configured"
+  /** config.json can't be read, so the defaults hide any saved Jellyfin block. The reader restores it in Settings. */
+  | "settings-unreadable"
   /** Jellyfin did not answer (down, wrong URL, timeout). */
   | "unreachable"
   /** Jellyfin answered 401/403 — the key is wrong or revoked. */

@@ -142,6 +142,8 @@ function transcodeUnavailableCopy(reason: TranscodeUnavailableReason): { headlin
   switch (reason) {
     case "not-configured":
       return { headline: "Jellyfin API key not configured", fix: null };
+    case "settings-unreadable":
+      return { headline: "Jellyfin settings unavailable", fix: null };
     case "unreachable":
       return {
         headline: "Jellyfin did not respond",

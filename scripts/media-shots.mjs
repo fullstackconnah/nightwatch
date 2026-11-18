@@ -264,6 +264,46 @@ async function main() {
     return;
   }
 
+  // ---- unreadable-settings copy, round 2 (Jellyfin headline), run alone: ONLY=unreadable-copy-2 ----
+  // Same staging as above: /api/transcodes is answered per state; the panel is /resources?metric=gpu's TRANSCODE STREAMS.
+  if ((process.env.ONLY ?? process.env.SHOTS_ONLY) === "unreadable-copy-2") {
+    const A = "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
+    const OLD = 'No Jellyfin API key configured. Add a "jellyfin" block to data/config.json: { "jellyfin": { "url": "http://<host>:8096", "key": "<API key>" } } — generate a key in Jellyfin under Dashboard -> API Keys.';
+    const states = [
+      { name: "jellyfin-unreadable", body: { ok: false, reason: "settings-unreadable", detail: A }, headline: "Jellyfin settings unavailable", sentence: A, n: [1, 2, 3, 4] },
+      { name: "jellyfin-unconfigured", body: { ok: false, reason: "not-configured", detail: OLD }, headline: "Jellyfin API key not configured", sentence: A, n: [5, 6, 7, 8] },
+    ];
+    await each(async (s) => {
+      const uc = (n, ok, what, m) => { record(`UC2-${n} ${what}`, s.name, ok); console.log(`UC2-${n} ${ok ? "pass" : "fail"} ${what}@${s.name} ${m}`); };
+      for (const st of states) {
+        const page = await s.context.newPage();
+        watch(page, s.name);
+        await page.route("**/api/transcodes", (route) => json(route, st.body));
+        await page.goto(`${BASE_URL}/resources?metric=gpu`, { waitUntil: "domcontentloaded" });
+        await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+        const panel = page.locator("div.space-y-2:has(> .microlabel:text-is('TRANSCODE STREAMS')) > .panel");
+        await panel.waitFor({ timeout: SLOW });
+        await page.waitForTimeout(500);
+        const head = ((await panel.locator("div.text-warn").first().innerText()) ?? "").trim();
+        const text = (await panel.innerText()).trim();
+        const fit = await panel.evaluate((e) => ({ w: e.scrollWidth <= e.clientWidth, h: e.scrollHeight <= e.clientHeight + 1, sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight }));
+        const expectSentence = st.name === "jellyfin-unreadable";
+        uc(st.n[0], head === st.headline, `${st.name} headline text exact`, JSON.stringify(head));
+        uc(st.n[1], text.includes(st.sentence) === expectSentence, `${st.name} unreadable sentence ${expectSentence ? "present" : "absent"}`, JSON.stringify(text.slice(0, 120)));
+        uc(st.n[2], fit.w, `${st.name} no horizontal overflow`, `scrollWidth ${fit.sw} clientWidth ${fit.cw}`);
+        uc(st.n[3], fit.h, `${st.name} not clipped`, `scrollHeight ${fit.sh} clientHeight ${fit.ch}`);
+        await page.addStyleTag({ content: "nav.fixed { visibility: hidden !important; }" });
+        const b = await panel.evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x + scrollX, y: r.y + scrollY, w: r.width, h: r.height }; });
+        const x = Math.max(0, b.x - 16), y = Math.max(0, b.y - 16);
+        await page.screenshot({ path: join(OUT_DIR, `${st.name}-${s.name}.png`), fullPage: true, clip: { x, y, width: Math.min(b.w + 32, page.viewportSize().width - x), height: b.h + 32 } });
+        await page.close();
+      }
+    });
+    await browser.close();
+    finish();
+    return;
+  }
+
   // Captured states, with the per-state checks.
   await each(async (s) => {
     for (const [name, key, chip, open] of STATES) {
