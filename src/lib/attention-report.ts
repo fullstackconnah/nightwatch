@@ -3,10 +3,10 @@
 import type { RuntimeContainer } from "./docker.ts";
 import { countText, type Tally } from "./change-log.ts";
 import { BACKUP_KIND_LABEL, drillAge, type BackupStatus, type RestoreDrill } from "./backup-status.ts";
-import { restoreDrillDue } from "./attention-copy.ts";
+import { restoreDrillDue, settingsUnreadableCopy } from "./attention-copy.ts";
 import { hasTestToken, isTestContainer } from "./test-container.ts";
 
-export type ProbeId = "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
+export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
   | { id: ProbeId; label: string; state: "answered"; hits: number }
   | { id: ProbeId; label: string; state: "pending" } // missed the deadline
@@ -107,6 +107,8 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
     case "restarts":
     case "health":
       return { href: `${RESOURCES_ALL}${encodeURIComponent(subject.replace(/^container:/, ""))}`, label: "Open in Resources" };
+    case "settings":
+      return { href: "/settings", label: "Open Settings" };
     case "backup":
       return { href: "#backup", label: "Backup detail" };
     case "doorbell":
@@ -141,8 +143,12 @@ export type KioskResult =
   | { status: "quiet" }
   | { status: "attention"; severity: "warn" | "bad"; headline: string; detail?: string; action?: string; since?: string };
 
-/** The owner's own restore drill is a Home reminder; the family wall never shows it. */
-const HOME_ONLY = new Set(["backup:restore-drill"]);
+/** Owner-only items are Home reminders; the family wall never shows them (and a settings fault must not outrank a crashed app there). */
+const HOME_ONLY = new Set(["backup:restore-drill", "settings:settings"]);
+
+/** The `settings` probe: a hit while config.json cannot be read (configProblem() is non-null), none otherwise. */
+export const settingsHit = (problem: string | null): RawHit[] =>
+  problem ? [{ subject: "settings", severity: "bad", ...settingsUnreadableCopy }] : [];
 
 /** A hit once the hand-run restore is 91 days old or more; none when it is recent or never recorded. */
 export function drillHit(d: RestoreDrill): RawHit | null {

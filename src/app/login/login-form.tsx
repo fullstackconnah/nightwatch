@@ -15,6 +15,7 @@ const SSO_ERROR_COPY: Record<string, string> = {
   exchange_failed: "Authelia rejected the sign-in exchange — try again.",
   verify_failed: "The sign-in response could not be verified — try again.",
   config: "SSO is not available right now.",
+  settings: "The saved settings can't be read, so SSO sign-in is off until they are restored.",
 };
 
 export function LoginForm({

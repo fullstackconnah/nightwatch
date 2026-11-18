@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { createSessionToken, isMissingSecretError, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth";
-import { sessionEpoch } from "@/lib/config";
+import { configProblem, sessionEpoch } from "@/lib/config";
+import { loginFailReason } from "@/lib/login-reason";
 import { isSecureRequest } from "@/lib/oidc-origin";
 import { candidatePasswordHashes } from "@/lib/auth-server";
 import { matchesAny } from "@/lib/password-hash";
@@ -30,9 +31,8 @@ export async function POST(req: NextRequest) {
   await new Promise((r) => setTimeout(r, 1000));
 
   if (!ok) {
-    const reason = !candidates.length && process.env.NODE_ENV !== "development"
-      ? "No admin password is configured — login disabled"
-      : "Wrong password";
+    // Dev with no hash never gets here (ok is true), so "no candidates" here is always the non-development case.
+    const reason = loginFailReason(candidates.length > 0, configProblem());
     return NextResponse.json({ error: reason }, { status: 401 });
   }
 

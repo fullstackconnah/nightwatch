@@ -6,7 +6,7 @@ import { KeyedMemo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { fetchNoCrossOriginRedirect } from "@/lib/safe-fetch";
 import { checkedIssuer, sameIssuer } from "@/lib/oidc-issuer";
-import { ALLOW_ENV_NAME, ALLOW_SETTING_KEY, allowListSetting, oidcAllowDecision } from "@/lib/oidc-allow";
+import { ALLOW_ENV_NAME, ALLOW_SETTING_KEY, allowListSetting, oidcAllowVerdict } from "@/lib/oidc-allow";
 
 // --- OIDC single sign-on (Authelia) -----------------------------------------
 //
@@ -67,8 +67,8 @@ export function oidcConfig(): OidcConfig | null {
 
 /** Whether the verified id token's account may sign in (the allow-list setting; unset admits everyone, with one warning,
  *  except when the saved settings cannot be read: then an empty list refuses). */
-export function oidcAllowListCheck(payload: JWTPayload): boolean {
-  return oidcAllowDecision(
+export function oidcAllowListCheck(payload: JWTPayload) {
+  return oidcAllowVerdict(
     payload,
     allowListSetting(loadConfig().system?.[ALLOW_SETTING_KEY], process.env[ALLOW_ENV_NAME]),
     console,
