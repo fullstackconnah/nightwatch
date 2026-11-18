@@ -390,7 +390,7 @@ test("a failed restore drill save names the date", () => {
 // ---- config.json could not be read (cfgbanner) ----
 const CFG_BLANK_ANSWER = "The settings file is empty, so this page shows defaults.";
 const CFG_BAD_ANSWER = "The settings file can’t be read, so this page shows defaults.";
-const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
 const CFG_NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
 
 test("config problem wins the head", () => {
