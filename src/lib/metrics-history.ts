@@ -77,7 +77,15 @@ const globalForHistory = globalThis as unknown as {
   __metricsHistoryLastPrunedDate?: string;
   __metricsHistoryWarned?: Set<string>;
   __metricsHistoryFileCache?: Map<string, FileCacheEntry>;
+  __metricsHistorySince?: Map<string, number>;
 };
+
+const HEAD_BYTES = 64 * 1024;
+
+function sinceMemo(): Map<string, number> {
+  if (!globalForHistory.__metricsHistorySince) globalForHistory.__metricsHistorySince = new Map();
+  return globalForHistory.__metricsHistorySince;
+}
 
 function warnedSet(): Set<string> {
   if (!globalForHistory.__metricsHistoryWarned) globalForHistory.__metricsHistoryWarned = new Set();
@@ -152,6 +160,7 @@ async function pruneOldFiles(today: string): Promise<void> {
       try {
         await fsp.unlink(f.path);
         fileCache().delete(f.path);
+        sinceMemo().delete(f.path);
       } catch (err) {
         warnOnce("prune failed", err);
       }
@@ -268,8 +277,39 @@ async function readFileCached(filePath: string): Promise<MetricsHistorySample[]>
 async function recordingSince(): Promise<number | null> {
   const files = listHistoryFilesSync();
   if (files.length === 0) return null;
-  const samples = await readFileCached(files[0].path);
-  return samples.length > 0 ? samples[0].t : null;
+  const oldest = files[0].path;
+  const memo = sinceMemo();
+  const known = memo.get(oldest);
+  if (known !== undefined) return known;
+
+  // Only the head of the file: never parse (or cache) a whole day for one timestamp.
+  let head = "";
+  try {
+    const fh = await fsp.open(oldest, "r");
+    try {
+      const buf = Buffer.alloc(HEAD_BYTES);
+      const { bytesRead } = await fh.read(buf, 0, HEAD_BYTES, 0);
+      head = buf.toString("utf8", 0, bytesRead);
+    } finally {
+      await fh.close();
+    }
+  } catch (err) {
+    warnOnce("read failed", err);
+    return null;
+  }
+  for (const line of head.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const t = (JSON.parse(line) as { t?: unknown }).t;
+      if (typeof t === "number") {
+        memo.set(oldest, t); // the oldest file's first sample never changes while it is the oldest
+        return t;
+      }
+    } catch {
+      // torn write or the 64 KB cut: try the next line
+    }
+  }
+  return null;
 }
 
 type Bucket = { cpu: Acc; mem: Acc };
