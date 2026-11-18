@@ -43,6 +43,8 @@ export interface ClimateAutoOffServerState {
   time: string;
   skipDate: string | null;
   lastRunDate: string | null;
+  /** The saved settings file can't be read, so the values above are defaults. Absent from an older server (= false). */
+  unreadable?: boolean;
 }
 
 export interface UseClimateAutoOffResult {

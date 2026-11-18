@@ -223,3 +223,10 @@ test("alerts button: its pointerdown stops at the button, so a tap in lifted Gla
   const src = read("./kiosk-alerts.tsx");
   assert.match(src, /type="button"\s+onPointerDown=\{\(e\) => e\.stopPropagation\(\)\}\s+onClick=\{onPress\}/);
 });
+
+test("auto-off unreadable: the pill takes its text, tone and label from autoOffPillView, and the sheet shows the notice only while no save error is up", () => {
+  const src = read("./kiosk-climate-auto-off.tsx");
+  assert.match(src, /aria-label=\{view\.label\}/);
+  assert.match(src, /\{view\.text\}/);
+  assert.match(src, /state\.unreadable === true && !saveError && <p className="text-xs text-warn">\{AUTO_OFF_UNREADABLE_NOTICE\}<\/p>/);
+});

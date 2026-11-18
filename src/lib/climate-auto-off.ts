@@ -118,6 +118,19 @@ export function statusFor(cfg: ClimateAutoOffConfig, now: Date): AutoOffStatus {
   return { kind: "scheduled", window: target };
 }
 
+/* ── Pill text, tone and label (the kiosk pill reads this) ───────────────── */
+
+export const AUTO_OFF_UNREADABLE_LABEL = "AC auto-off: the saved schedule can't be read — open for details";
+export const AUTO_OFF_UNREADABLE_NOTICE = "The saved settings can't be read, so auto-off is not running.";
+
+/** `unreadable` is absent from an older server during a deploy: only a literal true counts. */
+export function autoOffPillView(s: { enabled: boolean; time: string; unreadable?: boolean }) {
+  if (s.unreadable === true) return { text: "unread", tone: "warn" as const, label: AUTO_OFF_UNREADABLE_LABEL };
+  return s.enabled
+    ? { text: s.time, tone: "accent" as const, label: `AC auto-off at ${s.time} — change schedule` }
+    : { text: "off", tone: "dim" as const, label: "AC auto-off is off — configure" };
+}
+
 /* ── POST body validation (shared with the public kiosk route) ──────────── */
 
 export interface ClimateAutoOffPatch {
