@@ -29,6 +29,7 @@
  * from the Probe union below.
  */
 
+import { unconfiguredDetail } from "./config.ts";
 import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
 import { readJsonCapped, UPSTREAM_JSON_MAX } from "./read-capped.ts";
 
@@ -116,7 +117,7 @@ export abstract class IntegrationClient<C> {
   }
 
   protected unconfigured(): ProbeFail {
-    return { status: "unconfigured", detail: this.unconfiguredDetail };
+    return { status: "unconfigured", detail: unconfiguredDetail(this.unconfiguredDetail) };
   }
 
   /**

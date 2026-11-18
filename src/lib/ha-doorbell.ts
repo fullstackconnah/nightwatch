@@ -1,4 +1,4 @@
-import { loadConfig } from "@/lib/config";
+import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { UNCONFIGURED_DETAIL, ha, haCredentials, type HaCredentials } from "@/lib/ha";
 import { Memo } from "@/lib/cache";
 import { lastSeenFromHistory } from "@/lib/doorbell-last-seen";
@@ -369,7 +369,7 @@ export async function getDoorbellSnapshot(opts: { lastSeen?: boolean } = {}): Pr
   if (!creds) {
     return {
       status: "unconfigured",
-      detail: UNCONFIGURED_DETAIL,
+      detail: unconfiguredDetail(UNCONFIGURED_DETAIL),
       cameras: [],
       triggers: [],
       latest: null,

@@ -1,4 +1,4 @@
-import { loadConfig } from "@/lib/config";
+import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { brightnessPercent } from "@/lib/ha-brightness";
 import { createHiddenIdsCache, fetchRegistryHiddenIds } from "@/lib/ha-settings-entities";
 import { IntegrationClient, type Probe } from "@/lib/integration-client";
@@ -522,7 +522,7 @@ async function nudgeClimateTemp(entityId: string, delta: number): Promise<HaActi
  */
 export async function performHaAction(req: HaActionRequest): Promise<HaActionResult> {
   const creds = haCredentials();
-  if (!creds) return { ok: false, status: "unconfigured", detail: UNCONFIGURED_DETAIL };
+  if (!creds) return { ok: false, status: "unconfigured", detail: unconfiguredDetail(UNCONFIGURED_DETAIL) };
 
   const dot = req.entityId.indexOf(".");
   const domain = dot > 0 ? req.entityId.slice(0, dot) : "";

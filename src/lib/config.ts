@@ -334,7 +334,12 @@ export function configProblem(): ConfigProblem | null {
   return lastProblem;
 }
 
-export const CONFIG_UNREADABLE = "Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
+/** An integration's "not configured" detail, unless config.json is unreadable: then defaults hide a block the owner may already have. Call it at use, not at load. */
+export function unconfiguredDetail(detail: string): string {
+  return configProblem() === null ? detail : "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
+}
+
+export const CONFIG_UNREADABLE ="Couldn't read the saved settings, so nothing was saved. Check data/config.json.";
 
 export function loadConfig(): AppConfig {
   return readConfig(false);

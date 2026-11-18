@@ -1062,7 +1062,7 @@ for (const [key, problem] of [["cfgBlank", "blank"], ["cfgUnreadable", "unreadab
 await guarded("config-notice", () =>
   each(async (s) => {
     const cn = (name, ok) => record(`CN ${name}`, s.name, ok);
-    const COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+    const COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
     const NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
     const BLANK = "The settings file is empty, so this page shows defaults.";
     const BAD = "The settings file can’t be read, so this page shows defaults.";

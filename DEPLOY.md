@@ -78,7 +78,7 @@ git archive --format=tar HEAD | ssh homelab@homelab.local \
    only if the copy's modification time were exactly equal to the cached one.
 
    Every save first copies the previous `data/config.json` to `data/config.json.bak` (0600). If
-   `config.json` is ever blank, saves are refused until it is restored with
+   `config.json` is ever blank or holds only `{}`, saves are refused until it is restored with
    `cp data/config.json.bak data/config.json` (no restart needed). Restore it, do not delete it:
    a deleted file counts as a fresh install, and later saves replace the copy. For a deliberate
    fresh start, remove both files.

@@ -86,7 +86,7 @@ function head(chip: Model["chip"], answer: string, evidence: string, extra: Part
   return { chip, answer, evidence, notice: null, strips: [], autoTarget: "keep", detailLead: null, writable: false, ...extra };
 }
 
-const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+const CFG_COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
 const CFG_NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
 
 export function settingsModel(i: ModelInput): Model {
