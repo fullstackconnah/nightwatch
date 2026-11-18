@@ -8,6 +8,7 @@
  *
  *   BASE_URL=http://host:3006 OUT_DIR=shots node scripts/docker-shots.mjs
  *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=envmask (or ONLY=envmask) node scripts/docker-shots.mjs   (container env masking, real API, 1280 and 390)
+ *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=action-deadline node scripts/docker-shots.mjs   (action and remove timeout copy, mocked 504, 1440 and 390)
  *
  * Needs Playwright, which is not a dependency of this repo; run it where one is installed.
  */
@@ -523,6 +524,62 @@ try {
       }
     });
   }
+
+  // Action and remove deadline: the proxy never answers, the server gives up with a staged 504 (mocked here), the existing error line says so.
+  if (ONLY === "action-deadline") await guard("action-deadline", async () => {
+    const ID = "ab12cd34ef56" + "0".repeat(52);
+    const NAME = "demo-exited";
+    const INSPECT = {
+      id: ID, name: NAME, image: "nginx:1.27", created: "2026-10-01T00:00:00Z",
+      state: { status: "exited", running: false, startedAt: "2026-10-01T00:00:00Z", exitCode: 0, health: null, restartCount: 0, oomKilled: false },
+      restartPolicy: "no", networkMode: "bridge", composeProject: null, composeService: null, ports: [], mounts: [], env: [], cmd: "nginx",
+    };
+    const LIST = {
+      containers: [{ id: ID, name: NAME, image: "nginx:1.27", state: "exited", status: "Exited (0) 2 days ago", ports: [], composeProject: null, composeService: null, tile: { url: null } }],
+      groups: [], counts: { total: 1, running: 0, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
+    };
+    const SENTENCE = (what) => `Docker didn't answer in time. The ${what} may still have gone through, so check the container before trying again.`;
+    for (const { name, ...opts } of VIEWPORTS) {
+      const { context, page, errors } = await openPage(browser, opts, "none");
+      await page.route("**/api/docker/containers**", (route) => {
+        const { pathname } = new URL(route.request().url());
+        const method = route.request().method();
+        if (method === "POST" && pathname.endsWith("/action")) return json(route, 504, { error: SENTENCE("action") });
+        if (method === "DELETE") return json(route, 504, { error: SENTENCE("removal") });
+        if (pathname.endsWith("/api/docker/containers")) return json(route, 200, LIST);
+        if (pathname.endsWith(`/containers/${ID}`)) return json(route, 200, INSPECT);
+        if (pathname.endsWith("/logs")) return json(route, 200, { logs: "" });
+        return json(route, 200, {});
+      });
+      await page.goto(`${BASE_URL}/containers/${ID}`, { waitUntil: "domcontentloaded" });
+      const start = page.getByRole("button", { name: "Start", exact: true });
+      await start.waitFor({ timeout: 30_000 });
+      const noOverflow = () => page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth);
+
+      await start.click();
+      const alert = page.getByRole("alert").filter({ hasText: "Docker didn't answer in time" });
+      await alert.waitFor();
+      check(`AD-1 ${name} action-timeout: sentence is exact`, (await alert.innerText()).includes(SENTENCE("action")));
+      check(`AD-2 ${name} action-timeout: Start enabled again`, await start.isEnabled());
+      check(`AD-3 ${name} action-timeout: no horizontal overflow`, await noOverflow());
+      check(`AD-4 ${name} action-timeout: error line not clipped`, await alert.evaluate((el) => el.scrollHeight === el.clientHeight));
+      await cropEl(page, alert, join(OUT_DIR, `action-deadline-action-timeout-${name}.png`), `AD ${name} action-timeout`);
+      await alert.getByRole("button", { name: "Dismiss error" }).click();
+
+      const remove = page.getByRole("button", { name: "Remove", exact: true });
+      await remove.scrollIntoViewIfNeeded();
+      await remove.click();
+      await page.getByRole("button", { name: "Yes, remove" }).click();
+      const rAlert = page.getByRole("alert").filter({ hasText: "Docker didn't answer in time" });
+      await rAlert.waitFor();
+      check(`AD-5 ${name} remove-timeout: sentence is exact`, (await rAlert.innerText()).includes(SENTENCE("removal")));
+      check(`AD-6 ${name} remove-timeout: no horizontal overflow`, await noOverflow());
+      check(`AD-7 ${name} remove-timeout: error line not clipped`, await rAlert.evaluate((el) => el.scrollHeight === el.clientHeight));
+      await cropEl(page, rAlert, join(OUT_DIR, `action-deadline-remove-timeout-${name}.png`), `AD ${name} remove-timeout`);
+      check(`AD ${name}: no page errors`, errors.length === 0, errors.join(" | ").slice(0, 200));
+      await context.close();
+    }
+  });
 } finally {
   await browser.close();
 }
