@@ -57,3 +57,10 @@ test("the remove route answers 504 with the removal copy", () => {
   const s = src("../app/api/docker/containers/[id]/route.ts");
   assert.match(s, /isDeadlineError\(e\)\) \{\s*return NextResponse\.json\(\{ error: removeErrorCopy\("TIMEOUT", target\.name\) \}, \{ status: 504 \}\)/);
 });
+
+test("the MCP container-action tool tells the caller a timed-out action may have gone through", () => {
+  const s = src("./mcp/tools.ts");
+  assert.match(s, /if \(isDeadlineError\(e\)\) return textResult\(ACTION_TIMEOUT_MESSAGE, true\);/);
+  // the generic line for every other error stays
+  assert.match(s, /Failed to \$\{action\} "\$\{containerName\}"/);
+});
