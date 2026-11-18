@@ -1,4 +1,4 @@
-import { loadConfig } from "@/lib/config";
+import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { Memo } from "@/lib/cache";
 import { readJsonCapped } from "@/lib/read-capped";
 import { commitDate, newestFirst } from "@/lib/git/commit-order";
@@ -378,10 +378,11 @@ function unconfiguredSnapshot(): GitSnapshot {
     status: "unconfigured",
     forgejoUrl: null,
     // Prose only; the page no longer shows this detail (the connection head says what to do).
-    detail:
+    detail: unconfiguredDetail(
       "No Forgejo connection configured. Create the admin account at http://homelab.local:3010, " +
-      "then mint an access token in Settings → Applications (read scopes cover everything this page " +
-      "shows) and add this block to data/config.json on the server:",
+        "then mint an access token in Settings → Applications (read scopes cover everything this page " +
+        "shows) and add this block to data/config.json on the server:",
+    ),
     repos: [],
     stream: [],
     pulls: [],

@@ -1,4 +1,4 @@
-import { systemSetting } from "@/lib/config";
+import { systemSetting, unconfiguredDetail } from "@/lib/config";
 import { readCapped } from "@/lib/read-capped";
 
 /**
@@ -103,7 +103,7 @@ export type VoiceTranscribeResult = { status: "ok"; text: string } | VoiceProble
 
 export async function transcribeAudio(audio: Buffer, contentType: string): Promise<VoiceTranscribeResult> {
   const creds = voiceCredentials();
-  if (!creds) return { status: "unconfigured", detail: VOICE_UNCONFIGURED_DETAIL };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(VOICE_UNCONFIGURED_DETAIL) };
 
   const form = new FormData();
   const type = contentType.split(";")[0]?.trim() || "application/octet-stream";
@@ -149,7 +149,7 @@ export type VoiceSpeakResult =
 
 export async function speakText(text: string): Promise<VoiceSpeakResult> {
   const creds = voiceCredentials();
-  if (!creds) return { status: "unconfigured", detail: VOICE_UNCONFIGURED_DETAIL };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(VOICE_UNCONFIGURED_DETAIL) };
 
   const payload: Record<string, string> = { input: text };
   if (creds.ttsModel) payload.model = creds.ttsModel;

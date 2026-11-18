@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import fs, { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import fs, { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -11,8 +11,16 @@ const UNREADABLE =
   "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
 const src = (f: string) => fs.readFileSync(new URL(f, import.meta.url), "utf8");
 
+let tick = 0;
+
 describe("unreadable settings, remaining integrations", () => {
   let dir: string;
+  // The config cache is keyed on mtime alone, so every write gets its own second.
+  const put = (text: string) => {
+    const f = join(dir, "config.json");
+    writeFileSync(f, text);
+    utimesSync(f, 1_700_000_000 + ++tick, 1_700_000_000 + tick);
+  };
   let prev: string | undefined;
   beforeEach(() => {
     prev = process.env.DATA_DIR;
@@ -26,29 +34,29 @@ describe("unreadable settings, remaining integrations", () => {
   });
 
   it("weather: readable keeps its detail, unreadable says so", async () => {
-    writeFileSync(join(dir, "config.json"), "{}");
+    put("{}");
     assert.deepEqual(await getWeather(), { status: "unconfigured", detail: WEATHER_UNCONFIGURED_DETAIL });
-    writeFileSync(join(dir, "config.json"), "{ nope");
+    put("{ nope");
     assert.deepEqual(await getWeather(), { status: "unconfigured", detail: UNREADABLE });
   });
 
   it("npm: readable keeps its detail, unreadable says so", async () => {
-    writeFileSync(join(dir, "config.json"), "{}");
+    put("{}");
     const ok = await getProxyManagerSnapshot();
     assert.equal(ok.status, "unconfigured");
     assert.match(ok.detail ?? "", /No Nginx Proxy Manager connection configured/);
-    writeFileSync(join(dir, "config.json"), "{ nope");
+    put("{ nope");
     const bad = await getProxyManagerSnapshot();
     assert.equal(bad.status, "unconfigured");
     assert.equal(bad.detail, UNREADABLE);
   });
 
   it("orchestra: readable keeps its detail, unreadable says so", async () => {
-    writeFileSync(join(dir, "config.json"), "{}");
+    put("{}");
     const ok = await getOrchestraSnapshot(null);
     assert.equal(ok.status, "unconfigured");
     assert.match(ok.status === "unconfigured" ? ok.detail : "", /orchestra service is not connected/);
-    writeFileSync(join(dir, "config.json"), "{ nope");
+    put("{ nope");
     const bad = await getOrchestraSnapshot(null);
     assert.equal(bad.status === "unconfigured" ? bad.detail : "", UNREADABLE);
   });
