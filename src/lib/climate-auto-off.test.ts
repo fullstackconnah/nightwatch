@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  AUTO_OFF_UNREADABLE_LABEL,
+  AUTO_OFF_UNREADABLE_NOTICE,
   activeWindow,
+  autoOffPillView,
   localDateKey,
   parseClimateAutoOffPatch,
   parseTime,
@@ -128,5 +131,24 @@ describe("parseClimateAutoOffPatch", () => {
     assert.ok("error" in parseClimateAutoOffPatch({}));
     assert.ok("error" in parseClimateAutoOffPatch(null));
     assert.ok("error" in parseClimateAutoOffPatch([]));
+  });
+});
+
+describe("autoOffPillView", () => {
+  const OFF_LABEL = "AC auto-off is off — configure";
+  const rows: Array<[string, { enabled: boolean; time: string; unreadable?: boolean }, string, string, string]> = [
+    ["on", { enabled: true, time: "22:30", unreadable: false }, "22:30", "accent", "AC auto-off at 22:30 — change schedule"],
+    ["off", { enabled: false, time: "22:30", unreadable: false }, "off", "dim", OFF_LABEL],
+    ["unreadable", { enabled: false, time: "23:00", unreadable: true }, "unread", "warn", AUTO_OFF_UNREADABLE_LABEL],
+    ["unreadable and enabled", { enabled: true, time: "23:00", unreadable: true }, "unread", "warn", AUTO_OFF_UNREADABLE_LABEL],
+    ["field missing, on", { enabled: true, time: "22:30" }, "22:30", "accent", "AC auto-off at 22:30 — change schedule"],
+    ["field missing, off", { enabled: false, time: "22:30" }, "off", "dim", OFF_LABEL],
+  ];
+  for (const [name, state, text, tone, label] of rows) {
+    it(`row: ${name}`, () => assert.deepEqual(autoOffPillView(state), { text, tone, label }));
+  }
+  it("pins the copy", () => {
+    assert.equal(AUTO_OFF_UNREADABLE_LABEL, "AC auto-off: the saved schedule can't be read — open for details");
+    assert.equal(AUTO_OFF_UNREADABLE_NOTICE, "The saved settings can't be read, so auto-off is not running.");
   });
 });

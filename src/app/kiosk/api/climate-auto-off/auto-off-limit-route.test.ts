@@ -109,3 +109,28 @@ describe("POST /kiosk/api/climate-auto-off save failure", () => {
     }
   });
 });
+
+describe("GET /kiosk/api/climate-auto-off unreadable flag", () => {
+  const FIELDS = { enabled: false, time: "23:00", skipDate: null, lastRunDate: null };
+  const cfg = (name: string, body: string) => fs.writeFileSync(path.join(dir, name), body);
+  const get = async () => (await GET()).json();
+
+  it("says unreadable false for a missing file and for a healthy config", async () => {
+    assert.deepEqual(await get(), { ...FIELDS, unreadable: false });
+    cfg("config.json", JSON.stringify({ climateAutoOff: { enabled: true, time: "22:30" } }));
+    assert.deepEqual(await get(), { ...FIELDS, enabled: true, time: "22:30", unreadable: false });
+  });
+
+  for (const [label, body] of [["a blank file", ""], ["{}", "{}"], ["an unparsable file", "{nope"]] as const) {
+    it(`says unreadable true for ${label} beside a .bak, with the other four fields unchanged`, async () => {
+      cfg("config.json", body);
+      cfg("config.json.bak", JSON.stringify({ icons: { a: "b" } }));
+      assert.deepEqual(await get(), { ...FIELDS, unreadable: true });
+    });
+  }
+
+  it("says unreadable true for an unparsable file with no copy", async () => {
+    cfg("config.json", "{nope");
+    assert.deepEqual(await get(), { ...FIELDS, unreadable: true });
+  });
+});
