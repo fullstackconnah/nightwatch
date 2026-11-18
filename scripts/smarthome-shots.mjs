@@ -273,7 +273,7 @@ if (ONLY === "unreadable-copy") {
       const ans = (await page.locator("[data-feature=answer]").textContent()).trim();
       const strip = (await page.locator("[data-row-id=climate] .st-state").first().innerText()).trim();
       const f = await headFit(page);
-      uc(4, ans.endsWith(`, ${C}`), "smarthome-autooff-unreadable answer ends with the text", JSON.stringify(ans.slice(-40)));
+      uc(4, ans.includes(`, ${C}`), "smarthome-autooff-unreadable answer carries the text (before its full stop)", JSON.stringify(ans.slice(-40)));
       uc(5, strip.includes(` · ${C}`), "smarthome-autooff-unreadable strip carries the text", JSON.stringify(strip.slice(-40)));
       uc(6, f.w, "smarthome-autooff-unreadable no horizontal overflow", `scrollWidth ${f.sw} clientWidth ${f.cw}`);
       uc(7, f.h, "smarthome-autooff-unreadable not clipped", `scrollHeight ${f.sh} clientHeight ${f.ch}`);
