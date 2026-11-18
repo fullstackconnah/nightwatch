@@ -217,6 +217,12 @@ export function doorbellQuietCopy(days: number | null): AlertCopy {
   };
 }
 
+/** config.json cannot be read, so the dashboard is serving defaults. No path or problem kind: the Settings page has those. */
+export const settingsUnreadableCopy: AlertCopy = {
+  headline: "Saved settings can't be read",
+  detail: "The saved settings can't be read, so the dashboard is running on defaults. Open Settings for details.",
+};
+
 // --- outside access (type-only import, erased at run time) ---------------------------------------
 
 const OUTSIDE_DOWN: Record<DownWhy, string> = {

@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 /** The four codes /api/auth/oidc/callback can redirect back with — anything
  *  else in the query string is ignored rather than echoed to the page. */
-const SSO_ERROR_CODES = new Set(["denied", "exchange_failed", "verify_failed", "config"]);
+const SSO_ERROR_CODES = new Set(["denied", "exchange_failed", "verify_failed", "config", "settings"]);
 
 export default async function LoginPage({
   searchParams,

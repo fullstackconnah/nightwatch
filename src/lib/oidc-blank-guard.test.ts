@@ -6,8 +6,8 @@ import fs from "node:fs";
 describe("oidcAllowListCheck wiring", () => {
   const src = fs.readFileSync(new URL("./oidc.ts", import.meta.url), "utf8");
   const fn = src.slice(src.indexOf("export function oidcAllowListCheck"), src.indexOf("/** Host only"));
-  it("imports configProblem and passes it to oidcAllowDecision", () => {
+  it("imports configProblem and passes it to oidcAllowVerdict", () => {
     assert.match(src, /import \{[^}]*\bconfigProblem\b[^}]*\} from "@\/lib\/config"/);
-    assert.match(fn, /oidcAllowDecision\([^;]*console,\s*configProblem\(\),?\s*\)/s);
+    assert.match(fn, /oidcAllowVerdict\([^;]*console,\s*configProblem\(\),?\s*\)/s);
   });
 });

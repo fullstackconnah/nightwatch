@@ -235,6 +235,156 @@ const readState = () => {
   };
 };
 
+// ---- unreadable-told (PR 299): the three "saved settings can't be read" messages. Run alone: SHOTS_ONLY=unreadable-told (ONLY works too). ----
+if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "unreadable-told") {
+  const SSO_COPY = "The saved settings can't be read, so SSO sign-in is off until they are restored.";
+  const PW_COPY = "The saved settings can't be read, so password sign-in is off until they are restored.";
+  const ATT_COPY = "The saved settings can't be read, so the dashboard is running on defaults. Open Settings for details.";
+  // The `settings` probe's hit, as src/lib/attention.ts produces it (first probe, bad, owner /settings), added to the "one" report.
+  const sinceIso = new Date(NOW - 30 * 60_000).toISOString();
+  FIX.unreadable = {
+    ...FIX.one,
+    probes: [{ id: "settings", label: "Saved settings", state: "answered", hits: 1 }, ...FIX.one.probes],
+    hits: [
+      {
+        id: "settings:settings", probe: "settings", subject: "settings", severity: "bad",
+        headline: "Saved settings can't be read", detail: ATT_COPY, since: sinceIso, firstSeen: sinceIso,
+        owner: { href: "/settings", label: "Open Settings" },
+      },
+      ...FIX.one.hits,
+    ],
+  };
+  const UW = [
+    { name: "1024", viewport: { width: 1024, height: 800 } },
+    { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
+  ];
+  const ut = (id, w, pass, measured) => {
+    record("UT", pass, `${id} ${w} ${measured}`);
+    console.log(`UT ${id} ${w} ${pass ? "pass" : "fail"} ${measured}`);
+  };
+  const HIDE_BADGE = "nextjs-portal{display:none!important}";
+  /** Padded crop of an element's box (document coordinates, so a tall page still crops whole). */
+  const cropEl = async (page, sel, file, pad = 16) => {
+    await page.locator(sel).first().scrollIntoViewIfNeeded();
+    const r = await page.evaluate((s) => {
+      const b = document.querySelector(s).getBoundingClientRect();
+      return { x: b.left + scrollX, y: b.top + scrollY, w: b.width, h: b.height, vw: document.documentElement.clientWidth };
+    }, sel);
+    const x = Math.max(0, r.x - pad);
+    const y = Math.max(0, r.y - pad);
+    await page.screenshot({ path: join(OUT_DIR, file), fullPage: true, clip: { x, y, width: Math.min(r.vw - x, r.w + 2 * pad), height: r.h + 2 * pad } });
+  };
+  const loginPage = async (w, { ssoError }) => {
+    const { name, ...ctxOpts } = w;
+    const context = await browser.newContext({ ...ctxOpts, timezoneId: ZONE, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.goto(`${BASE_URL}/login${ssoError ? "?sso_error=settings" : ""}`, { waitUntil: "domcontentloaded" });
+    await page.locator("#password").waitFor({ timeout: 30_000 });
+    await page.addStyleTag({ content: HIDE_BADGE });
+    return { context, page };
+  };
+  /** Geometry and colour of the visible error line(s) in the login card. */
+  const errorLines = (page) =>
+    page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement("span"));
+      probe.className = "text-bad";
+      const bad = getComputedStyle(probe).color;
+      probe.remove();
+      const vis = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+      const els = [...document.querySelectorAll("p.text-bad")].filter(vis);
+      const card = document.querySelector(".panel");
+      return {
+        bad,
+        texts: els.map((e) => e.textContent.trim()),
+        color: els[0] ? getComputedStyle(els[0]).color : null,
+        font: els[0] ? parseFloat(getComputedStyle(els[0]).fontSize) : 0,
+        fits: els.every((e) => e.scrollWidth <= e.clientWidth),
+        lines: els[0] ? Math.round(els[0].getBoundingClientRect().height / (parseFloat(getComputedStyle(els[0]).lineHeight) || 1.5 * parseFloat(getComputedStyle(els[0]).fontSize))) : 0,
+        cardRight: card.getBoundingClientRect().right,
+        vw: document.documentElement.clientWidth,
+      };
+    });
+
+  for (const w of UW) {
+    // login-sso-unreadable
+    {
+      const { context, page } = await loginPage(w, { ssoError: true });
+      const m = await errorLines(page);
+      ut("UT1", w.name, m.texts.length === 1 && m.texts[0] === SSO_COPY, `text "${m.texts[0]}"`);
+      ut("UT2", w.name, m.color === m.bad && m.font >= 12, `color ${m.color} vs text-bad ${m.bad}, font ${m.font}px`);
+      ut("UT5", w.name, m.fits && m.cardRight <= m.vw, `sso fits ${m.fits}, card right ${Math.round(m.cardRight)} of ${m.vw}`);
+      ut("UT6", w.name, m.lines >= 1 && m.lines <= 3, `sso lines ${m.lines}`);
+      await cropEl(page, ".panel", `login-sso-unreadable-${w.name}.png`);
+      await page.screenshot({ path: join(OUT_DIR, `login-sso-unreadable-full-${w.name}.png`), fullPage: true });
+      await context.close();
+    }
+    // login-password-unreadable: the 401 body the route sends while the settings cannot be read
+    {
+      const { context, page } = await loginPage(w, { ssoError: false });
+      await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: PW_COPY }) }));
+      // React attaches __reactProps$ to the field once it hydrates; a fill before that is wiped.
+      await page.waitForFunction(() => Object.keys(document.querySelector("#password")).some((k) => k.startsWith("__reactProps")), null, { timeout: 60_000 });
+      await page.locator("#password").fill("not-the-password");
+      await page.getByRole("button", { name: "Unlock" }).click();
+      await page.locator("p.text-bad").first().waitFor({ timeout: 10_000 });
+      const m = await errorLines(page);
+      ut("UT3", w.name, m.texts[0] === PW_COPY, `text "${m.texts[0]}"`);
+      ut("UT4", w.name, m.texts.length === 1, `${m.texts.length} visible error line(s)`);
+      ut("UT5", w.name, m.fits && m.cardRight <= m.vw, `pw fits ${m.fits}, card right ${Math.round(m.cardRight)} of ${m.vw}`);
+      ut("UT6", w.name, m.lines >= 1 && m.lines <= 3, `pw lines ${m.lines}`);
+      await cropEl(page, ".panel", `login-password-unreadable-${w.name}.png`);
+      await context.close();
+    }
+    // Home: the unreadable report, then the control
+    for (const [fixture, file] of [["unreadable", "home-attention-unreadable"], ["one", "home-attention-normal"]]) {
+      const { context, page } = await open({ width: w, fixture });
+      await page.addStyleTag({ content: HIDE_BADGE });
+      await page.locator(".hm-att").waitFor({ timeout: 30_000 });
+      const m = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll(".hm-att-row")];
+        const row = document.querySelector('.hm-att-row[data-subject="settings"]');
+        const next = rows.find((r) => r !== row);
+        const box = (el) => el?.getBoundingClientRect();
+        const list = document.querySelector(".hm-att-list");
+        const link = (r) => r?.querySelector(".hm-att-owner");
+        return {
+          anyText: document.body.textContent.includes("Saved settings"),
+          first: rows[0]?.dataset.subject ?? null,
+          title: row?.querySelector(".hm-att-title")?.textContent.trim() ?? null,
+          detail: row?.querySelector(".hm-att-detail")?.textContent.trim() ?? null,
+          cls: row?.className, nextCls: next?.className,
+          left: row && Math.round(box(row).left * 10) / 10, nextLeft: next && Math.round(box(next).left * 10) / 10,
+          h: row && Math.round(box(row).height), nextH: next && Math.round(box(next).height),
+          listFits: list ? list.scrollWidth <= list.clientWidth : null,
+          linkH: link(row) ? Math.round(box(link(row)).height) : null,
+          nextLinkH: link(next) ? Math.round(box(link(next)).height) : null,
+          linkText: link(row)?.textContent.trim() ?? null,
+          rowCount: rows.length,
+        };
+      });
+      if (fixture === "unreadable") {
+        ut("UT7", w.name, m.title === "Saved settings can't be read" && m.detail === ATT_COPY, `headline "${m.title}", detail "${m.detail}" (the probe label "Saved settings" is not rendered; the headline carries it)`);
+        ut("UT8", w.name, m.first === "settings", `first row subject ${m.first} of ${m.rowCount}`);
+        ut("UT9", w.name, m.cls === m.nextCls && m.left !== null && m.nextLeft !== null && Math.abs(m.left - m.nextLeft) <= 1, `class "${m.cls}" vs "${m.nextCls}", left ${m.left} vs ${m.nextLeft}, height ${m.h} vs ${m.nextH}`);
+        ut("UT10", w.name, m.listFits === true, `list fits ${m.listFits}`);
+        ut("UT11", w.name, w.name !== "390" || (m.linkH !== null && m.linkH >= 44), m.linkH === null ? "none" : `link "${m.linkText}" ${m.linkH}px (next row's link ${m.nextLinkH}px)`);
+      } else {
+        ut("UT12", w.name, !m.anyText, `"Saved settings" present: ${m.anyText}, rows ${m.rowCount}`);
+      }
+      await cropEl(page, ".hm-att", `${file}-${w.name}.png`);
+      if (fixture === "unreadable") await page.screenshot({ path: join(OUT_DIR, `${file}-full-${w.name}.png`), fullPage: true });
+      await context.close();
+    }
+  }
+  await browser.close();
+  const bad = results.filter((r) => !r.pass);
+  const summary = [{ id: "UT", pass: bad.length === 0, runs: results.length, details: results.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) }];
+  writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ at: new Date(NOW).toISOString(), summary }, null, 2));
+  console.log(`unreadable-told: ${results.length - bad.length}/${results.length} pass`);
+  console.log(JSON.stringify({ at: new Date(NOW).toISOString(), summary }));
+  process.exit(bad.length ? 1 : 0);
+}
+
 // ---- per state, per width: C3 C4 C5 C6 C7 C8 C9 C12 and the captures ----
 for (const width of WIDTHS) {
   for (const stateName of STATES) {

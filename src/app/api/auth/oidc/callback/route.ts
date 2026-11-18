@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  *  transient flow cookie always cleared (single-use, cleared on callback
  *  regardless of outcome — see src/lib/oidc.ts). The raw error never reaches
  *  the URL, only one of the four codes the login page knows how to render. */
-function ssoErrorRedirect(req: NextRequest, code: "denied" | "exchange_failed" | "verify_failed" | "config") {
+function ssoErrorRedirect(req: NextRequest, code: "denied" | "exchange_failed" | "verify_failed" | "config" | "settings") {
   const res = NextResponse.redirect(ssoErrorUrl(req, code));
   res.cookies.set(OIDC_FLOW_COOKIE, "", clearedOidcFlowCookieOptions());
   return res;
@@ -66,7 +66,8 @@ export async function GET(req: NextRequest) {
   } catch {
     return ssoErrorRedirect(req, "verify_failed");
   }
-  if (!oidcAllowListCheck(payload)) return ssoErrorRedirect(req, "denied");
+  const verdict = oidcAllowListCheck(payload);
+  if (verdict !== "allowed") return ssoErrorRedirect(req, verdict);
 
   // Same session helper the password login mints from — no forked session
   // logic, no id_token/access_token ever set on any client-visible cookie.

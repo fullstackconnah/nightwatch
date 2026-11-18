@@ -14,6 +14,7 @@ import {
   PENDING,
   parseSince,
   runProbes,
+  settingsHit,
   sortHits,
   toHits,
   deriveChanges,
@@ -40,7 +41,7 @@ import {
   type AlertCopy,
 } from "@/lib/attention-copy";
 import { Memo } from "@/lib/cache";
-import { loadConfig, systemSetting } from "@/lib/config";
+import { configProblem, loadConfig, systemSetting } from "@/lib/config";
 import { localDateString } from "@/lib/local-time";
 import { displayTimeZone } from "@/app/kiosk/api/list/tz";
 import { createOutsideTracker, OUTSIDE_START, outsideCopy, outsideRun, pickReader, realDeps, type OutsideState } from "@/lib/outside-check";
@@ -549,6 +550,7 @@ async function computeReport(): Promise<Computed> {
 
   const outsideHost = outsideHostSetting();
   const defs: ProbeDef[] = [
+    { id: "settings", label: "Saved settings", run: () => settingsHit(configProblem()) },
     { id: "crashes", label: "Crashed apps", run: () => (needDocker(), probeContainerDeath(watched)) },
     { id: "restarts", label: "Restart loops", run: () => (needDocker(), probeRestartLoop(watched)) },
     { id: "smart", label: "Drive health", run: (isLate) => probeSmart(isLate) },

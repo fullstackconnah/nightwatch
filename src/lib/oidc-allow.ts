@@ -31,22 +31,27 @@ export function resetOidcAllowWarning() {
 }
 
 /** The decision plus its log lines: one warning per process for an open list, one line per refusal (sub only, quoted and cut). */
-export function oidcAllowDecision(
+export function oidcAllowVerdict(
   claims: Claims,
   rawList: string | undefined,
   log: { warn(m: string): void; error(m: string): void } = console,
   /** configProblem(): a damaged config.json may have hidden the stored list, so an empty list must not open sign-in. */
   problem: string | null = null,
-): boolean {
+): "allowed" | "denied" | "settings" {
   const { allowed, open } = oidcLoginAllowed(claims, rawList);
   if (open && problem) {
     log.error(`OIDC login refused: the saved settings cannot be read (${problem}) and OIDC_ALLOWED_USERS is not set, so the allow-list cannot be read`);
-    return false;
+    return "settings";
   }
   if (open && !warnedOpen) {
     warnedOpen = true;
     log.warn("OIDC: no sign-in allow-list is set; any account the provider authenticates gets an owner session");
   }
   if (!allowed) log.error(`OIDC login refused: sub ${JSON.stringify(String(claims.sub).slice(0, 80))} is not in the allow-list`);
-  return allowed;
+  return allowed ? "allowed" : "denied";
+}
+
+/** The same decision as a boolean, for callers that do not need the reason. */
+export function oidcAllowDecision(...args: Parameters<typeof oidcAllowVerdict>): boolean {
+  return oidcAllowVerdict(...args) === "allowed";
 }
