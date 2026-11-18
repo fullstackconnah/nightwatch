@@ -36,7 +36,7 @@ test("every lifecycle verb and remove carry the action deadline", () => {
   assert.match(s, /const DOCKER_ACTION_MS = 45_000;/);
   const body = s.slice(s.indexOf("export async function containerAction"), s.indexOf("export async function performContainerAction"));
   for (const verb of ["start", "stop", "restart", "pause", "unpause"]) {
-    assert.match(body, new RegExp(`container\.${verb}\(\{[^}]*abortSignal: AbortSignal\.timeout\(DOCKER_ACTION_MS\)`), verb);
+    assert.match(body, new RegExp(String.raw`container\.${verb}\(\{[^}]*abortSignal: AbortSignal\.timeout\(DOCKER_ACTION_MS\)`), verb);
   }
   assert.match(body, /stop\(\{ t: 15,/);
   assert.match(body, /restart\(\{ t: 15,/);

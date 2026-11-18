@@ -5,6 +5,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { sessionEpoch } from "@/lib/config";
 import { busyMessage, guardsMinecraftStart, isBusy, isGuardedAction, tryBegin } from "@/lib/minecraft-busy";
 import { isContainerId } from "@/lib/container-id";
+import { ACTION_TIMEOUT_MESSAGE, isDeadlineError } from "@/lib/docker-deadline";
 import {
   CONTAINER_ACTIONS,
   listContainers,
@@ -26,6 +27,7 @@ function isAction(value: unknown): value is ContainerAction {
  * gets a fixed line (the detail is logged by the caller, never returned).
  */
 function explain(e: unknown, action: ContainerAction): string {
+  if (isDeadlineError(e)) return ACTION_TIMEOUT_MESSAGE;
   const message = e instanceof Error ? e.message : String(e);
   const status = (e as { statusCode?: number }).statusCode;
 
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     console.error("docker action failed", id, action, e);
     return NextResponse.json(
       { error: explain(e, action) },
-      { status: status === 404 || status === 403 || status === 409 ? status : 500 },
+      { status: isDeadlineError(e) ? 504 : status === 404 || status === 403 || status === 409 ? status : 500 },
     );
   } finally {
     release();

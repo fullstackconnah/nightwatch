@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import { docker, listContainers, removeContainer } from "@/lib/docker";
 import { shapeContainerDetail } from "@/lib/container-detail";
 import { isContainerId } from "@/lib/container-id";
+import { isDeadlineError } from "@/lib/docker-deadline";
 import { removeDecision, removeErrorCopy } from "@/lib/container-remove";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,9 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     const status = (e as { statusCode?: number }).statusCode;
+    if (isDeadlineError(e)) {
+      return NextResponse.json({ error: removeErrorCopy("TIMEOUT", target.name) }, { status: 504 });
+    }
     if (status === 403 || status === 404 || status === 409) {
       return NextResponse.json({ error: removeErrorCopy(status, target.name) }, { status });
     }
