@@ -1,4 +1,4 @@
-import { loadConfig } from "@/lib/config";
+import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { Memo } from "@/lib/cache";
 import { readCapped } from "./read-capped";
 import { localDateString } from "./local-time";
@@ -285,7 +285,7 @@ async function assembleBriefing(cfg: BriefingConfig, date: string): Promise<Brie
 export async function getBriefing(): Promise<BriefingResponse> {
   const cfg = briefingConfig();
   if (!cfg) {
-    return { status: "unconfigured", date: localDateString(undefined), detail: BRIEFING_UNCONFIGURED_DETAIL };
+    return { status: "unconfigured", date: localDateString(undefined), detail: unconfiguredDetail(BRIEFING_UNCONFIGURED_DETAIL) };
   }
 
   pendingDate = localDateString(cfg.timezone);

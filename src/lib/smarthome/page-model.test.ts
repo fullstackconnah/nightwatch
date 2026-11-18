@@ -109,6 +109,18 @@ test("calm with 1 of 4 ACs on and auto-off: the lead's answer, nothing opens, no
   assert.equal(w(m, "lock").reason, "Already locked.");
 });
 
+test("auto-off line: unreadable schedule says so in the same two slots, only while an AC is on", () => {
+  const climate = (m: Model) => strip(m, "climate").state;
+  const bad = { ...autoOn, enabled: false, unreadable: true };
+  const m = smarthomeModel(input({ autoOff: bad }));
+  assert.equal(m.answer, "Front door locked. 1 of 4 ACs on, auto-off can't be read.");
+  assert.equal(climate(m), "1 of 4 on · auto-off can't be read");
+  const noneOn = ok(entities({ climates: [ac(2), ac(3)] }));
+  assert.equal(smarthomeModel(input({ ha: noneOn, autoOff: bad })).answer, "Front door locked. 0 of 2 ACs on.");
+  assert.equal(climate(smarthomeModel(input({ ha: noneOn, autoOff: bad }))), "0 of 2 on");
+  assert.equal(smarthomeModel(input({ autoOff: { ...autoOn, unreadable: false } })).answer, smarthomeModel(input()).answer);
+});
+
 test("auto-off line: dropped when the read failed, is off, no AC is on, or the time is unparseable; skipped says so", () => {
   const climate = (m: Model) => strip(m, "climate").state;
   assert.equal(smarthomeModel(input({ autoOff: undefined })).answer, "Front door locked. 1 of 4 ACs on.");
@@ -263,4 +275,16 @@ test("a last answer in the future (clock skew) reads 0 s, never a negative age",
 test("an open lock beside an unavailable one still says Already open, not Already unlocked", () => {
   const m = smarthomeModel(input({ ha: ok(entities({ locks: [lock("open"), lock("unavailable", { entityId: "lock.back" })] })) }));
   assert.equal(w(m, "unlock").reason, "Already open.");
+});
+
+test("unconfigured with unreadable settings says so; readable or still loading keeps the setup head", () => {
+  const ha = { status: "unconfigured", detail: "x" } as const;
+  const m = smarthomeModel(input({ ha, autoOff: { ...autoOn, enabled: false, unreadable: true } }));
+  assert.deepEqual(m.chip, { tone: "warn", label: "Settings unreadable" });
+  assert.equal(m.answer, "The saved settings can’t be read, so Home Assistant is off until they are restored.");
+  assert.equal(m.evidence, "Open Settings for details.");
+  assert.deepEqual(m.link, { href: "/settings#homeassistant", label: "Open Settings" });
+  for (const autoOff of [{ ...autoOn, unreadable: false }, undefined]) {
+    assert.equal(smarthomeModel(input({ ha, autoOff })).answer, "Home Assistant isn’t connected yet.");
+  }
 });

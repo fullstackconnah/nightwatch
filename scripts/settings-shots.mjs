@@ -1062,7 +1062,7 @@ for (const [key, problem] of [["cfgBlank", "blank"], ["cfgUnreadable", "unreadab
 await guarded("config-notice", () =>
   each(async (s) => {
     const cn = (name, ok) => record(`CN ${name}`, s.name, ok);
-    const COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. Until then, most changes here won’t save.";
+    const COPY = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
     const NO_COPY = "There is no saved copy beside it. Fix data/config.json by hand on the server, or put back a backup, then reload this page. Until then, most changes here won’t save.";
     const BLANK = "The settings file is empty, so this page shows defaults.";
     const BAD = "The settings file can’t be read, so this page shows defaults.";
@@ -1095,6 +1095,24 @@ await guarded("config-notice", () =>
     cn("healthy: no notice", (await page.locator("[data-feature=notice]").count()) === 0);
     cn("healthy: chip is not Using defaults", (await page.locator("[data-feature=chip]").innerText()).trim() !== "Using defaults");
     await cropEl(page, s, page.locator("[data-feature=head]"), "config-notice-healthy", false);
+    await page.close();
+  }),
+);
+
+// ---- unreadable-settings copy (PR 300): the empty-file notice, from the cfgBlank fixture (ONLY=unreadable-copy runs just this) ----
+await guarded("unreadable-copy", () =>
+  each(async (s) => {
+    const uc = (n, ok, what, m) => { record(`UC${n} ${what}`, s.name, ok); console.log(`UC${n} ${ok ? "pass" : "fail"} ${what}@${s.name} ${m}`); };
+    const B = "A copy from before the last save is in data/config.json.bak. To use it, copy it over data/config.json on the server, then reload this page. To start fresh instead, remove both files. Until then, most changes here won’t save.";
+    const { page } = await visit(s, "cfgBlank");
+    const n = page.locator("[data-feature=notice]");
+    const text = (await n.textContent())?.trim();
+    const fit = await n.evaluate((e) => ({ w: e.scrollWidth <= e.clientWidth, h: e.scrollHeight <= e.clientHeight + 1, sw: e.scrollWidth, cw: e.clientWidth, sh: e.scrollHeight, ch: e.clientHeight }));
+    uc(12, text === B, "settings-empty-notice copy B exact", JSON.stringify(text?.slice(-60)));
+    uc(6, fit.w, "settings-empty-notice no horizontal overflow", `scrollWidth ${fit.sw} clientWidth ${fit.cw}`);
+    uc(7, fit.h, "settings-empty-notice not clipped", `scrollHeight ${fit.sh} clientHeight ${fit.ch}`);
+    await cropEl(page, s, page.locator("[data-feature=head]"), "settings-empty-notice", true);
+    await fullShot(page, s, "settings-empty-notice");
     await page.close();
   }),
 );

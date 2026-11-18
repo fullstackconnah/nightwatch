@@ -18,6 +18,8 @@ export interface AutoOffRead {
   time: string;
   skipDate: string | null;
   lastRunDate: string | null;
+  /** The saved settings can't be read, so the fields above are defaults. */
+  unreadable?: boolean;
 }
 export interface ModelInput {
   ha: HaStatesResponse | undefined;
@@ -125,6 +127,7 @@ export function smarthomeModel(i: ModelInput): Model {
   }
   // The upstream `detail` (it can hold a host) is never read.
   if (ha.status === "unconfigured") {
+    if (i.autoOff?.unreadable === true) return head("warn", "Settings unreadable", "The saved settings can’t be read, so Home Assistant is off until they are restored.", "Open Settings for details.", { link: SETTINGS });
     return head("neutral", "Not connected", "Home Assistant isn’t connected yet.", "Add the Home Assistant address and token in Settings → Integrations.", { link: SETTINGS });
   }
   if (ha.status === "unauthorized") {
@@ -150,7 +153,8 @@ export function smarthomeModel(i: ModelInput): Model {
     .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0];
   let autoAnswer = "";
   let autoStrip = "";
-  if (i.autoOff?.enabled && acOn > 0) {
+  if (i.autoOff?.unreadable === true && acOn > 0) [autoAnswer, autoStrip] = [", auto-off can't be read", " · auto-off can't be read"];
+  else if (i.autoOff?.enabled && acOn > 0) {
     const s = statusFor({ enabled: true, time: i.autoOff.time, skipDate: i.autoOff.skipDate ?? undefined, lastRunDate: i.autoOff.lastRunDate ?? undefined }, new Date(now));
     if (s.kind === "scheduled") [autoAnswer, autoStrip] = [`, turning off at ${i.autoOff.time}`, ` · auto-off ${i.autoOff.time}`];
     if (s.kind === "skipped") [autoAnswer, autoStrip] = [", skipped tonight", " · skipped tonight"];

@@ -6,7 +6,7 @@ import type {
   HermesStatusOk,
   HermesStatusResponse,
 } from "@/lib/types/hermes";
-import { secretForSettingUrl, systemSetting } from "@/lib/config";
+import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "@/lib/config";
 import { JOB_ID_RE, mapJobBody } from "@/lib/hermes-job-map";
 import { readCapped } from "@/lib/read-capped";
 
@@ -170,7 +170,7 @@ function mapActivityItem(raw: unknown): HermesActivityItem | null {
 
 export async function getHermesStatus(): Promise<HermesStatusResponse> {
   const creds = hermesCredentials();
-  if (!creds) return { status: "unconfigured", detail: HERMES_UNCONFIGURED_DETAIL };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(HERMES_UNCONFIGURED_DETAIL) };
 
   const r = await hermesFetch(creds, "/status");
   if (r.kind === "unreachable") return { status: "unreachable", detail: r.detail };
@@ -198,7 +198,7 @@ export type HermesRunResult =
 
 export async function runHermesJob(kind: HermesJobKind, question?: string): Promise<HermesRunResult> {
   const creds = hermesCredentials();
-  if (!creds) return { ok: false, status: "unconfigured", detail: HERMES_UNCONFIGURED_DETAIL };
+  if (!creds) return { ok: false, status: "unconfigured", detail: unconfiguredDetail(HERMES_UNCONFIGURED_DETAIL) };
 
   const r = await hermesFetch(creds, "/run", {
     method: "POST",
@@ -252,7 +252,7 @@ export type HermesJobFetchResult =
 
 export async function getHermesJob(id: string): Promise<HermesJobFetchResult> {
   const creds = hermesCredentials();
-  if (!creds) return { ok: false, status: "unconfigured", detail: HERMES_UNCONFIGURED_DETAIL };
+  if (!creds) return { ok: false, status: "unconfigured", detail: unconfiguredDetail(HERMES_UNCONFIGURED_DETAIL) };
 
   if (!JOB_ID_RE.test(id)) return { ok: false, status: "error", detail: "Invalid job id." };
 
@@ -276,7 +276,7 @@ export async function getHermesJob(id: string): Promise<HermesJobFetchResult> {
 
 export async function getHermesActivity(limit = 20): Promise<HermesActivityResponse> {
   const creds = hermesCredentials();
-  if (!creds) return { status: "unconfigured", detail: HERMES_UNCONFIGURED_DETAIL };
+  if (!creds) return { status: "unconfigured", detail: unconfiguredDetail(HERMES_UNCONFIGURED_DETAIL) };
 
   const r = await hermesFetch(creds, `/activity?limit=${encodeURIComponent(String(limit))}`);
   if (r.kind === "unreachable") return { status: "unreachable", detail: r.detail };
