@@ -228,13 +228,15 @@ async function perState(page, name, vp) {
 const shot = (page, s, name) => page.screenshot({ path: join(OUT_DIR, `${name}-${s.name}.png`), fullPage: s.name === "390" });
 
 // ---- unreadable-settings copy (PR 300), run alone: ONLY=unreadable-copy (SHOTS_ONLY reaches it through shots-json.sh) ----
-// Staged by route interception only. The page never renders the HA `detail` (page-model.ts: "never read"), so copy A cannot show here: UC1 and UC3 report `open` when it is absent.
+// Staged by route interception only. The page never renders the HA `detail` (page-model.ts: "never read"), so UC1 and UC3 stage the autoOff read (unreadable true or false) that the page does use.
 const ONLY = process.env.ONLY ?? process.env.SHOTS_ONLY;
 if (ONLY === "unreadable-copy") {
   const A = "The saved settings can't be read, so this is off until they are restored. Open Settings for details.";
   const OLD = "No Home Assistant connection configured.";
-  FIXTURES.ucUnreadable = { ha: { status: "unconfigured", detail: A }, autoOff: FIXTURES.calm.autoOff };
-  FIXTURES.ucUnconfigured = { ha: { status: "unconfigured", detail: `${OLD} In HA: Profile → Security → Long-lived access tokens.` }, autoOff: FIXTURES.calm.autoOff };
+  const NEW = "The saved settings can’t be read, so Home Assistant is off until they are restored.";
+  const SETUP = "Home Assistant isn’t connected yet.";
+  FIXTURES.ucUnreadable = { ha: { status: "unconfigured", detail: A }, autoOff: { ...FIXTURES.calm.autoOff, enabled: false, unreadable: true } };
+  FIXTURES.ucUnconfigured = { ha: { status: "unconfigured", detail: `${OLD} In HA: Profile → Security → Long-lived access tokens.` }, autoOff: { ...FIXTURES.calm.autoOff, unreadable: false } };
   FIXTURES.ucAutoOff = { ha: FIXTURES.calm.ha, autoOff: { ...FIXTURES.calm.autoOff, enabled: false, unreadable: true } };
   const C = "auto-off can't be read";
   // Padded (16 px) crop of the union of the matched elements, clipped to the page; the bottom nav is hidden like the other scripts.
@@ -257,9 +259,9 @@ if (ONLY === "unreadable-copy") {
         const body = await page.locator("main").innerText();
         const f = await headFit(page);
         if (key === "ucUnreadable") {
-          uc(1, body.includes(A) ? true : "open", `${name} copy A in the DOM`, body.includes(A) ? "present" : "absent: the page does not render the HA detail");
+          uc(1, body.includes(NEW) && !body.includes(SETUP), `${name} unreadable sentence in the DOM, setup sentence absent`, `new=${body.includes(NEW)} setup=${body.includes(SETUP)}`);
           uc(2, !body.includes(OLD), `${name} old "No Home Assistant connection configured" absent`, `present=${body.includes(OLD)}`);
-        } else uc(3, body.includes(OLD) ? true : "open", `${name} old setup text in the DOM`, body.includes(OLD) ? "present" : "absent: the page does not render the HA detail");
+        } else uc(3, body.includes(SETUP) && !body.includes(NEW), `${name} setup sentence in the DOM, unreadable sentence absent`, `setup=${body.includes(SETUP)} new=${body.includes(NEW)}`);
         uc(6, f.w, `${name} no horizontal overflow`, `scrollWidth ${f.sw} clientWidth ${f.cw}`);
         uc(7, f.h, `${name} not clipped`, `scrollHeight ${f.sh} clientHeight ${f.ch}`);
         await crop(page, "[data-feature=head]", name, s.name);

@@ -127,6 +127,7 @@ export function smarthomeModel(i: ModelInput): Model {
   }
   // The upstream `detail` (it can hold a host) is never read.
   if (ha.status === "unconfigured") {
+    if (i.autoOff?.unreadable === true) return head("warn", "Settings unreadable", "The saved settings can’t be read, so Home Assistant is off until they are restored.", "Open Settings for details.", { link: SETTINGS });
     return head("neutral", "Not connected", "Home Assistant isn’t connected yet.", "Add the Home Assistant address and token in Settings → Integrations.", { link: SETTINGS });
   }
   if (ha.status === "unauthorized") {
