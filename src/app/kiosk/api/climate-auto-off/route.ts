@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { contentLengthError } from "@/lib/upload-limit";
-import { loadConfig, CONFIG_UNREADABLE, DATA_DIR_UNWRITABLE, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
+import { loadConfig, configProblem, CONFIG_UNREADABLE, DATA_DIR_UNWRITABLE, loadConfigForSave, saveConfig, type AppConfig } from "@/lib/config";
 import { allowAutoOffSave, autoOffUnchanged, DEFAULT_AUTO_OFF_TIME, parseClimateAutoOffPatch } from "@/lib/climate-auto-off";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,9 @@ function responseShape(cfg: ReturnType<typeof loadConfig>["climateAutoOff"]) {
 }
 
 export async function GET() {
-  return NextResponse.json(responseShape(loadConfig().climateAutoOff));
+  const cfg = loadConfig();
+  // Defaults would otherwise read as "off"; the tablet says the saved schedule can't be read (configProblem is valid right after loadConfig).
+  return NextResponse.json({ ...responseShape(cfg.climateAutoOff), unreadable: configProblem() !== null });
 }
 
 const MAX_BODY_BYTES = 64 * 1024;

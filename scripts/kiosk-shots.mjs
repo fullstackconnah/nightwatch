@@ -1414,6 +1414,113 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "glancerow") {
   process.exit(process.exitCode ?? 0);
 }
 
+// ---- AC auto-off "unreadable" hint (PR 298): pill and sheet states, run alone with SHOTS_ONLY=auto-off-unreadable ----
+// Keys: results.autooff.{lines[], failed[]}; every check prints `AU <id> <width> pass|fail <measured>` and a fail exits 1. Shots auto-off-unreadable-<state>-<width>.png.
+// No cropElement helper exists in this repo, so crops are padded clips (as fullview l.318); the pill crop is scrolled into view first.
+const AU = (results.autooff = { lines: [], failed: [] });
+const auRec = (id, w, ok, measured) => { const line = `AU ${id} ${w} ${ok ? "pass" : "fail"} ${JSON.stringify(measured)}`; AU.lines.push(line); console.log(line); if (!ok) AU.failed.push(line); };
+const AU_LABEL = "AC auto-off: the saved schedule can't be read — open for details";
+const AU_NOTICE = "The saved settings can't be read, so auto-off is not running.";
+const AU_REFUSED = "The saved settings can't be read, so nothing was changed.";
+const AU_PILL = 'button[aria-label^="AC auto-off"]';
+const auBody = (o) => ({ enabled: false, time: "22:30", skipDate: null, lastRunDate: null, unreadable: false, ...o });
+const AU_READ = () => {
+  const pill = document.querySelector('button[aria-label^="AC auto-off"]');
+  if (!pill) return null;
+  const rr = (e) => { const b = e.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, w: b.width, h: b.height }; };
+  const span = pill.querySelector("span.font-mono");
+  const row = pill.parentElement;
+  const other = [...document.querySelectorAll(".text-warn")].find((e) => !pill.contains(e) && !e.closest("[role=dialog]"));
+  const probe = document.createElement("span"); probe.className = "text-warn"; document.querySelector("[data-kiosk-theme]").append(probe);
+  const probeColor = getComputedStyle(probe).color; probe.remove();
+  return { text: span.textContent.trim(), label: pill.getAttribute("aria-label"), color: getComputedStyle(span).color, otherColor: other ? getComputedStyle(other).color : null, probeColor, pill: rr(pill), sibs: [...row.children].filter((c) => c !== pill).map(rr), rowSW: row.scrollWidth, rowCW: row.clientWidth };
+};
+const AU_SHEET = () => {
+  const d = document.querySelector("[role=dialog]");
+  if (!d) return null;
+  const ps = [...d.querySelectorAll("[data-sr-sheet-body] p.text-warn")];
+  const sw = d.querySelector("[role=switch]");
+  const steps = [...d.querySelectorAll('button[aria-label$=" up"], button[aria-label$=" down"]')];
+  return { lines: ps.map((p) => ({ text: p.textContent.trim(), fits: p.scrollWidth <= p.clientWidth, shown: p.getBoundingClientRect().height > 0 })), switchDisabled: sw ? sw.disabled || sw.getAttribute("aria-disabled") === "true" : null, switchChecked: sw?.getAttribute("aria-checked"), steps: steps.length, stepsDisabled: steps.filter((b) => b.disabled).length };
+};
+async function auOpen(w, body, refuse = false) {
+  const vp = { width: w, height: w === 390 ? 844 : 768 };
+  const v = await visit(CONTROLS_URL, { viewport: vp, weather: weatherFor("midday"), fixedTime: true, ha: true, setup: (page) => page.route(/\/kiosk\/api\/climate-auto-off(\?|$)/, (route) => (refuse && route.request().method() === "POST" ? route.fulfill({ status: 503, json: { error: AU_REFUSED } }) : route.fulfill({ json: body }))) });
+  await seen(v.page, AU_PILL, 15_000);
+  await v.page.waitForTimeout(800);
+  return v;
+}
+async function auPillShot(page, w, key, full = false) {
+  const loc = page.locator(AU_PILL);
+  await loc.scrollIntoViewIfNeeded();
+  const box = await loc.boundingBox();
+  const y = box.y + (await page.evaluate(() => scrollY));
+  const x0 = Math.max(0, box.x - 12), y0 = Math.max(0, y - 12);
+  await page.screenshot({ path: join(OUT_DIR, `auto-off-unreadable-${key}-${w}.png`), fullPage: true, clip: { x: x0, y: y0, width: Math.min(w - x0, box.width + 24), height: box.height + 24 } });
+  if (full) await page.screenshot({ path: join(OUT_DIR, `auto-off-unreadable-${key}-full-${w}.png`), fullPage: true });
+}
+async function autoOffShots() {
+  for (const w of [1024, 390]) {
+    await guarded(`autooff ${w}`, async () => {
+      let on, off, un;
+      for (const [key, body] of [["pill-on", auBody({ enabled: true })], ["pill-off", auBody({})], ["pill-unreadable", auBody({ unreadable: true })]]) {
+        const { context, page } = await auOpen(w, body);
+        try {
+          const m = await page.evaluate(AU_READ);
+          if (!m) throw new Error(`${key}: pill not found`);
+          await auPillShot(page, w, key, key === "pill-unreadable");
+          if (key === "pill-on") on = m; else if (key === "pill-off") off = m; else un = m;
+        } finally { await context.close(); }
+      }
+      auRec(1, w, on.text === "22:30", { text: on.text, pillWidth: on.pill.w });
+      auRec(2, w, off.text === "off" && off.label === "AC auto-off is off — configure", { text: off.text, label: off.label });
+      auRec(3, w, un.text === "unread", { text: un.text });
+      auRec(4, w, un.label === AU_LABEL, { label: un.label });
+      const ref = un.otherColor ?? un.probeColor;
+      auRec(5, w, un.color === ref, { color: un.color, ref, refIs: un.otherColor ? "another .text-warn element on the page" : "computed colour of a probe span with class text-warn (the token the class maps to)" });
+      const delta = un.pill.w - on.pill.w;
+      const moved = un.sibs.length === on.sibs.length ? Math.max(0, ...un.sibs.map((s, i) => Math.max(Math.abs(s.left - on.sibs[i].left), Math.abs(s.top - on.sibs[i].top)))) : Infinity;
+      auRec(6, w, moved <= Math.max(0, delta) + 0.5 && un.rowSW <= un.rowCW, { deltaPx: delta, maxSiblingMovePx: moved, siblings: un.sibs.length, rowScrollWidth: un.rowSW, rowClientWidth: un.rowCW });
+      auRec(7, w, Math.abs(un.pill.h - on.pill.h) <= 0.5, { unreadH: un.pill.h, onH: on.pill.h });
+      // sheet states
+      let { context, page } = await auOpen(w, auBody({ unreadable: true }));
+      try {
+        await page.locator(AU_PILL).click();
+        await seen(page, "[role=dialog]", 5000);
+        await page.waitForTimeout(800);
+        const s = await page.evaluate(AU_SHEET);
+        await page.getByRole("dialog").screenshot({ path: join(OUT_DIR, `auto-off-unreadable-sheet-unreadable-${w}.png`) });
+        auRec(8, w, s.lines.length === 1 && s.lines[0].text === AU_NOTICE && s.lines[0].shown, { lines: s.lines });
+        // the step buttons follow the (false) enabled toggle as they do without the notice; the notice must not lock the switch
+        auRec(9, w, s.lines.length === 1 && s.lines[0].fits && s.switchDisabled === false && s.steps > 0 && s.stepsDisabled === (s.switchChecked === "true" ? 0 : s.steps), { fits: s.lines[0]?.fits, switchDisabled: s.switchDisabled, switchChecked: s.switchChecked, steps: s.steps, stepsDisabled: s.stepsDisabled });
+      } finally { await context.close(); }
+      ({ context, page } = await auOpen(w, auBody({ unreadable: true }), true));
+      try {
+        await page.locator(AU_PILL).click();
+        await seen(page, "[role=dialog]", 5000);
+        await page.waitForTimeout(500);
+        await page.getByRole("dialog").locator("[role=switch]").click();
+        await page.getByText(AU_REFUSED).waitFor({ timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        const s = await page.evaluate(AU_SHEET);
+        await page.getByRole("dialog").screenshot({ path: join(OUT_DIR, `auto-off-unreadable-sheet-unreadable-save-refused-${w}.png`) });
+        auRec(10, w, s.lines.some((l) => l.text === AU_REFUSED && l.shown), { lines: s.lines });
+        auRec(11, w, s.lines.length === 1 && s.lines[0].text === AU_REFUSED && !s.lines.some((l) => l.text === AU_NOTICE), { count: s.lines.length });
+      } finally { await context.close(); }
+    });
+  }
+  if (AU.failed.length || AU.lines.length < 22) process.exitCode = 1; // 11 checks x 2 widths; a thrown block leaves fewer
+}
+if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "auto-off-unreadable") {
+  await autoOffShots();
+  results.n16PageErrorMessages = pageErrorMessages;
+  results.n16ForeignRequests = foreign;
+  await browser.close();
+  writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify(results, null, 2));
+  console.log(JSON.stringify(results));
+  process.exit(process.exitCode ?? 0);
+}
+
 if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "polishb") {
   await polishbShots();
   results.n16PageErrorMessages = pageErrorMessages;

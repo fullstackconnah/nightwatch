@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Minus, Moon, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KIOSK_POP_MS, containerCollapse, containerExpand } from "@/lib/kiosk-motion";
-import { parseTime, type AutoOffStatus } from "@/lib/climate-auto-off";
+import { AUTO_OFF_UNREADABLE_NOTICE, autoOffPillView, parseTime, type AutoOffStatus } from "@/lib/climate-auto-off";
 import { SAVE_FAILED, type UseClimateAutoOffResult } from "@/lib/kiosk/use-climate-auto-off";
 import { aimCatch, SunCatch, SunSwitchTrack } from "@/components/kiosk/kiosk-sun-catch";
 
@@ -30,15 +30,15 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
   const originRef = useRef<DOMRect | null>(null);
   const { state } = autoOff;
   if (!state) return null; // config not loaded yet — pill appears once known
+  const view = autoOffPillView(state);
+  const toneClass = { accent: "text-accent", dim: "text-ink-dim", warn: "text-warn" }[view.tone];
   return (
     <>
       <button
         ref={btnRef}
         type="button"
         aria-haspopup="dialog"
-        aria-label={
-          state.enabled ? `AC auto-off at ${state.time} — change schedule` : "AC auto-off is off — configure"
-        }
+        aria-label={view.label}
         onClick={() => {
           originRef.current = btnRef.current?.getBoundingClientRect() ?? null;
           setOpen(true);
@@ -57,12 +57,9 @@ export function ClimateAutoOffPill({ autoOff }: { autoOff: UseClimateAutoOffResu
         className="sr-chip sr-chip-sm kiosk-press -my-2.5 max-[640px]:my-0 flex h-11 items-center gap-1.5 rounded-md px-2.5 outline-none focus-visible:ring-1 focus-visible:ring-accent"
       >
         <SunCatch />
-        <Moon size={14} className={state.enabled ? "text-accent" : "text-ink-dim"} aria-hidden />
-        <span
-          className={cn("font-mono text-xs tabular-nums", state.enabled ? "text-accent" : "text-ink-dim")}
-          data-sr-num=""
-        >
-          {state.enabled ? state.time : "off"}
+        <Moon size={14} className={toneClass} aria-hidden />
+        <span className={cn("font-mono text-xs tabular-nums", toneClass)} data-sr-num="">
+          {view.text}
         </span>
       </button>
       {open && (
@@ -312,6 +309,8 @@ function ClimateAutoOffSheet({
         </div>
 
         <div data-sr-sheet-body className="space-y-5 overflow-y-auto px-4 py-4">
+          {/* A server save message (same <p> style, below) replaces this line. */}
+          {state.unreadable === true && !saveError && <p className="text-xs text-warn">{AUTO_OFF_UNREADABLE_NOTICE}</p>}
           <button
             ref={firstFocusRef}
             type="button"
