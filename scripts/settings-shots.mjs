@@ -1099,13 +1099,79 @@ await guarded("config-notice", () =>
   }),
 );
 
+// ---- Settings polish (PR 297): Orchestra token-from-environment hint, Hermes password cleared when its field hides (ONLY=settings-polish runs just this) ----
+// States: orchestra-env-only, orchestra-saved, orchestra-none, hermes-ask-shown, hermes-ask-hidden-after-typing. Every API call stays mocked; the password is made up.
+FIXTURES.orchestraNone ??= (() => { const f = structuredClone(FIXTURES.orchestraEnvOnly); f.get.meta.orchestraTokenSet = false; return f; })();
+await guarded("settings-polish", () =>
+  each(async (s) => {
+    const sp = (id, ok, measured) => { record(`SP ${id}`, s.name, ok); console.log(`SP ${id} ${s.name} ${ok ? "pass" : "fail"} ${measured}`); };
+    const row = (page) => visibleBody(page).first().locator('section:has(> div > h3:text-is("Orchestra"))');
+    const HINT = "Using the token from the server environment. Entering one here replaces it.";
+    const measure = async (key, name, full) => {
+      const { page } = await visit(s, key, { hash: "#access" });
+      const c = row(page);
+      await c.waitFor({ timeout: SLOW });
+      const hint = c.locator("#orchestra-token-hint");
+      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return { left: Math.round(r.left * 100) / 100, width: Math.round(r.width * 100) / 100 }; });
+      const m = {
+        c, hint, save, hintCount: await hint.count(), clear: await c.getByRole("button", { name: /^Clear/ }).count(),
+        described: await c.locator("[aria-describedby='orchestra-token-hint']").count(),
+        text: (await hint.count()) ? (await hint.innerText()).trim() : "",
+        visible: (await hint.count()) ? await hint.isVisible() : false,
+        style: (await hint.count()) ? await hint.evaluate((e) => { const cs = getComputedStyle(e); return `${cs.fontSize}/${cs.color}`; }) : null,
+        kiosk: await visibleBody(page).first().locator("#kiosk-pin-hint").evaluateAll((es) => es.map((e) => { const cs = getComputedStyle(e); return `${cs.fontSize}/${cs.color}`; })[0] ?? null),
+        fits: (await hint.count()) ? await hint.evaluate((e) => e.scrollWidth <= e.clientWidth) : null,
+        rowFits: await c.evaluate((e) => e.scrollWidth <= e.clientWidth),
+      };
+      await cropEl(page, s, c, `settings-polish-${name}`, true);
+      if (full) await fullShot(page, s, `settings-polish-${name}`);
+      await page.close();
+      return m;
+    };
+    const saved = await measure("calm", "orchestra-saved", false);
+    const env = await measure("orchestraEnvOnly", "orchestra-env-only", true);
+    const none = await measure("orchestraNone", "orchestra-none", false);
+    sp("SP1", env.visible && env.text === HINT, `visible=${env.visible} text=${JSON.stringify(env.text)}`);
+    sp("SP2", env.described === 1, `elements with aria-describedby=orchestra-token-hint: ${env.described}`);
+    sp("SP3", env.clear === 0, `Clear buttons: ${env.clear}`);
+    sp("SP4", env.kiosk === null ? true : env.style === env.kiosk, env.kiosk === null ? "not comparable (no #kiosk-pin-hint)" : `hint ${env.style} kiosk ${env.kiosk}`);
+    sp("SP5", env.fits === true && env.rowFits && env.save.left === saved.save.left && env.save.width === saved.save.width, `hintFits=${env.fits} rowFits=${env.rowFits} save env ${env.save.left}/${env.save.width} saved ${saved.save.left}/${saved.save.width}`);
+    sp("SP6", saved.hintCount === 0 && saved.clear === 1 && saved.described === 0, `hints=${saved.hintCount} clear=${saved.clear} described=${saved.described}`);
+    sp("SP7", none.hintCount === 0 && none.clear === 0, `hints=${none.hintCount} clear=${none.clear}`);
+
+    const card = (page) => visibleBody(page).first().locator('section:has(> div > h2:text-is("Hermes · daemon"))');
+    const open = async () => { const { page } = await visit(s, "calm", { hash: "#hermes" }); return { page, c: card(page) }; };
+    const typeChange = (ids) => ids.pressSequentially(", 201");
+    {
+      const { page, c } = await open();
+      const ids = field(c, "Allowed user IDs (comma-separated)");
+      const pw = field(c, "Current password");
+      const loaded = await ids.inputValue();
+      await typeChange(ids);
+      await pw.waitFor({ timeout: SLOW });
+      await pw.fill("shots-password");
+      sp("SP8", (await pw.isVisible()) && (await pw.inputValue()) === "shots-password", `visible, value length ${(await pw.inputValue()).length}`);
+      await cropEl(page, s, c, "settings-polish-hermes-ask-shown", false);
+      await ids.fill(loaded);
+      await pw.waitFor({ state: "detached", timeout: SLOW });
+      sp("SP9", (await pw.count()) === 0, `password fields after undo: ${await pw.count()}`);
+      await cropEl(page, s, c, "settings-polish-hermes-ask-hidden-after-typing", false);
+      sp("SP11", await ids.evaluate((e) => e === document.activeElement), "activeElement is the Allowed user IDs input after the clear");
+      await typeChange(ids);
+      await pw.waitFor({ timeout: SLOW });
+      sp("SP10", (await pw.inputValue()) === "", `value after re-show: ${JSON.stringify(await pw.inputValue())}`);
+      await page.close();
+    }
+  }),
+);
+
 // The final records print even after failures, and on a runner kill.
 function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
   record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
   console.log(JSON.stringify({ ...checks, diag }));
   // A failed step-up check (or any FAIL record in a single-section run) fails the run.
-  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
+  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ") || k.startsWith("SP ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
   if (bad) process.exitCode = 1;
 }
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));

@@ -60,3 +60,11 @@ test("the ask frame takes focus on open (Cancel) and hands it back to the trigge
   assert.match(w, /if \(phase === "idle" && refocus\.current\) \{[\s\S]*?trigger\.current\?\.focus\(\)/);
   assert.match(w, /e\.key === "Escape"[\s\S]*?cancel\(\)/);
 });
+
+test("Orchestra: a token that comes from the environment says so, beside the field, and Clear stays tied to a saved one", () => {
+  const o = src.slice(src.indexOf("function OrchestraSettingsCard("), src.indexOf("\nfunction ", src.indexOf("function OrchestraSettingsCard(") + 10));
+  assert.match(o, /const tokenFromEnv = Boolean\(data\?\.meta\.orchestraTokenSet\) && !data\?\.meta\.orchestraTokenSaved;/);
+  assert.match(o, /describedBy=\{tokenFromEnv \? "orchestra-token-hint" : undefined\}/);
+  assert.match(o, /\{tokenFromEnv && \(\s*<p id="orchestra-token-hint" className="text-\[0\.7rem\] text-ink-faint -mt-2">\s*Using the token from the server environment\. Entering one here replaces it\.\s*<\/p>\s*\)\}/);
+  assert.match(o, /\{data\?\.meta\.orchestraTokenSaved \? \(\s*<ClearAction/);
+});

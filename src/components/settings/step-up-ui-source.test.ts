@@ -108,3 +108,14 @@ test("Daemon: the final hint and the shared no-password warning, and the helpers
   assert.match(src, /export function StepUpField\(/);
   assert.doesNotMatch(hermesSrc, /function StepUpField|const NO_PASSWORD_WARNING/);
 });
+
+test("Daemon: the typed password is dropped when its field hides, so it never comes back on the next show", () => {
+  assert.match(daemon, /useEffect\(\(\) => \{\s*if \(!askPassword\) setPassword\(""\);\s*\}, \[askPassword\]\);/);
+});
+
+test("SecretField's masked view carries the caller's hint too (the group and the input both take aria-describedby)", () => {
+  const integ = readFileSync(new URL("./settings-integrations.tsx", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const field = integ.slice(integ.indexOf("export function SecretField("), integ.indexOf("export function ClearAction"));
+  assert.equal(field.match(/aria-describedby=\{describedBy\}/g)?.length, 2);
+  assert.match(field, /role="group"\n\s+aria-labelledby=\{label \? labelId : undefined\}\n\s+aria-describedby=\{describedBy\}/);
+});
