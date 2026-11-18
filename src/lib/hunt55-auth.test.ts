@@ -11,7 +11,7 @@ describe("PR A: OIDC allow-list wiring", () => {
     const check = src.indexOf("oidcAllowListCheck(");
     const mint = src.indexOf("createSessionToken(");
     assert.ok(verify > 0 && check > verify && mint > check);
-    assert.match(src, /if \(!oidcAllowListCheck\([^)]*\)\) return ssoErrorRedirect\(req, "denied"\);/);
+    assert.match(src, /const verdict = oidcAllowListCheck\([^)]*\);\s*if \(verdict !== "allowed"\) return ssoErrorRedirect\(req, verdict\);/);
   });
   it("a System-card save keeps the stored allow-list (it spreads ...existing into system)", () => {
     assert.match(read("app/api/settings/system/route.ts"), /system: \{\s*\.\.\.existing,/);
