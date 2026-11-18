@@ -322,11 +322,9 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "unreadable-told") {
     {
       const { context, page } = await loginPage(w, { ssoError: false });
       await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: PW_COPY }) }));
-      // A fill before hydration is wiped by React: refill until the button (disabled while the field is empty) is enabled.
-      for (let i = 0; i < 20 && !(await page.getByRole("button", { name: "Unlock" }).isEnabled()); i++) {
-        await page.locator("#password").fill("not-the-password");
-        await page.waitForTimeout(300);
-      }
+      // React attaches __reactProps$ to the field once it hydrates; a fill before that is wiped.
+      await page.waitForFunction(() => Object.keys(document.querySelector("#password")).some((k) => k.startsWith("__reactProps")), null, { timeout: 60_000 });
+      await page.locator("#password").fill("not-the-password");
       await page.getByRole("button", { name: "Unlock" }).click();
       await page.locator("p.text-bad").first().waitFor({ timeout: 10_000 });
       const m = await errorLines(page);
