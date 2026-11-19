@@ -617,6 +617,7 @@ try {
         } else if (state === "A4") await card.getByText(LOAD).waitFor({ timeout: 30_000 });
         else if (state === "A2") await card.getByText(NONE).waitFor({ timeout: 30_000 });
         else await card.getByText("Queue", { exact: true }).waitFor({ timeout: 30_000 });
+        await page.locator("h1", { hasText: NAME }).waitFor({ timeout: 30_000 }); // until then the h1 shows the 64-char id, which overflows at 390
         const t = await card.innerText();
         const count = (s) => t.split(s).length - 1;
         if (state === "A1") {
