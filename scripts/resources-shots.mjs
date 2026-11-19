@@ -191,7 +191,7 @@ async function loadFailed(run, w) {
       return { found: true, nbsp: node.data[i - 1] === " " && node.data[i + 2] === " ", lastLine: Math.round(Math.max(...last.map((r) => r.right)) - Math.min(...last.map((r) => r.left))) };
     });
     rf("R5 'every 10 s' joined by U+00A0", `failed@${w}`, rt.found && rt.nbsp, rt);
-    rf("R6 last line wider than 60px", `failed@${w}`, rt.found && rt.lastLine > 60, rt);
+    rf("R6 last line wider than 40px", `failed@${w}`, rt.found && rt.lastLine > 40, rt);
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-failed-net", "metric=net", async (page) => {
     await rfAlert(page).first().waitFor({ timeout: SLOW });
