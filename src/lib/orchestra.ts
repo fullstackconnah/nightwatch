@@ -1,3 +1,4 @@
+import { readJsonCapped } from "./read-capped.ts";
 import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "./config.ts";
 import type {
   OrchestraDetailResponse,
@@ -19,6 +20,7 @@ import type {
  */
 
 const TIMEOUT_MS = 5000;
+const BODY_MAX = 1024 * 1024;
 export const ORCHESTRA_NAME = /^[a-z][a-z0-9-]{1,23}$/;
 
 export interface OrchestraCredentials {
@@ -60,7 +62,7 @@ async function get(creds: OrchestraCredentials, path: string): Promise<Fetched> 
       return { kind: "unreachable", detail: `The orchestra service answered HTTP ${res.status}.` };
     }
     try {
-      return { kind: "ok", status: res.status, body: await res.json() };
+      return { kind: "ok", status: res.status, body: await readJsonCapped(res, BODY_MAX) };
     } catch (e) {
       // A timeout while the body streams is still a timeout; only a parse failure is an unreadable answer.
       if (e instanceof SyntaxError) return { kind: "unreachable", detail: "The orchestra service sent an unreadable answer." };
