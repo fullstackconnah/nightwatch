@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { docker, removeImage } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS, removeImage } from "@/lib/docker";
 import { isImageId } from "@/lib/container-id";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
     // an in-use image, but a second tab or a stale 30s poll could still send
     // one through — name the owning container(s) rather than let Docker's own
     // opaque 409 be the only answer.
-    const containers = await docker.listContainers({ all: true });
+    const containers = await docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
     const owners = containers
       .filter((c) => c.ImageID?.replace(/^sha256:/, "").startsWith(id.replace(/^sha256:/, "")))
       .map((c) => (c.Names?.[0] || c.Id.slice(0, 12)).replace(/^\//, ""));

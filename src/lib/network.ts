@@ -2,7 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { Memo } from "@/lib/cache";
-import { docker, listContainers } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS, listContainers } from "@/lib/docker";
 import { capConnections } from "@/lib/server-cost";
 import { classifyScope, decodeSocketTableIPv4Hex, isLoopbackAddress, unmapSocketHex } from "@/lib/socket-addr";
 import { HOST_PROC, HOST_ROOTFS, HOST_SYS } from "@/lib/host-metrics";
@@ -410,7 +410,7 @@ async function readDockerNetInfo(warnings: string[]): Promise<DockerNetInfo> {
   const idToName = new Map<string, string>();
   const bridgeAddress = new Map<string, string>();
   try {
-    const nets = await docker.listNetworks();
+    const nets = await docker.listNetworks({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
     for (const n of nets) {
       const shortId = n.Id.slice(0, 12);
       idToName.set(shortId, n.Name);

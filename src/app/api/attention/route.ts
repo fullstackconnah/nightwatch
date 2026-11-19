@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
  * a `failed` status inside the report, never a 500.
  */
 export async function GET(req: Request) {
-  const report = await getAttentionReport(new URL(req.url).searchParams.get("since"));
-  return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
+  try {
+    const report = await getAttentionReport(new URL(req.url).searchParams.get("since"));
+    return NextResponse.json(report, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Attention report unavailable." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
 }

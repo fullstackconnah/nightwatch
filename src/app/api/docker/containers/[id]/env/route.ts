@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { docker } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS } from "@/lib/docker";
 import { envValue } from "@/lib/container-detail";
 import { isContainerId } from "@/lib/container-id";
 
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
   const name = req.nextUrl.searchParams.get("name");
   if (!name || name.length > 256) return NextResponse.json({ error: "invalid name" }, { status: 400, headers: NO_STORE });
   try {
-    const info = await docker.getContainer(id).inspect();
+    const info = await docker.getContainer(id).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
     const value = envValue(info.Config.Env || [], name);
     if (value === undefined) return NextResponse.json({ error: "No such variable." }, { status: 404, headers: NO_STORE });
     return NextResponse.json({ name, value }, { headers: NO_STORE });

@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { docker } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS } from "@/lib/docker";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const [networks, containers] = await Promise.all([
-      docker.listNetworks(),
-      docker.listContainers({ all: true }),
+      docker.listNetworks({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
+      docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
     ]);
     const attached = new Map<string, string[]>();
     for (const c of containers) {

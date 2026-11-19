@@ -34,7 +34,7 @@ test("dockerode read calls give up on an aborted signal when dockerd never answe
 test("every one-shot docker read carries the call deadline", () => {
   const sites: [string, RegExp][] = [
     ["./network.ts", new RegExp(String.raw`docker\.listNetworks\(\{ ${DL} \}\)`)],
-    ["./docker.ts", new RegExp(String.raw`docker\.df\(\{ ${DL} \}\)`)],
+    ["./docker.ts", new RegExp(String.raw`dockerRead\(\)\.df\(\{ ${DL} \}\)`)],
     ["./docker.ts", new RegExp(String.raw`docker\.listImages\(\{ all: false, ${DL} \}\)`)],
     ["./docker.ts", new RegExp(String.raw`docker\.listVolumes\(\{ ${DL} \}\)`)],
     ["./docker.ts", new RegExp(String.raw`\.info\(\{ ${DL} \}\)`)],
