@@ -118,7 +118,10 @@ const diag = {};
 // One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next step runs.
 let stage = "";
 const fail = (vp, e) => record("FAIL", `${stage}@${vp}`, String(e?.message ?? e).split(/\r?\n/)[0]);
-const guarded = (label, fn) => { stage = label; return fn().catch((e) => fail("all", e)); };
+// ONLY=git-honest (SHOTS_ONLY reaches it through shots-json.sh) runs just the sections whose stage starts with it; unset runs all.
+const ONLY = process.env.SHOTS_ONLY || process.env.ONLY;
+const skip = () => !!ONLY && !stage.startsWith(ONLY);
+const guarded = (label, fn) => { stage = label; return skip() ? Promise.resolve() : fn().catch((e) => fail("all", e)); };
 
 const browser = await chromium.launch({ headless: true });
 const sessions = [];
@@ -136,7 +139,7 @@ for (const s of sessions) {
     if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
   }
 }
-const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
+const each = (fn) => skip() ? Promise.resolve() : Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
 
 /** C14: page errors, and any request that leaves the page's own origin. */
 function watch(page, name) {
@@ -399,6 +402,11 @@ await guarded("git-honest", async () => {
         record("GH-3 badge text present for the unknown mirror", vp, await detail(page).getByText(badge, { exact: true }).first().isVisible().catch(() => false));
       }
       if (notice) record("GH-4 notice text present", vp, (await page.locator("main").innerText()).replace(/\s+/g, " ").includes(notice));
+      if (key === "reposPartial") {
+        await openStrip(page, "mirrors");
+        record("GH-7 Mirrors strip reads Not known", vp, (await text(page, '[data-row-id="mirrors"] .st-state')).trim() === "Not known");
+        record("GH-8 mirror panel says mirrors are not known", vp, await detail(page).getByText("Forgejo did not answer for every repo, so mirrors are not known.", { exact: true }).first().isVisible().catch(() => false));
+      }
       record("GH-5 no horizontal overflow (scrollWidth == clientWidth)", vp, await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth));
       const a = await audit(page);
       record("GH-6 no clipped text", vp, a.clipped ? { n: a.clipped, sample: a.clippedSample } : 0);
