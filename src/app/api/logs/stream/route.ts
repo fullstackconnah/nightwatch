@@ -86,22 +86,31 @@ export async function GET(request: Request): Promise<Response> {
       // lines, so no live line is ever delivered ahead of the scrollback it
       // belongs after. One bad container's seed failure is reported and skipped —
       // it must not take the rest of the stream down with it.
-      for (const name of seedNames) {
+      // The reads run in parallel (a hung Docker costs one DOCKER_LOGS_MS deadline, not one
+      // per container, and the heartbeat starts sooner); the results are written in
+      // container order, so the client sees the same sequence as before.
+      const seeds = await Promise.all(
+        seedNames.map(async (name): Promise<string> => {
+          try {
+            const { lines, short } = await readContainerLogTail(name, tail);
+            const payload: LogSeedEvent = { container: name, lines, short };
+            return `event: seed\ndata: ${JSON.stringify(payload)}\n\n`;
+          } catch (err) {
+            console.error(`log scrollback read failed for ${name}`, err);
+            const state: LogTrackState = {
+              container: name,
+              status: "error",
+              detail: `could not read scrollback`,
+            };
+            return `event: state\ndata: ${JSON.stringify(state)}\n\n`;
+          }
+        }),
+      );
+      for (const chunk of seeds) {
         if (closed) break;
-        try {
-          const { lines, short } = await readContainerLogTail(name, tail);
-          const payload: LogSeedEvent = { container: name, lines, short };
-          safeEnqueue(`event: seed\ndata: ${JSON.stringify(payload)}\n\n`);
-        } catch (err) {
-          console.error(`log scrollback read failed for ${name}`, err);
-          const state: LogTrackState = {
-            container: name,
-            status: "error",
-            detail: `could not read scrollback`,
-          };
-          safeEnqueue(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
-        }
+        safeEnqueue(chunk);
       }
+
 
       // Resume replay goes out as plain `line` events, before going live. The
       // live feed attaches (tail 0) only after these reads, so a line logged

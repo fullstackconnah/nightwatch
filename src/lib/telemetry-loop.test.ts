@@ -56,3 +56,19 @@ test("H90-2: safeEnqueue tears the stream down past the back-pressure limit", ()
   assert.match(r, /const STALLED_QUEUE_LIMIT = -120;/);
   assert.match(r, /controller\.desiredSize !== null && controller\.desiredSize < STALLED_QUEUE_LIMIT\) \{[\s\S]{0,200}teardown\(\);/);
 });
+
+test("H91-1: the host disk and net previous sums advance before the hostVitals branch", () => {
+  const t = src("./telemetry.ts");
+  const gate = t.indexOf("if (hostVitals) {");
+  for (const k of ["PrevDiskRead = readSum", "PrevDiskWrite = writeSum", "PrevNetRx = netCounters.rxBytes", "PrevNetTx = netCounters.txBytes"]) {
+    const at = t.indexOf(`__telemetry${k}`);
+    assert.ok(at > 0 && at < gate, `${k} is updated outside if (hostVitals)`);
+  }
+});
+
+test("H91-2: scrollback seeds read in parallel and are written in container order", () => {
+  const r = src("../app/api/logs/stream/route.ts");
+  assert.match(r, /const seeds = await Promise\.all\(\s*seedNames\.map\(/);
+  assert.match(r, /for \(const chunk of seeds\) \{\s*if \(closed\) break;\s*safeEnqueue\(chunk\);/);
+  assert.ok(!/for \(const name of seedNames\)/.test(r), "no sequential seed loop");
+});

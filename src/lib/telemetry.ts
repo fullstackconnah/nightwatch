@@ -168,54 +168,56 @@ async function tick(feedRing: boolean): Promise<void> {
   globalForTelemetry.__telemetryPrevTs = now;
   globalForTelemetry.__telemetryPrevReadAt = readAt;
 
+  // Host rates and previous sums advance every tick, even when getHostVitals() times out:
+  // a stale prev sum would make the next good tick divide a k-tick delta by one tick.
+  // Disk counters are cumulative since boot; sum across devices and derive a rate
+  // against the previous tick's sums via the same guarded rate() helper the
+  // container counters use (counter reset, non-positive elapsed, non-finite).
+  let diskReadRate: number | null = null;
+  let diskWriteRate: number | null = null;
+  if (diskCounters) {
+    const readSum = diskCounters.reduce((a, d) => a + d.readBytes, 0);
+    const writeSum = diskCounters.reduce((a, d) => a + d.writeBytes, 0);
+    // rate() returns 0 when there's no previous sum (first tick) or elapsedSeconds
+    // <= 0 — exactly the "0, not null" behavior required for a fresh start.
+    diskReadRate = rate(readSum, globalForTelemetry.__telemetryPrevDiskRead, hostElapsedSeconds);
+    diskWriteRate = rate(writeSum, globalForTelemetry.__telemetryPrevDiskWrite, hostElapsedSeconds);
+    globalForTelemetry.__telemetryPrevDiskRead = readSum;
+    globalForTelemetry.__telemetryPrevDiskWrite = writeSum;
+  } else {
+    // Unavailable rather than transiently missing — null means "not measured", and
+    // dropping the previous sums means a later recovery starts clean instead of
+    // deriving a rate across an unknown-length gap.
+    globalForTelemetry.__telemetryPrevDiskRead = undefined;
+    globalForTelemetry.__telemetryPrevDiskWrite = undefined;
+  }
+
+  // Net counters are cumulative since boot; derive rates against the previous
+  // tick's values with the same rate() helper — NOT hostVitals.network.rxPerSec.
+  // getHostVitals() derives that field from its own module-level lastNet state,
+  // which every caller (this 1Hz loop, useResources at 10s, useHost at 5s) diffs
+  // against and mutates independently. Calls landing milliseconds apart make dt
+  // tiny and the rate becomes quantisation noise (a dip, or a spike if a packet
+  // burst falls in that window) — and the UI's 60s peak-as-bar-denominator would
+  // let one spurious spike flatten the bar for a full minute. Owning our own
+  // cumulative counters and previous-tick state avoids sharing that mutable state.
+  let rxRate = 0;
+  let txRate = 0;
+  if (netCounters) {
+    rxRate = rate(netCounters.rxBytes, globalForTelemetry.__telemetryPrevNetRx, hostElapsedSeconds);
+    txRate = rate(netCounters.txBytes, globalForTelemetry.__telemetryPrevNetTx, hostElapsedSeconds);
+    globalForTelemetry.__telemetryPrevNetRx = netCounters.rxBytes;
+    globalForTelemetry.__telemetryPrevNetTx = netCounters.txBytes;
+  } else {
+    // Unlike disk, "no net counters" isn't a state the UI needs to show explicitly
+    // (TelemetryHost types rxRate/txRate as plain number) — 0 and carry on, but
+    // still drop stale previous state so a later recovery doesn't diff across a gap.
+    globalForTelemetry.__telemetryPrevNetRx = undefined;
+    globalForTelemetry.__telemetryPrevNetTx = undefined;
+  }
+
   let host: TelemetryHost | undefined;
   if (hostVitals) {
-    // Disk counters are cumulative since boot; sum across devices and derive a rate
-    // against the previous tick's sums via the same guarded rate() helper the
-    // container counters use (counter reset, non-positive elapsed, non-finite).
-    let diskReadRate: number | null = null;
-    let diskWriteRate: number | null = null;
-    if (diskCounters) {
-      const readSum = diskCounters.reduce((a, d) => a + d.readBytes, 0);
-      const writeSum = diskCounters.reduce((a, d) => a + d.writeBytes, 0);
-      // rate() returns 0 when there's no previous sum (first tick) or elapsedSeconds
-      // <= 0 — exactly the "0, not null" behavior required for a fresh start.
-      diskReadRate = rate(readSum, globalForTelemetry.__telemetryPrevDiskRead, hostElapsedSeconds);
-      diskWriteRate = rate(writeSum, globalForTelemetry.__telemetryPrevDiskWrite, hostElapsedSeconds);
-      globalForTelemetry.__telemetryPrevDiskRead = readSum;
-      globalForTelemetry.__telemetryPrevDiskWrite = writeSum;
-    } else {
-      // Unavailable rather than transiently missing — null means "not measured", and
-      // dropping the previous sums means a later recovery starts clean instead of
-      // deriving a rate across an unknown-length gap.
-      globalForTelemetry.__telemetryPrevDiskRead = undefined;
-      globalForTelemetry.__telemetryPrevDiskWrite = undefined;
-    }
-
-    // Net counters are cumulative since boot; derive rates against the previous
-    // tick's values with the same rate() helper — NOT hostVitals.network.rxPerSec.
-    // getHostVitals() derives that field from its own module-level lastNet state,
-    // which every caller (this 1Hz loop, useResources at 10s, useHost at 5s) diffs
-    // against and mutates independently. Calls landing milliseconds apart make dt
-    // tiny and the rate becomes quantisation noise (a dip, or a spike if a packet
-    // burst falls in that window) — and the UI's 60s peak-as-bar-denominator would
-    // let one spurious spike flatten the bar for a full minute. Owning our own
-    // cumulative counters and previous-tick state avoids sharing that mutable state.
-    let rxRate = 0;
-    let txRate = 0;
-    if (netCounters) {
-      rxRate = rate(netCounters.rxBytes, globalForTelemetry.__telemetryPrevNetRx, hostElapsedSeconds);
-      txRate = rate(netCounters.txBytes, globalForTelemetry.__telemetryPrevNetTx, hostElapsedSeconds);
-      globalForTelemetry.__telemetryPrevNetRx = netCounters.rxBytes;
-      globalForTelemetry.__telemetryPrevNetTx = netCounters.txBytes;
-    } else {
-      // Unlike disk, "no net counters" isn't a state the UI needs to show explicitly
-      // (TelemetryHost types rxRate/txRate as plain number) — 0 and carry on, but
-      // still drop stale previous state so a later recovery doesn't diff across a gap.
-      globalForTelemetry.__telemetryPrevNetRx = undefined;
-      globalForTelemetry.__telemetryPrevNetTx = undefined;
-    }
-
     host = {
       // Share of the WHOLE box (0-100), not Docker-style 0-(100*cores) — do not
       // multiply by cores here, the UI needs this as a direct 0-100 bar value.
