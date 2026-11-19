@@ -24,7 +24,7 @@ function useFetchedAt(r: { data?: unknown; error?: unknown; isValidating: boolea
 export default function HomePage() {
   const containers = useContainers(5000);
   const { data, error, mutate } = containers;
-  const { data: widgetData } = useWidgets(20000);
+  const { data: widgetData, error: widgetsError } = useWidgets(20000);
   const { data: backup } = useBackupStatus();
 
   // R6: "last looked" is per device. Seeded null for the server pass, resolved in an effect (the kiosk pattern),
@@ -154,6 +154,7 @@ export default function HomePage() {
         error={!!error && !data}
         filtered={filtered}
         widgets={widgetData?.widgets}
+        widgetsError={!!widgetsError}
         query={query}
         setQuery={setQuery}
         sort={sort}

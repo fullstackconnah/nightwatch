@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { stateSeverity } from "@/lib/container-rank";
 import type { ContainersResponse, TiledContainer, WidgetData } from "@/lib/client";
+import { WIDGETS_HINT_COPY, widgetsHint } from "@/lib/widgets-hint";
 
 export type SortKey = "group" | "name" | "state";
 export const SORT_KEYS: readonly SortKey[] = ["group", "name", "state"];
@@ -35,6 +36,7 @@ export function Launcher({
   error,
   filtered,
   widgets,
+  widgetsError,
   query,
   setQuery,
   sort,
@@ -47,6 +49,8 @@ export function Launcher({
   error: boolean;
   filtered: TiledContainer[];
   widgets: Record<string, WidgetData> | undefined;
+  /** The widgets request failed (SWR keeps the last good `widgets`). */
+  widgetsError: boolean;
   query: string;
   setQuery: (q: string) => void;
   sort: SortKey;
@@ -61,6 +65,9 @@ export function Launcher({
     ? "unknown"
     : `${counts.running} running · ${counts.stopped} stopped${counts.unhealthy > 0 ? ` · ${counts.unhealthy} unhealthy` : ""}`;
   const card = (c: TiledContainer) => <AppCard key={c.id} c={c} widget={widgets?.[c.name]} onChanged={onChanged} />;
+
+  // Only above the grid: the Docker, discovering and no-match notes stand alone (never two notes).
+  const hint = data && filtered.length > 0 ? widgetsHint({ widgetsError, widgets, containersError: error }) : null;
 
   let body: React.ReactNode;
   if (error) body = <p className="hm-note">Apps are unknown while Docker can&apos;t be reached.</p>;
@@ -133,6 +140,7 @@ export function Launcher({
           CPU or memory order in Resources
         </Link>
       </div>
+      {hint && <p className="hm-note">{WIDGETS_HINT_COPY[hint]}</p>}
       {body}
     </section>
   );

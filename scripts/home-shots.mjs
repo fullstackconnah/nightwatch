@@ -46,7 +46,7 @@ const foreign = [];
 const browser = await chromium.launch({ headless: true });
 
 /** One page on its own context. `fixture` is a key of FIX, "loading" or "error"; `state.cur` can be swapped. */
-async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false, pinned = false } = {}) {
+async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false, pinned = false, widgets = "ok", containers = "ok" } = {}) {
   const { name, bound, ...ctxOpts } = width;
   const context = await browser.newContext({
     ...ctxOpts,
@@ -75,7 +75,7 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
     { lastLooked: (pinned ? WK_NOW : NOW) - 8 * 3600_000, doThrow: throwStorage },
   );
   const page = await context.newPage();
-  const state = { cur: fixture, week: "week" };
+  const state = { cur: fixture, week: "week", widgets, containers }; // widgets/containers: "ok" or "fail" (the 502 / 500 the routes send)
   if (pinned) await page.clock.setFixedTime(WK_NOW);
   page.on("pageerror", () => pageErrors++);
   page.on("request", (r) => {
@@ -94,12 +94,16 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
     if (state.cur === "error") return route.fulfill({ status: 500, body: "{}" });
     return route.fulfill({ json: (pinned ? build(WK_NOW) : FIX)[state.cur] });
   });
-  await page.route("**/api/docker/containers", (route) => route.fulfill({ json: CONTAINERS }));
+  await page.route("**/api/docker/containers", (route) =>
+    state.containers === "fail" ? route.fulfill({ status: 500, json: { error: "Couldn't list containers" } }) : route.fulfill({ json: CONTAINERS }),
+  );
   await page.route("**/api/backup", (route) => route.fulfill({ json: backupOk(NOW) }));
-  await page.route("**/api/widgets",(route) => route.fulfill({ json: WIDGETS }));
+  await page.route("**/api/widgets", (route) =>
+    state.widgets === "fail" ? route.fulfill({ status: 502, json: { error: "Couldn't load widgets" } }) : route.fulfill({ json: WIDGETS }),
+  );
   await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".hm-answer").waitFor({ timeout: 30_000 });
-  await page.locator(".hm-app").first().waitFor({ timeout: 30_000 }); // C9 reads the launcher, which loads after the answer
+  if (containers === "ok") await page.locator(".hm-app").first().waitFor({ timeout: 30_000 }); // C9 reads the launcher, which loads after the answer
   if (fixture !== "loading") {
     await page.waitForFunction(() => !/^Checking the box/.test(document.querySelector(".hm-answer")?.textContent ?? ""), null, {
       timeout: 30_000,
@@ -382,6 +386,77 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "unreadable-told") {
   writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ at: new Date(NOW).toISOString(), summary }, null, 2));
   console.log(`unreadable-told: ${results.length - bad.length}/${results.length} pass`);
   console.log(JSON.stringify({ at: new Date(NOW).toISOString(), summary }));
+  process.exit(bad.length ? 1 : 0);
+}
+
+// ---- widgets-hint (nw-widgets-load-hint): the one-line note when /api/widgets fails. Run alone: SHOTS_ONLY=widgets-hint (ONLY works too). ----
+if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "widgets-hint") {
+  const LOAD_COPY = "Widget details can't be loaded right now.";
+  const STALE_COPY = "Widget details may be out of date; the last refresh failed.";
+  const DOCKER_COPY = "Apps are unknown while Docker can't be reached.";
+  const wh = (id, w, state, pass, measured) => {
+    record("WH", pass, `${id} ${state} ${w} ${measured}`);
+    console.log(`WH ${id} ${state} ${w} ${pass ? "pass" : "fail"} ${measured}`);
+  };
+  /** The launcher's notes, their place against the tools row and the grid, the sonarr chips, and page overflow. */
+  const readLauncher = (page) =>
+    page.evaluate(() => {
+      const root = document.querySelector('[data-feature="launcher"]');
+      const notes = [...root.querySelectorAll(".hm-note")];
+      const tools = root.querySelector(".hm-tools").getBoundingClientRect();
+      const first = root.querySelector(".hm-app")?.getBoundingClientRect() ?? null;
+      const n = notes[0]?.getBoundingClientRect() ?? null;
+      const order = notes[0] ? notes[0].compareDocumentPosition(root.querySelector(".hm-app-grid") ?? root.querySelector(".hm-group") ?? notes[0]) : 0;
+      const sonarr = [...root.querySelectorAll(".hm-app")].find((a) => /sonarr/i.test(a.textContent ?? ""));
+      return {
+        count: notes.length,
+        text: notes[0]?.textContent.trim() ?? null,
+        afterTools: n ? n.top >= tools.bottom - 1 : null,
+        beforeCards: n && first ? n.bottom <= first.top + 1 : null,
+        notePrecedesGrid: notes[0] ? !!(order & Node.DOCUMENT_POSITION_FOLLOWING) : null,
+        chip: !!sonarr?.querySelector('[data-feature="widget-fields"]')?.textContent?.includes("Queue"),
+        noOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      };
+    });
+  for (const w of WIDTHS) {
+    const cases = [
+      { state: "s1-ok", opts: {}, prep: async () => {}, want: null, chip: true },
+      { state: "s2-load", opts: { widgets: "fail" }, prep: async () => {}, want: LOAD_COPY, chip: false },
+      {
+        state: "s3-stale",
+        opts: {},
+        prep: async (page, st) => {
+          st.widgets = "fail";
+          await page.waitForTimeout(5300);
+          await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+          await page.waitForTimeout(1200);
+        },
+        want: STALE_COPY,
+        chip: true,
+      },
+      { state: "s5-docker", opts: { widgets: "fail", containers: "fail" }, prep: async () => {}, want: DOCKER_COPY, chip: false },
+    ];
+    for (const c of cases) {
+      const { context, page, state } = await open({ width: w, ...c.opts });
+      await c.prep(page, state);
+      const m = await readLauncher(page);
+      wh("WH1", w.name, c.state, m.count === (c.want ? 1 : 0), `.hm-note count ${m.count}`);
+      wh("WH2", w.name, c.state, m.text === c.want, `text "${m.text}"`);
+      if (c.state === "s2-load" || c.state === "s3-stale") {
+        wh("WH3", w.name, c.state, m.afterTools === true && m.notePrecedesGrid === true, `after tools ${m.afterTools}, before grid ${m.notePrecedesGrid}`);
+        wh("WH5", w.name, c.state, m.beforeCards === true, `note ends above the first card ${m.beforeCards}`);
+      }
+      if (c.state !== "s5-docker") wh("WH4", w.name, c.state, m.chip === c.chip, `sonarr Queue chip ${m.chip}, want ${c.chip}`);
+      wh("WH5", w.name, c.state, m.noOverflow, `no horizontal overflow ${m.noOverflow}`);
+      await page.locator('[data-feature="launcher"]').screenshot({ path: join(OUT_DIR, `widgets-hint-${c.state}-${w.name}.png`) });
+      await context.close();
+    }
+  }
+  await browser.close();
+  const bad = results.filter((r) => !r.pass);
+  const summary = [{ id: "WH", pass: bad.length === 0, runs: results.length, details: results.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) }];
+  writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ at: new Date(NOW).toISOString(), summary }, null, 2));
+  console.log(`widgets-hint: ${results.length - bad.length}/${results.length} pass`);
   process.exit(bad.length ? 1 : 0);
 }
 
