@@ -212,7 +212,7 @@ async function loadFailed(run, w) {
 }
 
 // scan-root (nw-scan-unreadable-root): an unreadable scan root shows as a failed job, an errored pinned scan shows "error", not "0 B".
-const SR_PER_WIDTH = 13; // S1 4 + S2 4 + S3 4 + S4 1 (nw-resources-polish-2: case kept, reason visible)
+const SR_PER_WIDTH = 14; // S1 4 + S2 4 + S3 5 + S4 1 (nw-resources-polish-2: case kept, reason visible)
 let srRan = 0, srPass = 0;
 const sr = (key, where, ok, value) => { srRan++; if (ok) srPass++; check(key, where, ok, value); };
 // Mixed case on purpose: the alert must keep it (a microlabel renders uppercase).
@@ -252,6 +252,9 @@ async function scanRoot(run, w) {
     // Item B: the reason is element text in the row (not only a title), and it is the server's reason.
     const reason = await bad.locator("xpath=..").locator('[role="alert"]').allTextContents();
     sr("S3 reason text is visible in the row", `pinned-error@${w}`, reason.length === 1 && reason[0].trim() === SR_PIN_REASON, reason);
+    // Item B risk: the reason must not squeeze the folder path column (6rem = 96px).
+    const pw = await page.locator('span[title="/mnt/pin-bad"]').evaluate((el) => el.getBoundingClientRect().width);
+    sr("S3 path column is at least 96px", `pinned-error@${w}`, pw >= 96, pw);
     const good = srPinCell(page, "/mnt/pin-good");
     sr("S4 good pin shows a size", `pinned-error@${w}`, /^\d+(\.\d+)? ([KMGT]i?)?B$/.test((await good.innerText()).trim()), await good.innerText());
   }, async (page) => {
