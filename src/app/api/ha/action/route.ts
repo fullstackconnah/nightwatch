@@ -30,7 +30,7 @@ function statusCodeFor(status: HaActionResult["status"]): number {
     case "unreachable":
       return 502;
     case "unauthorized":
-      return 401;
+      return 502; // HA refused our token; a 401 would read as a lost dashboard session and redirect to /login
     case "invalid":
       return 400;
     case "error":
