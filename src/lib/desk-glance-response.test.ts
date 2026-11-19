@@ -37,3 +37,17 @@ test("a good bearer answers 200 with the built glance", async () => {
   assert.deepEqual(await r.p, { status: 200, body: { built: 1 } });
   assert.equal(r.built(), 1);
 });
+
+test("a build that throws answers 502, never 503 (the desk app reads 503 as access off) and never a pass-through 401", async () => {
+  for (const err of [new Error("attention timed out"), Object.assign(new Error("upstream"), { status: 401, statusCode: 401 })]) {
+    const r = await deskGlanceResponse({
+      deskToken: TOKEN,
+      mcpToken: MCP,
+      authorization: `Bearer ${TOKEN}`,
+      build: async () => {
+        throw err;
+      },
+    });
+    assert.deepEqual(r, { status: 502, body: { error: "Attention report unavailable." } });
+  }
+});

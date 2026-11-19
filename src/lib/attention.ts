@@ -20,6 +20,7 @@ import {
   deriveChanges,
   pruneRestartCounts,
   clipError,
+  readWithin,
   type AttentionHit,
   type AttentionReport,
   type ProbeDef,
@@ -504,6 +505,8 @@ async function probeOutside(): Promise<RawHit[] | typeof PENDING> {
 
 /** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
 const PROBE_DEADLINE_MS = ORCHESTRA_RACE_MS + 250;
+/** The backup status file is a few hundred bytes on the host's disk; healthy it reads in milliseconds, so 5 s only trips on a hung mount. */
+const BACKUP_READ_MS = 5_000;
 
 const globalForSeen = globalThis as unknown as { __attentionFirstSeen?: Map<string, string> };
 
@@ -536,7 +539,7 @@ async function computeReport(): Promise<Computed> {
   let backup: BackupStatus | null = null;
   let backupFailure: unknown = null;
   try {
-    backup = await readBackupStatus();
+    backup = await readWithin(readBackupStatus, BACKUP_READ_MS, "the backup status file");
   } catch (e) {
     backupFailure = e;
   }

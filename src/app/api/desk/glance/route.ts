@@ -32,18 +32,12 @@ async function cameraAvailable(): Promise<boolean> {
  * body for every "off" reason; a probe failure is a `failed` status, never a 500.
  */
 export async function GET(req: Request) {
-  let r: { status: number; body: unknown };
-  try {
-    r = await deskGlanceResponse({
-      deskToken: systemSetting("deskToken", "DESK_TOKEN"),
-      mcpToken: systemSetting("mcpToken", "MCP_TOKEN"),
-      authorization: req.headers.get("authorization"),
-      build: buildReport,
-    });
-  } catch {
-    // build() is behind the auth check, so this only answers an authorised caller
-    r = { status: 502, body: { error: "Attention report unavailable." } };
-  }
+  const r = await deskGlanceResponse({
+    deskToken: systemSetting("deskToken", "DESK_TOKEN"),
+    mcpToken: systemSetting("mcpToken", "MCP_TOKEN"),
+    authorization: req.headers.get("authorization"),
+    build: buildReport,
+  });
   return NextResponse.json(r.body, { status: r.status, headers: NO_STORE });
 }
 

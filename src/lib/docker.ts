@@ -43,6 +43,7 @@ function createClient(): Docker {
 interface DockerRootCacheEntry {
   data: string | null;
   ts: number;
+  ttl: number;
 }
 const globalForDocker = globalThis as unknown as {
   __docker?: Docker;
@@ -630,17 +631,19 @@ export async function removeImage(id: string): Promise<ImageRemoveResult> {
 
 const DOCKER_ROOT_TTL_MS = 60 * 60 * 1000; // never changes without a daemon restart
 
-/** GET /info, just for DockerRootDir — cached for an hour since it's effectively static. */
-async function getDockerRootDir(): Promise<string | null> {
-  const now = Date.now();
-  if (globalForDocker.__dockerRootCache && now - globalForDocker.__dockerRootCache.ts < DOCKER_ROOT_TTL_MS) {
-    return globalForDocker.__dockerRootCache.data;
-  }
+/** A failed lookup (timeout, socket error) is retried after this, so one bad call doesn't hide the answer for an hour. */
+const DOCKER_ROOT_FAIL_TTL_MS = 60 * 1000;
+
+/** GET /info, just for DockerRootDir — cached for an hour since it's effectively static, 60 s when the lookup failed. */
+export async function getDockerRootDir(now = Date.now()): Promise<string | null> {
+  const c = globalForDocker.__dockerRootCache;
+  if (c && now - c.ts < c.ttl) return c.data;
+  let ttl = DOCKER_ROOT_TTL_MS;
   const data = await dockerRead()
     .info({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) })
     .then((info: { DockerRootDir?: string }) => info.DockerRootDir ?? null)
-    .catch(() => null);
-  globalForDocker.__dockerRootCache = { data, ts: now };
+    .catch(() => ((ttl = DOCKER_ROOT_FAIL_TTL_MS), null));
+  globalForDocker.__dockerRootCache = { data, ts: now, ttl };
   return data;
 }
 
