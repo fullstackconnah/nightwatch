@@ -1,13 +1,16 @@
 // shortcut: dev and ino as numbers, exact below 2^53; switch to { bigint: true } if a filesystem here ever exceeds that
-export function fileIdentity(st: { dev: number; ino: number }): string {
-  return `${st.dev}:${st.ino}`;
+// null when nlink <= 1 (or 0/missing, as some FUSE mounts report): such a file cannot be a hardlink, and
+// those mounts can reuse one dev:ino for different files, so it must never be dropped as a repeat.
+export function fileIdentity(st: { dev: number; ino: number; nlink: number }): string | null {
+  return st.nlink > 1 ? `${st.dev}:${st.ino}` : null;
 }
 
 /** Returns a filter that is true only the first time it sees an identity, so
- *  hardlinks to one file count once (the first path met stays). */
-export function newIdentityFilter(): (identity: string) => boolean {
+ *  hardlinks to one file count once (the first path met stays). A null identity is always first. */
+export function newIdentityFilter(): (identity: string | null) => boolean {
   const seen = new Set<string>();
   return (identity) => {
+    if (identity === null) return true;
     if (seen.has(identity)) return false;
     seen.add(identity);
     return true;
