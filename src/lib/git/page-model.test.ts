@@ -28,6 +28,7 @@ function ok(o: Partial<GitSnapshotOk> = {}): GitSnapshotOk {
       { repo: "lab/c", name: "feat/z", commitDate: iso(-4 * H), isDefault: false },
     ],
     mirrors: ["lab/a", "lab/b", "lab/c", "lab/d"].map((r) => mirror(r)),
+    partial: 0,
     ...o,
   };
 }
@@ -192,4 +193,48 @@ test("stale (poll failing, or older than three polls): Stale chip, old answer, S
     assert.notEqual(m.chip.label, "In sync");
   }
   assert.equal(gitModel(input({ lastOkAt: NOW - 170_000 })).stale, false);
+});
+
+const unk = (r: string) => mirror(r, { lastSync: null, defaultBranch: { state: "unknown" } });
+const TAIL = "2 open pull requests; last commit 3 h ago in lab/a.";
+test("honest sync: one mirror that could not be compared is not In sync", () => {
+  const m = gitModel(input({ data: ok({ repos: [repo("a")], mirrors: [unk("lab/a")] }) }));
+  assert.deepEqual(m.chip, { tone: "neutral", label: "Not compared" });
+  assert.equal(m.answer, `The mirror could not be compared with GitHub. ${TAIL}`);
+  assert.match(m.strips[0].state, /1 not compared/);
+  assert.doesNotMatch(m.strips[0].state, /in sync/);
+});
+test("honest sync: all unknown, and two synced with one unknown", () => {
+  const all = gitModel(input({ data: ok({ mirrors: ["lab/a", "lab/b", "lab/c"].map(unk) }) }));
+  assert.equal(all.answer, `None of the 3 mirrors could be compared with GitHub. ${TAIL}`);
+  const mixed = gitModel(input({ data: ok({ mirrors: [mirror("lab/a"), mirror("lab/b"), unk("lab/c")] }) }));
+  assert.deepEqual(mixed.chip, { tone: "neutral", label: "Not compared" });
+  assert.equal(mixed.answer, `2 of 3 mirrors are in sync with GitHub; 1 could not be compared. ${TAIL}`);
+  assert.equal(mixed.strips[0].state, "2 in sync · 1 not compared");
+});
+test("honest sync: failing and diverged still outrank unknown", () => {
+  const f = gitModel(input({ data: ok({ mirrors: [unk("lab/a"), mirror("lab/b", { lastError: "boom" })] }) }));
+  assert.equal(f.chip.label, "Mirror failing");
+  const d = gitModel(input({ data: ok({ mirrors: [unk("lab/a"), mirror("lab/b", { defaultBranch: { state: "diverged", aheadBy: 1, behindBy: 0 } })] }) }));
+  assert.equal(d.chip.label, "Diverged");
+});
+test("honest sync: all synced stays In sync with no notice", () => {
+  const m = gitModel(input());
+  assert.deepEqual(m.chip, { tone: "ok", label: "In sync" });
+  assert.equal(m.notice, null);
+});
+test("honest sync: partial repos make In sync and No mirrors Incomplete, with a notice and no All claim", () => {
+  const m = gitModel(input({ data: ok({ partial: 1 }) }));
+  assert.deepEqual(m.chip, { tone: "warn", label: "Incomplete" });
+  assert.equal(m.notice, "1 repo did not answer fully, so this may be incomplete.");
+  assert.equal(m.answer, `Forgejo did not answer for every repo. ${TAIL}`);
+  const none = gitModel(input({ data: ok({ partial: 2, mirrors: [] }) }));
+  assert.deepEqual(none.chip, { tone: "warn", label: "Incomplete" });
+  assert.equal(none.notice, "2 repos did not answer fully, so this may be incomplete.");
+  assert.doesNotMatch(none.answer, /No mirrors to GitHub/);
+});
+test("honest sync: a stale notice wins over the partial one", () => {
+  const m = gitModel(input({ data: ok({ partial: 1 }), loadError: true }));
+  assert.equal(m.notice, PAUSED);
+  assert.equal(m.chip.label, "Stale");
 });

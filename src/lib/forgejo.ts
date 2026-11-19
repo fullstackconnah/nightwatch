@@ -1,7 +1,7 @@
-import { loadConfig, unconfiguredDetail } from "@/lib/config";
-import { Memo } from "@/lib/cache";
-import { readJsonCapped } from "@/lib/read-capped";
-import { commitDate, newestFirst } from "@/lib/git/commit-order";
+import { loadConfig, unconfiguredDetail } from "./config.ts";
+import { Memo } from "./cache.ts";
+import { readJsonCapped } from "./read-capped.ts";
+import { commitDate, newestFirst } from "./git/commit-order.ts";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -10,7 +10,7 @@ import type {
   GitPullRequest,
   GitRepoSummary,
   GitSnapshot,
-} from "@/lib/types/forgejo";
+} from "./types/forgejo.ts";
 
 /**
  * Server-only Forgejo client for the /git commit stream + mirror-sync
@@ -391,7 +391,7 @@ function unconfiguredSnapshot(): GitSnapshot {
   };
 }
 
-async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSnapshot> {
+export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSnapshot> {
   const searchRes = await forgejoFetch<ForgejoSearchReposResponse>(creds.url, creds.token, "/api/v1/repos/search?limit=50");
   if (!searchRes.ok) {
     return {
