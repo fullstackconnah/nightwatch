@@ -12,6 +12,10 @@ const SRC = ${JSON.stringify(SRC)};
 export async function resolve(s, c, next) {
   if (s.startsWith("@/")) return next(SRC + s.slice(2) + ".ts", c);
   if (s === "next/server" || s === "next/headers") return next(s + ".js", c);
+  // widgets/builtins.ts imports "./jsonpath" with no extension; plain node needs the .ts.
+  if (s.startsWith(".") && !/\\.[a-z]+$/.test(s)) {
+    try { return await next(s, c); } catch { return next(s + ".ts", c); }
+  }
   return next(s, c);
 }`));
 const { NextRequest } = await import("next/server");
@@ -26,6 +30,7 @@ const ROUTES: { name: string; cap: number; load: () => Promise<{ POST: (req: Ins
   { name: "kiosk/api/assistant", cap: 4 * KB, url: "/kiosk/api/assistant", load: () => import("../app/kiosk/api/assistant/route.ts") },
   { name: "kiosk/api/climate-auto-off", cap: 64 * KB, url: "/kiosk/api/climate-auto-off", load: () => import("../app/kiosk/api/climate-auto-off/route.ts") },
   { name: "kiosk/api/ha/action", cap: 64 * KB, url: "/kiosk/api/ha/action", load: () => import("../app/kiosk/api/ha/action/route.ts") },
+  { name: "widgets/action", cap: 64 * KB, url: "/api/widgets/action", load: () => import("../app/api/widgets/action/route.ts") },
 ];
 
 const ENV = ["DATA_DIR", "SESSION_SECRET"] as const;

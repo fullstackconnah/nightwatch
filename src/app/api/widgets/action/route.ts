@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadConfig } from "@/lib/config";
+import { contentLengthError } from "@/lib/upload-limit";
 import { isValidWidgetAction } from "@/lib/widgets/actions";
 import { arrCommand, piholeSetBlocking, qbitSetPaused } from "@/lib/widgets/builtins";
 import { WidgetError } from "@/lib/widgets/types";
@@ -18,7 +19,11 @@ export const dynamic = "force-dynamic";
  * answer, and the UI reads `ok` to decide how to render `message`. Only a
  * malformed request or an unknown container/action is a real HTTP error.
  */
+const MAX_BODY_BYTES = 64 * 1024;
+
 export async function POST(req: NextRequest) {
+  const tooBig = contentLengthError(req.headers.get("content-length"), MAX_BODY_BYTES, "The request");
+  if (tooBig) return NextResponse.json({ error: tooBig.detail }, { status: tooBig.status });
   const body = ((await req.json().catch(() => null)) ?? {}) as { container?: unknown; action?: unknown };
   const container = typeof body.container === "string" ? body.container : null;
   const action = typeof body.action === "string" ? body.action : null;
