@@ -122,10 +122,10 @@ export function LargestFilesSection({ scanRoot }: { scanRoot: string }) {
         </div>
       )}
 
-      {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
+      {startError && <div role="alert" className="microlabel !text-warn/80 !normal-case !tracking-normal break-words">{startError}</div>}
       {statusLost && <div role="alert" className="microlabel !text-warn/80">{SCAN_STATUS_LOST}</div>}
       {showResults && job.state === "error" && (
-        <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
+        <div role="alert" className="microlabel !text-warn/80 !normal-case !tracking-normal break-words">{job.error ?? "scan failed"}</div>
       )}
 
       {showResults && job.state === "done" && job.result && (
@@ -213,10 +213,10 @@ export function DuplicatesSection({ scanRoot }: { scanRoot: string }) {
         </div>
       )}
 
-      {startError && <div role="alert" className="microlabel !text-warn/80">{startError}</div>}
+      {startError && <div role="alert" className="microlabel !text-warn/80 !normal-case !tracking-normal break-words">{startError}</div>}
       {statusLost && <div role="alert" className="microlabel !text-warn/80">{SCAN_STATUS_LOST}</div>}
       {showResults && job.state === "error" && (
-        <div role="alert" className="microlabel !text-warn/80">{job.error ?? "scan failed"}</div>
+        <div role="alert" className="microlabel !text-warn/80 !normal-case !tracking-normal break-words">{job.error ?? "scan failed"}</div>
       )}
 
       {showResults && job.state === "done" && job.result && (

@@ -149,7 +149,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
       >
         <RotateCw size={13} className={refreshing ? "animate-spin motion-reduce:animate-none" : ""} />
       </button>
-      {refreshError && <PinError>{refreshError}</PinError>}
+      {refreshError ? <PinError>{refreshError}</PinError> : size === "error" && scan?.error && <PinError>{scan.error}</PinError>}
       {unpinError && <PinError>{unpinError}</PinError>}
       <button
         type="button"
