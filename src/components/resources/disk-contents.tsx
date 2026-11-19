@@ -238,10 +238,11 @@ export function DiskContentsPanel({ label }: { label: string }) {
           }
 
           return (
-            <div key={r.key} title={r.title} className="flex items-center gap-2.5 min-h-11 md:min-h-8 py-1.5">
+            <div key={r.key} className="flex items-center gap-2.5 min-h-11 md:min-h-8 py-1.5">
               <span className="font-mono text-[0.75rem] break-all flex-1 min-w-0">
                 {r.badge && <span className="microlabel mr-1.5">{r.badge}</span>}
                 {r.label}
+                {r.title && <span className="microlabel !normal-case !tracking-normal font-sans block break-words">{r.title}</span>}
               </span>
               {bar}
               {sizeLabel}

@@ -803,7 +803,7 @@ function ResourcesPageInner() {
       </header>
 
       {/* totals strip: CPU, MEM and ALL read the box band (or the process table) instead */}
-      {!(historyMetric || allActive) && (
+      {!(historyMetric || allActive) && load !== "failed" && (
       <div className="panel px-4 py-3 grid grid-cols-2 gap-x-6 gap-y-2 sm:flex sm:items-center sm:flex-wrap text-xs">
         <div>
           <div className="microlabel">containers CPU</div>
