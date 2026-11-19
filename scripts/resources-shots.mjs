@@ -180,7 +180,7 @@ async function loadFailed(run, w) {
     rf("R2 exactly one error block", `load-failed-net@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
     rf("R2 header has no '0 containers'", `load-failed-net@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
     rf("R2 header line is exactly unavailable", `load-failed-net@${w}`, (await rfHeader(page).innerText()).trim().toLowerCase() === "unavailable", await rfHeader(page).innerText());
-    rf("R2 block has box band clause", `load-failed-net@${w}`, (await rfAlert(page).first().innerText()).includes("box band above"), null);
+    rf("R2 block has no box band clause", `load-failed-net@${w}`, !(await rfAlert(page).first().innerText()).includes("box band above"), null);
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-ready-null-volumes", "metric=disk", async (page) => {
     await page.getByText(SYSTEM_LINE).waitFor({ timeout: SLOW });

@@ -1102,7 +1102,7 @@ function ResourcesPageInner() {
           treemap asserts a proportion that does not exist. Don't feed GPU into it. */}
       {!gpuActive && !allActive && !historyMetric && load === "failed" && (
         <div className="panel">
-          <ResourcesLoadError error={resourcesError} onRetry={() => void mutate()} bandAbove={metric !== "disk"} />
+          <ResourcesLoadError error={resourcesError} onRetry={() => void mutate()} bandAbove={false} />
         </div>
       )}
       {!gpuActive && !allActive && !historyMetric && load !== "failed" && (
