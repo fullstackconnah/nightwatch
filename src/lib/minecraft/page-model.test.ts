@@ -20,7 +20,7 @@ const backup = (hoursAgo: number, file = `atm10-${hoursAgo}.tar.gz`) => ({
 });
 function input(o: Partial<ModelInput> = {}): ModelInput {
   return {
-    status: status(), statusError: false, container: running, containersReady: true,
+    status: status(), statusError: false, container: running, containersReady: true, containersError: false,
     backups: [backup(6), backup(30), backup(54), backup(78), backup(102)], backupsError: false,
     lastLine: "[10:00:00] Done (41.2s)!", lastOkAt: NOW - 4000, now: NOW, ...o,
   };
@@ -41,6 +41,47 @@ test("loading: Checking, nothing writable, no strip opens by itself", () => {
 
 test("containers still loading counts as loading", () => {
   assert.equal(minecraftModel(input({ containersReady: false, container: undefined })).chip.label, "Checking");
+});
+
+test("containers never answered and failing: No Docker, not the loading answer, nothing writable", () => {
+  const m = minecraftModel(input({ containersReady: false, containersError: true, container: undefined }));
+  assert.deepEqual(m.chip, { tone: "warn", label: "No Docker" });
+  assert.doesNotMatch(m.answer, /Connecting/);
+  assert.match(m.answer, /Docker isn’t answering/);
+  assert.deepEqual(enabled(m), []);
+  assert.equal(m.autoTarget, "keep");
+});
+
+test("containers never answered, no error yet: still Checking (guard)", () => {
+  assert.equal(minecraftModel(input({ containersReady: false, containersError: false, container: undefined })).chip.label, "Checking");
+});
+
+const down = (o: Partial<ModelInput>) => minecraftModel(input({ status: status({ manager: "unreachable", managerDetail: "x", instances: [], active: null, players: null }), ...o }));
+
+test("manager down with the container exited: says stopped, not running", () => {
+  const m = down({ container: { state: "exited", exitCode: 0, startedAt: null } });
+  assert.match(m.answer, /stopped/);
+  assert.doesNotMatch(m.answer, /is running/);
+});
+
+test("manager down with the container paused: names the state, not stopped", () => {
+  const m = down({ container: { state: "paused", exitCode: null, startedAt: null } });
+  assert.match(m.answer, /Docker says the server is paused\./);
+  assert.doesNotMatch(m.answer, /stopped/);
+});
+
+test("manager down with no container: says there is no Minecraft container", () => {
+  assert.match(down({ container: undefined }).answer, /no Minecraft container/);
+});
+
+test("manager down with the container running: today’s sentence (guard)", () => {
+  assert.equal(down({}).answer, "Docker says the server is running, but mc-manager isn’t answering.");
+});
+
+test("stale evidence blames the dashboard’s status check, not mc-manager", () => {
+  const m = minecraftModel(input({ statusError: true, lastOkAt: NOW - 40_000 }));
+  assert.match(m.evidence, /status check stopped answering/);
+  assert.doesNotMatch(m.evidence, /mc-manager stopped answering/);
 });
 
 test("unconfigured: no strips, says what is missing, links to Settings", () => {
@@ -65,7 +106,7 @@ test("token rejected: warn, Server opens, only Start/Stop/Restart work", () => {
 test("down: warn, Server opens, why-line notice, Docker verbs still work", () => {
   const m = minecraftModel(input({ status: status({ manager: "unreachable", managerDetail: "connect refused", instances: [], active: null, players: null }) }));
   assert.deepEqual(m.chip, { tone: "warn", label: "Manager down" });
-  assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.");
+  assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering.");
   assert.equal(m.evidence, "mc-manager isn’t answering · retrying every 10 s");
   assert.doesNotMatch(m.evidence, /ECONNREFUSED|:8090|example.invalid|connect refused/);
   assert.equal(m.notice, "Start, stop and restart still work through Docker.");
@@ -155,7 +196,7 @@ test("stale: neutral chip, answer says how old, every write off, strips unchange
   const m = minecraftModel(input({ statusError: true, lastOkAt: NOW - 40_000 }));
   assert.deepEqual(m.chip, { tone: "neutral", label: "Stale" });
   assert.equal(m.answer, "Showing what was true 40 s ago: minecraft is running ATM10. 2 of 10 players online.");
-  assert.equal(m.evidence, "Last update 40 s ago · mc-manager stopped answering");
+  assert.equal(m.evidence, "Last update 40 s ago · the dashboard’s status check stopped answering");
   assert.equal(m.notice, "Controls are paused while the page shows old data.");
   assert.equal(m.autoTarget, "keep");
   assert.deepEqual(enabled(m), []);

@@ -40,6 +40,8 @@ export const SEARCH = {
 export const FIXTURES = {
   // Loading: the status call is never answered.
   loading: { ...base, status: "hang" },
+  // No Docker: the container list fails from first load (the route answers 500).
+  noDocker: { ...base, status: okStatus, containers: "fail" },
   // Unconfigured: no strips.
   unconfigured: { ...base, status: { manager: "unconfigured", instances: [], active: null, players: null, rcon: "unconfigured" }, container: null },
   // Token rejected.
