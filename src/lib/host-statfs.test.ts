@@ -44,3 +44,19 @@ test("hung first mount does not hide the healthy second", async () => {
   assert.equal(a, null);
   assert.equal(b, stat);
 });
+
+test("a synchronous throw returns null and leaves the target out of the set", async () => {
+  const boom = (() => { throw new Error("sync"); }) as never;
+  assert.equal(await statfsWithDeadline("/s", { statfs: boom, deadlineMs: 20 }), null);
+  assert.ok(!pendingStatfsTargets.has("/s"));
+});
+
+test("deadline wins, then the promise rejects: target freed, no unhandled rejection", async () => {
+  let fail!: (e: Error) => void;
+  const late = () => new Promise((_, rej) => { fail = rej; });
+  assert.equal(await statfsWithDeadline("/r", { statfs: late as never, deadlineMs: 20 }), null);
+  assert.ok(pendingStatfsTargets.has("/r"));
+  fail(new Error("EIO"));
+  await new Promise((r) => setImmediate(r));
+  assert.ok(!pendingStatfsTargets.has("/r"));
+});

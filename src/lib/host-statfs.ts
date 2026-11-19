@@ -12,7 +12,13 @@ export async function statfsWithDeadline(
 ): Promise<fs.StatsFs | null> {
   if (pendingStatfsTargets.has(target)) return null;
   pendingStatfsTargets.add(target);
-  const call = statfs(target);
+  let call: Promise<fs.StatsFs>;
+  try {
+    call = statfs(target);
+  } catch {
+    pendingStatfsTargets.delete(target);
+    return null;
+  }
   const settled = call.then(
     () => undefined,
     () => undefined,

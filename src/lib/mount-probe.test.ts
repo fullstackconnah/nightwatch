@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blockDeviceName, classifyDeviceGone, classifyMountError, probeOne } from "./mount-probe.ts";
+import { blockDeviceName, classifyDeviceGone, classifyMountError, mountsToProbe, probeOne } from "./mount-probe.ts";
 
 for (const code of ["EIO", "ENOTCONN", "ESTALE", "ENODEV", "ENXIO", "TIMEOUT"]) {
   test(`${code} is a dead mount`, () => {
@@ -77,4 +77,17 @@ test("probeOne: a still-pending read is not restarted and reports TIMEOUT", asyn
   release();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(await probeOne("t-pend", async () => [], 1000), undefined);
+});
+
+test("mountsToProbe: host list null gives the vitals mounts", () => {
+  assert.deepEqual(mountsToProbe(null, ["/", "/mnt/a"]), ["/", "/mnt/a"]);
+});
+
+test("mountsToProbe: a mount missing from vitals (hung) is still listed, host order first, no duplicates", () => {
+  assert.deepEqual(mountsToProbe(["/", "/mnt/hung", "/mnt/a"], ["/mnt/a", "/", "/mnt/extra"]), ["/", "/mnt/hung", "/mnt/a", "/mnt/extra"]);
+});
+
+test("mountsToProbe: both empty gives an empty list", () => {
+  assert.deepEqual(mountsToProbe([], []), []);
+  assert.deepEqual(mountsToProbe(null, []), []);
 });
