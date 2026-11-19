@@ -70,13 +70,22 @@ const RANGE_MS: Record<HistoryRange, number> = {
 interface FileCacheEntry {
   mtimeMs: number;
   samples: MetricsHistorySample[];
+  lastUsed: number;
 }
+
+/** What the mount-growth reader keeps: it never reads cpu, mem or containers. */
+type MountSample = Pick<MetricsHistorySample, "t" | "mounts">;
+
+// Ten 30 s polls, so two views polling different ranges never evict each other.
+const FILE_CACHE_IDLE_MS = 5 * 60_000;
 
 const globalForHistory = globalThis as unknown as {
   __metricsHistoryLastSampleTs?: number;
   __metricsHistoryLastPrunedDate?: string;
   __metricsHistoryWarned?: Set<string>;
   __metricsHistoryFileCache?: Map<string, FileCacheEntry>;
+  __metricsHistoryMountCache?: Map<string, { mtimeMs: number; samples: MountSample[] }>;
+  __metricsHistoryWriting?: boolean;
   __metricsHistorySince?: Map<string, number>;
 };
 
@@ -107,6 +116,11 @@ function warnOnce(reason: string, err: unknown): void {
 function fileCache(): Map<string, FileCacheEntry> {
   if (!globalForHistory.__metricsHistoryFileCache) globalForHistory.__metricsHistoryFileCache = new Map();
   return globalForHistory.__metricsHistoryFileCache;
+}
+
+function mountCache(): Map<string, { mtimeMs: number; samples: MountSample[] }> {
+  if (!globalForHistory.__metricsHistoryMountCache) globalForHistory.__metricsHistoryMountCache = new Map();
+  return globalForHistory.__metricsHistoryMountCache;
 }
 
 /** Same resolution as config.ts's dataDir(): DATA_DIR env var (a mounted volume
@@ -162,6 +176,7 @@ async function pruneOldFiles(today: string): Promise<void> {
       try {
         await fsp.unlink(f.path);
         fileCache().delete(f.path);
+        mountCache().delete(f.path);
         sinceMemo().delete(f.path);
       } catch (err) {
         warnOnce("prune failed", err);
@@ -234,25 +249,38 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
 export function recordMetricsHistoryTick(input: MetricsHistoryTickInput): void {
   const last = globalForHistory.__metricsHistoryLastSampleTs ?? 0;
   if (shouldSkipTick(input.ts, last, SAMPLE_INTERVAL_MS)) return;
+  // One write at a time: on a hung volume each stuck write holds a libuv thread. A skipped tick leaves the clock alone, so the next tick after the write settles records.
+  if (globalForHistory.__metricsHistoryWriting) return;
   // Set before the write resolves — a slow write must not cause a second tick to
   // pile on another write once the interval has merely nearly elapsed.
   globalForHistory.__metricsHistoryLastSampleTs = input.ts;
-  void writeSample(input).catch((err) => warnOnce("sample write threw", err));
+  globalForHistory.__metricsHistoryWriting = true;
+  void writeSample(input)
+    .catch((err) => warnOnce("sample write threw", err))
+    .finally(() => {
+      globalForHistory.__metricsHistoryWriting = false;
+    });
 }
 
 /** Parses one JSONL file, using a globalThis cache keyed by path + mtime so a
  *  7-day query (up to 8 files) doesn't re-read and re-parse every file on every
  *  ~30s poll — only files that changed since the last read are touched. */
 async function readFileCached(filePath: string): Promise<MetricsHistorySample[]> {
+  const cache = fileCache();
+  const now = Date.now();
+  for (const [p, e] of cache) if (now - e.lastUsed > FILE_CACHE_IDLE_MS) cache.delete(p);
+
   let stat: fs.Stats;
   try {
     stat = await fsp.stat(filePath);
   } catch {
     return [];
   }
-  const cache = fileCache();
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached.samples;
+  if (cached && cached.mtimeMs === stat.mtimeMs) {
+    cached.lastUsed = now;
+    return cached.samples;
+  }
 
   let text: string;
   try {
@@ -262,14 +290,52 @@ async function readFileCached(filePath: string): Promise<MetricsHistorySample[]>
     return cached?.samples ?? [];
   }
 
-  const samples: MetricsHistorySample[] = [];
+  const samples = parseJsonl(text, (s) => s);
+  cache.set(filePath, { mtimeMs: stat.mtimeMs, samples, lastUsed: now });
+  return samples;
+}
+
+/** One corrupt line (e.g. a torn write mid-append) must not invalidate the rest
+ *  of the day's file; `keep` lets a reader retain only the fields it uses. */
+function parseJsonl<T>(text: string, keep: (s: MetricsHistorySample) => T): T[] {
+  const out: T[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     try {
-      samples.push(JSON.parse(line) as MetricsHistorySample);
+      out.push(keep(JSON.parse(line) as MetricsHistorySample));
     } catch {
-      // One corrupt line (e.g. a torn write mid-append) must not invalidate the
-      // rest of the day's file.
+      // skipped
+    }
+  }
+  return out;
+}
+
+const toMountSample = (s: MetricsHistorySample): MountSample => ({ t: s.t, mounts: s.mounts });
+
+/** Like readFileCached but keeps only {t, mounts}: the 14d growth query would
+ *  otherwise hold every fully parsed day (all containers) for as long as it
+ *  runs. Reuses the full cache's entry when it is current; never writes to it. */
+async function readMountsCached(filePath: string): Promise<MountSample[]> {
+  let stat: fs.Stats;
+  try {
+    stat = await fsp.stat(filePath);
+  } catch {
+    return [];
+  }
+  const cache = mountCache();
+  const cached = cache.get(filePath);
+  if (cached && cached.mtimeMs === stat.mtimeMs) return cached.samples;
+
+  const full = fileCache().get(filePath);
+  let samples: MountSample[];
+  if (full && full.mtimeMs === stat.mtimeMs) {
+    samples = full.samples.map(toMountSample);
+  } else {
+    try {
+      samples = parseJsonl(await fsp.readFile(filePath, "utf8"), toMountSample);
+    } catch (err) {
+      warnOnce("read failed", err);
+      return cached?.samples ?? [];
     }
   }
   cache.set(filePath, { mtimeMs: stat.mtimeMs, samples });
@@ -449,7 +515,7 @@ export interface MountGrowthResult {
 }
 
 function downsampleMount(
-  samples: MetricsHistorySample[],
+  samples: MountSample[],
   mount: string,
   startTs: number,
   endTs: number,
@@ -458,8 +524,8 @@ function downsampleMount(
   const buckets = new Map<number, { sum: number; n: number }>();
   for (const s of samples) {
     if (s.t < startTs || s.t > endTs) continue;
-    const used = s.mounts[mount];
-    if (used == null) continue;
+    const used = s.mounts?.[mount]; // "constructor" must not resolve to Object.prototype's
+    if (typeof used !== "number") continue;
     const key = Math.floor(s.t / widthMs) * widthMs;
     let b = buckets.get(key);
     if (!b) {
@@ -501,11 +567,11 @@ export async function queryMountHistory(range: GrowthRange, mountpoints: string[
   dates.add(dateKey(now));
 
   const filesByDate = new Map(listHistoryFilesSync().map((f) => [f.date, f.path]));
-  const allSamples: MetricsHistorySample[] = [];
+  const allSamples: MountSample[] = [];
   for (const date of dates) {
     const filePath = filesByDate.get(date);
     if (!filePath) continue;
-    const samples = await readFileCached(filePath);
+    const samples = await readMountsCached(filePath);
     for (const s of samples) allSamples.push(s);
   }
 
