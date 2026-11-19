@@ -8,6 +8,7 @@
  *
  *   BASE_URL=http://host:3006 OUT_DIR=shots node scripts/docker-shots.mjs
  *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=envmask (or ONLY=envmask) node scripts/docker-shots.mjs   (container env masking, real API, 1280 and 390)
+ *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=heading node scripts/docker-shots.mjs   (container page h1: loading 64-hex id, 70-char name, 404; mocked, 1440 and 390)
  *   BASE_URL=http://host:3006 OUT_DIR=shots SHOTS_ONLY=action-deadline node scripts/docker-shots.mjs   (action and remove timeout copy, mocked 504, 1440 and 390)
  *
  * Needs Playwright, which is not a dependency of this repo; run it where one is installed.
@@ -645,6 +646,70 @@ try {
     }
     check("HP every check ran", ran === PER_WIDTH * VIEWPORTS.length, `ran ${ran}`);
     console.log(`hint-pages: ${pass}/${PER_WIDTH * VIEWPORTS.length} pass`);
+  });
+
+  // heading (nw-container-heading-overflow): the container page h1 while inspect loads (64-hex id), with a 70-char name, and on a 404.
+  if (ONLY === "heading") await guard("heading", async () => {
+    const HEX_ID = "f0e1d2c3b4a5" + "9".repeat(52);
+    const LONG = "very-long-container-name-" + "x".repeat(45); // 70 chars
+    const PER_WIDTH = 6; // H1 2, H2 3, H3 1 (page-errors checks are separate)
+    let ran = 0, pass = 0;
+    const hd = (n, ok, d) => { ran++; if (ok) pass++; check(n, ok, d); };
+    const docOverflow = (page) => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    const open = async (opts, id, answer) => {
+      const { context, page, errors } = await openPage(browser, opts, "none");
+      await page.route("**/api/docker/containers**", async (route) => {
+        const { pathname } = new URL(route.request().url());
+        if (pathname.endsWith("/api/docker/containers")) return json(route, 200, LIST);
+        if (pathname.endsWith(`/containers/${id}`)) return answer(route);
+        if (pathname.endsWith("/logs")) return json(route, 200, { logs: "" });
+        return json(route, 200, {});
+      });
+      await page.route("**/api/widgets**", (route) => json(route, 200, { widgets: {} }));
+      await page.goto(`${BASE_URL}/containers/${id}`, { waitUntil: "domcontentloaded" });
+      return { context, page, errors };
+    };
+    for (const { name, ...opts } of VIEWPORTS) {
+      // H1: inspect held, so the h1 falls back to the 64-hex route id.
+      let release;
+      const gate = new Promise((r) => (release = r));
+      const h1 = await open(opts, HEX_ID, async (route) => { await gate; return json(route, 200, { ...INSPECT, id: HEX_ID }); });
+      const h1el = h1.page.locator("h1");
+      await h1el.waitFor({ timeout: 30_000 });
+      hd(`H1 ${name} loading: h1 is the first 12 chars`, (await h1el.innerText()) === HEX_ID.slice(0, 12), await h1el.innerText());
+      const o1 = await docOverflow(h1.page);
+      hd(`H1 ${name} loading: no horizontal overflow`, o1.scroll <= o1.client, JSON.stringify(o1));
+      await cropEl(h1.page, h1el.locator(".."), join(OUT_DIR, `heading-H1-${name}.png`), `H1 ${name}`);
+      check(`H1 ${name}: no page errors`, h1.errors.length === 0, h1.errors.join(" | ").slice(0, 200));
+      release();
+      await h1.context.close();
+
+      // H2: loaded with a 70-char name.
+      const h2 = await open(opts, ID, (route) => json(route, 200, { ...INSPECT, name: LONG }));
+      const h2el = h2.page.locator("h1", { hasText: LONG });
+      await h2el.waitFor({ timeout: 30_000 });
+      hd(`H2 ${name} long name: h1 equals the name`, (await h2el.innerText()) === LONG, await h2el.innerText());
+      const o2 = await docOverflow(h2.page);
+      hd(`H2 ${name} long name: no horizontal overflow`, o2.scroll <= o2.client, JSON.stringify(o2));
+      const own = await h2el.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+      hd(`H2 ${name} long name: h1 not clipped`, own.scroll <= own.client, JSON.stringify(own));
+      await cropEl(h2.page, h2el.locator(".."), join(OUT_DIR, `heading-H2-${name}.png`), `H2 ${name}`);
+      await h2.page.screenshot({ path: join(OUT_DIR, `heading-H2-${name}-full.png`), fullPage: true });
+      check(`H2 ${name}: no page errors`, h2.errors.length === 0, h2.errors.join(" | ").slice(0, 200));
+      await h2.context.close();
+
+      // H3: inspect answers the route's real 404 body.
+      const h3 = await open(opts, HEX_ID, (route) => json(route, 404, { error: "That container no longer exists." }));
+      const panel = h3.page.locator(".panel", { hasText: "Container not found" });
+      await panel.waitFor({ timeout: 30_000 });
+      const o3 = await docOverflow(h3.page);
+      hd(`H3 ${name} not found: no horizontal overflow`, o3.scroll <= o3.client, JSON.stringify(o3));
+      await cropEl(h3.page, panel, join(OUT_DIR, `heading-H3-${name}.png`), `H3 ${name}`);
+      check(`H3 ${name}: no page errors`, h3.errors.length === 0, h3.errors.join(" | ").slice(0, 200));
+      await h3.context.close();
+    }
+    check("H every check ran", ran === PER_WIDTH * VIEWPORTS.length, `ran ${ran}`);
+    console.log(`heading: ${pass}/${ran} pass`);
   });
 } finally {
   await browser.close();
