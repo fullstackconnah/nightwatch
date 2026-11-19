@@ -99,8 +99,17 @@ async function tick(feedRing: boolean): Promise<void> {
   // Host counters are read as Promise.all starts; allContainerStats(true) samples later,
   // so host rates use this read time and container rates keep the end-of-tick time.
   const readAt = performance.now();
-  const [raw, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
-    allContainerStats(true),
+  const [rawOrNull, hostVitals, diskCounters, netCounters, gpu] = await Promise.all([
+    // A Docker failure must not throw away the host reads: null marks "containers not measured this tick".
+    allContainerStats(true)
+      .then((v) => {
+        recovered("allContainerStats");
+        return v;
+      })
+      .catch((err: unknown) => {
+        throttledError("allContainerStats", err);
+        return null;
+      }),
     withTimeout(getHostVitals(), TELEMETRY_CALL_MS, () => null)
       .then((v) => {
         if (v !== null) recovered("getHostVitals"); // null is the timeout fallback, not a success
@@ -128,6 +137,9 @@ async function tick(feedRing: boolean): Promise<void> {
         return null;
       }),
   ]);
+  const containersFailed = rawOrNull === null;
+  // {} also becomes __telemetryPrevious below, so the first good tick after recovery is a cold start (rates 0), never a rate over the gap.
+  const raw = rawOrNull ?? {};
   const prev = globalForTelemetry.__telemetryPrevious ?? {};
   const prevTs = globalForTelemetry.__telemetryPrevTs;
   const now = performance.now();
@@ -293,7 +305,8 @@ async function tick(feedRing: boolean): Promise<void> {
     throttledError("recordChangeLogTick", err);
   }
 
-  if (!feedRing) return; // idle tick: history only, no ring, no subscribers
+  // Idle tick: history only. Failed container read: an emitted sample would show "no containers" as live.
+  if (!feedRing || containersFailed) return;
   const r = ring();
   r.push(sample);
   if (r.length > RING_CAPACITY) r.splice(0, r.length - RING_CAPACITY);

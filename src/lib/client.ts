@@ -21,6 +21,7 @@ import type { PackResult } from "@/lib/minecraft/packs";
 import { ApiError } from "@/lib/api-error";
 import { shouldRedirectToLogin } from "@/lib/login-redirect";
 import { afterClosedProbe } from "@/lib/log-reconnect";
+import { effectiveTelemetryStatus, type TelemetryStatus } from "@/lib/telemetry-status";
 export { ApiError, serverMessage } from "@/lib/api-error";
 
 /** The one 401 rule: a signed-out tab goes to /login (never the kiosk). True on a browser 401; the caller keeps its own handling. */
@@ -195,7 +196,7 @@ export function useSettings() {
   }>("/api/settings", fetcher);
 }
 
-export type TelemetryStatus = "connecting" | "live" | "lost";
+export type { TelemetryStatus };
 
 export interface TelemetryState {
   samples: TelemetrySample[]; // rolling, oldest first, capped at RING_CAPACITY
@@ -226,14 +227,22 @@ export function useTelemetryStream(enabled = true): TelemetryState {
       // visibilitychange handler there's a render to catch up on.
       let dirty = false;
 
+      // Client receive time of the newest open/history/sample; a silent-but-open stream turns "live" into "lost".
+      let lastDataAt: number | null = null;
+      let shown: TelemetryStatus = status;
+
       const emit = () => {
+        shown = effectiveTelemetryStatus(status, lastDataAt, Date.now());
         if (document.visibilityState === "hidden") {
           dirty = true;
           return;
         }
         dirty = false;
-        next(null, { samples, status });
+        next(null, { samples, status: shown });
       };
+      const staleTimer = setInterval(() => {
+        if (effectiveTelemetryStatus(status, lastDataAt, Date.now()) !== shown) emit();
+      }, 2000);
 
       let es: EventSource;
       let attempt = 0;
@@ -247,6 +256,7 @@ export function useTelemetryStream(enabled = true): TelemetryState {
         current.addEventListener("open", () => {
           attempt = 0;
           status = "live";
+          lastDataAt = Date.now();
           emit();
         });
 
@@ -255,6 +265,7 @@ export function useTelemetryStream(enabled = true): TelemetryState {
             const parsed = JSON.parse(event.data) as TelemetrySample[];
             samples = parsed.slice(-RING_CAPACITY);
             status = "live";
+            lastDataAt = Date.now();
             emit();
           } catch (err) {
             next(err instanceof Error ? err : new Error("failed to parse telemetry history"));
@@ -266,6 +277,7 @@ export function useTelemetryStream(enabled = true): TelemetryState {
             const parsed = JSON.parse(event.data) as TelemetrySample;
             samples = [...samples, parsed].slice(-RING_CAPACITY);
             status = "live";
+            lastDataAt = Date.now();
             emit();
           } catch (err) {
             next(err instanceof Error ? err : new Error("failed to parse telemetry sample"));
@@ -308,13 +320,14 @@ export function useTelemetryStream(enabled = true): TelemetryState {
       const onVisibilityChange = () => {
         if (document.visibilityState === "visible" && dirty) {
           dirty = false;
-          next(null, { samples, status });
+          next(null, { samples, status: shown });
         }
       };
       document.addEventListener("visibilitychange", onVisibilityChange);
 
       return () => {
         cancelled = true;
+        clearInterval(staleTimer);
         if (reopenTimer !== null) clearTimeout(reopenTimer);
         document.removeEventListener("visibilitychange", onVisibilityChange);
         es.close();

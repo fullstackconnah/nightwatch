@@ -87,14 +87,16 @@ function sinceMemo(): Map<string, number> {
   return globalForHistory.__metricsHistorySince;
 }
 
+const WRITE_FAILED = "write failed — history dir unwritable";
+
 function warnedSet(): Set<string> {
   if (!globalForHistory.__metricsHistoryWarned) globalForHistory.__metricsHistoryWarned = new Set();
   return globalForHistory.__metricsHistoryWarned;
 }
 
-/** Logs a failure exactly once per distinct reason, then swallows it forever —
- *  history must degrade silently, and a dashboard that re-warns every 30s about
- *  an unwritable volume is just noise nobody reads. */
+/** Logs a failure once per distinct reason until the next successful append clears
+ *  the set — history must degrade silently, and a dashboard that re-warns every 30s
+ *  about an unwritable volume is just noise nobody reads. */
 function warnOnce(reason: string, err: unknown): void {
   const seen = warnedSet();
   if (seen.has(reason)) return;
@@ -213,8 +215,10 @@ async function writeSample(input: MetricsHistoryTickInput): Promise<void> {
   try {
     await fsp.mkdir(dir, { recursive: true });
     await fsp.appendFile(filePathForDate(date), `\n${JSON.stringify(sample)}\n`, "utf8");
+    // A healthy append re-arms the write warning (only that one: the Docker-lookup warning fires in the same tick and would repeat every 30 s).
+    warnedSet().delete(WRITE_FAILED);
   } catch (err) {
-    warnOnce("write failed — history dir unwritable", err);
+    warnOnce(WRITE_FAILED, err);
   }
 
   await pruneOldFiles(date);

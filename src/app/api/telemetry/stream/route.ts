@@ -4,6 +4,8 @@ import { getTelemetryHistory, subscribeTelemetry, type TelemetrySample } from "@
 export const dynamic = "force-dynamic";
 
 const HEARTBEAT_MS = 15_000;
+// desiredSize goes negative as chunks queue unread; about two minutes of 1 Hz samples. The 60-sample warm replay is one chunk.
+const STALLED_QUEUE_LIMIT = -120;
 
 export async function GET(request: Request): Promise<Response> {
   const encoder = new TextEncoder();
@@ -34,6 +36,16 @@ export async function GET(request: Request): Promise<Response> {
 
       const safeEnqueue = (chunk: string) => {
         if (closed) return;
+        if (controller.desiredSize !== null && controller.desiredSize < STALLED_QUEUE_LIMIT) {
+          // A stalled client: drop it and end the stream so EventSource reconnects and re-warms from the ring.
+          teardown();
+          try {
+            controller.close();
+          } catch {
+            /* already closed */
+          }
+          return;
+        }
         try {
           controller.enqueue(encoder.encode(chunk));
         } catch {
