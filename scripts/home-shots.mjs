@@ -103,7 +103,12 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
   );
   await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
   await page.locator(".hm-answer").waitFor({ timeout: 30_000 });
-  if (containers === "ok") await page.locator(".hm-app").first().waitFor({ timeout: 30_000 }); // C9 reads the launcher, which loads after the answer
+  if (containers === "ok") {
+    await page.locator(".hm-app").first().waitFor({ timeout: 30_000 }).catch(async (e) => {
+      console.log(`DIAG no .hm-app (widgets ${widgets}): ${(await page.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 600)}`);
+      throw e;
+    }); // C9 reads the launcher, which loads after the answer
+  }
   if (fixture !== "loading") {
     await page.waitForFunction(() => !/^Checking the box/.test(document.querySelector(".hm-answer")?.textContent ?? ""), null, {
       timeout: 30_000,
