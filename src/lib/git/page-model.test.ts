@@ -238,3 +238,11 @@ test("honest sync: a stale notice wins over the partial one", () => {
   assert.equal(m.notice, PAUSED);
   assert.equal(m.chip.label, "Stale");
 });
+test("honest sync: an empty mirror list says None set up when every call answered", () => {
+  const m = gitModel(input({ data: ok({ mirrors: [], partial: 0 }) }));
+  assert.equal(strip(m, "mirrors").state, "None set up");
+});
+test("honest sync: an empty mirror list says Not known when a Forgejo call failed", () => {
+  const m = gitModel(input({ data: ok({ mirrors: [], partial: 1 }) }));
+  assert.equal(strip(m, "mirrors").state, "Not known");
+});
