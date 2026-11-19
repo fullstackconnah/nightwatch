@@ -45,6 +45,7 @@ mkdirSync(OUT_DIR, { recursive: true });
 const checks = {};
 const record = (key, vp, value) => ((checks[key] ??= {})[vp] = value);
 const pageErrors = [];
+const consoleErrors = [];
 const foreignRequests = [];
 
 // One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next step runs.
@@ -63,6 +64,7 @@ const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.n
 /** C14: page errors, and any request that leaves the page's own origin. */
 function watch(page, name) {
   page.on("pageerror", (e) => pageErrors.push(`${name}: ${e.message}`));
+  page.on("console", (m) => m.type() === "error" && /Error|rror:/.test(m.text()) && !/status of 500/.test(m.text()) && consoleErrors.push(`${name}: ${m.text().slice(0, 300)}`));
   page.on("request", (r) => {
     const u = r.url();
     if (/^(data|blob|about):/.test(u)) return;
@@ -555,6 +557,7 @@ try {
 }
 
 record("C14", "all", { pageErrors: pageErrors.length, foreign: foreignRequests.length });
+if (consoleErrors.length) record("C14", "console", consoleErrors.slice(0, 4));
 if (pageErrors.length) record("C14", "errors", pageErrors.slice(0, 5));
 if (foreignRequests.length) record("C14", "origins", [...new Set(foreignRequests)].slice(0, 5));
 console.log(JSON.stringify(checks));
