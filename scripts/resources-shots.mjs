@@ -152,7 +152,7 @@ async function hintPages(run, w) {
 }
 
 // load-failed (nw-resources-load-failed): Net and Disk tabs when /api/resources has not answered (mocked 500) or answered with/without volumes.
-const RF_PER_WIDTH = 8; // 3 (R1) + 2 (R2) + 1 (R3) + 2 (R4)
+const RF_PER_WIDTH = 12; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4)
 let rfRan = 0, rfPass = 0;
 const rf = (key, where, ok, value) => { rfRan++; if (ok) rfPass++; check(key, where, ok, value); };
 const SYSTEM_LINE = "volume sizes need SYSTEM=1 on the socket proxy";
@@ -172,11 +172,15 @@ async function loadFailed(run, w) {
     rf("R1 no SYSTEM=1 line", `load-failed-disk@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 0, null);
     rf("R1 header has no '0 containers'", `load-failed-disk@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
     rf("R1 exactly one error block", `load-failed-disk@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
+    rf("R1 header line is exactly unavailable", `load-failed-disk@${w}`, (await rfHeader(page).innerText()).trim() === "unavailable", await rfHeader(page).innerText());
+    rf("R1 block has no box band clause", `load-failed-disk@${w}`, !(await rfAlert(page).first().innerText()).includes("box band above"), null);
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-failed-net", "metric=net", async (page) => {
     await rfAlert(page).first().waitFor({ timeout: SLOW });
     rf("R2 exactly one error block", `load-failed-net@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
     rf("R2 header has no '0 containers'", `load-failed-net@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
+    rf("R2 header line is exactly unavailable", `load-failed-net@${w}`, (await rfHeader(page).innerText()).trim() === "unavailable", await rfHeader(page).innerText());
+    rf("R2 block has box band clause", `load-failed-net@${w}`, (await rfAlert(page).first().innerText()).includes("box band above"), null);
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-ready-null-volumes", "metric=disk", async (page) => {
     await page.getByText(SYSTEM_LINE).waitFor({ timeout: SLOW });

@@ -439,7 +439,7 @@ export interface WatchlistProps {
 const COMPARE_MAX = 4;
 
 /** The "/api/resources did not answer" block; the Resources page shows it on the Net, Disk and Blkio tabs too. */
-export function ResourcesLoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+export function ResourcesLoadError({ error, onRetry, bandAbove = true }: { error: unknown; onRetry: () => void; bandAbove?: boolean }) {
   const status = error instanceof ApiError ? error.status : "no response";
   const msg = error instanceof Error ? error.message : "";
   return (
@@ -447,7 +447,7 @@ export function ResourcesLoadError({ error, onRetry }: { error: unknown; onRetry
       <h3 className="text-sm font-semibold mb-1.5">Docker did not answer</h3>
       <p className="text-xs leading-relaxed text-ink-dim mb-4">
         <span className="font-mono">{`GET /api/resources → ${status} ${msg}`}</span>. Nothing is listed rather than a guess.
-        Retrying every 10 s; the box band above is live from the host stream.
+        Retrying every 10 s{bandAbove ? "; the box band above is live from the host stream." : "."}
       </p>
       <Button size="sm" variant="outline" onClick={onRetry}>
         <RotateCw size={12} aria-hidden /> Retry now
