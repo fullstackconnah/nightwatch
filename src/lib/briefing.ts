@@ -108,7 +108,9 @@ function extractDigest(item: HermesActivityItem): BriefingDigest {
 
 async function fetchDigest(): Promise<BriefingDigest | null> {
   const activity = await getHermesActivity(20);
-  if (activity.status !== "ok") return null;
+  if (activity.status === "unconfigured") return null;
+  // A failed answer must not look like an empty one: the caller retries a throw, caches a null.
+  if (activity.status !== "ok") throw new Error("digest unavailable");
 
   const digestItems = activity.items.filter((i) => i.kind === "digest");
   if (digestItems.length === 0) return null;
@@ -149,15 +151,16 @@ function extractTitles(xml: string): string[] {
   return titles;
 }
 
-async function fetchFeedTitles(url: string): Promise<string[]> {
+/** null = the feed failed (threw, non-2xx, over the byte cap); [] = it answered with no titles. */
+async function fetchFeedTitles(url: string): Promise<string[] | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(FEED_TIMEOUT_MS), cache: "no-store" });
-    if (!res.ok) return [];
+    if (!res.ok) return null;
     const xml = await readCapped(res, FEED_MAX_BYTES);
-    return xml === null ? [] : extractTitles(xml);
+    return xml === null ? null : extractTitles(xml);
   } catch {
-    // One dead feed must not sink the others — swallow and contribute nothing.
-    return [];
+    // One dead feed must not sink the others — it contributes nothing.
+    return null;
   }
 }
 
@@ -165,20 +168,21 @@ async function fetchFeedTitles(url: string): Promise<string[]> {
  *  MAX_HEADLINES_CONSIDERED unique titles are found (feed order = config
  *  order), so "top 8 overall" doesn't require waiting on every feed to know
  *  it can stop collecting. */
-async function collectHeadlines(feeds: string[]): Promise<string[]> {
+async function collectHeadlines(feeds: string[]): Promise<{ headlines: string[]; anyFailed: boolean }> {
   const perFeed = await Promise.all(feeds.map(fetchFeedTitles));
+  const anyFailed = perFeed.includes(null);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const titles of perFeed) {
-    for (const title of titles) {
+    for (const title of titles ?? []) {
       const key = title.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(title);
-      if (out.length >= MAX_HEADLINES_CONSIDERED) return out;
+      if (out.length >= MAX_HEADLINES_CONSIDERED) return { headlines: out, anyFailed };
     }
   }
-  return out;
+  return { headlines: out, anyFailed };
 }
 
 function sourceLabel(feeds: string[]): string {
@@ -226,8 +230,11 @@ async function summarizeHeadlines(headlines: string[]): Promise<string | undefin
 
 async function fetchNews(cfg: BriefingConfig): Promise<BriefingNews | null> {
   if (cfg.newsFeeds.length === 0) return null;
-  const headlines = await collectHeadlines(cfg.newsFeeds);
-  if (headlines.length === 0) return null;
+  const { headlines, anyFailed } = await collectHeadlines(cfg.newsFeeds);
+  if (headlines.length === 0) {
+    if (anyFailed) throw new Error("news unavailable"); // failed, not empty: the caller retries a throw
+    return null;
+  }
 
   const summary = await summarizeHeadlines(headlines);
   return { summary, headlines: headlines.slice(0, MAX_HEADLINES_SHOWN), source: sourceLabel(cfg.newsFeeds) };
@@ -241,7 +248,14 @@ async function fetchNews(cfg: BriefingConfig): Promise<BriefingNews | null> {
  * hand-rolled cache did and keeps memory flat: yesterday's briefing is dead
  * weight the moment the date rolls over.
  */
-let cachedDate: string | null = null;
+/** A failed half is retried no sooner than this after the failing load finished. */
+export const BRIEFING_RETRY_FLOOR_MS = 5 * 60_000;
+
+/** The day's halves. A half stays `*Needed` until an upstream ANSWERED (even with nothing); a failed one is retried after the floor. */
+function freshDay(date: string) {
+  return { date, digest: undefined as BriefingDigest | undefined, news: undefined as BriefingNews | undefined, digestNeeded: true, newsNeeded: true, retryAt: 0 };
+}
+let day = freshDay("");
 let pendingDate = "";
 let pendingConfig: BriefingConfig | null = null;
 
@@ -259,20 +273,29 @@ let pendingConfig: BriefingConfig | null = null;
 const briefingMemo = new Memo<BriefingOk>({
   key: "briefing.daily",
   ttlMs: 25 * 60 * 60 * 1000,
-  isValid: () => cachedDate === pendingDate,
-  load: async () => {
-    const data = await assembleBriefing(pendingConfig!, pendingDate);
-    cachedDate = pendingDate;
-    return data;
-  },
+  isValid: () => day.date === pendingDate && !((day.digestNeeded || day.newsNeeded) && Date.now() >= day.retryAt),
+  load: () => assembleBriefing(pendingConfig!, pendingDate),
 });
 
+/** Fetches only the halves still needed and merges them into the day, so a present half is never refetched or replaced. */
 async function assembleBriefing(cfg: BriefingConfig, date: string): Promise<BriefingOk> {
+  if (day.date !== date) day = freshDay(date);
+  const d = day;
+  // `{ v }` = answered (v may be null for empty); null = failed.
   const [digest, news] = await Promise.all([
-    fetchDigest().catch(() => null),
-    fetchNews(cfg).catch(() => null),
+    d.digestNeeded ? fetchDigest().then((v) => ({ v }), () => null) : undefined,
+    d.newsNeeded ? fetchNews(cfg).then((v) => ({ v }), () => null) : undefined,
   ]);
-  return { status: "ok", date, digest: digest ?? undefined, news: news ?? undefined };
+  if (digest) {
+    d.digest = digest.v ?? undefined;
+    d.digestNeeded = false;
+  }
+  if (news) {
+    d.news = news.v ?? undefined;
+    d.newsNeeded = false;
+  }
+  d.retryAt = Date.now() + BRIEFING_RETRY_FLOOR_MS; // from completion, not start
+  return { status: "ok", date, digest: d.digest, news: d.news };
 }
 
 /**
@@ -288,7 +311,7 @@ export async function getBriefing(): Promise<BriefingResponse> {
     return { status: "unconfigured", date: localDateString(undefined), detail: unconfiguredDetail(BRIEFING_UNCONFIGURED_DETAIL) };
   }
 
-  pendingDate = localDateString(cfg.timezone);
+  pendingDate = localDateString(cfg.timezone, new Date(Date.now())); // Date.now so a test clock moves the date too
   pendingConfig = cfg;
   return briefingMemo.get();
 }
