@@ -67,8 +67,15 @@ const RANGE_MS: Record<HistoryRange, number> = {
   "7d": 7 * 24 * 60 * 60 * 1000,
 };
 
-interface FileCacheEntry {
+/** `mtimeMs` + `fileSize` are the stat the entry was read at (a hit needs both to match);
+ *  `size` is how many bytes are parsed into `samples` (less than `fileSize` while a torn last line waits). */
+interface TailState {
   mtimeMs: number;
+  fileSize: number;
+  size: number;
+}
+
+interface FileCacheEntry extends TailState {
   samples: MetricsHistorySample[];
   lastUsed: number;
 }
@@ -84,7 +91,7 @@ const globalForHistory = globalThis as unknown as {
   __metricsHistoryLastPrunedDate?: string;
   __metricsHistoryWarned?: Set<string>;
   __metricsHistoryFileCache?: Map<string, FileCacheEntry>;
-  __metricsHistoryMountCache?: Map<string, { mtimeMs: number; samples: MountSample[] }>;
+  __metricsHistoryMountCache?: Map<string, TailState & { samples: MountSample[] }>;
   __metricsHistoryWriting?: boolean;
   __metricsHistorySince?: Map<string, number>;
 };
@@ -118,7 +125,7 @@ function fileCache(): Map<string, FileCacheEntry> {
   return globalForHistory.__metricsHistoryFileCache;
 }
 
-function mountCache(): Map<string, { mtimeMs: number; samples: MountSample[] }> {
+function mountCache(): Map<string, TailState & { samples: MountSample[] }> {
   if (!globalForHistory.__metricsHistoryMountCache) globalForHistory.__metricsHistoryMountCache = new Map();
   return globalForHistory.__metricsHistoryMountCache;
 }
@@ -282,38 +289,66 @@ async function readFileCached(filePath: string): Promise<MetricsHistorySample[]>
     return [];
   }
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs) {
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.fileSize === stat.size) {
     cached.lastUsed = now;
     return cached.samples;
   }
 
-  let text: string;
   try {
-    text = await fsp.readFile(filePath, "utf8");
+    const { samples, size } = await readGrown(filePath, stat, cached, (s) => s);
+    cache.set(filePath, { mtimeMs: stat.mtimeMs, fileSize: stat.size, size, samples, lastUsed: now });
+    return samples;
   } catch (err) {
     warnOnce("read failed", err);
     return cached?.samples ?? [];
   }
-
-  const samples = parseJsonl(text, (s) => s);
-  cache.set(filePath, { mtimeMs: stat.mtimeMs, samples, lastUsed: now });
-  return samples;
 }
 
 /** One corrupt line (e.g. a torn write mid-append) must not invalidate the rest
- *  of the day's file; `keep` lets a reader retain only the fields it uses. */
-function parseJsonl<T>(text: string, keep: (s: MetricsHistorySample) => T): T[] {
-  const out: T[] = [];
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
+ *  of the day's file; `keep` lets a reader retain only the fields it uses.
+ *  `consumed` (bytes) stops before a trailing line that has no newline yet and does
+ *  not parse, so the next tail read starts at it again once it is complete. */
+function parseChunk<T>(text: string, keep: (s: MetricsHistorySample) => T): { samples: T[]; consumed: number } {
+  const lines = text.split("\n");
+  const fragment = lines.pop() as string;
+  const samples: T[] = [];
+  const take = (line: string): boolean => {
+    if (!line.trim()) return true;
     try {
       const s = JSON.parse(line) as MetricsHistorySample | null;
-      if (s && typeof s === "object") out.push(keep(s)); // a bare `null` line parses but is not a sample
+      if (s && typeof s === "object") samples.push(keep(s)); // a bare `null` line parses but is not a sample
+      return !!s && typeof s === "object";
     } catch {
-      // skipped
+      return false;
+    }
+  };
+  for (const line of lines) take(line);
+  const complete = take(fragment) || !fragment.trim() ? text : text.slice(0, text.length - fragment.length);
+  return { samples, consumed: Buffer.byteLength(complete) };
+}
+
+/** Samples of a changed file: an append-only file that grew is tail-read from the
+ *  parsed offset into a NEW array (a running query may still hold the old one);
+ *  anything else (no entry, shrunk, same size but touched) is read in full. */
+async function readGrown<T>(
+  filePath: string,
+  stat: fs.Stats,
+  cached: (TailState & { samples: T[] }) | undefined,
+  keep: (s: MetricsHistorySample) => T,
+): Promise<{ samples: T[]; size: number }> {
+  if (cached && stat.size > cached.fileSize) {
+    const fh = await fsp.open(filePath, "r");
+    try {
+      const buf = Buffer.alloc(stat.size - cached.size);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, cached.size);
+      const { samples, consumed } = parseChunk(buf.subarray(0, bytesRead).toString("utf8"), keep);
+      return { samples: cached.samples.concat(samples), size: cached.size + consumed };
+    } finally {
+      await fh.close();
     }
   }
-  return out;
+  const { samples, consumed } = parseChunk(await fsp.readFile(filePath, "utf8"), keep);
+  return { samples, size: consumed };
 }
 
 const toMountSample = (s: MetricsHistorySample): MountSample => ({ t: s.t, mounts: s.mounts });
@@ -331,21 +366,23 @@ async function readMountsCached(filePath: string): Promise<MountSample[]> {
   }
   const cache = mountCache();
   const cached = cache.get(filePath);
-  if (cached && cached.mtimeMs === stat.mtimeMs) return cached.samples;
+  if (cached && cached.mtimeMs === stat.mtimeMs && cached.fileSize === stat.size) return cached.samples;
 
   const full = fileCache().get(filePath);
   let samples: MountSample[];
-  if (full && full.mtimeMs === stat.mtimeMs) {
+  let size: number;
+  if (full && full.mtimeMs === stat.mtimeMs && full.fileSize === stat.size) {
     samples = full.samples.map(toMountSample);
+    size = full.size;
   } else {
     try {
-      samples = parseJsonl(await fsp.readFile(filePath, "utf8"), toMountSample);
+      ({ samples, size } = await readGrown(filePath, stat, cached, toMountSample));
     } catch (err) {
       warnOnce("read failed", err);
       return cached?.samples ?? [];
     }
   }
-  cache.set(filePath, { mtimeMs: stat.mtimeMs, samples });
+  cache.set(filePath, { mtimeMs: stat.mtimeMs, fileSize: stat.size, size, samples });
   return samples;
 }
 
