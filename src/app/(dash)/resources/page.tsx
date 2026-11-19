@@ -18,7 +18,8 @@ import { Sparkline } from "@/components/sparkline";
 import { Treemap, type TreemapItem } from "@/components/resources/treemap";
 import { BoxBand } from "@/components/resources/box-band";
 import { TimelineChart } from "@/components/resources/timeline-chart";
-import { LifecycleGroup, Watchlist, telemetryRowEqual } from "@/components/resources/watchlist";
+import { LifecycleGroup, ResourcesLoadError, Watchlist, telemetryRowEqual } from "@/components/resources/watchlist";
+import { resourcesLoad } from "@/lib/resources-load";
 import {
   ResourceOverview,
   type OverviewModel,
@@ -570,6 +571,7 @@ function ResourcesPageInner() {
   };
 
   const containers = data?.containers ?? [];
+  const load = resourcesLoad({ data, error: resourcesError });
   const latest = samples[samples.length - 1];
   // CPU and MEM render the band and the Watchlist (which ranks itself); every other tab keeps the sorted rows.
   const historyMetric = metric === "cpu" || metric === "mem" ? metric : null;
@@ -792,8 +794,11 @@ function ResourcesPageInner() {
       <header>
         <h1 className="text-lg font-semibold tracking-tight">Resources</h1>
         <p className="microlabel mt-0.5">
-          {containers.length} containers
-          {data ? ` · updated ${relativeTime(data.updatedAt)}` : ""}
+          {data
+            ? `${containers.length} containers · updated ${relativeTime(data.updatedAt)}`
+            : load === "failed"
+              ? "unavailable"
+              : "reading Docker…"}
         </p>
       </header>
 
@@ -1095,7 +1100,12 @@ function ResourcesPageInner() {
       {/* treemap hero + ranked rows — suppressed for GPU. Only containers holding VRAM
           would ever appear in a GPU treemap — realistically one, and a single-cell
           treemap asserts a proportion that does not exist. Don't feed GPU into it. */}
-      {!gpuActive && !allActive && !historyMetric && (
+      {!gpuActive && !allActive && !historyMetric && load === "failed" && (
+        <div className="panel">
+          <ResourcesLoadError error={resourcesError} onRetry={() => void mutate()} />
+        </div>
+      )}
+      {!gpuActive && !allActive && !historyMetric && load !== "failed" && (
         <>
           <div className={cn(status === "lost" && "opacity-50 transition-opacity")}>
             <Treemap items={deferredTreemapItems} formatValue={(v) => formatValue(metric, v)} onCellClick={handleCellClick} />
@@ -1149,10 +1159,11 @@ function ResourcesPageInner() {
       )}
 
       {/* volumes panel (disk view only) */}
-      {metric === "disk" && (
+      {metric === "disk" && load !== "failed" && (
         <div className="panel overflow-hidden">
           <div className="microlabel px-3 py-2 border-b border-line">Volumes</div>
-          {volumes === null && (
+          {load === "loading" && <div className="px-3 py-4 microlabel">reading Docker…</div>}
+          {load === "ready" && volumes === null && (
             <div className="px-3 py-4 microlabel !text-warn/80">
               volume sizes need SYSTEM=1 on the socket proxy
             </div>

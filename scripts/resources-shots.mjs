@@ -7,7 +7,8 @@
  * Needs the test stack and Playwright, which is not a dependency of this repo; run it where one is installed.
  * States: cpu, mem (both widths: 2-decimal CPU values, muted-label contrast >= 4.5), all-other (390: the "other" name is
  * not clipped), legend-nodata (a compare with no samples; skip when the stack has none), all-filter (poll keeps focus and
- * the group count). scan-lost and growth-more (mocked APIs, hunt 12: the poll stops with the lost line; 5 series plus the
+ * the group count). SHOTS_ONLY=load-failed runs only the /api/resources failed-load states (Disk and Net tabs, mocked 500, and
+ * the ready SYSTEM=1 / volumes lines; 8 checks per width). scan-lost and growth-more (mocked APIs, hunt 12: the poll stops with the lost line; 5 series plus the
  * "+2 more mounts" note). Every state: no pageerror, no document overflow.
  */
 import { chromium } from "playwright";
@@ -150,6 +151,44 @@ async function hintPages(run, w) {
   }, txRoute(b4), txBlock);
 }
 
+// load-failed (nw-resources-load-failed): Net and Disk tabs when /api/resources has not answered (mocked 500) or answered with/without volumes.
+const RF_PER_WIDTH = 8; // 3 (R1) + 2 (R2) + 1 (R3) + 2 (R4)
+let rfRan = 0, rfPass = 0;
+const rf = (key, where, ok, value) => { rfRan++; if (ok) rfPass++; check(key, where, ok, value); };
+const SYSTEM_LINE = "volume sizes need SYSTEM=1 on the socket proxy";
+const rfAlert = (page) => page.locator('[role="alert"]', { hasText: "Docker did not answer" });
+const rfVolumes = (page) => page.locator(".panel", { has: page.getByText("Volumes", { exact: true }) }).last();
+const rfHeader = (page) => page.locator("header p.microlabel").first();
+const rfFail = (page) => page.route(/\/api\/resources(\?|$)/, (route) => json(route, { error: "unreachable" }, 500));
+// Real snapshot with `volumes` replaced (null = proxy without SYSTEM=1).
+const rfVolumesAre = (volumes) => (page) =>
+  page.route(/\/api\/resources(\?|$)/, async (route) => {
+    const body = await route.fetch().then((r) => r.json()).catch(() => ({}));
+    json(route, { ...body, volumes });
+  });
+async function loadFailed(run, w) {
+  await run("load-failed-disk", "metric=disk", async (page) => {
+    await rfAlert(page).first().waitFor({ timeout: SLOW });
+    rf("R1 no SYSTEM=1 line", `load-failed-disk@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 0, null);
+    rf("R1 header has no '0 containers'", `load-failed-disk@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
+    rf("R1 exactly one error block", `load-failed-disk@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
+  }, rfFail, (page) => rfAlert(page).first());
+  await run("load-failed-net", "metric=net", async (page) => {
+    await rfAlert(page).first().waitFor({ timeout: SLOW });
+    rf("R2 exactly one error block", `load-failed-net@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
+    rf("R2 header has no '0 containers'", `load-failed-net@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
+  }, rfFail, (page) => rfAlert(page).first());
+  await run("load-ready-null-volumes", "metric=disk", async (page) => {
+    await page.getByText(SYSTEM_LINE).waitFor({ timeout: SLOW });
+    rf("R3 SYSTEM=1 line present", `load-ready-null-volumes@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 1, null);
+  }, rfVolumesAre(null), rfVolumes);
+  await run("load-ready-volumes", "metric=disk", async (page) => {
+    await page.getByText("demo_vol", { exact: true }).waitFor({ timeout: SLOW });
+    rf("R4 no SYSTEM=1 line", `load-ready-volumes@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 0, null);
+    rf("R4 no error block", `load-ready-volumes@${w}`, (await rfAlert(page).count()) === 0, null);
+  }, rfVolumesAre([{ name: "demo_vol", sizeBytes: 2e9 }]), rfVolumes);
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -171,6 +210,11 @@ try {
 
     if (ONLY === "hint-pages") {
       await hintPages(run, vp.name);
+      continue;
+    }
+
+    if (ONLY === "load-failed") {
+      await loadFailed(run, vp.name);
       continue;
     }
 
@@ -283,6 +327,10 @@ check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
 if (ONLY === "hint-pages") {
   check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
   console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);
+}
+if (ONLY === "load-failed") {
+  check("load-failed ran every check", "all", rfRan === RF_PER_WIDTH * VIEWPORTS.length, { ran: rfRan, expected: RF_PER_WIDTH * VIEWPORTS.length });
+  console.log(`load-failed: ${rfPass}/${RF_PER_WIDTH * VIEWPORTS.length} pass`);
 }
 console.log(JSON.stringify({ failed, results }));
 process.exit(failed ? 1 : 0);
