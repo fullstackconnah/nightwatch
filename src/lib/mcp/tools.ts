@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { ACTION_TIMEOUT_MESSAGE, isDeadlineError } from "@/lib/docker-deadline";
 import { isProtectedContainer, MCP_ALLOWED_ON_PROTECTED } from "@/lib/protected-containers";
 import { busyMessage, guardsMinecraftStart, tryBegin } from "@/lib/minecraft-busy";
 import { listContainers, performContainerAction, type ContainerAction } from "@/lib/docker";
@@ -114,6 +115,7 @@ export async function callTool(name: string, args: unknown): Promise<McpToolResu
     if ((e as { statusCode?: number }).statusCode === 304) {
       return textResult(`"${containerName}" was already in the target state.`);
     }
+    if (isDeadlineError(e)) return textResult(ACTION_TIMEOUT_MESSAGE, true);
     console.error(`mcp tool ${action} failed`, e);
     return textResult(`Failed to ${action} "${containerName}"`, true);
   }

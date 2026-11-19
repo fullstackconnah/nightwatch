@@ -12,6 +12,8 @@ import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
 
 /** Deadline for a one-shot Docker call (list, inspect, create, start). Not a client-wide timeout: docker-modem would apply that to the quiet follow streams too. */
 const DOCKER_CALL_MS = 10_000;
+/** Lifecycle and remove calls: stop and restart give the container 15 s to exit before Docker starts it again, so 45 s leaves room. */
+const DOCKER_ACTION_MS = 45_000;
 /** Log tail reads move up to ~2000 lines through the proxy, so they get a longer bound. */
 const DOCKER_LOGS_MS = 20_000;
 
@@ -784,15 +786,15 @@ export async function containerAction(id: string, action: ContainerAction): Prom
   const container = docker.getContainer(id);
   switch (action) {
     case "start":
-      return void (await container.start());
+      return void (await container.start({ abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) }));
     case "stop":
-      return void (await container.stop({ t: 15 }));
+      return void (await container.stop({ t: 15, abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) }));
     case "restart":
-      return void (await container.restart({ t: 15 }));
+      return void (await container.restart({ t: 15, abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) }));
     case "pause":
-      return void (await container.pause());
+      return void (await container.pause({ abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) }));
     case "unpause":
-      return void (await container.unpause());
+      return void (await container.unpause({ abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) }));
   }
 }
 
@@ -815,7 +817,7 @@ export async function performContainerAction(id: string, action: ContainerAction
 /** Deletes a stopped container. The caller has already run removeDecision; the three caches that mention it are dropped even on failure. */
 export async function removeContainer(id: string): Promise<void> {
   try {
-    await docker.getContainer(id).remove(REMOVE_OPTIONS);
+    await docker.getContainer(id).remove({ ...REMOVE_OPTIONS, abortSignal: AbortSignal.timeout(DOCKER_ACTION_MS) });
   } finally {
     containersMemo.invalidate();
     runtimesMemo.invalidate();

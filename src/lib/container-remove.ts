@@ -1,5 +1,6 @@
 // Pure: decides whether a container may be removed and words every outcome.
 // Import-free except protected-containers so node:test can load it.
+import { REMOVE_TIMEOUT_MESSAGE } from "./docker-deadline.ts";
 import { isProtectedContainer, type ProtectCandidate } from "./protected-containers.ts";
 
 /** `dead` is left out on purpose: removing it often needs force (OPEN-D3). */
@@ -32,7 +33,8 @@ export function removeDecision<T extends Removable>(list: T[] | null, id: string
 export const removeConfirmText = (name: string) => `Remove ${name}? Its image can then be deleted. Can't be undone.`;
 
 /** Docker or proxy failure after the guard passed. */
-export function removeErrorCopy(status: number | "ECONN", name: string): string {
+export function removeErrorCopy(status: number | "ECONN" | "TIMEOUT", name: string): string {
+  if (status === "TIMEOUT") return REMOVE_TIMEOUT_MESSAGE;
   if (status === "ECONN") return "Can't reach the Docker socket proxy — check that the sidecar container is up.";
   if (status === 403) return "The socket proxy refused the removal: it needs POST=1 and CONTAINERS=1.";
   if (status === 404) return "That container no longer exists.";
