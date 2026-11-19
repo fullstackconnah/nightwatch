@@ -91,11 +91,13 @@ export async function GET(request: Request): Promise<Response> {
       // container order, so the client sees the same sequence as before.
       const seeds = await Promise.all(
         seedNames.map(async (name): Promise<string> => {
+          if (closed) return "";
           try {
-            const { lines, short } = await readContainerLogTail(name, tail);
+            const { lines, short } = await readContainerLogTail(name, tail, undefined, request.signal);
             const payload: LogSeedEvent = { container: name, lines, short };
             return `event: seed\ndata: ${JSON.stringify(payload)}\n\n`;
           } catch (err) {
+            if (closed) return "";
             console.error(`log scrollback read failed for ${name}`, err);
             const state: LogTrackState = {
               container: name,
@@ -116,12 +118,13 @@ export async function GET(request: Request): Promise<Response> {
       // live feed attaches (tail 0) only after these reads, so a line logged
       // between a container's replay read and its attach can be lost; the reads
       // run in parallel to keep that window short.
+      if (closed) return;
       await Promise.all(
         names.map(async (name) => {
           const since = resumeFrom.get(name);
           if (since === undefined) return;
           try {
-            const { lines } = await readContainerLogTail(name, 0, since);
+            const { lines } = await readContainerLogTail(name, 0, since, request.signal);
             for (const line of lines) safeEnqueue(`event: line\ndata: ${JSON.stringify(line)}\n\n`);
           } catch {
             // Container briefly absent mid-recreate: the live subscribe below reports it.
