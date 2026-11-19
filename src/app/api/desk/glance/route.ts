@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     });
   } catch {
     // build() is behind the auth check, so this only answers an authorised caller
-    r = { status: 503, body: { error: "Attention report unavailable." } };
+    r = { status: 502, body: { error: "Attention report unavailable." } };
   }
   return NextResponse.json(r.body, { status: r.status, headers: NO_STORE });
 }

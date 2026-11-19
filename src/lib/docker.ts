@@ -12,6 +12,8 @@ import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
 
 /** Deadline for a one-shot Docker call (list, inspect, create, start). Not a client-wide timeout: docker-modem would apply that to the quiet follow streams too. */
 export const DOCKER_CALL_MS = 10_000;
+/** GET /system/df takes 20-70 s on a big host, so it gets its own deadline. */
+const DOCKER_DF_MS = 90_000;
 /** Lifecycle and remove calls: stop and restart give the container 15 s to exit before Docker starts it again, so 45 s leaves room. */
 const DOCKER_ACTION_MS = 45_000;
 // dockerode types df() and info() without an options argument, but both forward abortSignal like the rest.
@@ -436,7 +438,7 @@ export function systemDf(): Promise<DfSnapshot> {
 }
 
 async function fetchDf(): Promise<DfSnapshot> {
-  const raw = (await dockerRead().df({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) })) as {
+  const raw = (await dockerRead().df({ abortSignal: AbortSignal.timeout(DOCKER_DF_MS) })) as {
     LayersSize?: number;
     BuildCacheUsage?: number;
     BuildCache?: { Size?: number }[];
