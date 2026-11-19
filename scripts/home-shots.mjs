@@ -239,6 +239,18 @@ const readState = () => {
   };
 };
 
+/** Padded crop of an element's box (document coordinates, so a tall page still crops whole). */
+const cropEl = async (page, sel, file, pad = 16) => {
+  await page.locator(sel).first().scrollIntoViewIfNeeded();
+  const r = await page.evaluate((s) => {
+    const b = document.querySelector(s).getBoundingClientRect();
+    return { x: b.left + scrollX, y: b.top + scrollY, w: b.width, h: b.height, vw: document.documentElement.clientWidth };
+  }, sel);
+  const x = Math.max(0, r.x - pad);
+  const y = Math.max(0, r.y - pad);
+  await page.screenshot({ path: join(OUT_DIR, file), fullPage: true, clip: { x, y, width: Math.min(r.vw - x, r.w + 2 * pad), height: r.h + 2 * pad } });
+};
+
 // ---- unreadable-told (PR 299): the three "saved settings can't be read" messages. Run alone: SHOTS_ONLY=unreadable-told (ONLY works too). ----
 if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "unreadable-told") {
   const SSO_COPY = "The saved settings can't be read, so SSO sign-in is off until they are restored.";
@@ -267,17 +279,6 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "unreadable-told") {
     console.log(`UT ${id} ${w} ${pass ? "pass" : "fail"} ${measured}`);
   };
   const HIDE_BADGE = "nextjs-portal{display:none!important}";
-  /** Padded crop of an element's box (document coordinates, so a tall page still crops whole). */
-  const cropEl = async (page, sel, file, pad = 16) => {
-    await page.locator(sel).first().scrollIntoViewIfNeeded();
-    const r = await page.evaluate((s) => {
-      const b = document.querySelector(s).getBoundingClientRect();
-      return { x: b.left + scrollX, y: b.top + scrollY, w: b.width, h: b.height, vw: document.documentElement.clientWidth };
-    }, sel);
-    const x = Math.max(0, r.x - pad);
-    const y = Math.max(0, r.y - pad);
-    await page.screenshot({ path: join(OUT_DIR, file), fullPage: true, clip: { x, y, width: Math.min(r.vw - x, r.w + 2 * pad), height: r.h + 2 * pad } });
-  };
   const loginPage = async (w, { ssoError }) => {
     const { name, ...ctxOpts } = w;
     const context = await browser.newContext({ ...ctxOpts, timezoneId: ZONE, reducedMotion: "reduce" });
@@ -448,7 +449,8 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "widgets-hint") {
       }
       if (c.state !== "s5-docker") wh("WH4", w.name, c.state, m.chip === c.chip, `sonarr Queue chip ${m.chip}, want ${c.chip}`);
       wh("WH5", w.name, c.state, m.noOverflow, `no horizontal overflow ${m.noOverflow}`);
-      await page.locator('[data-feature="launcher"]').screenshot({ path: join(OUT_DIR, `widgets-hint-${c.state}-${w.name}.png`) });
+      await cropEl(page, '[data-feature="launcher"]', `widgets-hint-${c.state}-${w.name}.png`);
+      if (c.state === "s2-load") await page.screenshot({ path: join(OUT_DIR, `widgets-hint-s2-load-full-${w.name}.png`), fullPage: true });
       await context.close();
     }
   }
@@ -456,8 +458,10 @@ if ((process.env.SHOTS_ONLY ?? process.env.ONLY) === "widgets-hint") {
   const bad = results.filter((r) => !r.pass);
   const summary = [{ id: "WH", pass: bad.length === 0, runs: results.length, details: results.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) }];
   writeFileSync(join(OUT_DIR, "results.json"), JSON.stringify({ at: new Date(NOW).toISOString(), summary }, null, 2));
+  // 19 check lines per width: s1 4, s2 6, s3 6, s5 3. Fewer means a case was skipped.
+  const expected = 19 * WIDTHS.length;
   console.log(`widgets-hint: ${results.length - bad.length}/${results.length} pass`);
-  process.exit(bad.length ? 1 : 0);
+  process.exit(bad.length || results.length < expected ? 1 : 0);
 }
 
 // ---- per state, per width: C3 C4 C5 C6 C7 C8 C9 C12 and the captures ----
