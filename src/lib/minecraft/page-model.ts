@@ -136,7 +136,7 @@ export function minecraftModel(i: ModelInput): Model {
     autoTarget = "server";
   } else if (!managerOk) {
     chip = { tone: "warn", label: "Manager down" };
-    answer = `${running ? "Docker says the server is running, but mc-manager isn’t answering." : `mc-manager isn’t answering, and Docker ${c ? "says the server is stopped" : "has no Minecraft container"}.`} Packs, console and backups are paused.`;
+    answer = `${running ? "Docker says the server is running, but mc-manager isn’t answering." : `mc-manager isn’t answering, and Docker ${c ? `says the server is ${exited ? "stopped" : c.state}` : "has no Minecraft container"}.`} Packs, console and backups are paused.`;
     // The raw error (host, port) stays out of the DOM.
     evidence = "mc-manager isn’t answering · retrying every 10 s";
     notice = "Start, stop and restart still work through Docker.";

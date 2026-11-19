@@ -64,6 +64,12 @@ test("manager down with the container exited: says stopped, not running", () => 
   assert.doesNotMatch(m.answer, /is running/);
 });
 
+test("manager down with the container paused: names the state, not stopped", () => {
+  const m = down({ container: { state: "paused", exitCode: null, startedAt: null } });
+  assert.match(m.answer, /Docker says the server is paused\./);
+  assert.doesNotMatch(m.answer, /stopped/);
+});
+
 test("manager down with no container: says there is no Minecraft container", () => {
   assert.match(down({ container: undefined }).answer, /no Minecraft container/);
 });
