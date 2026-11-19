@@ -7,6 +7,7 @@ import {
   parseSince,
   pruneRestartCounts,
   PENDING,
+  readWithin,
   runProbes,
   sortHits,
   toHits,
@@ -401,4 +402,41 @@ test("a failed probe stays failed and still reports its hitsOnFail (the drill ri
   assert.equal(o.hits.length, 1);
   const [plain] = await runProbes([def("backup", () => { throw new Error("x"); })], 50);
   assert.deepEqual(plain.hits, []);
+});
+
+// --- readWithin ---
+test("readWithin rejects when the read never settles, and the backup probe then reads failed, not fine", async () => {
+  const t0 = Date.now();
+  let backup: unknown = null;
+  let failure: unknown = null;
+  try {
+    backup = await readWithin(() => new Promise<BackupStatus>(() => {}), 40, "the backup status file");
+  } catch (e) {
+    failure = e;
+  }
+  assert.ok(Date.now() - t0 < 500);
+  assert.equal(backup, null);
+  assert.match((failure as Error).message, /the backup status file did not answer in 0.04 s/);
+  // attention.ts's probeBackup throws the read error when there is no status; runProbes turns that into `failed`
+  const [o] = await runProbes(
+    [
+      def("backup", () => {
+        if (!backup) throw failure;
+        return [];
+      }),
+    ],
+    50,
+  );
+  assert.equal(o.status.state, "failed");
+});
+
+test("readWithin passes a timely answer through and a rejection on unchanged", async () => {
+  assert.equal(await readWithin(async () => 7, 50, "x"), 7);
+  await assert.rejects(readWithin(() => Promise.reject(new Error("boom")), 50, "x"), /boom/);
+});
+
+test("pins existing behaviour (source text; the route is not loadable by node): /api/attention answers 503 when the report throws", async () => {
+  const { readFileSync } = await import("node:fs");
+  const s = readFileSync(new URL("../app/api/attention/route.ts", import.meta.url), "utf8");
+  assert.match(s, /catch \{\s*return NextResponse\.json\(\{ error: "Attention report unavailable\." \}, \{ status: 503,/);
 });

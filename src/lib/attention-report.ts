@@ -5,6 +5,16 @@ import { countText, type Tally } from "./change-log.ts";
 import { BACKUP_KIND_LABEL, drillAge, type BackupStatus, type RestoreDrill } from "./backup-status.ts";
 import { restoreDrillDue, settingsUnreadableCopy } from "./attention-copy.ts";
 import { hasTestToken, isTestContainer } from "./test-container.ts";
+import { withTimeout } from "./single-flight.ts";
+
+const LATE = Symbol("late");
+
+/** Rejects after `ms` so a stuck read lands in the probe's own failure path ("did not answer"), never as "all fine". */
+export async function readWithin<T>(read: () => Promise<T>, ms: number, what: string): Promise<T> {
+  const r = await withTimeout(read(), ms, () => LATE);
+  if (r === LATE) throw new Error(`${what} did not answer in ${ms / 1000} s`);
+  return r as T;
+}
 
 export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
 export type ProbeStatus =
