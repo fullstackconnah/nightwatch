@@ -86,8 +86,8 @@ export function PinToggleButton({ path, className }: { path: string; className?:
 }
 
 /** The server’s reason a pin or unpin was not saved, beside the pin button (same warn text the row’s scan error uses). */
-function PinError({ children }: { children: React.ReactNode }) {
-  return <span role="alert" className="text-[0.7rem] text-warn max-w-[14rem] text-right">{children}</span>;
+function PinError({ children, className = "max-w-[14rem] text-right" }: { children: React.ReactNode; className?: string }) {
+  return <span role="alert" className={`text-[0.7rem] text-warn ${className}`}>{children}</span>;
 }
 
 function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<void> }) {
@@ -130,7 +130,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
   }
 
   return (
-    <div className="flex items-center gap-2.5 min-h-11 md:min-h-8 px-3 py-1.5 border-b border-line/50 last:border-0">
+    <div className="flex flex-wrap items-center gap-2.5 min-h-11 md:min-h-8 px-3 py-1.5 border-b border-line/50 last:border-0">
       <span className="font-mono text-[0.75rem] break-all flex-1 min-w-0" title={path}>
         {path}
       </span>
@@ -150,6 +150,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
         <RotateCw size={13} className={refreshing ? "animate-spin motion-reduce:animate-none" : ""} />
       </button>
       {refreshError && <PinError>{refreshError}</PinError>}
+      {!refreshError && size === "error" && scan?.error && <PinError className="basis-full order-last break-words">{scan.error}</PinError>}
       {unpinError && <PinError>{unpinError}</PinError>}
       <button
         type="button"

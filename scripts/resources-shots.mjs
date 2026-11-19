@@ -8,8 +8,8 @@
  * States: cpu, mem (both widths: 2-decimal CPU values, muted-label contrast >= 4.5), all-other (390: the "other" name is
  * not clipped), legend-nodata (a compare with no samples; skip when the stack has none), all-filter (poll keeps focus and
  * the group count). SHOTS_ONLY=load-failed runs only the /api/resources failed-load states (Disk and Net tabs, mocked 500, and
- * the ready SYSTEM=1 / volumes lines; 8 checks per width). scan-lost and growth-more (mocked APIs, hunt 12: the poll stops with the lost line; 5 series plus the
- * "+2 more mounts" note). SHOTS_ONLY=scan-root: an unreadable scan root (largest files, duplicates) shows the failed line and a pinned scan with an error shows "error" not "0 B" (10 checks per width). Every state: no pageerror, no document overflow.
+ * the ready SYSTEM=1 / volumes lines; 14 checks per width, R5/R6 the retry line). scan-lost and growth-more (mocked APIs, hunt 12: the poll stops with the lost line; 5 series plus the
+ * "+2 more mounts" note). SHOTS_ONLY=scan-root: an unreadable scan root (largest files, duplicates) shows the failed line and a pinned scan with an error shows "error" not "0 B" (13 checks per width; the alert keeps its letter case, a pinned error's reason is visible text; states scan-error-largest, scan-error-duplicates, pinned-error). Every state: no pageerror, no document overflow.
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
@@ -152,7 +152,7 @@ async function hintPages(run, w) {
 }
 
 // load-failed (nw-resources-load-failed): Net and Disk tabs when /api/resources has not answered (mocked 500) or answered with/without volumes.
-const RF_PER_WIDTH = 12; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4)
+const RF_PER_WIDTH = 14; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4) + 2 (R5, R6: retry line)
 let rfRan = 0, rfPass = 0;
 const rf = (key, where, ok, value) => { rfRan++; if (ok) rfPass++; check(key, where, ok, value); };
 const SYSTEM_LINE = "volume sizes need SYSTEM=1 on the socket proxy";
@@ -167,13 +167,31 @@ const rfVolumesAre = (volumes) => (page) =>
     json(route, { ...body, volumes });
   });
 async function loadFailed(run, w) {
-  await run("load-failed-disk", "metric=disk", async (page) => {
+  await run("failed", "metric=disk", async (page) => {
     await rfAlert(page).first().waitFor({ timeout: SLOW });
-    rf("R1 no SYSTEM=1 line", `load-failed-disk@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 0, null);
-    rf("R1 header has no '0 containers'", `load-failed-disk@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
-    rf("R1 exactly one error block", `load-failed-disk@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
-    rf("R1 header line is exactly unavailable", `load-failed-disk@${w}`, (await rfHeader(page).innerText()).trim().toLowerCase() === "unavailable", await rfHeader(page).innerText());
-    rf("R1 block has no box band clause", `load-failed-disk@${w}`, !(await rfAlert(page).first().innerText()).includes("box band above"), null);
+    rf("R1 no SYSTEM=1 line", `failed@${w}`, (await page.getByText(SYSTEM_LINE).count()) === 0, null);
+    rf("R1 header has no '0 containers'", `failed@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
+    rf("R1 exactly one error block", `failed@${w}`, (await rfAlert(page).count()) === 1, await rfAlert(page).count());
+    rf("R1 header line is exactly unavailable", `failed@${w}`, (await rfHeader(page).innerText()).trim().toLowerCase() === "unavailable", await rfHeader(page).innerText());
+    rf("R1 block has no box band clause", `failed@${w}`, !(await rfAlert(page).first().innerText()).includes("box band above"), null);
+    // nw-resources-polish-2 item C: "every 10 s" is joined by U+00A0 and the paragraph's last line is not an orphan.
+    const rt = await rfAlert(page).first().evaluate((root) => {
+      const p = root.querySelector("p");
+      const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      let node;
+      while ((node = walk.nextNode()) && !node.data.includes("Retrying every"));
+      if (!node) return { found: false };
+      const i = node.data.indexOf("10");
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(p, p.childNodes.length);
+      const rects = [...range.getClientRects()].filter((r) => r.width > 0);
+      const top = Math.max(...rects.map((r) => r.top));
+      const last = rects.filter((r) => r.top >= top - 1);
+      return { found: true, nbsp: node.data[i - 1] === " " && node.data[i + 2] === " ", lastLine: Math.round(Math.max(...last.map((r) => r.right)) - Math.min(...last.map((r) => r.left))) };
+    });
+    rf("R5 'every 10 s' joined by U+00A0", `failed@${w}`, rt.found && rt.nbsp, rt);
+    rf("R6 last line wider than 40px", `failed@${w}`, rt.found && rt.lastLine > 40, rt);
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-failed-net", "metric=net", async (page) => {
     await rfAlert(page).first().waitFor({ timeout: SLOW });
@@ -194,10 +212,12 @@ async function loadFailed(run, w) {
 }
 
 // scan-root (nw-scan-unreadable-root): an unreadable scan root shows as a failed job, an errored pinned scan shows "error", not "0 B".
-const SR_PER_WIDTH = 10; // S1 3 + S2 3 + S3 3 + S4 1
+const SR_PER_WIDTH = 14; // S1 4 + S2 4 + S3 5 + S4 1 (nw-resources-polish-2: case kept, reason visible)
 let srRan = 0, srPass = 0;
 const sr = (key, where, ok, value) => { srRan++; if (ok) srPass++; check(key, where, ok, value); };
-const SR_GONE = "cannot read /mnt/gone: ENOENT: no such file or directory, scandir '/mnt/gone'";
+// Mixed case on purpose: the alert must keep it (a microlabel renders uppercase).
+const SR_GONE = "cannot read /mnt/Media/Gone: ENOENT: no such file or directory, scandir '/mnt/Media/Gone'";
+const SR_PIN_REASON = "readdir failed: ENOENT: no such file or directory, scandir '/mnt/Media/pin-bad'";
 const srJob = (kind) => ({ id: "j1", kind, root: "/mnt/gone", state: "error", progress: { entriesScanned: 0 }, result: null, error: SR_GONE, startedAt: Date.now(), finishedAt: Date.now() });
 const srScanRoutes = (kind) => async (page) => {
   await withDisk(["/mnt/gone"])(page);
@@ -211,31 +231,39 @@ async function scanRoot(run, w) {
     run(state, "metric=disk", async (page) => {
       await page.locator('button[aria-controls="disk-contents-/mnt/gone"]').click({ timeout: SLOW });
       await page.getByRole("button", { name: btn }).click({ timeout: SLOW });
-      const alert = page.locator('[role="alert"]', { hasText: "cannot read /mnt/gone" });
+      const alert = page.locator('[role="alert"]', { hasText: "cannot read /mnt/Media/Gone" });
       await alert.waitFor({ timeout: SLOW });
-      sr(`${label} alert text is whole`, `${state}@${w}`, (await alert.first().innerText()).trim().toLowerCase() === SR_GONE.toLowerCase(), await alert.first().innerText());
+      sr(`${label} alert text is whole and keeps its case`, `${state}@${w}`, (await alert.first().textContent()).trim() === SR_GONE, await alert.first().textContent());
+      const tt = await alert.first().evaluate((el) => getComputedStyle(el).textTransform);
+      sr(`${label} alert text-transform is none`, `${state}@${w}`, tt === "none", tt);
       sr(`${label} no clean-result line`, `${state}@${w}`, (await page.getByText(empty).count()) === 0, null);
       const o = await srOverflow(page);
       sr(`${label} no horizontal overflow`, `${state}@${w}`, o.ok, o.o);
-    }, srScanRoutes(kind), (page) => page.locator('[role="alert"]', { hasText: "cannot read /mnt/gone" }).first());
-  await job("scan-root-largest", "largest-files", "S1", /no files found/i, /Find largest files/);
-  await job("scan-root-duplicates", "duplicates", "S2", /no likely duplicates/i, /Find duplicates/);
-  await run("scan-root-pinned", "metric=disk", async (page) => {
+    }, srScanRoutes(kind), (page) => page.locator('[role="alert"]', { hasText: "cannot read /mnt/Media/Gone" }).first());
+  await job("scan-error-largest", "largest-files", "S1", /no files found/i, /Find largest files/);
+  await job("scan-error-duplicates", "duplicates", "S2", /no likely duplicates/i, /Find duplicates/);
+  await run("pinned-error", "metric=disk", async (page) => {
     const bad = srPinCell(page, "/mnt/pin-bad");
     await bad.waitFor({ timeout: SLOW });
     await page.waitForFunction(() => ![...document.querySelectorAll("span")].some((e) => e.textContent === "…"), null, { timeout: SLOW }).catch(() => {});
-    sr("S3 cell text is exactly error", `scan-root-pinned@${w}`, (await bad.innerText()).trim() === "error", await bad.innerText());
-    sr("S3 cell has a title", `scan-root-pinned@${w}`, !!(await bad.locator("span[title]").first().getAttribute("title").catch(() => null)), null);
-    sr("S3 row never says 0 B", `scan-root-pinned@${w}`, !(await bad.evaluate((el) => el.parentElement.innerText)).includes("0 B"), null);
+    sr("S3 cell text is exactly error", `pinned-error@${w}`, (await bad.innerText()).trim() === "error", await bad.innerText());
+    sr("S3 cell has a title", `pinned-error@${w}`, !!(await bad.locator("span[title]").first().getAttribute("title").catch(() => null)), null);
+    sr("S3 row never says 0 B", `pinned-error@${w}`, !(await bad.evaluate((el) => el.parentElement.innerText)).includes("0 B"), null);
+    // Item B: the reason is element text in the row (not only a title), and it is the server's reason.
+    const reason = await bad.locator("xpath=..").locator('[role="alert"]').allTextContents();
+    sr("S3 reason text is visible in the row", `pinned-error@${w}`, reason.length === 1 && reason[0].trim() === SR_PIN_REASON, reason);
+    // Item B risk: the reason must not squeeze the folder path column (6rem = 96px).
+    const pw = await page.locator('span[title="/mnt/pin-bad"]').evaluate((el) => el.getBoundingClientRect().width);
+    sr("S3 path column is at least 96px", `pinned-error@${w}`, pw >= 96, pw);
     const good = srPinCell(page, "/mnt/pin-good");
-    sr("S4 good pin shows a size", `scan-root-pinned@${w}`, /^\d+(\.\d+)? ([KMGT]i?)?B$/.test((await good.innerText()).trim()), await good.innerText());
+    sr("S4 good pin shows a size", `pinned-error@${w}`, /^\d+(\.\d+)? ([KMGT]i?)?B$/.test((await good.innerText()).trim()), await good.innerText());
   }, async (page) => {
     await withDisk(["/mnt/test"])(page);
     await page.route(/\/api\/resources\/pins/, (route) => json(route, { pinnedFolders: ["/mnt/pin-bad", "/mnt/pin-good"] }));
     await page.route(/\/api\/resources\/contents/, (route) => {
       const asked = new URL(route.request().url()).searchParams.get("path");
       const base = { ...DISK_SCAN, label: asked, path: asked };
-      return json(route, asked === "/mnt/pin-bad" ? { ...base, entries: [], usedBytes: 0, partial: true, error: "readdir failed: ENOENT: no such file or directory" } : { ...base, usedBytes: 1.5e9 });
+      return json(route, asked === "/mnt/pin-bad" ? { ...base, entries: [], usedBytes: 0, partial: true, error: SR_PIN_REASON } : { ...base, usedBytes: 1.5e9 });
     });
   }, (page) => page.locator(".panel", { has: page.getByText("PINNED", { exact: true }) }).last());
 }
@@ -380,6 +408,8 @@ try {
   await browser.close();
 }
 check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
+// A mistyped SHOTS_ONLY would otherwise run the default sections and look green.
+check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root"].includes(ONLY), ONLY);
 if (ONLY === "hint-pages") {
   check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
   console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);

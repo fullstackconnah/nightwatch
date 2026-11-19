@@ -447,7 +447,7 @@ export function ResourcesLoadError({ error, onRetry, bandAbove = true }: { error
       <h3 className="text-sm font-semibold mb-1.5">Docker did not answer</h3>
       <p className="text-xs leading-relaxed text-ink-dim mb-4">
         <span className="font-mono">{`GET /api/resources → ${status} ${msg}`}</span>. Nothing is listed rather than a guess.
-        Retrying every 10 s{bandAbove ? "; the box band above is live from the host stream." : "."}
+        Retrying every&nbsp;10&nbsp;s{bandAbove ? "; the box band above is live from the host stream." : "."}
       </p>
       <Button size="sm" variant="outline" onClick={onRetry}>
         <RotateCw size={12} aria-hidden /> Retry now
