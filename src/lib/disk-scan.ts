@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import crypto from "node:crypto";
 import { HOST_ROOTFS } from "@/lib/host-metrics";
 import { getAllHostMountpoints, resolveAbsolutePath } from "@/lib/disk-usage";
+import { fileIdentity, newIdentityFilter } from "./disk-scan-pure.ts";
 
 /**
  * On-demand recursive scans for the CONTENTS drill-down's "Find largest
@@ -152,7 +153,7 @@ function hostPathFor(absolutePath: string): string {
  */
 async function walkFiles(
   rootAbs: string,
-  onFile: (absPath: string, bytes: number, mtimeMs: number) => void,
+  onFile: (absPath: string, bytes: number, mtimeMs: number, identity: string) => void,
   onProgress: (entriesScanned: number) => void,
 ): Promise<{ entriesScanned: number; capHit: ScanCapReason }> {
   const started = Date.now();
@@ -206,7 +207,7 @@ async function walkFiles(
         const childHostPath = `${dirHostPath}/${d.name}`;
         try {
           const st = fs.lstatSync(childHostPath);
-          onFile(childAbs, st.blocks * 512, st.mtimeMs);
+          onFile(childAbs, st.blocks * 512, st.mtimeMs, fileIdentity(st));
         } catch {
           // vanished or permission denied — skip
         }
@@ -288,8 +289,9 @@ async function runDuplicates(job: ScanJob, rootAbs: string): Promise<void> {
   const started = Date.now();
   const bySize = new Map<number, { hostPath: string; absPath: string }[]>();
 
-  function consider(absPath: string, bytes: number) {
-    if (bytes < MIN_DUP_SIZE) return;
+  const isFirstPath = newIdentityFilter();
+  function consider(absPath: string, bytes: number, _mtimeMs: number, identity: string) {
+    if (bytes < MIN_DUP_SIZE || !isFirstPath(identity)) return;
     const list = bySize.get(bytes) ?? [];
     list.push({ hostPath: hostPathFor(absPath), absPath });
     bySize.set(bytes, list);
