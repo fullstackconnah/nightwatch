@@ -213,7 +213,7 @@ async function scanRoot(run, w) {
       await page.getByRole("button", { name: btn }).click({ timeout: SLOW });
       const alert = page.locator('[role="alert"]', { hasText: "cannot read /mnt/gone" });
       await alert.waitFor({ timeout: SLOW });
-      sr(`${label} alert text is whole`, `${state}@${w}`, (await alert.first().innerText()).trim().toLowerCase() === SR_GONE, await alert.first().innerText());
+      sr(`${label} alert text is whole`, `${state}@${w}`, (await alert.first().innerText()).trim().toLowerCase() === SR_GONE.toLowerCase(), await alert.first().innerText());
       sr(`${label} no clean-result line`, `${state}@${w}`, (await page.getByText(empty).count()) === 0, null);
       const o = await srOverflow(page);
       sr(`${label} no horizontal overflow`, `${state}@${w}`, o.ok, o.o);
