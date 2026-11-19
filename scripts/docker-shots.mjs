@@ -590,7 +590,7 @@ try {
     const NONE = "No widget configured";
     const WIDGETS = { [NAME]: { type: "sonarr", fields: [{ label: "Queue", value: "3" }, { label: "Missing", value: "12", intent: "warn" }], fetchedAt: 0 } };
     const STATES = { A1: "ok", A4: "fail", A5: "ok", A2: "empty" }; // A5 loads good, then flips to fail
-    const PER_WIDTH = 10; // 4 states x 2 checks, plus an overflow check on A4 and A2
+    const PER_WIDTH = 11; // 4 states x 2 checks, plus an overflow check on A4, A5 and A2
     let ran = 0, pass = 0;
     const hp = (n, ok, d) => { ran++; if (ok) pass++; check(n, ok, d); };
     for (const { name, ...opts } of VIEWPORTS) {
@@ -611,7 +611,7 @@ try {
         if (state === "A5") {
           await card.getByText("Queue", { exact: true }).waitFor({ timeout: 30_000 });
           mode.w = "fail";
-          await page.waitForTimeout(5300);
+          await page.waitForTimeout(20300); // widgets poll is 20 s
           await page.evaluate(() => window.dispatchEvent(new Event("focus")));
           await card.getByText(STALE).waitFor({ timeout: 30_000 });
         } else if (state === "A4") await card.getByText(LOAD).waitFor({ timeout: 30_000 });
@@ -632,7 +632,7 @@ try {
           hp(`HP-A2 ${name} "${NONE}" shown`, t.includes(NONE), t);
           hp(`HP-A2 ${name} no note`, !t.includes(LOAD) && !t.includes(STALE), t);
         }
-        if (state === "A4" || state === "A2") {
+        if (state !== "A1") {
           const ok = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
           hp(`HP-${state} ${name} no horizontal overflow`, ok);
         }
