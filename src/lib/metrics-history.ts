@@ -308,9 +308,9 @@ async function readFileCached(filePath: string): Promise<MetricsHistorySample[]>
  *  of the day's file; `keep` lets a reader retain only the fields it uses.
  *  `consumed` (bytes) stops before a trailing line that has no newline yet and does
  *  not parse, so the next tail read starts at it again once it is complete. */
-function parseChunk<T>(text: string, keep: (s: MetricsHistorySample) => T): { samples: T[]; consumed: number } {
-  const lines = text.split("\n");
-  const fragment = lines.pop() as string;
+function parseChunk<T>(buf: Buffer, keep: (s: MetricsHistorySample) => T): { samples: T[]; consumed: number } {
+  // Offsets come from the bytes, never the decoded text: a line torn inside a multi-byte character decodes to U+FFFD, which is longer than what is on disk.
+  const end = buf.lastIndexOf(10) + 1;
   const samples: T[] = [];
   const take = (line: string): boolean => {
     if (!line.trim()) return true;
@@ -322,9 +322,8 @@ function parseChunk<T>(text: string, keep: (s: MetricsHistorySample) => T): { sa
       return false;
     }
   };
-  for (const line of lines) take(line);
-  const complete = take(fragment) || !fragment.trim() ? text : text.slice(0, text.length - fragment.length);
-  return { samples, consumed: Buffer.byteLength(complete) };
+  for (const line of buf.toString("utf8", 0, end).split("\n")) take(line);
+  return { samples, consumed: take(buf.toString("utf8", end)) ? buf.length : end };
 }
 
 /** Samples of a changed file: an append-only file that grew is tail-read from the
@@ -341,13 +340,13 @@ async function readGrown<T>(
     try {
       const buf = Buffer.alloc(stat.size - cached.size);
       const { bytesRead } = await fh.read(buf, 0, buf.length, cached.size);
-      const { samples, consumed } = parseChunk(buf.subarray(0, bytesRead).toString("utf8"), keep);
+      const { samples, consumed } = parseChunk(buf.subarray(0, bytesRead), keep);
       return { samples: cached.samples.concat(samples), size: cached.size + consumed };
     } finally {
       await fh.close();
     }
   }
-  const { samples, consumed } = parseChunk(await fsp.readFile(filePath, "utf8"), keep);
+  const { samples, consumed } = parseChunk(await fsp.readFile(filePath), keep);
   return { samples, size: consumed };
 }
 

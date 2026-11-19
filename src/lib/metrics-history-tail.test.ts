@@ -120,4 +120,17 @@ describe("history readers read only appended bytes", () => {
     const s = [...full().values()][0].samples[2] as { containers: Record<string, number[]> };
     assert.deepEqual(Object.keys(s.containers), ["é日本"]);
   });
+
+  it("a torn line cut inside a multi-byte character does not shift the offset", async () => {
+    seed();
+    // 0xC3 alone is half of "é": it decodes to U+FFFD, which is 3 bytes as text but 1 on disk
+    fs.appendFileSync(file(NOW), Buffer.concat([Buffer.from('{"t":1,"containers":{"'), Buffer.from([0xc3])]));
+    fs.appendFileSync(file(NOW), `\n${rec(NOW - 30_000, 3)}\n`);
+    await queryMetricsHistory("24h", ["web"]);
+    fs.appendFileSync(file(NOW), `\n${rec(NOW - 20_000, 4)}\n`);
+    await queryMetricsHistory("24h", ["web"]);
+    fs.appendFileSync(file(NOW), `{${rec(NOW - 10_000, 5).slice(1)}\n`); // no leading newline: a shifted offset would eat the "{"
+    await queryMetricsHistory("24h", ["web"]);
+    assert.deepEqual(cpus(full()), [1, 2, 3, 4, 5]);
+  });
 });
