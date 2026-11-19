@@ -1,9 +1,12 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { statfsWithDeadline, pendingStatfsTargets } from "./host-statfs.ts";
 
 const stat = { bsize: 1, blocks: 10, bfree: 5, bavail: 5 } as never;
 const never = () => new Promise<never>(() => {});
+// The deadline timer is unref'd, so a hung statfs leaves nothing else alive: keep the loop up while tests wait on it.
+const keepAlive = setInterval(() => {}, 1_000);
+after(() => clearInterval(keepAlive));
 
 test("healthy statfs returns the value and leaves nothing pending", async () => {
   assert.equal(await statfsWithDeadline("/a", { statfs: async () => stat, deadlineMs: 20 }), stat);
