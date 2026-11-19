@@ -26,7 +26,7 @@ import { STATS_STALE_AFTER, nextFailCount } from "@/lib/poll-fails";
 import { REMOVABLE_STATES } from "@/lib/container-remove";
 import { isProtectedContainer } from "@/lib/protected-containers";
 import { containerHeading } from "@/lib/container-heading";
-import { LOGS_FAILED,detailNotice, nearBottom, statsWhileRunning } from "@/lib/detail-states";
+import { LOGS_FAILED, detailNotice, nearBottom, statsWhileRunning } from "@/lib/detail-states";
 import { TICKING_THRESHOLD_MS, useNow } from "@/lib/use-now";
 import { cn } from "@/lib/utils";
 
