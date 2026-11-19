@@ -60,6 +60,28 @@ test("two separate files with equal content still form a group", (t) => {
   }, t);
 });
 
+// Synthetic stats: a FUSE mount can give different files one dev:ino, so only nlink > 1 may drop a file.
+const kept = (sts: { dev: number; ino: number; nlink?: number }[]) => {
+  const isFirst = newIdentityFilter();
+  return sts.map((st) => isFirst(fileIdentity(st as { dev: number; ino: number; nlink: number })));
+};
+
+test("nlink 1 with a repeated dev:ino keeps both files (reused inode numbers)", () => {
+  assert.deepEqual(kept([{ dev: 1, ino: 5, nlink: 1 }, { dev: 1, ino: 5, nlink: 1 }]), [true, true]);
+});
+
+test("nlink 2 with the same dev:ino counts once, first path stays", () => {
+  assert.deepEqual(kept([{ dev: 1, ino: 5, nlink: 2 }, { dev: 1, ino: 5, nlink: 2 }]), [true, false]);
+});
+
+test("nlink 2 with distinct dev:ino keeps both", () => {
+  assert.deepEqual(kept([{ dev: 1, ino: 5, nlink: 2 }, { dev: 1, ino: 6, nlink: 2 }]), [true, true]);
+});
+
+test("nlink 0 or undefined is not a hardlink and is kept", () => {
+  assert.deepEqual(kept([{ dev: 1, ino: 5, nlink: 0 }, { dev: 1, ino: 5, nlink: 0 }, { dev: 1, ino: 5 }, { dev: 1, ino: 5 }]), [true, true, true, true]);
+});
+
 const read = (p: string) => fs.readdirSync(p);
 
 // Unreadable scan root: the walk must fail loudly for the root, skip silently below it.

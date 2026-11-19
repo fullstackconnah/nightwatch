@@ -153,7 +153,7 @@ function hostPathFor(absolutePath: string): string {
  */
 async function walkFiles(
   rootAbs: string,
-  onFile: (absPath: string, bytes: number, mtimeMs: number, identity: string) => void,
+  onFile: (absPath: string, bytes: number, mtimeMs: number, identity: string | null) => void,
   onProgress: (entriesScanned: number) => void,
 ): Promise<{ entriesScanned: number; capHit: ScanCapReason }> {
   const started = Date.now();
@@ -286,7 +286,7 @@ async function runDuplicates(job: ScanJob, rootAbs: string): Promise<void> {
   const bySize = new Map<number, { hostPath: string; absPath: string }[]>();
 
   const isFirstPath = newIdentityFilter();
-  function consider(absPath: string, bytes: number, _mtimeMs: number, identity: string) {
+  function consider(absPath: string, bytes: number, _mtimeMs: number, identity: string | null) {
     if (bytes < MIN_DUP_SIZE || !isFirstPath(identity)) return;
     const list = bySize.get(bytes) ?? [];
     list.push({ hostPath: hostPathFor(absPath), absPath });
