@@ -118,7 +118,10 @@ const diag = {};
 // One bad state must not hide the rest: a throw (a failed waitFor included) is recorded as a FAIL and the next step runs.
 let stage = "";
 const fail = (vp, e) => record("FAIL", `${stage}@${vp}`, String(e?.message ?? e).split(/\r?\n/)[0]);
-const guarded = (label, fn) => { stage = label; return fn().catch((e) => fail("all", e)); };
+// ONLY=git-honest (SHOTS_ONLY reaches it through shots-json.sh) runs just the sections whose stage starts with it; unset runs all.
+const ONLY = process.env.SHOTS_ONLY || process.env.ONLY;
+const skip = () => !!ONLY && !stage.startsWith(ONLY);
+const guarded = (label, fn) => { stage = label; return skip() ? Promise.resolve() : fn().catch((e) => fail("all", e)); };
 
 const browser = await chromium.launch({ headless: true });
 const sessions = [];
@@ -136,7 +139,7 @@ for (const s of sessions) {
     if (!login.ok()) throw new Error(`login failed: HTTP ${login.status()}`);
   }
 }
-const each = (fn) => Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
+const each = (fn) => skip() ? Promise.resolve() : Promise.all(sessions.map((s) => fn(s).catch((e) => fail(s.name, e))));
 
 /** C14: page errors, and any request that leaves the page's own origin. */
 function watch(page, name) {
@@ -377,6 +380,41 @@ for (const [which, claim] of [["git", /In sync/], ["proxy", /All up/]]) {
     await page.close();
   });
 }
+
+// git-honest (nw-githonest): a mirror that could not be compared, or a repo Forgejo did not answer for, is never "In sync".
+// [fixture, shot name, chip, answer (exact), the mirror-panel badge text that must be present (null: none), the notice (null: none)]
+const TAIL = "2 open pull requests; last commit 3 h ago in lab/alpha.";
+const HONEST = [
+  ["mirrorUnknown", "mirror-unknown", "Not compared", `The mirror could not be compared with GitHub. ${TAIL}`, "not compared", null],
+  ["mirrorMixed", "mirror-mixed", "Not compared", `3 of 4 mirrors are in sync with GitHub; 1 could not be compared. ${TAIL}`, "not compared", null],
+  ["reposPartial", "repos-partial", "Incomplete", `Forgejo did not answer for every repo. ${TAIL}`, null, "1 repo did not answer fully, so this may be incomplete."],
+];
+await guarded("git-honest", async () => {
+  for (const [key, name, chip, answer, badge, notice] of HONEST) {
+    stage = `git-honest:${name}`;
+    await each(async (s) => {
+      const { page } = await visit(s, "git", key);
+      const vp = `${name}@${s.name}`;
+      record("GH-1 answer sentence exact", vp, (await text(page, "[data-feature=answer]")).replace(/\s+/g, " ").trim() === answer);
+      record("GH-2 chip label exact", vp, (await text(page, "[data-feature=chip]")).trim() === chip);
+      if (badge) {
+        await openStrip(page, "mirrors");
+        record("GH-3 badge text present for the unknown mirror", vp, await detail(page).getByText(badge, { exact: true }).first().isVisible().catch(() => false));
+      }
+      if (notice) record("GH-4 notice text present", vp, (await page.locator("main").innerText()).replace(/\s+/g, " ").includes(notice));
+      if (key === "reposPartial") {
+        await openStrip(page, "mirrors");
+        record("GH-7 Mirrors strip reads Not known", vp, (await text(page, '[data-row-id="mirrors"] .st-state')).trim() === "Not known");
+        record("GH-8 mirror panel says mirrors are not known", vp, await detail(page).getByText("Forgejo did not answer for every repo, so mirrors are not known.", { exact: true }).first().isVisible().catch(() => false));
+      }
+      record("GH-5 no horizontal overflow (scrollWidth == clientWidth)", vp, await page.evaluate(() => document.documentElement.scrollWidth === document.documentElement.clientWidth));
+      const a = await audit(page);
+      record("GH-6 no clipped text", vp, a.clipped ? { n: a.clipped, sample: a.clippedSample } : 0);
+      await shot(page, s, `git-${name}`);
+      await page.close();
+    });
+  }
+});
 
 // C12: under reduced motion nothing in main has a transition duration.
 await guarded("C12", () =>

@@ -16,6 +16,7 @@ const NAMES = ["alpha", "bravo", "charlie", "delta"];
 
 export const ok = (over = {}) => ({
   status: "ok",
+  partial: 0,
   forgejoUrl: URL_,
   repos: NAMES.map((n, i) => repo(n, i + 1)),
   stream: [
@@ -47,6 +48,10 @@ export const FIXTURES = {
   mirrorError: ok({ mirrors: [mirror("alpha"), mirror("bravo", { lastError: `push to github.com failed: authentication rejected for ${URL_}` }), mirror("charlie"), mirror("delta")] }),
   diverged: ok({ mirrors: [mirror("alpha"), mirror("bravo"), mirror("charlie", { defaultBranch: { state: "diverged", aheadBy: 2, behindBy: 1 } }), mirror("delta")] }),
   noMirrors: ok({ mirrors: [] }),
+  // git-honest: a mirror GitHub could not be asked about, three synced and one unknown, and one repo Forgejo did not answer for.
+  mirrorUnknown: ok({ mirrors: [mirror("alpha", { lastSync: null, defaultBranch: { state: "unknown" } })] }),
+  mirrorMixed: ok({ mirrors: [mirror("alpha"), mirror("bravo"), mirror("charlie"), mirror("delta", { lastSync: null, defaultBranch: { state: "unknown" } })] }),
+  reposPartial: ok({ mirrors: [], partial: 1 }),
   noRepos: ok({ repos: [], stream: [], pulls: [], branches: [], mirrors: [] }),
   unconfigured: { status: "unconfigured", forgejoUrl: null, detail: "No Forgejo connection configured.", ...none },
   unauthorized: down("unauthorized", "401 from the server"),

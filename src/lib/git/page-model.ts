@@ -92,7 +92,8 @@ export function gitModel(i: ModelInput): Model {
   // ---- facts ----
   const failing = g.mirrors.filter((m) => m.lastError);
   const diverged = g.mirrors.filter((m) => !m.lastError && m.defaultBranch.state === "diverged");
-  const inSync = g.mirrors.length - failing.length - diverged.length;
+  const inSync = g.mirrors.filter((m) => !m.lastError && m.defaultBranch.state === "synced").length;
+  const unknown = g.mirrors.length - failing.length - diverged.length - inSync; // no GitHub token, the call failed, or never synced
   const newest = <T,>(xs: T[], at: (x: T) => string) => xs.reduce<T | null>((a, x) => (a === null || Date.parse(at(x)) > Date.parse(at(a)) ? x : a), null);
   const lastCommit = newest(g.stream.filter((c): c is typeof c & { date: string } => c.date !== null), (c) => c.date);
   const newestPull = newest(g.pulls, (p) => p.createdAt);
@@ -117,15 +118,26 @@ export function gitModel(i: ModelInput): Model {
     answer = diverged.length === 1
       ? `${diverged[0].repo} has diverged from GitHub${by ? `: ${by}` : ""}.`
       : `${diverged.length} repos have diverged from GitHub: ${diverged.map((m) => m.repo).join(", ")}.`;
+  } else if (unknown > 0) {
+    chip = { tone: "neutral", label: "Not compared" };
+    const n = g.mirrors.length;
+    answer = n === 1 ? `The mirror could not be compared with GitHub. ${tail}`
+      : unknown === n ? `None of the ${n} mirrors could be compared with GitHub. ${tail}`
+      : `${inSync} of ${n} mirrors are in sync with GitHub; ${unknown} could not be compared. ${tail}`;
   } else if (g.mirrors.length === 0) {
     chip = { tone: "neutral", label: "No mirrors" };
     answer = `No mirrors to GitHub are set up. ${tail}`;
   } else {
     answer = `${g.mirrors.length === 1 ? "The mirror is" : `All ${g.mirrors.length} mirrors are`} in sync with GitHub. ${tail}`;
   }
+  // Forgejo did not answer for some repo: never claim a calm "all in sync" or "no mirrors".
+  if (g.partial > 0 && (chip.label === "In sync" || chip.label === "No mirrors")) {
+    chip = { tone: "warn", label: "Incomplete" };
+    answer = `Forgejo did not answer for every repo. ${tail}`;
+  }
 
   let evidence = `Updated ${ageText(age)} ago · checks every ${POLL_S} s`;
-  let notice: string | null = null;
+  let notice: string | null = g.partial > 0 ? `${g.partial === 1 ? "1 repo" : `${g.partial} repos`} did not answer fully, so this may be incomplete.` : null;
   let autoTarget: Model["autoTarget"] = failing.length > 0 || diverged.length > 0 ? "mirrors" : null;
   if (stale) {
     chip = { tone: "neutral", label: "Stale" };
@@ -140,11 +152,12 @@ export function gitModel(i: ModelInput): Model {
     failing.length ? `${failing.length} failing` : null,
     diverged.length ? `${diverged.length} diverged` : null,
     inSync ? `${inSync} in sync` : null,
+    unknown ? `${unknown} not compared` : null,
   ].filter(Boolean);
   const strips: Strip[] = g.repos.length === 0 ? [] : [
     {
       id: "mirrors", title: "Mirrors", tone: failing.length ? "bad" : diverged.length ? "warn" : null,
-      state: g.mirrors.length === 0 ? "None set up" : mirrorParts.join(" · "),
+      state: g.mirrors.length === 0 ? (g.partial > 0 ? "Not known" : "None set up") : mirrorParts.join(" · "),
     },
     {
       id: "pulls", title: "Pull requests", tone: null,

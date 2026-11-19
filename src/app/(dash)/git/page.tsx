@@ -30,7 +30,7 @@ export default function GitPage() {
 
   // No lead paragraph: the head answer says it once and the mirror rows hold each failure in full.
   const parts: Record<StripId, Pick<StripSpec, "body">> | undefined = ok && {
-    mirrors: { body: <MirrorRows mirrors={ok.mirrors} enabled={model.writes[0].enabled} forgejoUrl={ok.forgejoUrl} /> },
+    mirrors: { body: <MirrorRows mirrors={ok.mirrors} enabled={model.writes[0].enabled} forgejoUrl={ok.forgejoUrl} partial={ok.partial} /> },
     pulls: { body: <PullRows pulls={ok.pulls} /> },
     branches: { body: <BranchRows branches={ok.branches} /> },
     commits: { body: <GitCommitStream stream={ok.stream} /> },

@@ -18,6 +18,7 @@ import type { GitMirror } from "@/lib/types/forgejo";
 function stateBadge(m: GitMirror): { variant: NonNullable<BadgeProps["variant"]>; text: string } {
   if (m.lastError) return { variant: "bad", text: "error" };
   if (m.defaultBranch.state === "diverged") return { variant: "warn", text: "diverged" };
+  if (m.defaultBranch.state === "unknown") return { variant: "neutral", text: "not compared" };
   return { variant: "neutral", text: "synced" };
 }
 
@@ -49,8 +50,10 @@ function SyncNow({ mirror, enabled }: { mirror: GitMirror; enabled: boolean }) {
   );
 }
 
-export function MirrorRows({ mirrors, enabled, forgejoUrl }: { mirrors: GitMirror[]; enabled: boolean; forgejoUrl: string }) {
-  if (mirrors.length === 0) return <p className="st-note">No push mirrors are configured.</p>;
+export function MirrorRows({ mirrors, enabled, forgejoUrl, partial = 0 }: { mirrors: GitMirror[]; enabled: boolean; forgejoUrl: string; partial?: number }) {
+  if (mirrors.length === 0) {
+    return <p className="st-note">{partial > 0 ? "Forgejo did not answer for every repo, so mirrors are not known." : "No push mirrors are configured."}</p>;
+  }
   return (
     <div className="st-flush">
       {mirrors.map((m) => {
