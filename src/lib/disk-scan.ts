@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import crypto from "node:crypto";
 import { HOST_ROOTFS } from "@/lib/host-metrics";
 import { getAllHostMountpoints, resolveAbsolutePath } from "@/lib/disk-usage";
-import { fileIdentity, newIdentityFilter } from "./disk-scan-pure.ts";
+import { fileIdentity, newIdentityFilter, readWalkDir } from "./disk-scan-pure.ts";
 
 /**
  * On-demand recursive scans for the CONTENTS drill-down's "Find largest
@@ -174,12 +174,8 @@ async function walkFiles(
 
     const dirAbs = stack.pop()!;
     const dirHostPath = hostPathFor(dirAbs);
-    let dirents: fs.Dirent[];
-    try {
-      dirents = fs.readdirSync(dirHostPath, { withFileTypes: true });
-    } catch {
-      continue; // permission denied or vanished mid-walk — skip silently
-    }
+    const dirents = readWalkDir((p) => fs.readdirSync(p, { withFileTypes: true }), dirHostPath, dirAbs, rootAbs);
+    if (!dirents) continue; // deeper folder unreadable: skip silently (an unreadable root threw)
 
     for (const d of dirents) {
       if (Date.now() - started > SCAN_BUDGET_MS) {

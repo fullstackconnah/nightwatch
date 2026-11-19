@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileIdentity, newIdentityFilter } from "./disk-scan-pure.ts";
+import { fileIdentity, newIdentityFilter, readWalkDir } from "./disk-scan-pure.ts";
 
 // Mirrors the duplicates job: identity filter first, then group by size.
 function sizeGroups(files: string[]) {
@@ -58,4 +58,27 @@ test("two separate files with equal content still form a group", (t) => {
     assert.equal(g.length, 1);
     assert.equal(g[0].wasted, 100);
   }, t);
+});
+
+const read = (p: string) => fs.readdirSync(p);
+
+// Unreadable scan root: the walk must fail loudly for the root, skip silently below it.
+test("readWalkDir throws for an unreadable root, naming the typed path and not the host path", () => {
+  const missing = path.join(os.tmpdir(), "nw-gone-" + process.pid);
+  assert.throws(
+    () => readWalkDir(read,`/host/rootfs${missing}`, "/mnt/gone", "/mnt/gone"),
+    (e: Error) => e.message.startsWith("cannot read /mnt/gone: ") && !e.message.includes("/host/rootfs") && /ENOENT/.test(e.message),
+  );
+});
+
+test("readWalkDir skips an unreadable subfolder and reads a readable root, empty or not", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nw-walk-"));
+  try {
+    assert.deepEqual(readWalkDir(read,root, "/r", "/r"), []);
+    fs.writeFileSync(path.join(root, "a.txt"), "x");
+    assert.equal(readWalkDir(read,root, "/r", "/r")?.length, 1);
+    assert.equal(readWalkDir(read,path.join(root, "nope"), "/r/nope", "/r"), null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

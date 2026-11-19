@@ -5,6 +5,7 @@ import useSWR from "swr";
 import { Pin, PinOff, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBytes, relativeTime } from "@/lib/format";
+import { pinnedSizeState } from "@/lib/pinned-size";
 import { fetcher, postJson, serverMessage, type DiskUsageScan } from "@/lib/client";
 
 /**
@@ -96,6 +97,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
     refreshInterval: 0,
     keepPreviousData: true,
   });
+  const size = pinnedSizeState({ isLoading, hasError: !!error, scan });
   const [refreshing, setRefreshing] = useState(false);
   const [unpinning, setUnpinning] = useState(false);
   const [unpinError, setUnpinError] = useState<string | null>(null);
@@ -133,7 +135,7 @@ function PinnedRow({ path, onUnpin }: { path: string; onUnpin: () => Promise<voi
         {path}
       </span>
       <span className="font-mono text-[0.75rem] text-ink w-20 text-right shrink-0">
-        {isLoading && !scan ? "…" : error && !scan ? <span className="text-warn/80">error</span> : scan ? formatBytes(scan.usedBytes) : "—"}
+        {size === "loading" ? "…" : size === "error" ? <span className="text-warn/80" title={scan?.error ?? undefined}>error</span> : size === "size" && scan ? formatBytes(scan.usedBytes) : "—"}
       </span>
       {scan && (
         <span className="microlabel shrink-0 hidden sm:inline">{relativeTime(scan.scannedAt)}</span>
