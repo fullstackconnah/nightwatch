@@ -262,13 +262,18 @@ export function recordMetricsHistoryTick(input: MetricsHistoryTickInput): void {
     });
 }
 
+function evictIdleFiles(now: number): void {
+  const cache = fileCache();
+  for (const [p, e] of cache) if (now - e.lastUsed > FILE_CACHE_IDLE_MS) cache.delete(p);
+}
+
 /** Parses one JSONL file, using a globalThis cache keyed by path + mtime so a
  *  7-day query (up to 8 files) doesn't re-read and re-parse every file on every
  *  ~30s poll — only files that changed since the last read are touched. */
 async function readFileCached(filePath: string): Promise<MetricsHistorySample[]> {
   const cache = fileCache();
   const now = Date.now();
-  for (const [p, e] of cache) if (now - e.lastUsed > FILE_CACHE_IDLE_MS) cache.delete(p);
+  evictIdleFiles(now);
 
   let stat: fs.Stats;
   try {
@@ -302,7 +307,8 @@ function parseJsonl<T>(text: string, keep: (s: MetricsHistorySample) => T): T[] 
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     try {
-      out.push(keep(JSON.parse(line) as MetricsHistorySample));
+      const s = JSON.parse(line) as MetricsHistorySample | null;
+      if (s && typeof s === "object") out.push(keep(s)); // a bare `null` line parses but is not a sample
     } catch {
       // skipped
     }
@@ -316,6 +322,7 @@ const toMountSample = (s: MetricsHistorySample): MountSample => ({ t: s.t, mount
  *  otherwise hold every fully parsed day (all containers) for as long as it
  *  runs. Reuses the full cache's entry when it is current; never writes to it. */
 async function readMountsCached(filePath: string): Promise<MountSample[]> {
+  evictIdleFiles(Date.now()); // the 30 s mount poll is the only caller left once nobody views history
   let stat: fs.Stats;
   try {
     stat = await fsp.stat(filePath);

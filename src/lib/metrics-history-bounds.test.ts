@@ -140,6 +140,27 @@ describe("history caches are bounded (H92-2)", () => {
     for (const k of rest) assert.ok(cache.has(k));
   });
 
+  it("the mount poll also evicts idle full-cache entries (no history view may ever run again)", async () => {
+    const now = Date.now();
+    seedDays(now);
+    await queryMetricsHistory("7d", []);
+    const cache = g.__metricsHistoryFileCache!;
+    for (const e of cache.values()) e.lastUsed = now - 6 * 60_000;
+    const r = await queryMountHistory("24h", ["/real"]);
+    assert.equal(cache.size, 0);
+    assert.ok(r.mounts["/real"].some((p) => typeof p.usedBytes === "number"));
+  });
+
+  it("a line that parses to null is skipped by both readers", async () => {
+    const now = Date.now();
+    fs.mkdirSync(path.dirname(file(now)), { recursive: true });
+    fs.writeFileSync(file(now), `null\n${sample(now - 60_000)}\n`);
+    await queryMetricsHistory("24h", []);
+    assert.equal((g.__metricsHistoryFileCache!.get(file(now)) as unknown as { samples: unknown[] }).samples.length, 1);
+    const r = await queryMountHistory("24h", ["/real"]);
+    assert.ok(r.mounts["/real"].some((p) => typeof p.usedBytes === "number"));
+  });
+
   it("prune drops the mount cache entry of a deleted file", async () => {
     const now = Date.now();
     const old = file(now - 20 * DAY);
