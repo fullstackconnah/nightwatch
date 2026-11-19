@@ -30,7 +30,7 @@ test("H21U F1: one-shot docker calls carry a deadline, the pull an idle guard", 
 
 test("H21U F2: log resume read is capped with the seed cap", () => {
   assert.match(logReadOptions, /^\s+\.\.\.\(sinceMs === undefined \? \{ tail \} : \{ since: Math\.floor\(sinceMs \/ 1000\), tail: tailMax \}\),/m);
-  assert.match(logStream, /oneShotLogOptions\(tail, sinceMs, LOG_TAIL_MAX, DOCKER_CALL_MS\)/);
+  assert.match(logStream, /oneShotLogOptions\(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS\)/);
 });
 
 test("H21U F3: oidc bodies are deadline-covered and capped", () => {

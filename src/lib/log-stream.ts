@@ -1,4 +1,4 @@
-import { docker, DOCKER_CALL_MS, listContainers } from "@/lib/docker";
+import { docker, DOCKER_LOGS_MS, listContainers } from "@/lib/docker";
 import { oneShotLogOptions } from "@/lib/log-read-options";
 import { classifyLevel } from "@/lib/log-levels";
 import { splitLines } from "@/lib/log-split";
@@ -173,8 +173,8 @@ export async function readContainerLogTail(
 ): Promise<{ lines: LogLine[]; short: boolean }> {
   const id = await resolveContainerId(name);
   const container = docker.getContainer(id);
-  // Worst case is LOG_TAIL_MAX (2000) lines, about 0.4-4 MB in one local Buffer, so the shared 10 s call deadline holds.
-  const buf = (await container.logs(oneShotLogOptions(tail, sinceMs, LOG_TAIL_MAX, DOCKER_CALL_MS))) as unknown as Buffer;
+  // Shares the log-read deadline with containerLogs: a 2000-line read must not get less time than a 200-line one.
+  const buf = (await container.logs(oneShotLogOptions(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS))) as unknown as Buffer;
 
   const lines: LogLine[] = [];
   const demuxer = createLogDemuxer(name, (line) => lines.push(line), sinceMs === undefined ? "s" : "r");
