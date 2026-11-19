@@ -633,7 +633,7 @@ try {
           hp(`HP-A2 ${name} no note`, !t.includes(LOAD) && !t.includes(STALE), t);
         }
         if (state !== "A1") {
-          const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, wide: [...document.querySelectorAll("body *")].filter((e) => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).slice(0, 4).map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}:${Math.round(e.getBoundingClientRect().right)}`) }));
+          const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, wide: [...document.querySelectorAll("body *")].filter((e) => !e.closest("nav") && e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).slice(0, 4).map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}:${Math.round(e.getBoundingClientRect().right)}:${(e.textContent || "").slice(0, 30)}`) }));
           hp(`HP-${state} ${name} no horizontal overflow`, o.scroll <= o.client, JSON.stringify(o));
         }
         await cropEl(page, card, join(OUT_DIR, `hint-pages-${state}-${name}.png`), `HP-${state} ${name}`);
