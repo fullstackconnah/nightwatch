@@ -2,6 +2,7 @@ import fs from "node:fs";
 import si from "systeminformation";
 import { Memo } from "@/lib/cache";
 import { sumHostNetCounters, statfsUsage, groupPercent, maxThermalC, isPartitionName } from "./host-metrics-pure.ts";
+import { statfsWithDeadline } from "./host-statfs.ts";
 
 /**
  * Host vitals. Inside the container /proc/stat, /proc/meminfo and /proc/uptime
@@ -173,13 +174,9 @@ function readTemp(): number | null {
   return null;
 }
 
-function statfsDisk(target: string, label: string) {
-  try {
-    const s = fs.statfsSync(target);
-    return { mount: label, ...statfsUsage(s) };
-  } catch {
-    return null;
-  }
+async function statfsDisk(target: string, label: string) {
+  const s = await statfsWithDeadline(target);
+  return s ? { mount: label, ...statfsUsage(s) } : null;
 }
 
 // Octal-escaped whitespace/backslash in /proc/mounts fields, e.g. "\040" for a space.
@@ -457,9 +454,13 @@ async function collectHostVitals(): Promise<HostVitals> {
     if (hostMounts) {
       const seenFingerprints: { device: string; total: number; used: number }[] = [];
       const perMountDisks: PerMountDisk[] = [];
-      for (const m of hostMounts) {
-        const target = m.mountpoint === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${m.mountpoint}`;
-        const d = statfsDisk(target, m.mountpoint);
+      const stats = await Promise.all(
+        hostMounts.map((m) =>
+          statfsDisk(m.mountpoint === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${m.mountpoint}`, m.mountpoint),
+        ),
+      );
+      for (const [i, m] of hostMounts.entries()) {
+        const d = stats[i];
         if (!d) continue;
         // Guard against the same device somehow surfacing twice (e.g. bind mounts);
         // different devices with coincidentally equal sizes must both be kept.
@@ -475,7 +476,7 @@ async function collectHostVitals(): Promise<HostVitals> {
 
     if (disks.length === 0) {
       // Mounts unreadable for some reason; at least report root.
-      const hostRoot = statfsDisk(HOST_ROOTFS, "/");
+      const hostRoot = await statfsDisk(HOST_ROOTFS, "/");
       if (hostRoot) disks = [{ ...hostRoot, mounts: ["/"] }];
     }
   } else {

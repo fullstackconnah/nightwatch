@@ -56,6 +56,11 @@ export function classifyDeviceGone(
   };
 }
 
+/** Probe list: host mountpoints first (a hung mount is missing from vitals), then vitals mounts, once each. */
+export function mountsToProbe(hostMountpoints: string[] | null, vitalsMounts: string[]): string[] {
+  return [...new Set([...(hostMountpoints ?? []), ...vitalsMounts])];
+}
+
 const pending = new Map<string, Promise<unknown>>();
 
 /**
