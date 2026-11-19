@@ -620,21 +620,21 @@ try {
         const t = await card.innerText();
         const count = (s) => t.split(s).length - 1;
         if (state === "A1") {
-          hp(`HP-A1 ${name} fields shown`, t.includes("Queue") && t.includes("12"));
+          hp(`HP-A1 ${name} fields shown`, /queue/i.test(t) && t.includes("12"), t); // innerText is uppercased by .microlabel
           hp(`HP-A1 ${name} no note and no "${NONE}"`, !t.includes(LOAD) && !t.includes(STALE) && !t.includes(NONE), t);
         } else if (state === "A4") {
           hp(`HP-A4 ${name} only the load sentence`, count(LOAD) === 1 && !t.includes(STALE), t);
           hp(`HP-A4 ${name} "${NONE}" absent`, !t.includes(NONE), t);
         } else if (state === "A5") {
-          hp(`HP-A5 ${name} kept fields shown`, t.includes("Queue") && t.includes("12"), t);
+          hp(`HP-A5 ${name} kept fields shown`, /queue/i.test(t) && t.includes("12"), t);
           hp(`HP-A5 ${name} exactly one stale line`, count(STALE) === 1 && !t.includes(LOAD), t);
         } else {
           hp(`HP-A2 ${name} "${NONE}" shown`, t.includes(NONE), t);
           hp(`HP-A2 ${name} no note`, !t.includes(LOAD) && !t.includes(STALE), t);
         }
         if (state !== "A1") {
-          const ok = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-          hp(`HP-${state} ${name} no horizontal overflow`, ok);
+          const o = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, wide: [...document.querySelectorAll("body *")].filter((e) => e.getBoundingClientRect().right > document.documentElement.clientWidth + 1).slice(0, 4).map((e) => `${e.tagName}.${String(e.className).slice(0, 40)}:${Math.round(e.getBoundingClientRect().right)}`) }));
+          hp(`HP-${state} ${name} no horizontal overflow`, o.scroll <= o.client, JSON.stringify(o));
         }
         await cropEl(page, card, join(OUT_DIR, `hint-pages-${state}-${name}.png`), `HP-${state} ${name}`);
         if (state === "A4") await page.screenshot({ path: join(OUT_DIR, `hint-pages-${state}-${name}-full.png`), fullPage: true });
