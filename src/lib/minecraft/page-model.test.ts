@@ -75,7 +75,7 @@ test("manager down with no container: says there is no Minecraft container", () 
 });
 
 test("manager down with the container running: today’s sentence (guard)", () => {
-  assert.equal(down({}).answer, "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.");
+  assert.equal(down({}).answer, "Docker says the server is running, but mc-manager isn’t answering.");
 });
 
 test("stale evidence blames the dashboard’s status check, not mc-manager", () => {
@@ -106,7 +106,7 @@ test("token rejected: warn, Server opens, only Start/Stop/Restart work", () => {
 test("down: warn, Server opens, why-line notice, Docker verbs still work", () => {
   const m = minecraftModel(input({ status: status({ manager: "unreachable", managerDetail: "connect refused", instances: [], active: null, players: null }) }));
   assert.deepEqual(m.chip, { tone: "warn", label: "Manager down" });
-  assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.");
+  assert.equal(m.answer, "Docker says the server is running, but mc-manager isn’t answering.");
   assert.equal(m.evidence, "mc-manager isn’t answering · retrying every 10 s");
   assert.doesNotMatch(m.evidence, /ECONNREFUSED|:8090|example.invalid|connect refused/);
   assert.equal(m.notice, "Start, stop and restart still work through Docker.");
