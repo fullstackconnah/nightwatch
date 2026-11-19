@@ -71,3 +71,17 @@ describe("recordingSince", () => {
     assert.equal((await queryMetricsHistory("1h", [])).recordingSince, mid);
   });
 });
+
+describe("recordingSince leading blank line (H76-4)", () => {
+  it("skips a blank first line and reads the sample on the next", async () => {
+    const now = Date.now();
+    fs.writeFileSync(file(now), `\n${sample(now - 7000)}\n`);
+    assert.equal((await queryMetricsHistory("1h", [])).recordingSince, now - 7000);
+  });
+
+  it("skips several blank lines before a torn line and then the valid sample", async () => {
+    const now = Date.now();
+    fs.writeFileSync(file(now), `\n\n{"t":1\n${sample(now - 3000)}\n`);
+    assert.equal((await queryMetricsHistory("1h", [])).recordingSince, now - 3000);
+  });
+});

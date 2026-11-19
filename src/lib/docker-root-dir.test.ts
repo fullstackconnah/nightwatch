@@ -49,3 +49,25 @@ it("an answer is cached for the hour, including one with no DockerRootDir", asyn
   assert.equal(await getDockerRootDir(T0 + 10 * 60_000), null);
   assert.equal(asked, 1, "a real answer without DockerRootDir keeps the hour");
 });
+
+it("a lookup that never settles falls back to null at the call deadline, then is retried after 60 s", async () => {
+  const real = AbortSignal.timeout;
+  const asked: number[] = [];
+  AbortSignal.timeout = (ms: number) => (asked.push(ms), real.call(AbortSignal, 50)); // run the real abort path in 50 ms
+  try {
+    fake.info = (o) =>
+      new Promise((_, reject) => {
+        (o as { abortSignal: AbortSignal }).abortSignal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { code: "ABORT_ERR" })));
+      });
+    const t0 = Date.now();
+    assert.equal(await getDockerRootDir(T0), null);
+    assert.ok(Date.now() - t0 < 1000);
+    assert.deepEqual(asked, [10_000], "the one-shot call deadline is DOCKER_CALL_MS");
+    await getDockerRootDir(T0 + 30_000);
+    assert.equal(asked.length, 1, "inside the 60 s window it is not asked again");
+    await getDockerRootDir(T0 + 61_000);
+    assert.equal(asked.length, 2);
+  } finally {
+    AbortSignal.timeout = real;
+  }
+});

@@ -64,3 +64,18 @@ test("the MCP container-action tool tells the caller a timed-out action may have
   // the generic line for every other error stays
   assert.match(s, /Failed to \$\{action\} "\$\{containerName\}"/);
 });
+
+test("one-shot reads (info, listContainers, listVolumes) given a short deadline reject with the deadline error against a proxy that never answers", { timeout: 5000 }, async () => {
+  const server = createServer(() => {});
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const docker = new Docker({ host: "127.0.0.1", port: (server.address() as { port: number }).port, protocol: "http" });
+  try {
+    for (const read of [() => docker.info({ abortSignal: AbortSignal.timeout(150) }), () => docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(150) }), () => docker.listVolumes({ abortSignal: AbortSignal.timeout(150) })]) {
+      const err = await read().then(() => null, (e: unknown) => e);
+      assert.ok(isDeadlineError(err), String(err));
+    }
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+});
