@@ -140,6 +140,24 @@ describe("history caches are bounded (H92-2)", () => {
     for (const k of rest) assert.ok(cache.has(k));
   });
 
+  it("a file that keeps failing to read keeps its last good samples past the idle limit (PR #325 N3)", async () => {
+    const now = Date.now();
+    fs.writeFileSync(file(now), `${sample(now - 60_000)}\n`);
+    const first = await queryMetricsHistory("1h", ["web"]);
+    assert.ok(first.containers.web.some((b) => b.cpuPct === 7));
+    fs.appendFileSync(file(now), `${sample(now - 30_000)}\n`); // entry is now stale: next query must re-read
+    mock.method(console, "warn", () => {});
+    mock.method(fsp, "open", () => Promise.reject(new Error("EIO")));
+    mock.method(fsp, "readFile", () => Promise.reject(new Error("EIO")));
+    let offset = 0;
+    mock.method(Date, "now", () => now + offset);
+    for (const step of [3 * 60_000, 6 * 60_000]) { // each under the 5 min idle limit, together over it
+      offset = step;
+      const r = await queryMetricsHistory("1h", ["web"]);
+      assert.ok(r.containers.web.some((b) => b.cpuPct === 7), `step ${step}`);
+    }
+  });
+
   it("the mount poll also evicts idle full-cache entries (no history view may ever run again)", async () => {
     const now = Date.now();
     seedDays(now);

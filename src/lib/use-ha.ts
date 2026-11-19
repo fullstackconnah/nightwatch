@@ -67,6 +67,7 @@ export function useHa(refreshMs = 3000): UseHaResult {
         return true;
       } catch (e) {
         if (previous) await mutate(previous, { revalidate: false });
+        void mutate(); // the click-time snapshot may have undone a later toggle; refetch, but don't hold the error message
         const message =
           e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Action failed — try again.";
         setActionErrors((prev) => ({ ...prev, [req.entityId]: message }));

@@ -300,6 +300,7 @@ async function readFileCached(filePath: string): Promise<MetricsHistorySample[]>
     return samples;
   } catch (err) {
     warnOnce("read failed", err);
+    if (cached) cached.lastUsed = now; // a failing file must not be evicted and lose its last good samples
     return cached?.samples ?? [];
   }
 }
