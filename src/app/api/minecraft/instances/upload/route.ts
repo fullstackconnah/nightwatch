@@ -5,7 +5,7 @@ import { crossSiteWriteRefused } from "@/lib/same-origin";
 import { busyMessage, tryBegin } from "@/lib/minecraft-busy";
 import { sanitizeSlug } from "@/lib/minecraft/slug";
 import { mcManagerCredentials } from "@/lib/minecraft/manager";
-import { guardedUpload } from "@/lib/minecraft/upload-proxy";
+import { guardedUpload, trackBodySent } from "@/lib/minecraft/upload-proxy";
 import { MAX_MEMORY_GB, memoryGbInRange } from "@/lib/minecraft/memory-gb";
 import { uploadFieldsError } from "@/lib/minecraft/pack-check";
 import { contentLengthError } from "@/lib/upload-limit";
@@ -89,20 +89,24 @@ export async function POST(req: NextRequest) {
 
   const release = tryBegin("upload");
   if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
-  // guardedUpload releases the guard, or holds it when our wait timed out.
-  const { status, body } = await guardedUpload(release, () =>
-    fetch(upstreamUrl, {
+  const tracked = req.body ? trackBodySent(req.body) : null;
+  // guardedUpload releases the guard, or holds it when our wait timed out after the body was sent.
+  const { status, body } = await guardedUpload(
+    release,
+    () =>
+      fetch(upstreamUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${creds.token}`,
         "Content-Type": contentType,
       },
-      body: req.body,
+      body: tracked?.body ?? null,
       signal: AbortSignal.timeout(10 * 60 * 1000),
       // Node's fetch requires this whenever body is a stream — no matching
       // field exists on the DOM RequestInit type, hence the cast.
       duplex: "half",
     } as RequestInit & { duplex: "half" }),
+    () => tracked?.sent() ?? true,
   );
   return NextResponse.json(body, { status });
 }
