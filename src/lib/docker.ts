@@ -18,8 +18,8 @@ const DOCKER_DF_MS = 90_000;
 const DOCKER_ACTION_MS = 45_000;
 // dockerode types df() and info() without an options argument, but both forward abortSignal like the rest.
 const dockerRead = () => docker as unknown as { df(o: object): Promise<unknown>; info(o: object): Promise<{ DockerRootDir?: string }> };
-/** Log tail reads move up to ~2000 lines through the proxy, so they get a longer bound. */
-const DOCKER_LOGS_MS = 20_000;
+/** Log tail reads (containerLogs and the scrollback read) move up to ~2000 lines through the proxy, so they get a longer bound. */
+export const DOCKER_LOGS_MS = 20_000;
 
 /**
  * Docker Engine access. In production this points at the tecnativa

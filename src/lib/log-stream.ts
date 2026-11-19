@@ -1,4 +1,5 @@
-import { docker, listContainers } from "@/lib/docker";
+import { docker, DOCKER_LOGS_MS, listContainers } from "@/lib/docker";
+import { oneShotLogOptions } from "@/lib/log-read-options";
 import { classifyLevel } from "@/lib/log-levels";
 import { splitLines } from "@/lib/log-split";
 import { readIdPrefix, UNKNOWN_CONTAINER } from "@/lib/log-reconnect";
@@ -172,13 +173,8 @@ export async function readContainerLogTail(
 ): Promise<{ lines: LogLine[]; short: boolean }> {
   const id = await resolveContainerId(name);
   const container = docker.getContainer(id);
-  const buf = (await container.logs({
-    stdout: true,
-    stderr: true,
-    timestamps: true,
-    follow: false,
-    ...(sinceMs === undefined ? { tail } : { since: Math.floor(sinceMs / 1000), tail: LOG_TAIL_MAX }),
-  })) as unknown as Buffer;
+  // Shares the log-read deadline with containerLogs: a 2000-line read must not get less time than a 200-line one.
+  const buf = (await container.logs(oneShotLogOptions(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS))) as unknown as Buffer;
 
   const lines: LogLine[] = [];
   const demuxer = createLogDemuxer(name, (line) => lines.push(line), sinceMs === undefined ? "s" : "r");

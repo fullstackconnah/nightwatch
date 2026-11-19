@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const src = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 const docker = src("./docker.ts");
 const logStream = src("./log-stream.ts");
+const logReadOptions = src("./log-read-options.ts");
 const oidc = src("./oidc.ts");
 const client = src("./integration-client.ts");
 const widgetTypes = src("./widgets/types.ts");
@@ -28,7 +29,8 @@ test("H21U F1: one-shot docker calls carry a deadline, the pull an idle guard", 
 });
 
 test("H21U F2: log resume read is capped with the seed cap", () => {
-  assert.match(logStream, /^\s+\.\.\.\(sinceMs === undefined \? \{ tail \} : \{ since: Math\.floor\(sinceMs \/ 1000\), tail: LOG_TAIL_MAX \}\),/m);
+  assert.match(logReadOptions, /^\s+\.\.\.\(sinceMs === undefined \? \{ tail \} : \{ since: Math\.floor\(sinceMs \/ 1000\), tail: tailMax \}\),/m);
+  assert.match(logStream, /oneShotLogOptions\(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS\)/);
 });
 
 test("H21U F3: oidc bodies are deadline-covered and capped", () => {
