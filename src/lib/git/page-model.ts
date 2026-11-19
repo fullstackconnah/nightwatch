@@ -157,7 +157,7 @@ export function gitModel(i: ModelInput): Model {
   const strips: Strip[] = g.repos.length === 0 ? [] : [
     {
       id: "mirrors", title: "Mirrors", tone: failing.length ? "bad" : diverged.length ? "warn" : null,
-      state: g.mirrors.length === 0 ? "None set up" : mirrorParts.join(" · "),
+      state: g.mirrors.length === 0 ? (g.partial > 0 ? "Not known" : "None set up") : mirrorParts.join(" · "),
     },
     {
       id: "pulls", title: "Pull requests", tone: null,
