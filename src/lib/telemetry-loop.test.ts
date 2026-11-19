@@ -40,3 +40,19 @@ test("decision 3: instrumentation starts the recorder only on the node runtime",
   assert.match(i, /import\("@\/lib\/telemetry"\)/);
   assert.match(i, /startTelemetryRecorder\(\)/);
 });
+
+test("H90-3: a failed container read still records host history, with no containers, and emits no live sample", () => {
+  const t = src("./telemetry.ts");
+  assert.match(t, /allContainerStats\(true\)[\s\S]{0,200}throttledError\("allContainerStats", err\)/);
+  assert.match(t, /recovered\("allContainerStats"\)/);
+  assert.match(t, /const raw = rawOrNull \?\? \{\};/);
+  assert.match(t, /containers,\r?\n\s*\}\);\r?\n\s*recovered\("recordMetricsHistoryTick"\)/); // history tick still runs, with the empty containers map
+  assert.match(t, /if \(!feedRing \|\| containersFailed\) return;/);
+  assert.ok(t.indexOf("recordMetricsHistoryTick({") < t.indexOf("containersFailed) return"), "history is recorded before the ring early-return");
+});
+
+test("H90-2: safeEnqueue tears the stream down past the back-pressure limit", () => {
+  const r = src("../app/api/telemetry/stream/route.ts");
+  assert.match(r, /const STALLED_QUEUE_LIMIT = -120;/);
+  assert.match(r, /controller\.desiredSize !== null && controller\.desiredSize < STALLED_QUEUE_LIMIT\) \{[\s\S]{0,200}teardown\(\);/);
+});
