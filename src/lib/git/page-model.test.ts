@@ -161,14 +161,14 @@ test("diverged without an error: warn chip, ahead and behind, Mirrors opens", ()
   assert.equal(gitModel(input({ data: s })).answer, "2 repos have diverged from GitHub: lab/c, lab/d.");
 });
 
-test("an error outranks divergence; an unknown mirror state counts as in sync", () => {
+test("an error outranks divergence; an unknown mirror state is not counted as in sync", () => {
   const s = ok();
   s.mirrors[0] = mirror("lab/a", { lastError: "boom" });
   s.mirrors[1] = mirror("lab/b", { defaultBranch: { state: "diverged", aheadBy: 1, behindBy: 1 } });
   s.mirrors[2] = mirror("lab/c", { defaultBranch: { state: "unknown" } });
   const m = gitModel(input({ data: s }));
   assert.equal(m.chip.label, "Mirror failing");
-  assert.equal(strip(m, "mirrors").state, "1 failing · 1 diverged · 2 in sync");
+  assert.equal(strip(m, "mirrors").state, "1 failing · 1 diverged · 1 in sync · 1 not compared");
   assert.equal(strip(m, "mirrors").tone, "bad");
 });
 

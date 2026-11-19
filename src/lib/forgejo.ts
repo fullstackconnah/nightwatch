@@ -63,6 +63,8 @@ interface ForgejoFetchErr {
   ok: false;
   kind: "unreachable" | "unauthorized" | "error";
   detail: string;
+  /** HTTP status of a non-2xx answer (kind "error"), when there was one. */
+  status?: number;
 }
 type ForgejoFetchResult<T> = ForgejoFetchOk<T> | ForgejoFetchErr;
 
@@ -81,7 +83,7 @@ async function forgejoFetch<T>(baseUrl: string, token: string, path: string): Pr
     return { ok: false, kind: "unauthorized", detail: `Forgejo rejected the API token (HTTP ${res.status}).` };
   }
   if (!res.ok) {
-    return { ok: false, kind: "error", detail: `Forgejo returned HTTP ${res.status} for ${path}.` };
+    return { ok: false, kind: "error", detail: `Forgejo returned HTTP ${res.status} for ${path}.`, status: res.status };
   }
   try {
     return { ok: true, data: await readJsonCapped<T>(res, 1024 * 1024) };
@@ -277,6 +279,8 @@ interface RepoBundle {
   branches: GitBranchSummary[];
   pulls: GitPullRequest[];
   mirror: GitMirror | null;
+  /** True when any of the four calls failed. */
+  failed: boolean;
 }
 
 /**
@@ -357,7 +361,9 @@ async function fetchRepoBundle(
     };
   }
 
-  return { commits, branches, pulls, mirror };
+  // Forgejo answers 409 for a repo with no commits: that is an empty list, not a failure.
+  const failed = [branchesRes, pullsRes, mirrorsRes].some((r) => !r.ok) || (!commitsRes.ok && commitsRes.status !== 409);
+  return { commits, branches, pulls, mirror, failed };
 }
 
 // --- snapshot assembly + cache ------------------------------------------------
@@ -450,7 +456,7 @@ export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSn
 
   const mirrors = bundles.map((b) => b.mirror).filter((m): m is GitMirror => m !== null);
 
-  return { status: "ok", forgejoUrl: creds.url, repos, stream, pulls, branches, mirrors };
+  return { status: "ok", partial: bundles.filter((b) => b.failed).length, forgejoUrl: creds.url, repos, stream, pulls, branches, mirrors };
 }
 
 /** GET /api/git's data source. Cached ~30s server-side (per the spec's
@@ -508,7 +514,8 @@ export async function triggerPushMirrorSync(
     return { ok: true };
   }
   if (res.status === 401 || res.status === 403) {
-    return { ok: false, status: res.status, detail: "Forgejo rejected the API token." };
+    // 502, not 401: the client reads any 401 as "your session ended" (client.ts redirectOn401) and bounces to /login.
+    return { ok: false, status: 502, detail: "Forgejo refused the saved token. Check the Forgejo token in Settings." };
   }
   if (res.status === 404) {
     return { ok: false, status: 404, detail: "That repo or mirror no longer exists." };

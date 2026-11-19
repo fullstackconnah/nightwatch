@@ -16,6 +16,7 @@ const NAMES = ["alpha", "bravo", "charlie", "delta"];
 
 export const ok = (over = {}) => ({
   status: "ok",
+  partial: 0,
   forgejoUrl: URL_,
   repos: NAMES.map((n, i) => repo(n, i + 1)),
   stream: [

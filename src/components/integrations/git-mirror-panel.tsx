@@ -18,6 +18,7 @@ import type { GitMirror } from "@/lib/types/forgejo";
 function stateBadge(m: GitMirror): { variant: NonNullable<BadgeProps["variant"]>; text: string } {
   if (m.lastError) return { variant: "bad", text: "error" };
   if (m.defaultBranch.state === "diverged") return { variant: "warn", text: "diverged" };
+  if (m.defaultBranch.state === "unknown") return { variant: "neutral", text: "not compared" };
   return { variant: "neutral", text: "synced" };
 }
 

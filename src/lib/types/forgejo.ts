@@ -94,6 +94,8 @@ export interface GitMirror {
 
 export interface GitSnapshotOk {
   status: "ok";
+  /** Repos with at least one per-repo call that failed (an empty repo's 409 commits answer is not a failure). */
+  partial: number;
   forgejoUrl: string;
   repos: GitRepoSummary[];
   /** Recent-first, merged across all repos, capped — see forgejo.ts. */
