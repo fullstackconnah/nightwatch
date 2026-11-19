@@ -91,10 +91,8 @@ export async function POST(req: NextRequest) {
   if (!release) return NextResponse.json({ error: busyMessage() }, { status: 409 });
   const tracked = req.body ? trackBodySent(req.body) : null;
   // guardedUpload releases the guard, or holds it when our wait timed out after the body was sent.
-  const { status, body } = await guardedUpload(
-    release,
-    () =>
-      fetch(upstreamUrl, {
+  const { status, body } = await guardedUpload(release, () =>
+    fetch(upstreamUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${creds.token}`,
@@ -106,7 +104,6 @@ export async function POST(req: NextRequest) {
       // field exists on the DOM RequestInit type, hence the cast.
       duplex: "half",
     } as RequestInit & { duplex: "half" }),
-    () => tracked?.sent() ?? true,
-  );
+  () => tracked?.sent() ?? true);
   return NextResponse.json(body, { status });
 }

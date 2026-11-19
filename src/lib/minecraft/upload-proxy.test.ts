@@ -53,7 +53,7 @@ test("a manager 401 reads as a 502 and the success body passes through", async (
 });
 
 const NOT_SENT =
-  "The upload didn’t finish within 10 minutes, so the pack was not installed. Try again on a faster connection.";
+  "The upload didn’t finish within 10 minutes, so it was cut off before the whole pack was sent. Try again on a faster connection.";
 const timeout = () => Promise.reject(new DOMException("x", "TimeoutError"));
 
 test("a timeout while the body is still streaming frees the guard at once with the not-installed copy", async () => {

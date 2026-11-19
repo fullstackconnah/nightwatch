@@ -5,7 +5,7 @@ const TIMEOUT_COPY =
   "The Minecraft manager didn’t answer in time. The pack may still be installing, so check the Installed list before you try again.";
 
 const NOT_SENT_COPY =
-  "The upload didn’t finish within 10 minutes, so the pack was not installed. Try again on a faster connection.";
+  "The upload didn’t finish within 10 minutes, so it was cut off before the whole pack was sent. Try again on a faster connection.";
 
 /** Pipes a request body through and reports whether it was read to the end (flush runs only then). */
 export function trackBodySent(src: ReadableStream<Uint8Array>): { body: ReadableStream<Uint8Array>; sent: () => boolean } {
