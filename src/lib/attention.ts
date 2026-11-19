@@ -41,6 +41,7 @@ import {
   stuckRestarting,
   type AlertCopy,
 } from "@/lib/attention-copy";
+import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
 import { localDateString } from "@/lib/local-time";
@@ -51,7 +52,7 @@ import { doorbellQuiet } from "@/lib/doorbell-quiet";
 import { getOrchestraDetail, getOrchestraSnapshot } from "@/lib/orchestra";
 import { isLive, orchestraAttention } from "@/lib/orchestra-view";
 import type { OrchestratorDetail } from "@/lib/types/orchestra";
-import { blockDeviceName, classifyDeviceGone, classifyMountError, probeOne, type MountVerdict } from "@/lib/mount-probe";
+import { blockDeviceName, classifyDeviceGone, classifyMountError, mountsToProbe, probeOne, type MountVerdict } from "@/lib/mount-probe";
 import fs, { promises as fsp } from "node:fs";
 import path from "node:path";
 import type { HealthVerdict } from "@/lib/types/smart";
@@ -287,13 +288,17 @@ function deviceGone(mount: string, device: string | undefined): MountVerdict | n
  */
 async function probeMountReadable(): Promise<RawHit[]> {
   const vitals = await getHostVitals();
-  const mounts = [...new Set(vitals.disk.flatMap((g) => g.mounts ?? [g.mount]))];
-  const devices = new Map((readHostMounts() ?? []).map((m) => [m.mountpoint, m.device]));
+  const hostMounts = readHostMounts();
+  // A bind mount the vitals duplicate filter dropped now gets a readdir too; it yields no item while it answers.
+  const mounts = mountsToProbe(hostMounts?.map((m) => m.mountpoint) ?? null, vitals.disk.flatMap((g) => g.mounts ?? [g.mount]));
+  const devices = new Map((hostMounts ?? []).map((m) => [m.mountpoint, m.device]));
   const verdicts = await Promise.all(
     mounts.map(async (mount) => {
       const gone = deviceGone(mount, devices.get(mount));
       if (gone) return gone;
       const target = mount === "/" ? HOST_ROOTFS : `${HOST_ROOTFS}${mount}`;
+      // A statfs still hung on this mount already pins a thread; report TIMEOUT as probeOne would.
+      if (pendingStatfsTargets.has(target)) return classifyMountError(mount, "TIMEOUT");
       return classifyMountError(mount, await probeOne(target, () => fsp.readdir(target), MOUNT_READ_TIMEOUT_MS));
     }),
   );
