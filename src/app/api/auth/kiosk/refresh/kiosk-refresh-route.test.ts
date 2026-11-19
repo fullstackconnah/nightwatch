@@ -43,6 +43,14 @@ const refresh = (token?: string) =>
     headers: token ? { cookie: `${KIOSK_ELEVATION_COOKIE}=${token}` } : {},
   }));
 
+// A clearing Set-Cookie: empty value, Max-Age=0, same Path as the one that set it (a different Path would not clear it).
+function assertCleared(res: Response) {
+  const header = res.headers.get("set-cookie") ?? "";
+  assert.match(header, new RegExp(`^${KIOSK_ELEVATION_COOKIE}=;`));
+  assert.match(header, /Max-Age=0/i);
+  assert.match(header, /Path=\//);
+}
+
 describe("POST /api/auth/kiosk/refresh", () => {
   it("renews a live elevation and mints a fresh token for the same PIN", async () => {
     const tag = await kioskPinTag("123456");
@@ -61,21 +69,29 @@ describe("POST /api/auth/kiosk/refresh", () => {
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { elevated: false });
     assert.equal(res.cookies.get(KIOSK_ELEVATION_COOKIE), undefined);
+    assert.equal(res.headers.get("set-cookie"), null); // an ambient kiosk gets no cookie write per poll
   });
 
-  it("refuses a token minted under another PIN and mints nothing", async () => {
+  it("refuses a token minted under another PIN and clears it instead of minting", async () => {
     const res = await refresh(await createKioskElevationToken(sessionEpoch(), await kioskPinTag("999999")));
+    assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { elevated: false });
-    assert.equal(res.cookies.get(KIOSK_ELEVATION_COOKIE), undefined);
+    assertCleared(res);
   });
 
-  it("locks an unlocked kiosk once the PIN changes", async () => {
+  it("locks an unlocked kiosk once the PIN changes and clears the dead cookie", async () => {
     const token = await createKioskElevationToken(sessionEpoch(), await kioskPinTag("123456"));
     process.env.KIOSK_PIN = "654321";
     const res = await refresh(token);
     assert.deepEqual(await res.json(), { elevated: false });
-    // The route does not clear the now-dead cookie here (only the no-PIN branch does); it just stops renewing it.
-    assert.equal(res.cookies.get(KIOSK_ELEVATION_COOKIE), undefined);
+    assertCleared(res);
+  });
+
+  it("clears a garbage cookie the same way", async () => {
+    const res = await refresh("not-a-token");
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { elevated: false });
+    assertCleared(res);
   });
 
   it("clears the cookie when no PIN is configured", async () => {

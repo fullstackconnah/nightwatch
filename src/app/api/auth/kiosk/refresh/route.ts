@@ -25,15 +25,17 @@ export async function POST(req: NextRequest) {
   const token = req.cookies.get(KIOSK_ELEVATION_COOKIE)?.value;
   const epoch = sessionEpoch();
   // No PIN anywhere (it was cleared): the unlock route refuses, so an already-unlocked kiosk locks here too.
-  if (!kioskPinConfigured()) {
+  const locked = () => {
     const res = NextResponse.json({ elevated: false });
     res.cookies.set(KIOSK_ELEVATION_COOKIE, "", { ...kioskElevationCookieOptions(isSecureRequest(req)), maxAge: 0 });
     return res;
-  }
+  };
+  if (!kioskPinConfigured()) return locked();
   const pinTag = await kioskPinTag(kioskPin()); // the PIN may have changed since the unlock: then the token fails here
   const ok = await verifyKioskElevationToken(token, epoch, pinTag);
   if (!ok) {
-    return NextResponse.json({ elevated: false });
+    // A stale cookie is cleared; no cookie at all stays untouched so an ambient kiosk gets no Set-Cookie per poll.
+    return token ? locked() : NextResponse.json({ elevated: false });
   }
 
   const expiresAt = Date.now() + KIOSK_ELEVATION_TTL_SECONDS * 1000;
