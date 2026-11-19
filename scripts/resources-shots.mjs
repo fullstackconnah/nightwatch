@@ -9,7 +9,7 @@
  * not clipped), legend-nodata (a compare with no samples; skip when the stack has none), all-filter (poll keeps focus and
  * the group count). SHOTS_ONLY=load-failed runs only the /api/resources failed-load states (Disk and Net tabs, mocked 500, and
  * the ready SYSTEM=1 / volumes lines; 8 checks per width). scan-lost and growth-more (mocked APIs, hunt 12: the poll stops with the lost line; 5 series plus the
- * "+2 more mounts" note). Every state: no pageerror, no document overflow.
+ * "+2 more mounts" note). SHOTS_ONLY=scan-root: an unreadable scan root (largest files, duplicates) shows the failed line and a pinned scan with an error shows "error" not "0 B" (10 checks per width). Every state: no pageerror, no document overflow.
  */
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
@@ -193,6 +193,53 @@ async function loadFailed(run, w) {
   }, rfVolumesAre([{ name: "demo_vol", sizeBytes: 2e9 }]), rfVolumes);
 }
 
+// scan-root (nw-scan-unreadable-root): an unreadable scan root shows as a failed job, an errored pinned scan shows "error", not "0 B".
+const SR_PER_WIDTH = 10; // S1 3 + S2 3 + S3 3 + S4 1
+let srRan = 0, srPass = 0;
+const sr = (key, where, ok, value) => { srRan++; if (ok) srPass++; check(key, where, ok, value); };
+const SR_GONE = "cannot read /mnt/gone: ENOENT: no such file or directory, scandir '/mnt/gone'";
+const srJob = (kind) => ({ id: "j1", kind, root: "/mnt/gone", state: "error", progress: { entriesScanned: 0 }, result: null, error: SR_GONE, startedAt: Date.now(), finishedAt: Date.now() });
+const srScanRoutes = (kind) => async (page) => {
+  await withDisk(["/mnt/gone"])(page);
+  await page.route(/\/api\/resources\/disk-usage/, (route) => json(route, { ...DISK_SCAN, label: "/mnt/gone", path: "/mnt/gone" }));
+  await page.route(new RegExp(`/api/resources/scan/${kind}`), (route) => json(route, srJob(kind)));
+};
+const srPinCell = (page, path) => page.locator(`span[title="${path}"]`).locator("xpath=following-sibling::span[1]");
+const srOverflow = async (page) => { const o = await page.evaluate(docOverflow); return { ok: o.scroll <= o.client, o }; };
+async function scanRoot(run, w) {
+  const job = (state, kind, label, empty, btn) =>
+    run(state, "metric=disk", async (page) => {
+      await page.locator('button[aria-controls="disk-contents-/mnt/gone"]').click({ timeout: SLOW });
+      await page.getByRole("button", { name: btn }).click({ timeout: SLOW });
+      const alert = page.locator('[role="alert"]', { hasText: "cannot read /mnt/gone" });
+      await alert.waitFor({ timeout: SLOW });
+      sr(`${label} alert text is whole`, `${state}@${w}`, (await alert.first().innerText()).trim().toLowerCase() === SR_GONE.toLowerCase(), await alert.first().innerText());
+      sr(`${label} no clean-result line`, `${state}@${w}`, (await page.getByText(empty).count()) === 0, null);
+      const o = await srOverflow(page);
+      sr(`${label} no horizontal overflow`, `${state}@${w}`, o.ok, o.o);
+    }, srScanRoutes(kind), (page) => page.locator('[role="alert"]', { hasText: "cannot read /mnt/gone" }).first());
+  await job("scan-root-largest", "largest-files", "S1", /no files found/i, /Find largest files/);
+  await job("scan-root-duplicates", "duplicates", "S2", /no likely duplicates/i, /Find duplicates/);
+  await run("scan-root-pinned", "metric=disk", async (page) => {
+    const bad = srPinCell(page, "/mnt/pin-bad");
+    await bad.waitFor({ timeout: SLOW });
+    await page.waitForFunction(() => ![...document.querySelectorAll("span")].some((e) => e.textContent === "…"), null, { timeout: SLOW }).catch(() => {});
+    sr("S3 cell text is exactly error", `scan-root-pinned@${w}`, (await bad.innerText()).trim() === "error", await bad.innerText());
+    sr("S3 cell has a title", `scan-root-pinned@${w}`, !!(await bad.locator("span[title]").first().getAttribute("title").catch(() => null)), null);
+    sr("S3 row never says 0 B", `scan-root-pinned@${w}`, !(await bad.evaluate((el) => el.parentElement.innerText)).includes("0 B"), null);
+    const good = srPinCell(page, "/mnt/pin-good");
+    sr("S4 good pin shows a size", `scan-root-pinned@${w}`, /^\d+(\.\d+)? ([KMGT]i?)?B$/.test((await good.innerText()).trim()), await good.innerText());
+  }, async (page) => {
+    await withDisk(["/mnt/test"])(page);
+    await page.route(/\/api\/resources\/pins/, (route) => json(route, { pinnedFolders: ["/mnt/pin-bad", "/mnt/pin-good"] }));
+    await page.route(/\/api\/resources\/contents/, (route) => {
+      const asked = new URL(route.request().url()).searchParams.get("path");
+      const base = { ...DISK_SCAN, label: asked, path: asked };
+      return json(route, asked === "/mnt/pin-bad" ? { ...base, entries: [], usedBytes: 0, partial: true, error: "readdir failed: ENOENT: no such file or directory" } : { ...base, usedBytes: 1.5e9 });
+    });
+  }, (page) => page.locator(".panel", { has: page.getByText("PINNED", { exact: true }) }).last());
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -219,6 +266,11 @@ try {
 
     if (ONLY === "load-failed") {
       await loadFailed(run, vp.name);
+      continue;
+    }
+
+    if (ONLY === "scan-root") {
+      await scanRoot(run, vp.name);
       continue;
     }
 
@@ -335,6 +387,10 @@ if (ONLY === "hint-pages") {
 if (ONLY === "load-failed") {
   check("load-failed ran every check", "all", rfRan === RF_PER_WIDTH * VIEWPORTS.length, { ran: rfRan, expected: RF_PER_WIDTH * VIEWPORTS.length });
   console.log(`load-failed: ${rfPass}/${RF_PER_WIDTH * VIEWPORTS.length} pass`);
+}
+if (ONLY === "scan-root") {
+  check("scan-root ran every check", "all", srRan === SR_PER_WIDTH * VIEWPORTS.length, { ran: srRan, expected: SR_PER_WIDTH * VIEWPORTS.length });
+  console.log(`scan-root: ${srPass}/${SR_PER_WIDTH * VIEWPORTS.length} pass`);
 }
 console.log(JSON.stringify({ failed, results }));
 process.exit(failed ? 1 : 0);
