@@ -19,3 +19,18 @@ export function widgetsHint({
   if (!widgets) return "load";
   return Object.keys(widgets).length > 0 ? "stale" : null;
 }
+
+/** Note for one container's Service widget card; `widget` is that container's entry in the held map. */
+export function containerWidgetNote({
+  widgetsError,
+  widgets,
+  widget,
+}: {
+  widgetsError: boolean;
+  widgets: Record<string, unknown> | undefined;
+  widget: { error?: unknown; fields?: unknown[] } | undefined;
+}): keyof typeof WIDGETS_HINT_COPY | null {
+  if (!widgetsError) return null;
+  if (!widgets) return "load";
+  return widget && !widget.error && widget.fields && widget.fields.length > 0 ? "stale" : null;
+}

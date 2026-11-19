@@ -24,6 +24,7 @@ import { ThermalGauge } from "@/components/resources/thermal-gauge";
 import { ResourceOverview, type OverviewModel, type OverviewSegment } from "@/components/resources/resource-overview";
 import { cn } from "@/lib/utils";
 import { formatBitrate, formatBytes, formatPercent } from "@/lib/format";
+import { TRANSCODES_NOTE_COPY, transcodeNote } from "@/lib/transcodes-note";
 import { useTranscodes, type TelemetrySample, type TelemetryStatus } from "@/lib/client";
 
 /** Last path segment of a process name, e.g. "/usr/lib/jellyfin-ffmpeg/ffmpeg" -> "ffmpeg". */
@@ -195,7 +196,8 @@ function streamBadge(s: TranscodeStream): { text: string; className: string; tit
 }
 
 export function GpuView({ samples, status }: { samples: TelemetrySample[]; status: TelemetryStatus }) {
-  const { data: tx } = useTranscodes(5000);
+  const { data: tx, error: txError } = useTranscodes(5000);
+  const txNote = transcodeNote({ txError: !!txError, tx });
 
   const latest = samples[samples.length - 1];
   const gpu = latest?.gpu;
@@ -399,7 +401,18 @@ export function GpuView({ samples, status }: { samples: TelemetrySample[]; statu
       <div className="space-y-2">
         <div className="microlabel">TRANSCODE STREAMS</div>
 
-        {tx === undefined && <div className="panel p-4 text-xs text-ink-faint">reading transcode sessions…</div>}
+        {txNote === "stale" && <div className="text-xs text-ink-faint">{TRANSCODES_NOTE_COPY.stale}</div>}
+
+        {tx === undefined && !txError && (
+          <div className="panel p-4 text-xs text-ink-faint">reading transcode sessions…</div>
+        )}
+
+        {txNote === "load" && (
+          <div className="panel p-4 space-y-2">
+            <div className="text-sm text-warn font-medium">{transcodeUnavailableCopy("error").headline}</div>
+            <div className="font-mono text-xs text-ink-dim">{TRANSCODES_NOTE_COPY.detail}</div>
+          </div>
+        )}
 
         {tx &&
           !tx.ok &&

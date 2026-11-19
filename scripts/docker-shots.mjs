@@ -28,6 +28,19 @@ const VIEWPORTS = [
 // Pinned inputs: one time zone, one locale, reduced-motion off, fixed clock.
 const CTX = { timezoneId: "Australia/Sydney", locale: "en-AU", reducedMotion: "no-preference" };
 
+// One stopped demo container (inspect and list answers) shared by the mocked detail-page sections.
+const ID = "ab12cd34ef56" + "0".repeat(52);
+const NAME = "demo-exited";
+const INSPECT = {
+  id: ID, name: NAME, image: "nginx:1.27", created: "2026-10-01T00:00:00Z",
+  state: { status: "exited", running: false, startedAt: "2026-10-01T00:00:00Z", exitCode: 0, health: null, restartCount: 0, oomKilled: false },
+  restartPolicy: "no", networkMode: "bridge", composeProject: null, composeService: null, ports: [], mounts: [], env: [], cmd: "nginx",
+};
+const LIST = {
+  containers: [{ id: ID, name: NAME, image: "nginx:1.27", state: "exited", status: "Exited (0) 2 days ago", ports: [], composeProject: null, composeService: null, tile: { url: null } }],
+  groups: [], counts: { total: 1, running: 0, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
+};
+
 const json = (route, status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 const checks = [];
 const check = (name, pass, detail = "") => checks.push({ name, pass: !!pass, detail });
@@ -527,17 +540,6 @@ try {
 
   // Action and remove deadline: the proxy never answers, the server gives up with a staged 504 (mocked here), the existing error line says so.
   if (ONLY === "action-deadline") await guard("action-deadline", async () => {
-    const ID = "ab12cd34ef56" + "0".repeat(52);
-    const NAME = "demo-exited";
-    const INSPECT = {
-      id: ID, name: NAME, image: "nginx:1.27", created: "2026-10-01T00:00:00Z",
-      state: { status: "exited", running: false, startedAt: "2026-10-01T00:00:00Z", exitCode: 0, health: null, restartCount: 0, oomKilled: false },
-      restartPolicy: "no", networkMode: "bridge", composeProject: null, composeService: null, ports: [], mounts: [], env: [], cmd: "nginx",
-    };
-    const LIST = {
-      containers: [{ id: ID, name: NAME, image: "nginx:1.27", state: "exited", status: "Exited (0) 2 days ago", ports: [], composeProject: null, composeService: null, tile: { url: null } }],
-      groups: [], counts: { total: 1, running: 0, paused: 0, stopped: 1, restarting: 0, unhealthy: 0 },
-    };
     const SENTENCE = (what) => `Docker didn't answer in time. The ${what} may still have gone through, so check the container before trying again.`;
     for (const { name, ...opts } of VIEWPORTS) {
       const { context, page, errors } = await openPage(browser, opts, "none");
@@ -579,6 +581,69 @@ try {
       check(`AD ${name}: no page errors`, errors.length === 0, errors.join(" | ").slice(0, 200));
       await context.close();
     }
+  });
+
+  // hint-pages (nw-widgets-hint-other-pages): the Service widget card on the container page when /api/widgets fails.
+  if (ONLY === "hint-pages") await guard("hint-pages", async () => {
+    const LOAD = "Widget details can't be loaded right now.";
+    const STALE = "Widget details may be out of date; the last refresh failed.";
+    const NONE = "No widget configured";
+    const WIDGETS = { [NAME]: { type: "sonarr", fields: [{ label: "Queue", value: "3" }, { label: "Missing", value: "12", intent: "warn" }], fetchedAt: 0 } };
+    const STATES = { A1: "ok", A4: "fail", A5: "ok", A2: "empty" }; // A5 loads good, then flips to fail
+    const PER_WIDTH = 10; // 4 states x 2 checks, plus an overflow check on A4 and A2
+    let ran = 0, pass = 0;
+    const hp = (n, ok, d) => { ran++; if (ok) pass++; check(n, ok, d); };
+    for (const { name, ...opts } of VIEWPORTS) {
+      for (const [state, start] of Object.entries(STATES)) {
+        const { context, page, errors } = await openPage(browser, opts, "none");
+        const mode = { w: start };
+        await page.route("**/api/widgets**", (route) => (mode.w === "fail" ? json(route, 500, { error: "unreachable" }) : json(route, 200, { widgets: mode.w === "ok" ? WIDGETS : {} })));
+        await page.route("**/api/docker/containers**", (route) => {
+          const { pathname } = new URL(route.request().url());
+          if (pathname.endsWith("/api/docker/containers")) return json(route, 200, LIST);
+          if (pathname.endsWith(`/containers/${ID}`)) return json(route, 200, INSPECT);
+          if (pathname.endsWith("/logs")) return json(route, 200, { logs: "" });
+          return json(route, 200, {});
+        });
+        await page.goto(`${BASE_URL}/containers/${ID}`, { waitUntil: "domcontentloaded" });
+        const card = page.locator(".panel", { has: page.getByText("Service widget", { exact: true }) }).last();
+        await card.waitFor({ timeout: 30_000 });
+        if (state === "A5") {
+          await card.getByText("Queue", { exact: true }).waitFor({ timeout: 30_000 });
+          mode.w = "fail";
+          await page.waitForTimeout(5300);
+          await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+          await card.getByText(STALE).waitFor({ timeout: 30_000 });
+        } else if (state === "A4") await card.getByText(LOAD).waitFor({ timeout: 30_000 });
+        else if (state === "A2") await card.getByText(NONE).waitFor({ timeout: 30_000 });
+        else await card.getByText("Queue", { exact: true }).waitFor({ timeout: 30_000 });
+        const t = await card.innerText();
+        const count = (s) => t.split(s).length - 1;
+        if (state === "A1") {
+          hp(`HP-A1 ${name} fields shown`, t.includes("Queue") && t.includes("12"));
+          hp(`HP-A1 ${name} no note and no "${NONE}"`, !t.includes(LOAD) && !t.includes(STALE) && !t.includes(NONE), t);
+        } else if (state === "A4") {
+          hp(`HP-A4 ${name} only the load sentence`, count(LOAD) === 1 && !t.includes(STALE), t);
+          hp(`HP-A4 ${name} "${NONE}" absent`, !t.includes(NONE), t);
+        } else if (state === "A5") {
+          hp(`HP-A5 ${name} kept fields shown`, t.includes("Queue") && t.includes("12"), t);
+          hp(`HP-A5 ${name} exactly one stale line`, count(STALE) === 1 && !t.includes(LOAD), t);
+        } else {
+          hp(`HP-A2 ${name} "${NONE}" shown`, t.includes(NONE), t);
+          hp(`HP-A2 ${name} no note`, !t.includes(LOAD) && !t.includes(STALE), t);
+        }
+        if (state === "A4" || state === "A2") {
+          const ok = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+          hp(`HP-${state} ${name} no horizontal overflow`, ok);
+        }
+        await cropEl(page, card, join(OUT_DIR, `hint-pages-${state}-${name}.png`), `HP-${state} ${name}`);
+        if (state === "A4") await page.screenshot({ path: join(OUT_DIR, `hint-pages-${state}-${name}-full.png`), fullPage: true });
+        check(`HP-${state} ${name}: no page errors`, errors.length === 0, errors.join(" | ").slice(0, 200));
+        await context.close();
+      }
+    }
+    check("HP every check ran", ran === PER_WIDTH * VIEWPORTS.length, `ran ${ran}`);
+    console.log(`hint-pages: ${pass}/${PER_WIDTH * VIEWPORTS.length} pass`);
   });
 } finally {
   await browser.close();

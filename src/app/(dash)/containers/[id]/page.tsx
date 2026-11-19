@@ -19,6 +19,7 @@ import {
 import { RemoveContainerAction } from "@/components/resources/remove-container-action";
 import { WidgetActionRow } from "@/components/widget-actions";
 import { fetcher, redirectOn401, useContainers, useWidgets, type ContainerStatsSnapshot } from "@/lib/client";
+import { WIDGETS_HINT_COPY, containerWidgetNote } from "@/lib/widgets-hint";
 import { formatBytes, formatUptime, relativeTime } from "@/lib/format";
 import { processesHref } from "@/lib/container-rank";
 import { STATS_STALE_AFTER, nextFailCount } from "@/lib/poll-fails";
@@ -221,7 +222,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
     keepPreviousData: true,
   });
   const { data: containersData } = useContainers(10000);
-  const { data: widgetData } = useWidgets(20000);
+  const { data: widgetData, error: widgetsError } = useWidgets(20000);
   const lifecycle = useLifecycle(id, () => void mutate());
   const [showEnv, setShowEnv] = useState(false);
   const [confirmingStop, setConfirmingStop] = useState(false);
@@ -248,6 +249,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
 
   const listEntry = containersData?.containers.find((c) => c.id.startsWith(id));
   const widget = listEntry ? widgetData?.widgets[listEntry.name] : undefined;
+  const widgetNote = containerWidgetNote({ widgetsError: !!widgetsError, widgets: widgetData?.widgets, widget });
 
   // Named buttons rather than the shared icon cluster: this page has room for
   // words, and a full-width header is the one place where "Stop" should read as
@@ -502,10 +504,13 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
                     </span>
                   </div>
                 ))}
+                {widgetNote === "stale" && <p className="pt-1 text-xs text-ink-faint">{WIDGETS_HINT_COPY.stale}</p>}
               </div>
             ) : (
               <p className="text-xs text-ink-faint">
-                {widget?.error
+                {widgetNote === "load"
+                  ? WIDGETS_HINT_COPY.load
+                  : widget?.error
                   ? `widget error: ${widget.error}`
                   : "No widget configured. Add one in Settings or via dashboard.widget.* labels."}
               </p>
