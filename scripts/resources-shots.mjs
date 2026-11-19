@@ -152,7 +152,7 @@ async function hintPages(run, w) {
 }
 
 // load-failed (nw-resources-load-failed): Net and Disk tabs when /api/resources has not answered (mocked 500) or answered with/without volumes.
-const RF_PER_WIDTH = 14; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4) + 2 (R5, R6: retry line)
+const RF_PER_WIDTH = 16; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4) + 2 (R5, R6: retry line) + 2 (R7: no totals strip on Disk and Net)
 let rfRan = 0, rfPass = 0;
 const rf = (key, where, ok, value) => { rfRan++; if (ok) rfPass++; check(key, where, ok, value); };
 const SYSTEM_LINE = "volume sizes need SYSTEM=1 on the socket proxy";
@@ -192,6 +192,8 @@ async function loadFailed(run, w) {
     });
     rf("R5 'every 10 s' joined by U+00A0", `failed@${w}`, rt.found && rt.nbsp, rt);
     rf("R6 last line wider than 40px", `failed@${w}`, rt.found && rt.lastLine > 40, rt);
+    // nw-uipolish3 item 1: a failed load shows no strip of four dashes.
+    rf("R7 no totals strip", `failed@${w}`, (await page.getByText("containers CPU").count()) === 0, await page.getByText("containers CPU").count());
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-failed-net", "metric=net", async (page) => {
     await rfAlert(page).first().waitFor({ timeout: SLOW });
@@ -199,6 +201,7 @@ async function loadFailed(run, w) {
     rf("R2 header has no '0 containers'", `load-failed-net@${w}`, !(await rfHeader(page).innerText()).includes("0 containers"), await rfHeader(page).innerText());
     rf("R2 header line is exactly unavailable", `load-failed-net@${w}`, (await rfHeader(page).innerText()).trim().toLowerCase() === "unavailable", await rfHeader(page).innerText());
     rf("R2 block has no box band clause", `load-failed-net@${w}`, !(await rfAlert(page).first().innerText()).includes("box band above"), null);
+    rf("R7 no totals strip", `load-failed-net@${w}`, (await page.getByText("containers CPU").count()) === 0, await page.getByText("containers CPU").count());
   }, rfFail, (page) => rfAlert(page).first());
   await run("load-ready-null-volumes", "metric=disk", async (page) => {
     await page.getByText(SYSTEM_LINE).waitFor({ timeout: SLOW });
@@ -212,7 +215,7 @@ async function loadFailed(run, w) {
 }
 
 // scan-root (nw-scan-unreadable-root): an unreadable scan root shows as a failed job, an errored pinned scan shows "error", not "0 B".
-const SR_PER_WIDTH = 14; // S1 4 + S2 4 + S3 5 + S4 1 (nw-resources-polish-2: case kept, reason visible)
+const SR_PER_WIDTH = 19; // S1 4 + S2 4 + S3 5 + S4 1 (nw-resources-polish-2: case kept, reason visible) + 5 (U1 to U5: unreadable row reason, nw-uipolish3)
 let srRan = 0, srPass = 0;
 const sr = (key, where, ok, value) => { srRan++; if (ok) srPass++; check(key, where, ok, value); };
 // Mixed case on purpose: the alert must keep it (a microlabel renders uppercase).
@@ -242,6 +245,27 @@ async function scanRoot(run, w) {
     }, srScanRoutes(kind), (page) => page.locator('[role="alert"]', { hasText: "cannot read /mnt/Media/Gone" }).first());
   await job("scan-error-largest", "largest-files", "S1", /no files found/i, /Find largest files/);
   await job("scan-error-duplicates", "duplicates", "S2", /no likely duplicates/i, /Find duplicates/);
+  // nw-uipolish3 item 2: the unreadable row says why as visible text, not a hover-only title.
+  const UR_REASON = "not readable as the dashboard's unprivileged user";
+  const urRow = (page) => page.locator("div.min-h-11", { hasText: "unreadable · 3 paths denied" }).first();
+  await run("unreadable-row", "metric=disk", async (page) => {
+    await page.locator('button[aria-controls="disk-contents-/mnt/test"]').click({ timeout: SLOW });
+    await urRow(page).waitFor({ timeout: SLOW });
+    const t = await urRow(page).innerText();
+    sr("U1 row text has the label and the reason", `unreadable-row@${w}`, t.includes("unreadable · 3 paths denied") && t.includes(UR_REASON), t);
+    const ti = await urRow(page).getAttribute("title");
+    sr("U2 row has no title attribute", `unreadable-row@${w}`, ti === null, ti);
+    const m = await urRow(page).locator("span.microlabel", { hasText: "not readable" }).evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, ff: getComputedStyle(el).fontFamily.slice(0, 40) }));
+    sr("U3 reason line is not clipped", `unreadable-row@${w}`, m.sw <= m.cw, m);
+    const o = await srOverflow(page);
+    sr("U4 no horizontal overflow", `unreadable-row@${w}`, o.ok, o.o);
+    // min-h-11 = 2.75rem = 44px (no --tap-min token exists in src); only the narrow width carries it (md:min-h-8 from 768px).
+    const h = await urRow(page).evaluate((el) => el.getBoundingClientRect().height);
+    sr("U5 row height at least min-h-11 (44px) on the narrow width", `unreadable-row@${w}`, w !== "390" || h >= 44, h);
+  }, async (page) => {
+    await withDisk(["/mnt/test"])(page);
+    await page.route(/\/api\/resources\/disk-usage/, (route) => json(route, { ...DISK_SCAN, entries: [{ name: "media", bytes: 3e11, kind: "dir", path: "/mnt/test/media" }], unreadableBytes: 1e11, deniedCount: 3, usedBytes: 4e11 }));
+  }, urRow);
   await run("pinned-error", "metric=disk", async (page) => {
     const bad = srPinCell(page, "/mnt/pin-bad");
     await bad.waitFor({ timeout: SLOW });
