@@ -974,11 +974,13 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
     const devCounters = await readNetDevFull();
     if (devCounters === null) warnings.push("Could not read the interface counters (/proc/1/net/dev).");
 
-    const [ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface] = await Promise.all([
+    const [ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface, { portOwner, uidToUser }] = await Promise.all([
       readIfInet6GlobalAddresses(),
       readDefaultRouteIface(),
       readDockerNetInfo(warnings),
       readIPv4ByIface(),
+      // Started with the rest so a hung docker costs one deadline, not two in a row.
+      readOwnerMaps(warnings),
     ]);
 
     const ctx: BuildContext = { devCounters, ipv6ByIface, defaultRouteIface, dockerNet, ipv4ByIface };
@@ -988,7 +990,6 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
     // One owner lookup (one docker call, one passwd read) shared by listening
     // sockets and established connections — both attribute off "local port ->
     // who bound it".
-    const { portOwner, uidToUser } = await readOwnerMaps(warnings);
     const sockets = await buildListeningSockets(warnings, portOwner, uidToUser);
     const { connections: allConnections, available: connectionsAvailable } = await buildEstablishedConnections(
       warnings,

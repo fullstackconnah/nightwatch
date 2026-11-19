@@ -15,6 +15,7 @@ import {
   interfaceSeries,
   seriesIsIdle,
   seriesPeak,
+  seriesTotal,
 } from "@/components/resources/net-throughput";
 import { fetcher, useContainers, useNetwork, useTelemetryStream } from "@/lib/client";
 import { formatBytes, formatPercent, formatRate } from "@/lib/format";
@@ -173,10 +174,12 @@ function UplinkBand({
 function BridgeRow({
   iface,
   network,
+  dockerState,
   samples,
 }: {
   iface: NetInterface;
   network: DockerNetworkRow | undefined;
+  dockerState: "ready" | "loading" | "failed";
   samples: TelemetrySample[];
 }) {
   const series = useMemo(() => interfaceSeries(samples, iface.name), [samples, iface.name]);
@@ -200,12 +203,16 @@ function BridgeRow({
             the attached count all fit only by ellipsing the count away, and the
             count is the part that tells you whether the bridge matters. */}
         <div className="font-mono text-[0.65rem] text-ink-faint truncate">
-          {renamed ? iface.name : (network?.subnet ?? "subnet unknown")}
+          {renamed ? iface.name : (network?.subnet ?? (dockerState === "ready" ? "subnet unknown" : "—"))}
         </div>
         <div className="font-mono text-[0.65rem] text-ink-faint truncate">
           {renamed && network?.subnet ? `${network.subnet} · ` : ""}
           {attached === null
-            ? "not a docker network"
+            ? dockerState === "ready"
+              ? "not a docker network"
+              : dockerState === "loading"
+                ? "reading docker networks…"
+                : "docker details unavailable"
             : `${attached} ${attached === 1 ? "container" : "containers"}`}
         </div>
       </div>
@@ -237,7 +244,7 @@ interface FootprintRow {
 const COMPARE_MAX = 4;
 
 function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
-  const { data } = useContainers(15000);
+  const { data, error } = useContainers(15000);
   const latest = samples.length > 0 ? samples[samples.length - 1] : undefined;
   // Client-state only, no URL/persistence: this is a scratch comparison, not
   // a view worth bookmarking. Order is selection order, not row order, so a
@@ -322,9 +329,12 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
       }
     }
 
+    // Order by the window total (not this tick's rate) so rows hold still under a finger.
+    const windowTotal = (id: string) =>
+      samples.reduce((a, s) => a + (s.containers[id] ? s.containers[id].rxRate + s.containers[id].txRate : 0), 0);
     return [...groups.values()]
       .filter((r) => r.rx + r.tx > 0 || recentlyActive.has(r.id) || compareIds.includes(r.id))
-      .sort((a, b) => b.rx + b.tx - (a.rx + a.tx));
+      .sort((a, b) => windowTotal(b.id) - windowTotal(a.id) || a.name.localeCompare(b.name));
   }, [data, latest, samples, compareIds]);
 
   const total = rows.reduce((a, r) => a + r.rx + r.tx, 0);
@@ -336,7 +346,11 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
         <p className="text-sm text-ink-dim mt-1">
           {samples.length === 0
             ? "Waiting for the first telemetry tick…"
-            : "No container traffic in the last minute."}
+            : !data && error
+              ? "Could not read the container list, so traffic cannot be split by container."
+              : !data
+                ? "Reading containers…"
+                : "No container traffic in the last minute."}
         </p>
       </div>
     );
@@ -493,11 +507,13 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
 export default function NetworkPage() {
   const { data: snapshot, error } = useNetwork();
   const { samples, status } = useTelemetryStream();
-  const { data: dockerNets } = useSWR<{ networks: DockerNetworkRow[] }>(
+  const { data: dockerNets, error: dockerError } = useSWR<{ networks: DockerNetworkRow[] }>(
     "/api/docker/networks",
     fetcher,
     { refreshInterval: 30000 },
   );
+  // SWR keeps the last data across a later error, so data wins: names stay once read.
+  const dockerState = dockerNets ? "ready" : dockerError ? "failed" : "loading";
   const [showVirtual, setShowVirtual] = useState(false);
 
   const interfaces = useMemo(() => snapshot?.interfaces ?? [], [snapshot]);
@@ -524,11 +540,9 @@ export default function NetworkPage() {
   }, [dockerNets]);
 
   const sortedBridges = useMemo(() => {
-    const load = (name: string) => {
-      const r = latestRate(samples, name);
-      return r.rx + r.tx;
-    };
-    return [...bridges].sort((a, b) => load(b.name) - load(a.name));
+    // Window total, not the latest tick: a per-second key swaps busy rows every second.
+    const load = (name: string) => seriesTotal(interfaceSeries(samples, name));
+    return [...bridges].sort((a, b) => load(b.name) - load(a.name) || a.name.localeCompare(b.name));
   }, [bridges, samples]);
 
   const virtualTotals = useMemo(() => {
@@ -600,7 +614,7 @@ export default function NetworkPage() {
             </p>
           </div>
           {sortedBridges.map((b) => (
-            <BridgeRow key={b.name} iface={b} network={netByBridge.get(b.name)} samples={samples} />
+            <BridgeRow key={b.name} iface={b} network={netByBridge.get(b.name)} dockerState={dockerState} samples={samples} />
           ))}
         </section>
       )}

@@ -39,6 +39,11 @@ export function interfaceSeries(samples: TelemetrySample[], iface: string): Rate
   return { rx, tx };
 }
 
+/** Sum of both directions over the window: a stable ordering key, unlike one tick's rate. */
+export function seriesTotal(series: RateSeries): number {
+  return series.rx.reduce((a, v) => a + v, 0) + series.tx.reduce((a, v) => a + v, 0);
+}
+
 /** Window peak across both directions — the denominator every chart scales to,
  *  and the number printed beside it so nobody reads two charts' heights against
  *  each other. Floored at 1 B/s so an idle interface divides safely. */
