@@ -40,7 +40,7 @@ function PlayersDetail({ names, stopped }: { names: string[]; stopped: boolean }
 
 export default function MinecraftPage() {
   const { data: status, error, mutate, isValidating } = useMinecraftStatus();
-  const { data: containersData, mutate: mutateContainers } = useContainers();
+  const { data: containersData, error: containersError, mutate: mutateContainers } = useContainers();
   const { data: backupData, error: backupError, isLoading: backupsLoading, mutate: mutateBackups } = useMinecraftBackups();
   const container = containersData?.containers.find((c) => c.name === "minecraft");
   const now = useNow(true);
@@ -61,6 +61,7 @@ export default function MinecraftPage() {
     statusError: Boolean(error),
     container: container && { state: container.state, exitCode: container.exitCode, startedAt: container.startedAt },
     containersReady: Boolean(containersData),
+    containersError: Boolean(containersError),
     backups: backupData?.backups,
     backupsError: Boolean(backupError),
     lastLine,

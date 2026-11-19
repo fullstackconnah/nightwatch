@@ -25,6 +25,8 @@ export interface ModelInput {
   container: McContainer | undefined;
   /** False until the container list has answered once. */
   containersReady: boolean;
+  /** The container list has failed and never answered (SWR keeps the last good list). */
+  containersError: boolean;
   backups: McBackup[] | undefined;
   backupsError: boolean;
   lastLine: string | null;
@@ -80,6 +82,12 @@ export function minecraftModel(i: ModelInput): Model {
     writes,
   });
 
+  if (!i.containersReady && i.containersError) {
+    return done({
+      chip: { tone: "warn", label: "No Docker" }, answer: "Docker isn’t answering, so the dashboard can’t tell whether Minecraft is running. It tries again on its own.",
+      evidence: "Check the Docker proxy, then reload.", notice: null, link: null, order: [...ORDER.default], strips: [], autoTarget: "keep",
+    });
+  }
   if (!i.containersReady || (!status && !i.statusError)) {
     return done({
       chip: { tone: "neutral", label: "Checking" }, answer: "Connecting to mc-manager…", evidence: "First answer usually takes a second",
@@ -128,7 +136,7 @@ export function minecraftModel(i: ModelInput): Model {
     autoTarget = "server";
   } else if (!managerOk) {
     chip = { tone: "warn", label: "Manager down" };
-    answer = "Docker says the server is running, but mc-manager isn’t answering. Packs, console and backups are paused.";
+    answer = `${running ? "Docker says the server is running, but mc-manager isn’t answering." : `mc-manager isn’t answering, and Docker ${c ? "says the server is stopped" : "has no Minecraft container"}.`} Packs, console and backups are paused.`;
     // The raw error (host, port) stays out of the DOM.
     evidence = "mc-manager isn’t answering · retrying every 10 s";
     notice = "Start, stop and restart still work through Docker.";
@@ -161,7 +169,7 @@ export function minecraftModel(i: ModelInput): Model {
   if (stale) {
     chip = { tone: "neutral", label: "Stale" };
     answer = `Showing what was true ${ageText(age)} ago: ${lowerFirst(answer)}`;
-    evidence = `Last update ${ageText(age)} ago · mc-manager stopped answering`;
+    evidence = `Last update ${ageText(age)} ago · the dashboard’s status check stopped answering`;
     notice = "Controls are paused while the page shows old data.";
     autoTarget = "keep";
   }

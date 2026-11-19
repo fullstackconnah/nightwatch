@@ -31,6 +31,7 @@ const WRITE_RE = /^(Stop|Start|Restart|Switch|Delete|Install|Upload|Back up now|
 // [fixture, chip, a phrase the answer must contain]
 const STATES = [
   ["loading", "Checking", "Connecting to mc-manager"],
+  ["noDocker", "No Docker", "Docker isn’t answering"],
   ["unconfigured", "Not connected", "isn’t connected yet"],
   ["tokenRejected", "Token rejected", "rejected the token"],
   ["down", "Manager down", "mc-manager isn’t answering"],
@@ -81,6 +82,7 @@ async function mockRoutes(page, mock) {
   );
   await page.route("**/api/minecraft/packs/search*", (route) => json(route, SEARCH));
   await page.route("**/api/docker/containers", async (route) => {
+    if (mock.fx.containers === "fail") return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
     const res = await route.fetch();
     const body = await res.json();
     const list = (body.containers ?? []).filter((c) => c.name !== "minecraft");
