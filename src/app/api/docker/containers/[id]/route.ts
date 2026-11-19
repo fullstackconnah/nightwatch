@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hostname } from "node:os";
-import { docker, listContainers, removeContainer } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS, listContainers, removeContainer } from "@/lib/docker";
 import { shapeContainerDetail } from "@/lib/container-detail";
 import { isContainerId } from "@/lib/container-id";
 import { isDeadlineError } from "@/lib/docker-deadline";
@@ -12,7 +12,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
   const { id } = await ctx.params;
   if (!isContainerId(id)) return NextResponse.json({ error: "invalid container id" }, { status: 400 });
   try {
-    const info = await docker.getContainer(id).inspect();
+    const info = await docker.getContainer(id).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) });
     return NextResponse.json(shapeContainerDetail(info));
   } catch (e) {
     const status = (e as { statusCode?: number }).statusCode === 404 ? 404 : 502;

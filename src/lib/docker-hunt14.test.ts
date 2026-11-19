@@ -59,7 +59,7 @@ test("A5: prune route passes the partial-removal text through", () => {
 });
 
 test("A4: network container counts include stopped containers", () => {
-  assert.match(ROUTE("networks"), /docker\.listContainers\(\{ all: true \}\)/);
+  assert.match(ROUTE("networks"), /docker\.listContainers\(\{ all: true[,} ]/);
 });
 
 test("A1: a dangling image a container uses is not counted as dangling", () => {

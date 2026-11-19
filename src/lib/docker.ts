@@ -11,9 +11,13 @@ import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } f
 import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
 
 /** Deadline for a one-shot Docker call (list, inspect, create, start). Not a client-wide timeout: docker-modem would apply that to the quiet follow streams too. */
-const DOCKER_CALL_MS = 10_000;
+export const DOCKER_CALL_MS = 10_000;
+/** GET /system/df takes 20-70 s on a big host, so it gets its own deadline. */
+const DOCKER_DF_MS = 90_000;
 /** Lifecycle and remove calls: stop and restart give the container 15 s to exit before Docker starts it again, so 45 s leaves room. */
 const DOCKER_ACTION_MS = 45_000;
+// dockerode types df() and info() without an options argument, but both forward abortSignal like the rest.
+const dockerRead = () => docker as unknown as { df(o: object): Promise<unknown>; info(o: object): Promise<{ DockerRootDir?: string }> };
 /** Log tail reads move up to ~2000 lines through the proxy, so they get a longer bound. */
 const DOCKER_LOGS_MS = 20_000;
 
@@ -434,7 +438,7 @@ export function systemDf(): Promise<DfSnapshot> {
 }
 
 async function fetchDf(): Promise<DfSnapshot> {
-  const raw = (await docker.df()) as {
+  const raw = (await dockerRead().df({ abortSignal: AbortSignal.timeout(DOCKER_DF_MS) })) as {
     LayersSize?: number;
     BuildCacheUsage?: number;
     BuildCache?: { Size?: number }[];
@@ -528,9 +532,9 @@ export interface DiskReclaimSnapshot {
  */
 export async function getDiskReclaimSnapshot(): Promise<DiskReclaimSnapshot> {
   const [images, containers, volumeList, df] = await Promise.all([
-    docker.listImages({ all: false }),
-    docker.listContainers({ all: true }),
-    docker.listVolumes(),
+    docker.listImages({ all: false, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
+    docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
+    docker.listVolumes({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
     systemDf(),
   ]);
 
@@ -588,7 +592,7 @@ export async function pruneReclaimable(target: PruneTarget): Promise<PruneResult
   // Not docker.pruneVolumes(): its scope depends on the daemon version (23+
   // removes anonymous only), so remove the listed orphans by name instead.
   // Not getDiskReclaimSnapshot(): it awaits a 20-70 s df that can fail, and Clear needs no sizes.
-  const [volumeList, containers] = await Promise.all([docker.listVolumes(), docker.listContainers({ all: true })]);
+  const [volumeList, containers] = await Promise.all([docker.listVolumes({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }), docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) })]);
   const names = orphanVolumeNames(volumeList.Volumes, containers);
   const res = await removeVolumes(names, (name) => docker.getVolume(name).remove());
   const { removed } = res;
@@ -632,8 +636,8 @@ async function getDockerRootDir(): Promise<string | null> {
   if (globalForDocker.__dockerRootCache && now - globalForDocker.__dockerRootCache.ts < DOCKER_ROOT_TTL_MS) {
     return globalForDocker.__dockerRootCache.data;
   }
-  const data = await docker
-    .info()
+  const data = await dockerRead()
+    .info({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) })
     .then((info: { DockerRootDir?: string }) => info.DockerRootDir ?? null)
     .catch(() => null);
   globalForDocker.__dockerRootCache = { data, ts: now };
@@ -890,7 +894,7 @@ export async function refuseCreate(spec: CreateContainerSpec): Promise<string | 
     validateCreateSpec(spec) ??
     (await checkCreateSpecHost(spec, {
       rootfs: HOST_ROOTFS,
-      inspectVolume: (n) => docker.getVolume(n).inspect(),
+      inspectVolume: (n) => docker.getVolume(n).inspect({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
     }))
   );
 }

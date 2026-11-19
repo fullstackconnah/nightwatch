@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { docker } from "@/lib/docker";
+import { docker, DOCKER_CALL_MS } from "@/lib/docker";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
     const [images, containers] = await Promise.all([
-      docker.listImages({ all: false }),
-      docker.listContainers({ all: true }),
+      docker.listImages({ all: false, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
+      docker.listContainers({ all: true, abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) }),
     ]);
     // Named owners, not just a boolean: the per-image delete action (G2) disables
     // itself on an in-use image and needs to say *whose* container it is rather
