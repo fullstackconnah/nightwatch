@@ -652,10 +652,29 @@ try {
   if (ONLY === "heading") await guard("heading", async () => {
     const HEX_ID = "f0e1d2c3b4a5" + "9".repeat(52);
     const LONG = "very-long-container-name-" + "x".repeat(45); // 70 chars
-    const PER_WIDTH = 6; // H1 2, H2 3, H3 1 (page-errors checks are separate)
+    const PER_WIDTH = 8; // H1 3, H2 4, H3 1 (page-errors checks are separate); plus one wrap check at 390 only
     let ran = 0, pass = 0;
     const hd = (n, ok, d) => { ran++; if (ok) pass++; check(n, ok, d); };
     const docOverflow = (page) => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    // Page at scroll 0 (the header row is the first content, so no scroll under the sticky bar is needed). Crops the back link plus header row, padded 16 px; returns whether the mobile top bar meets the h1.
+    const headCrop = async (page, h1loc, path, full) => {
+      await page.evaluate(() => scrollTo(0, 0));
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r())));
+      const { clip, barHitsH1, bar, h1r } = await h1loc.evaluate((h1, pad) => {
+        const header = h1.parentElement, link = header.previousElementSibling;
+        const bar = document.querySelector("header.md\\:hidden");
+        const barBox = bar && getComputedStyle(bar).display !== "none" ? bar.getBoundingClientRect() : null;
+        const a = link.getBoundingClientRect(), b = header.getBoundingClientRect(), h = h1.getBoundingClientRect();
+        const left = Math.max(0, Math.min(a.left, b.left) - pad), top = Math.max(0, (barBox ? barBox.bottom : 0), a.top - pad);
+        const right = Math.min(document.documentElement.scrollWidth, Math.max(a.right, b.right) + pad), bottom = b.bottom + pad;
+        const hit = !!barBox && h.left < barBox.right && h.right > barBox.left && h.top < barBox.bottom && h.bottom > barBox.top;
+        const r = (x) => x && { t: Math.round(x.top), b: Math.round(x.bottom) };
+        return { clip: { x: left, y: top, width: right - left, height: bottom - top }, barHitsH1: hit, bar: r(barBox), h1r: r(h) };
+      }, 16);
+      await page.screenshot({ path, fullPage: true, clip });
+      if (full) await page.screenshot({ path: full, fullPage: true });
+      return { barHitsH1, detail: `bar ${JSON.stringify(bar)} h1 ${JSON.stringify(h1r)}` };
+    };
     const open = async (opts, id, answer) => {
       const { context, page, errors } = await openPage(browser, opts, "none");
       await page.route("**/api/docker/containers**", async (route) => {
@@ -679,7 +698,8 @@ try {
       hd(`H1 ${name} loading: h1 is the first 12 chars`, (await h1el.innerText()) === HEX_ID.slice(0, 12), await h1el.innerText());
       const o1 = await docOverflow(h1.page);
       hd(`H1 ${name} loading: no horizontal overflow`, o1.scroll <= o1.client, JSON.stringify(o1));
-      await cropEl(h1.page, h1el.locator(".."), join(OUT_DIR, `heading-H1-${name}.png`), `H1 ${name}`);
+      const c1 = await headCrop(h1.page, h1el, join(OUT_DIR, `heading-H1-${name}.png`));
+      hd(`H1 ${name} loading: top bar does not cover the h1`, !c1.barHitsH1, c1.detail);
       check(`H1 ${name}: no page errors`, h1.errors.length === 0, h1.errors.join(" | ").slice(0, 200));
       release();
       await h1.context.close();
@@ -693,8 +713,24 @@ try {
       hd(`H2 ${name} long name: no horizontal overflow`, o2.scroll <= o2.client, JSON.stringify(o2));
       const own = await h2el.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
       hd(`H2 ${name} long name: h1 not clipped`, own.scroll <= own.client, JSON.stringify(own));
-      await cropEl(h2.page, h2el.locator(".."), join(OUT_DIR, `heading-H2-${name}.png`), `H2 ${name}`);
-      await h2.page.screenshot({ path: join(OUT_DIR, `heading-H2-${name}-full.png`), fullPage: true });
+      const c2 = await headCrop(h2.page, h2el, join(OUT_DIR, `heading-H2-${name}.png`), join(OUT_DIR, `heading-H2-${name}-full.png`));
+      hd(`H2 ${name} long name: top bar does not cover the h1`, !c2.barHitsH1, c2.detail);
+      if (name === "390") {
+        // First rendered line must end at a hyphen (break-words), not mid-word (break-all).
+        const wrap = await h2el.evaluate((el) => {
+          const t = el.firstChild, rg = document.createRange();
+          let top0 = null, prev = "";
+          for (let i = 0; i < t.length; i++) {
+            rg.setStart(t, i); rg.setEnd(t, i + 1);
+            const top = Math.round(rg.getClientRects()[0].top);
+            if (top0 === null) top0 = top;
+            else if (top > top0) return { lines: 2, lastOfLine1: prev, lineH: el.getBoundingClientRect().height };
+            prev = t.data[i];
+          }
+          return { lines: 1, lastOfLine1: prev, lineH: el.getBoundingClientRect().height };
+        });
+        hd(`H2 ${name} long name: first line ends at a hyphen`, wrap.lines === 2 && wrap.lastOfLine1 === "-", JSON.stringify(wrap));
+      }
       check(`H2 ${name}: no page errors`, h2.errors.length === 0, h2.errors.join(" | ").slice(0, 200));
       await h2.context.close();
 
@@ -708,7 +744,7 @@ try {
       check(`H3 ${name}: no page errors`, h3.errors.length === 0, h3.errors.join(" | ").slice(0, 200));
       await h3.context.close();
     }
-    check("H every check ran", ran === PER_WIDTH * VIEWPORTS.length, `ran ${ran}`);
+    check("H every check ran", ran === PER_WIDTH * VIEWPORTS.length + 1,`ran ${ran}`);
     console.log(`heading: ${pass}/${ran} pass`);
   });
 } finally {

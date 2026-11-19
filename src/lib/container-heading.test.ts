@@ -20,4 +20,11 @@ describe("containerHeading", () => {
   it("4: a name-style id is returned unchanged", () => {
     assert.equal(containerHeading(null, "jellyfin"), "jellyfin");
   });
+  it("5: a 12-char short id is returned unchanged", () => {
+    assert.equal(containerHeading(null, "ab12cd34ef56"), "ab12cd34ef56");
+  });
+  it("6: a name that is itself 64 hex chars wins over the id", () => {
+    const name = "cd".repeat(32);
+    assert.equal(containerHeading(name, HEX), name);
+  });
 });

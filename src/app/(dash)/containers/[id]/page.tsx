@@ -282,7 +282,7 @@ export default function ContainerDetailPage({ params }: { params: Promise<{ id: 
 
       {/* header */}
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="min-w-0 break-all text-lg font-semibold font-mono">{containerHeading(info?.name, id)}</h1>
+        <h1 className="min-w-0 break-words text-lg font-semibold font-mono">{containerHeading(info?.name, id)}</h1>
         {info && (
           <Badge variant={stateBadgeVariant(info.state.status, info.state.health)}>
             {info.state.health === "unhealthy" ? "unhealthy" : info.state.status}
