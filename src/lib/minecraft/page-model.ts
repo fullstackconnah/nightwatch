@@ -84,8 +84,8 @@ export function minecraftModel(i: ModelInput): Model {
 
   if (!i.containersReady && i.containersError) {
     return done({
-      chip: { tone: "warn", label: "No Docker" }, answer: "Docker isn’t answering, so the dashboard can’t tell whether Minecraft is running. It tries again on its own.",
-      evidence: "Check the Docker proxy, then reload.", notice: null, link: null, order: [...ORDER.default], strips: [], autoTarget: "keep",
+      chip: { tone: "warn", label: "No Docker" }, answer: "Docker isn’t answering, so the dashboard can’t tell if Minecraft is running.",
+      evidence: "Retrying on its own · check the Docker proxy", notice: null, link: null, order: [...ORDER.default], strips: [], autoTarget: "keep",
     });
   }
   if (!i.containersReady || (!status && !i.statusError)) {
