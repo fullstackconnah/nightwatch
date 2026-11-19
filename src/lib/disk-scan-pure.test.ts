@@ -64,10 +64,10 @@ const read = (p: string) => fs.readdirSync(p);
 
 // Unreadable scan root: the walk must fail loudly for the root, skip silently below it.
 test("readWalkDir throws for an unreadable root, naming the typed path and not the host path", () => {
-  const missing = path.join(os.tmpdir(), "nw-gone-" + process.pid);
+  const hostPath = path.join(os.tmpdir(), "nw-gone-" + process.pid);
   assert.throws(
-    () => readWalkDir(read,`/host/rootfs${missing}`, "/mnt/gone", "/mnt/gone"),
-    (e: Error) => e.message.startsWith("cannot read /mnt/gone: ") && !e.message.includes("/host/rootfs") && /ENOENT/.test(e.message),
+    () => readWalkDir(read, hostPath, "/mnt/gone", "/mnt/gone"),
+    (e: Error) => e.message.startsWith("cannot read /mnt/gone: ") && !e.message.includes(hostPath) && /ENOENT/.test(e.message) && e.message.includes("scandir '/mnt/gone'"),
   );
 });
 

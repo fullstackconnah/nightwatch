@@ -26,6 +26,7 @@ export function readWalkDir<T>(
     return read(hostPath);
   } catch (e) {
     if (dirAbs !== rootAbs) return null; // permission denied or vanished mid-walk
-    throw new Error(`cannot read ${rootAbs}: ${e instanceof Error ? e.message : String(e)}`);
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`cannot read ${rootAbs}: ${msg.split(hostPath).join(rootAbs)}`); // Node's errno text quotes the host path
   }
 }
