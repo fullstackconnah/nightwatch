@@ -20,6 +20,7 @@ const VIEWPORTS = [
   { name: "1440", viewport: { width: 1440, height: 900 } },
   { name: "390", viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true },
 ];
+const ONLY = process.env.SHOTS_ONLY || process.env.ONLY; // "hint-pages" runs only the transcode-streams failure states (mocked /api/transcodes)
 const SLOW = 40_000;
 const results = {};
 const pageErrors = [];
@@ -111,6 +112,44 @@ const withDisk = (mounts) => async (page) => {
 const DISK_SCAN = { label: "/mnt/test", scannedAt: Date.now(), durationMs: 900, entries: [{ name: "media", bytes: 5e11, kind: "dir", path: "/mnt/test/media" }], otherBytes: 0, path: "/mnt/test", unaccountedBytes: 0, unreadableBytes: 0, deniedCount: 0, readablePct: 100, usedBytes: 5e11, totalBytes: 1e12, partial: false, error: null };
 const GROWTH_MOUNTS = ["/", "/mnt/a", "/mnt/b", "/mnt/c", "/mnt/d", "/mnt/e", "/mnt/f"];
 
+// hint-pages (nw-widgets-hint-other-pages): the GPU view's TRANSCODE STREAMS block when /api/transcodes fails.
+const TX_STREAM = { id: "s1", title: "Demo Film", user: "demo", client: "Jellyfin Web", device: "Chrome", playMethod: "Transcode", isVideoTranscode: true, isAudioTranscode: false, hardwareAccel: true, hardwareAccelType: "nvenc", videoFrom: "hevc", videoTo: "h264", audioFrom: null, audioTo: null, width: 1920, height: 1080, bitrate: 8e6, fps: 24, completionPct: 40, reasons: [] };
+const TX_STALE = "Sessions may be out of date; the last refresh failed.";
+const HP_PER_WIDTH = 7; // 3 (B2) + 2 (B3) + 2 (B4)
+let hpRan = 0, hpPass = 0;
+const hp = (key, where, ok, value) => { hpRan++; if (ok) hpPass++; check(key, where, ok, value); };
+const txBlock = (page) => page.locator("div.space-y-2", { has: page.getByText("TRANSCODE STREAMS", { exact: true }) }).last();
+const txRoute = (mode) => (page) => page.route(/\/api\/transcodes(\?|$)/, (route) => (mode.fail ? json(route, { error: "unreachable" }, 500) : json(route, { ok: true, streams: [TX_STREAM] })));
+async function hintPages(run, w) {
+  const b2 = { fail: true };
+  await run("hint-b2", "metric=gpu", async (page) => {
+    const b = txBlock(page);
+    await b.getByText("Transcode telemetry failed").waitFor({ timeout: SLOW });
+    const t = await b.innerText();
+    hp("B2 headline and fixed detail", `hint-b2@${w}`, t.includes("Transcode telemetry failed") && t.includes("The dashboard didn't answer."), t.slice(0, 160));
+    hp("B2 no reading line", `hint-b2@${w}`, !t.includes("reading transcode sessions"), t.slice(0, 160));
+    hp("B2 no stale line", `hint-b2@${w}`, !t.includes(TX_STALE), t.slice(0, 160));
+  }, txRoute(b2), txBlock);
+  const b3 = { fail: false };
+  await run("hint-b3", "metric=gpu", async (page) => {
+    const b = txBlock(page);
+    await b.getByText("Demo Film").first().waitFor({ state: "attached", timeout: SLOW });
+    b3.fail = true; // refresh now fails: SWR keeps the list
+    await page.waitForTimeout(5300);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await b.getByText(TX_STALE).waitFor({ timeout: SLOW });
+    hp("B3 exactly one stale line", `hint-b3@${w}`, (await b.getByText(TX_STALE).count()) === 1, null);
+    hp("B3 kept list still shown", `hint-b3@${w}`, (await b.getByText("Demo Film").count()) > 0, null);
+  }, txRoute(b3), txBlock);
+  const b4 = { fail: false };
+  await run("hint-b4", "metric=gpu", async (page) => {
+    const b = txBlock(page);
+    await b.getByText("Demo Film").first().waitFor({ state: "attached", timeout: SLOW });
+    hp("B4 no stale line", `hint-b4@${w}`, (await b.getByText(TX_STALE).count()) === 0, null);
+    hp("B4 no reading line", `hint-b4@${w}`, (await b.getByText("reading transcode sessions").count()) === 0, null);
+  }, txRoute(b4), txBlock);
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -129,6 +168,11 @@ try {
         await ctx?.context.close();
       }
     };
+
+    if (ONLY === "hint-pages") {
+      await hintPages(run, vp.name);
+      continue;
+    }
 
     for (const metric of ["cpu", "mem"]) {
       await run(metric, `metric=${metric}`, async (page) => {
@@ -236,5 +280,9 @@ try {
   await browser.close();
 }
 check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
+if (ONLY === "hint-pages") {
+  check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
+  console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);
+}
 console.log(JSON.stringify({ failed, results }));
 process.exit(failed ? 1 : 0);

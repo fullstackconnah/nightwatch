@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { WIDGETS_HINT_COPY, widgetsHint } from "./widgets-hint.ts";
+import { WIDGETS_HINT_COPY, containerWidgetNote, widgetsHint } from "./widgets-hint.ts";
 
 const kept = { sonarr: { type: "sonarr" } };
 
@@ -31,5 +31,38 @@ describe("widgetsHint (Home launcher)", () => {
   it("copy is the pinned sentences", () => {
     assert.equal(WIDGETS_HINT_COPY.load, "Widget details can't be loaded right now.");
     assert.equal(WIDGETS_HINT_COPY.stale, "Widget details may be out of date; the last refresh failed.");
+  });
+});
+
+describe("containerWidgetNote (container detail card)", () => {
+  const withFields = { fields: [{ label: "a" }] };
+  const noFields = { fields: [] };
+  const withError = { error: "boom", fields: [] };
+  it("A1: ok, fields: no note", () => {
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: kept, widget: withFields }), null);
+  });
+  it("A2: ok, no widget: no note", () => {
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: kept, widget: undefined }), null);
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: kept, widget: noFields }), null);
+  });
+  it("A3: ok, widget error: no note", () => {
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: kept, widget: withError }), null);
+  });
+  it("A4: failed, nothing held: load", () => {
+    assert.equal(containerWidgetNote({ widgetsError: true, widgets: undefined, widget: undefined }), "load");
+  });
+  it("A5: failed, kept fields: stale", () => {
+    assert.equal(containerWidgetNote({ widgetsError: true, widgets: kept, widget: withFields }), "stale");
+  });
+  it("A6: failed, kept, no widget: no note", () => {
+    assert.equal(containerWidgetNote({ widgetsError: true, widgets: kept, widget: undefined }), null);
+  });
+  it("A7: failed, kept, widget error: no note", () => {
+    assert.equal(containerWidgetNote({ widgetsError: true, widgets: kept, widget: withError }), null);
+  });
+  it("A8: failed then ok: note goes at once", () => {
+    assert.equal(containerWidgetNote({ widgetsError: true, widgets: kept, widget: withFields }), "stale");
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: kept, widget: withFields }), null);
+    assert.equal(containerWidgetNote({ widgetsError: false, widgets: undefined, widget: undefined }), null);
   });
 });
