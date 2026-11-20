@@ -51,7 +51,7 @@ export function calendarLinkError(raw: string): string | null {
   if (u.protocol !== "https:") return NOT_A_LINK;
   return u.username || u.password ? "Paste the link without a username or password in it." : null;
 }
-const NOT_A_LINK = "That isn't a link. Paste the whole private link from your calendar's sharing settings.";
+const NOT_A_LINK = "That isn't a link. Paste the private link from your calendar's sharing settings.";
 
 const DISCORD_ID = /^\d{17,20}$/;
 // No leading "-", space, "=" or newline: the Hermes daemon may pass this to a CLI argument or env file.
@@ -85,8 +85,8 @@ export function rconHostError(v: string | undefined): string | null {
 }
 
 export function budgetError(v: unknown): string | null {
-  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return "pipelineDailyBudgetUsd must be a non-negative number";
-  return v > MAX_BUDGET_USD ? `pipelineDailyBudgetUsd must be at most ${MAX_BUDGET_USD}` : null;
+  if (typeof v !== "number" || !Number.isFinite(v) || v < 0) return "Daily budget must be a non-negative number";
+  return v > MAX_BUDGET_USD ? `Daily budget must be at most ${MAX_BUDGET_USD}` : null;
 }
 
 /** The cap applies to a changed value only, so a budget stored above it before the cap existed doesn't block other saves. */

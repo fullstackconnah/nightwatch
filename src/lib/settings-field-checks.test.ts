@@ -25,6 +25,16 @@ test("A5: budget hint copy comes from MAX_BUDGET_USD", () => {
   assert.ok(read("../components/settings/settings-hermes.tsx").includes("hint={BUDGET_HINT}"));
 });
 
+test("P1: a budget over the cap is refused in the browser before the post; server texts name no field", () => {
+  const src = read("../components/settings/settings-hermes.tsx");
+  const refuse = src.indexOf("Daily budget: the most is $${MAX_BUDGET_USD}");
+  assert.ok(refuse > 0 && refuse < src.indexOf('postJson("/api/settings/hermes-daemon"'));
+  assert.ok(src.includes("n > MAX_BUDGET_USD"));
+  const checks = read("./settings-checks.ts");
+  assert.ok(!checks.includes("pipelineDailyBudgetUsd must"));
+  assert.ok(checks.includes("`Daily budget must be at most ${MAX_BUDGET_USD}`"));
+});
+
 test("A6: rcon port field error", () => {
   for (const ok of ["", "  ", "1", "25575", "65535"]) assert.equal(rconPortFieldError(ok), null, ok);
   for (const bad of ["abc", "0", "70000", "65536", "1.5", "-1", "1e3", "0x10"]) assert.equal(rconPortFieldError(bad), RCON_PORT_COPY, bad);

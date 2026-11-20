@@ -22,7 +22,7 @@ describe("calendarLinkError", () => {
     assert.equal(normalizeCalendarLink(app.toUpperCase().slice(0, 7) + app.slice(7)), GOOD);
   });
   it("refuses text that is not a link", () => {
-    const msg = "That isn't a link. Paste the whole private link from your calendar's sharing settings.";
+    const msg = "That isn't a link. Paste the private link from your calendar's sharing settings.";
     for (const bad of ["", "   ", "not a link", "calendar.example/x.ics", "ftp://example.test/x", "javascript:alert(1)"]) {
       assert.equal(calendarLinkError(bad), msg, JSON.stringify(bad));
     }

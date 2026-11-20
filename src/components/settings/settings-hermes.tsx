@@ -24,6 +24,7 @@ import { useFormReport } from "@/components/settings/form-report";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BUDGET_HINT } from "@/lib/settings-field-checks";
+import { MAX_BUDGET_USD } from "@/lib/settings-checks";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
 import { NO_PASSWORD_WARNING, StepUpField } from "@/components/settings/settings-access";
 import { isStepUpRefusal } from "@/lib/api-error";
@@ -376,6 +377,7 @@ function HermesDaemonCard() {
       if (pipelineBudget.trim()) {
         const n = Number(pipelineBudget);
         if (!Number.isFinite(n) || n < 0) throw new Error("Daily budget must be a non-negative number");
+        if (n > MAX_BUDGET_USD) throw new Error(`Daily budget: the most is $${MAX_BUDGET_USD}`);
         body.pipelineDailyBudgetUsd = n;
       }
       if (askPassword) body.currentPassword = password;
