@@ -31,6 +31,7 @@ export function CreateContainerDialog({
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
 
   // Initial focus lands on the first field, not the close button — same
   // reasoning as kiosk-pin-pad.tsx's pin keys. Restoring focus to whatever
@@ -55,6 +56,7 @@ export function CreateContainerDialog({
   }
 
   async function submit() {
+    if (busy) return; // the busy button stays focusable (aria-disabled), so a second click or Enter lands here
     setError(null);
     const rows = checkRows(ports, env, vols);
     if ("error" in rows) {
@@ -62,6 +64,7 @@ export function CreateContainerDialog({
       return;
     }
     setBusy(true);
+    submitRef.current?.focus(); // disabling Cancel (or this button) would drop focus onto the dialog and ring it
     try {
       await postJson("/api/docker/containers", {
         image: image.trim(),
@@ -202,7 +205,13 @@ export function CreateContainerDialog({
         {error && <p role="alert" className="text-bad text-xs">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={busy || !image.trim()}>
+          <Button
+            ref={submitRef}
+            onClick={submit}
+            disabled={!image.trim()}
+            aria-disabled={busy || undefined}
+            className="aria-disabled:opacity-40 aria-disabled:pointer-events-none"
+          >
             {busy ? "Pulling & starting…" : "Create & start"}
           </Button>
         </div>

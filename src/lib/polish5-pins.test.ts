@@ -14,5 +14,9 @@ test("H100-6 the report passes the partial flag on, only when set", () => {
 });
 
 test("polish5 the kiosk error line wraps with text-pretty", () => {
-  assert.match(src("../components/kiosk/kiosk-voice.tsx"), /text-bad\/90 whitespace-pre-wrap break-words text-pretty"/);
+  const line = src("../components/kiosk/kiosk-voice.tsx").match(/className="([^"]*text-bad\/90[^"]*)"[^>]*>\{exchange\.error\}/);
+  assert.ok(line, "the kiosk error line is missing");
+  for (const c of ["text-bad/90", "whitespace-pre-wrap", "break-words", "text-pretty"]) {
+    assert.ok(line[1].split(/\s+/).includes(c), `missing ${c}`);
+  }
 });

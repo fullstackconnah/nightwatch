@@ -37,6 +37,11 @@ test("an env key with inner whitespace or = is refused", () => {
   assert.equal(err(checkRows([], [env("A=B")], [])), m);
 });
 
+test("the env-name message carries the row number of a later row", () => {
+  assert.equal(err(checkRows([], [env("A"), env("B C")], [])), 'Variable row 2: the name cannot contain spaces or "=".');
+  assert.equal(err(checkRows([], [env("A"), env("B=C")], [])), 'Variable row 2: the name cannot contain spaces or "=".');
+});
+
 test("an env row with a name and a blank value is allowed", () => {
   assert.deepEqual(checkRows([], [env("A")], []), { ports: [], env: [{ key: "A", value: "" }], volumes: [] });
 });
@@ -65,4 +70,24 @@ test("the dialog cannot be closed while it is creating", () => {
   assert.match(s, /onClick=\{onClose\}\s+disabled=\{busy\}\s+aria-label="Close"/);
   assert.match(s, /e\.key === "Escape"[\s\S]{0,80}if \(!busy\) onClose\(\)/);
   assert.match(s, /<p role="alert" className="text-bad text-xs">\{error\}<\/p>/);
+});
+
+test("while creating, focus stays on a submit that is aria-disabled, not disabled", () => {
+  const s = src("components/resources/create-container.tsx");
+  // the empty-image case stays a real disabled; the busy case is aria-disabled only
+  assert.match(s, /disabled=\{!image\.trim\(\)\}/);
+  assert.match(s, /aria-disabled=\{busy \|\| undefined\}/);
+  assert.doesNotMatch(s, /disabled=\{busy \|\| !image\.trim\(\)\}/);
+  // same dimmed look as `disabled`, no pointer events
+  assert.match(s, /aria-disabled:opacity-40 aria-disabled:pointer-events-none/);
+  // a second click or Enter does nothing, and it is the first statement of submit
+  assert.match(s, /async function submit\(\) \{\s*if \(busy\) return;/);
+  // focus moves to the submit button as busy starts, before the request is awaited
+  const body = s.slice(s.indexOf("async function submit()"), s.indexOf("  return ("));
+  const busyAt = body.indexOf("setBusy(true)");
+  const focusAt = body.indexOf("submitRef.current?.focus()");
+  assert.ok(busyAt >= 0 && focusAt > busyAt && focusAt < body.indexOf("await postJson("));
+  assert.match(s, /<Button\s+ref=\{submitRef\}/);
+  // a refused submit returns before busy starts, so focus stays where it was
+  assert.ok(body.indexOf('"error" in rows') < busyAt);
 });
