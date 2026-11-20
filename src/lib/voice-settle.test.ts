@@ -28,8 +28,15 @@ test("a running job waits", () => {
   assert.deepEqual(settleExchange({ ok: true, job: { state: "running" } }), { kind: "wait" });
 });
 
+test("the ask cap follows the job's own kind, set only once the POST succeeds", () => {
+  const src = read("./use-hermes.ts");
+  const set = src.indexOf("setJobKind(kind)");
+  assert.ok(set > src.indexOf("await postJson(") && set < src.indexOf("} catch"));
+  assert.ok(src.includes('jobKind !== "ask"'));
+});
+
 test("useHermesRun memoises jobView and handleTranscript resets the run", () => {
-  assert.match(read("./use-hermes.ts"), /const job = useMemo\(\(\) => jobView\(data, error\), \[data, error\]\);/);
+  assert.match(read("./use-hermes.ts"), /const job = useMemo\(\(\) => askDeadline\(jobView\(data, error\), jobKind, /);
   assert.match(read("./use-voice.ts"), /activeExchangeId\.current = id;[\s\S]{0,200}run\.reset\(\);/);
 });
 

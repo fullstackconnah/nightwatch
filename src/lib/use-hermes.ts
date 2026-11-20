@@ -13,10 +13,10 @@
  * its own, and the daemon's 409 is surfaced honestly.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { ApiError, fetcher, postJson } from "@/lib/client";
-import { jobView } from "@/lib/hermes/job-view";
+import { ASK_DEADLINE_MS, askDeadline, jobView } from "@/lib/hermes/job-view";
 import type {
   HermesActivityResponse,
   HermesJob,
@@ -50,10 +50,10 @@ function jobKey(id: string): string {
 }
 
 /** Polls a specific job at ~2s while it's running, stops once settled. */
-export function useHermesJob(jobId: string | null) {
+export function useHermesJob(jobId: string | null, paused = false) {
   const lapsedFor = useRef<string | null>(null);
   return useSWR<HermesJobFetch>(jobId ? jobKey(jobId) : null, fetcher, {
-    refreshInterval: (latest) => (jobId !== lapsedFor.current && latest?.ok && latest.job.state === "running" ? 2000 : 0),
+    refreshInterval: (latest) => (paused ? 0 : jobId !== lapsedFor.current && latest?.ok && latest.job.state === "running" ? 2000 : 0),
     revalidateOnFocus: false,
     // A lapsed session won't recover by retrying or polling; other errors keep SWR's backoff.
     shouldRetryOnError: (e) => !(e instanceof ApiError && e.status === 401),
@@ -80,8 +80,23 @@ export function useHermesRun(): UseHermesRunResult {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [kind, setKind] = useState<HermesJobKind | null>(null);
-  const { data, error } = useHermesJob(jobId);
-  const job = useMemo(() => jobView(data, error), [data, error]);
+  // The cap follows the job that actually started, not the last start() call (a refused start must not lift it).
+  const [jobKind, setJobKind] = useState<HermesJobKind | null>(null);
+  // Client clock at the moment the jobId came back (the daemon's startedAt is nullable and on another clock).
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [expiredFor, setExpiredFor] = useState<string | null>(null);
+  const expired = jobId !== null && expiredFor === jobId;
+  const { data, error } = useHermesJob(jobId, expired);
+  // A stuck job returns the same body every poll and SWR will not re-render on it, so the cap needs its own timer.
+  const now = expired && startedAt !== null ? startedAt + ASK_DEADLINE_MS : 0;
+  const job = useMemo(() => askDeadline(jobView(data, error), jobKind, startedAt, now), [data, error, jobKind, startedAt, now]);
+  const settled = data?.ok === true && data.job.state !== "running";
+
+  useEffect(() => {
+    if (!jobId || jobKind !== "ask" || startedAt === null || settled) return;
+    const t = setTimeout(() => setExpiredFor(jobId), Math.max(0, startedAt + ASK_DEADLINE_MS - Date.now()));
+    return () => clearTimeout(t);
+  }, [jobId, jobKind, startedAt, settled]);
 
   const start = useCallback(async (kind: HermesJobKind, question?: string): Promise<string | null> => {
     setStarting(true);
@@ -92,7 +107,10 @@ export function useHermesRun(): UseHermesRunResult {
         "/api/hermes-ctl/run",
         question !== undefined ? { kind, question } : { kind },
       )) as { jobId: string };
+      setStartedAt(Date.now());
+      setExpiredFor(null);
       setJobId(body.jobId);
+      setJobKind(kind);
       return null;
     } catch (e) {
       const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "could not start run";
@@ -105,6 +123,9 @@ export function useHermesRun(): UseHermesRunResult {
 
   const reset = useCallback(() => {
     setJobId(null);
+    setJobKind(null);
+    setStartedAt(null);
+    setExpiredFor(null);
     setStartError(null);
   }, []);
 
