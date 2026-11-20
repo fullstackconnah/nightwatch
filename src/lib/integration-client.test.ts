@@ -100,11 +100,11 @@ describe("IntegrationClient", () => {
     assert.equal(called, false, "no request should be made when unconfigured");
   });
 
-  it("maps a transport failure to unreachable, naming the host and timeout", async () => {
+  it("maps a transport failure to unreachable, naming the service (a refused connection is not a timeout)", async () => {
     stubFetch(new Error("ECONNREFUSED"));
     const probe = await new TestClient().get("/api/states");
     assert.equal(probe.status, "unreachable");
-    assert.match(probe.detail, /Test Service did not respond within 4s\./);
+    assert.match(probe.detail, /Test Service is not reachable\./);
   });
 
   // --- the invariant ---------------------------------------------------------
@@ -180,7 +180,7 @@ describe("IntegrationClient unreachable detail (hunt 7 A1 A3)", () => {
     assert.ok(probe.status !== "ok" && !probe.detail.includes("http://svc"));
   });
   it("names the per-call timeout", async () => {
-    stubFetch(new Error("ECONNREFUSED"));
+    stubFetch(new DOMException("timed out", "TimeoutError"));
     const probe = await (new TestClient() as unknown as { request(p: string, o: object): Promise<Probe<unknown>> }).request("/x", { timeoutMs: 90000 });
     assert.ok(probe.status !== "ok" && /within 90s\./.test(probe.detail));
   });
