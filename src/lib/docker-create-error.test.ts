@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { createErrorCopy, startOrRemove } from "./docker-create-error.ts";
+import { createErrorCopy, createErrorResult, startOrRemove } from "./docker-create-error.ts";
 
 test("H17BF F3: create errors are fixed copy chosen by pattern", () => {
   const cases: [string, RegExp][] = [
@@ -19,6 +19,36 @@ test("H17BF F3: create errors are fixed copy chosen by pattern", () => {
     assert.match(out, want, msg);
     assert.ok(!out.includes(msg) && !/10\.0\.0\.1|\/srv|abc|8080/.test(out), `echoes: ${msg}`);
   }
+});
+
+test("polish11: unmatched create failures get fixed copy and a status by who can fix it", () => {
+  const cases: [string, RegExp, number][] = [
+    ['pull access denied for acme/app, repository does not exist or may require authorization', /^Docker could not find that image\./, 400],
+    ["manifest unknown", /^Docker could not find that image\./, 400],
+    ["No such image: nginx:nope", /^Docker could not find that image\./, 400],
+    ["Get https://reg.example/v2/: dial tcp: lookup reg.example: no such host", /^Docker could not reach the image registry\./, 500],
+    ["net/http: TLS handshake timeout", /^Docker could not reach the image registry\./, 500],
+    ["read tcp 10.0.0.1:1: i/o timeout", /^Docker could not reach the image registry\./, 500],
+    ["invalid mount config for type \"bind\": invalid mount path", /^Docker refused a mount\./, 400],
+    ["invalid volume specification: '/a:/b:zz'", /^Docker refused a mount\./, 400],
+    ["no space left on device", /^The Docker host is out of disk space\./, 500],
+    ["Bind for 0.0.0.0:8080 failed: port is already allocated", /^That host port/, 409],
+    ['Conflict. The container name "/web" is already in use by container "abc"', /^A container with that name/, 409],
+    ["invalid mount config: bind source path does not exist: /srv/x", /^A bind source doesn't exist/, 400],
+    ["Image pull stalled: no progress for 60s", /^The image pull stalled/, 500],
+    ["This operation was aborted", /^Docker did not answer/, 500],
+    ["boom", /^Docker failed to create it\.$/, 500],
+    ["", /^Docker failed to create it\.$/, 500],
+  ];
+  for (const [msg, want, status] of cases) {
+    const r = createErrorResult(msg);
+    assert.match(r.copy, want, msg);
+    assert.equal(r.status, status, msg);
+    assert.equal(createErrorCopy(msg), r.copy);
+    assert.ok(!/reg\.example|nginx|acme|10\.0\.0\.1|\/srv/.test(r.copy), `echoes: ${msg}`);
+  }
+  assert.deepEqual(createErrorResult(undefined as never), { copy: "Docker failed to create it.", status: 500 });
+  assert.deepEqual(createErrorResult(42 as never), { copy: "Docker failed to create it.", status: 500 });
 });
 
 type Opts = Record<string, unknown>;
