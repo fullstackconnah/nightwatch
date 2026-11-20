@@ -151,6 +151,45 @@ async function hintPages(run, w) {
   }, txRoute(b4), txBlock);
 }
 
+// gpu-na (nw-gpuna): a card whose driver reports N/A for utilisation and VRAM. The GPU view reads its samples from the
+// /api/telemetry/stream EventSource, so an init script stands in for that one stream and sends a history whose first
+// device has the four fields null. Expect the dash, never "0%", "0 B of 0 B" or "NaN".
+const GPU_NA_PER_WIDTH = 4;
+let gnRan = 0, gnPass = 0;
+const gn = (key, where, ok, value) => { gnRan++; if (ok) gnPass++; check(key, where, ok, value); };
+const gpuNaStream = (page) =>
+  page.addInitScript(() => {
+    const Real = window.EventSource;
+    const device = { index: 0, name: "Demo GPU", uuid: "GPU-demo", utilizationPct: null, memUtilizationPct: null, memUsedBytes: null, memTotalBytes: null, tempC: 55, tempMaxC: 90, fanPct: 40, powerWatts: 60, powerLimitWatts: 180, smClockMhz: 1200, encoderSessions: 0, encoderAvgFps: null, encoderAvgLatencyUs: null, processes: [] };
+    const sample = (i) => ({ ts: Date.now() - (30 - i) * 1000, containers: {}, gpu: { ok: true, driverVersion: "0.0", devices: [device] } });
+    window.EventSource = function (url) {
+      if (!String(url).includes("/api/telemetry/stream")) return new Real(url);
+      const l = {};
+      const es = { readyState: 1, onerror: null, close() {}, addEventListener: (t, f) => (l[t] ??= []).push(f) };
+      setTimeout(() => {
+        l.open?.forEach((f) => f({}));
+        l.history?.forEach((f) => f({ data: JSON.stringify(Array.from({ length: 30 }, (_, i) => sample(i))) }));
+      }, 50);
+      return es;
+    };
+  });
+const gnView = (page) => page.locator("div.space-y-4", { has: page.getByText("CORE UTILIZATION", { exact: true }) }).last();
+const gnVram = (page) => page.locator(".panel", { has: page.getByText("VRAM", { exact: true }) }).last();
+async function gpuNa(run, w) {
+  await run("gpu-na", "metric=gpu", async (page) => {
+    await page.getByText("CORE UTILIZATION", { exact: true }).waitFor({ timeout: SLOW });
+    const view = gnView(page);
+    const t = await view.innerText();
+    const col = view.getByText("CORE UTILIZATION", { exact: true }).locator("xpath=../..");
+    const row = await view.getByText("CORE UTILIZATION", { exact: true }).locator("xpath=..").innerText();
+    await cropElement(page, col, "gpu-na-util", w);
+    gn("no 0 B of 0 B in the GPU view", `gpu-na@${w}`, !t.includes("0 B of 0 B"), t.slice(0, 160));
+    gn("utilisation value is the dash", `gpu-na@${w}`, row.replace("CORE UTILIZATION", "").trim() === "—", { row });
+    gn("no NaN in the GPU view", `gpu-na@${w}`, !t.includes("NaN"), null);
+    gn("no 0% in the GPU view", `gpu-na@${w}`, !/(^|\s)0%/.test(t), null);
+  }, gpuNaStream, gnVram);
+}
+
 // load-failed (nw-resources-load-failed): Net and Disk tabs when /api/resources has not answered (mocked 500) or answered with/without volumes.
 const RF_PER_WIDTH = 16; // 5 (R1) + 4 (R2) + 1 (R3) + 2 (R4) + 2 (R5, R6: retry line) + 2 (R7: no totals strip on Disk and Net)
 let rfRan = 0, rfPass = 0;
@@ -321,6 +360,11 @@ try {
       continue;
     }
 
+    if (ONLY === "gpu-na") {
+      await gpuNa(run, vp.name);
+      continue;
+    }
+
     if (ONLY === "scan-root") {
       await scanRoot(run, vp.name);
       continue;
@@ -433,7 +477,7 @@ try {
 }
 check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
 // A mistyped SHOTS_ONLY would otherwise run the default sections and look green.
-check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root"].includes(ONLY), ONLY);
+check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root", "gpu-na"].includes(ONLY), ONLY);
 if (ONLY === "hint-pages") {
   check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
   console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);
