@@ -51,8 +51,29 @@ test("hunt 100: a failed start force-removes the created container (no volumes) 
 test("hunt 100: a failing remove does not mask the start error", async () => {
   const E = new Error("start failed");
   let caught: unknown;
-  await startOrRemove(fake(E, new Error("remove failed")), 1000).catch((e) => { caught = e; });
+  const calls: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: unknown) => void calls.push(String(m));
+  try {
+    await startOrRemove(fake(E, new Error("remove failed")), 1000).catch((e) => { caught = e; });
+  } finally {
+    console.warn = orig;
+  }
   assert.equal(caught, E);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /could not be removed after a failed start: remove failed/);
+});
+
+test("a successful remove after a failed start logs nothing", async () => {
+  const calls: string[] = [];
+  const orig = console.warn;
+  console.warn = (m: unknown) => void calls.push(String(m));
+  try {
+    await startOrRemove(fake(new Error("start failed")), 1000).catch(() => {});
+  } finally {
+    console.warn = orig;
+  }
+  assert.equal(calls.length, 0);
 });
 
 test("hunt 100: createAndStartContainer uses the helper, not a bare start", () => {

@@ -333,6 +333,15 @@ test("T16 weekHeading: a log that covers the whole week says nothing more", () =
   assert.equal(weekHeading(new Date(SINCE16).toISOString(), SINCE16, NOW16, 0), "Last 7 days");
 });
 
+test("H100-6 weekHeading: a partly unreadable log says so, whatever the log start", () => {
+  const msg = "Last 7 days · log partly unreadable";
+  assert.equal(weekHeading(new Date(SINCE16 - 1000).toISOString(), SINCE16, NOW16, 0, true), msg);
+  assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 10, 8, 0)).toISOString(), SINCE16, NOW16, 0, true), msg);
+  assert.equal(weekHeading(null, SINCE16, NOW16, 0, true), "Last 7 days · latest per app");
+  assert.equal(weekHeading(new Date(SINCE16 - 1000).toISOString(), SINCE16, NOW16, 0, false), "Last 7 days");
+  assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 10, 8, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since Tue");
+});
+
 test("T16 weekHeading: a partial log names the day it counts from", () => {
   assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 10, 8, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since Tue");
   assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 12, 6, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since today");

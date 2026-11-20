@@ -607,12 +607,12 @@ const reportMemo = new Memo<Computed>({
 export async function getAttentionReport(sinceRaw: string | null): Promise<AttentionReport> {
   const c = await reportMemo.get();
   const sinceMs = parseSince(sinceRaw, Date.now());
-  const { lines, loggedFrom } = await readChangeLog(sinceMs, Date.now()); // never throws; no log = live rows only
+  const { lines, loggedFrom, partial } = await readChangeLog(sinceMs, Date.now()); // never throws; no log = live rows only
   const events = deriveChanges(c.containers, c.backup, sinceMs, c.ordered.map((h) => h.subject), tally(lines, sinceMs));
   const lf = loggedFrom === null ? null : new Date(loggedFrom).toISOString();
   const changes = c.dockerError
-    ? { since: new Date(sinceMs).toISOString(), status: "failed" as const, error: c.dockerError, events, loggedFrom: lf }
-    : { since: new Date(sinceMs).toISOString(), status: "answered" as const, events, loggedFrom: lf };
+    ? { since: new Date(sinceMs).toISOString(), status: "failed" as const, error: c.dockerError, events, loggedFrom: lf, ...(partial ? { partial: true as const } : {}) }
+    : { since: new Date(sinceMs).toISOString(), status: "answered" as const, events, loggedFrom: lf, ...(partial ? { partial: true as const } : {}) };
   return { ...c.report, changes };
 }
 

@@ -88,7 +88,7 @@ export function ChangesList({
     <section className="hm-chg" data-feature="changes" aria-label={week ? "Last 7 days" : "Since you last looked"}>
       <div className="hm-sec-head">
         <h2 className="microlabel min-w-0">
-          {week ? weekHeading(changes?.loggedFrom ?? null, changes ? Date.parse(changes.since) : Date.now(), Date.now()) : fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}
+          {week ? weekHeading(changes?.loggedFrom ?? null, changes ? Date.parse(changes.since) : Date.now(), Date.now(), undefined, changes?.partial === true) : fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}
           {changes?.status === "failed" ? " · app changes unknown" : ""}
         </h2>
         <div className="flex gap-1 ml-auto shrink-0" role="group" aria-label="Changes range">

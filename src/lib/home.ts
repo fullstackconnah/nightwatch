@@ -47,8 +47,9 @@ export const rowClock = (t: number | string, now: number, offsetMin?: number): s
   dayClock(t, now, offsetMin).replace(/^Today /, "");
 
 /** The 7-day heading. No log: the old "latest per app"; a log that starts inside the week names its first day. */
-export function weekHeading(loggedFrom: string | null, sinceMs: number, now: number, offsetMin?: number): string {
+export function weekHeading(loggedFrom: string | null, sinceMs: number, now: number, offsetMin?: number, partial?: boolean): string {
   if (loggedFrom === null) return "Last 7 days · latest per app";
+  if (partial) return "Last 7 days · log partly unreadable"; // an unreadable day file means events are missing, so never claim coverage
   const from = Date.parse(loggedFrom);
   if (from <= sinceMs) return "Last 7 days";
   const day = dayClock(from, now, offsetMin).split(" ")[0];
