@@ -9,11 +9,16 @@ const read = (f: string) => readFileSync(fileURLToPath(new URL(f, import.meta.ur
 const hook = read("./use-voice.ts");
 const voice = read("./voice.ts");
 
-const STOP = /const stopSpeaking = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[\]\);/;
-const SPEAK = /const speak = useCallback\(async[\s\S]*?\n  \}, \[stopSpeaking\]\);/;
+const PLAYBACK = /const stopPlayback = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[\]\);/;
+const STOP = /const stopSpeaking = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[stopPlayback\]\);/;
+const SPEAK = /const speak = useCallback\(async[\s\S]*?\n  \}, \[stopPlayback\]\);/;
 
-test("stopSpeaking pauses, revokes the object url, nulls both refs and clears speaking", () => {
-  const body = STOP.exec(hook)?.[1] ?? "";
+test("stopPlayback pauses, revokes the object url, nulls both refs and clears speaking; stopSpeaking bumps the sequence then calls it", () => {
+  const stop = STOP.exec(hook)?.[1] ?? "";
+  assert.match(stop, /speakSeqRef\.current\+\+;/);
+  assert.match(stop, /stopPlayback\(\);/);
+  const body = PLAYBACK.exec(hook)?.[1] ?? "";
+  assert.doesNotMatch(body, /speakSeqRef/); // the replace path must not make speak stale to itself
   assert.match(body, /audioRef\.current\?\.pause\(\);/);
   assert.match(body, /if \(audioUrlRef\.current\) URL\.revokeObjectURL\(audioUrlRef\.current\);/);
   assert.match(body, /audioRef\.current = null;/);
@@ -23,9 +28,10 @@ test("stopSpeaking pauses, revokes the object url, nulls both refs and clears sp
 
 test("speak stops the previous playback before it creates the new Audio", () => {
   const body = SPEAK.exec(hook)?.[0] ?? "";
-  const stop = body.indexOf("stopSpeaking();");
-  assert.ok(stop > 0, "speak calls stopSpeaking()");
+  const stop = body.indexOf("stopPlayback();");
+  assert.ok(stop > 0, "speak calls stopPlayback()");
   assert.ok(stop < body.indexOf("new Audio("), "...before new Audio(");
+  assert.ok(!body.includes("stopSpeaking("), "speak never calls stopSpeaking(): it would make the call stale to itself");
 });
 
 test("tapping the mic stops the answer first, then starts the recorder", () => {
@@ -44,7 +50,7 @@ test("a refused play() says so, but only when this audio is still the current on
     body,
     /audio\.play\(\)\.catch\(\(\) => \{\s*\n(?:\s*\/\/[^\n]*\n)?\s+if \(audioRef\.current === audio\) setPipelineError\("Could not play the answer aloud\."\);\s*\n\s+cleanup\(\);/,
   );
-  assert.match(body, /setPipelineError\("Could not reach the speech service\."\)/); // outer catch unchanged
+  assert.match(body, /setPipelineError\(afterBlob \? "Could not play the answer aloud\." : "Could not reach the speech service\."\)/); // outer catch: unreachable text kept for a pre-blob throw
 });
 
 test("voice.ts tells a timeout from any other transport failure", () => {
