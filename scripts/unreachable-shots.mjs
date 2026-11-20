@@ -110,6 +110,9 @@ try {
         const b = el.getBoundingClientRect();
         return { text: el.textContent, sw: el.scrollWidth, cw: el.clientWidth, left: b.left, right: b.right, top: b.top, bottom: b.bottom, vw: innerWidth, vh: innerHeight };
       });
+      const h = await txBlock(page).locator(".panel div.text-warn.font-medium").first().evaluate((el) => ({ text: el.textContent, sw: el.scrollWidth, cw: el.clientWidth }));
+      check("headline text equals \"Jellyfin is unreachable\"", where, h.text === "Jellyfin is unreachable", h.text);
+      check("headline scrollWidth <= clientWidth", where, h.sw <= h.cw, { sw: h.sw, cw: h.cw });
       check("detail text contains the new string", where, (m.text ?? "").includes(DETAIL), m.text);
       check("detail text is not the timeout sentence", where, !(m.text ?? "").includes("did not respond within"), m.text);
       check("detail scrollWidth <= clientWidth", where, m.sw <= m.cw, { sw: m.sw, cw: m.cw });

@@ -147,7 +147,7 @@ function transcodeUnavailableCopy(reason: TranscodeUnavailableReason): { headlin
       return { headline: "Jellyfin settings unavailable", fix: null };
     case "unreachable":
       return {
-        headline: "Jellyfin did not respond",
+        headline: "Jellyfin is unreachable",
         fix: "Check the jellyfin container is running and that its URL in data/config.json is reachable from this container.",
       };
     case "unauthorized":
