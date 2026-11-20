@@ -370,6 +370,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
       if (!res.ok) {
         const data: { detail?: string } = await res.json().catch(() => ({}));
         if (seq !== speakSeqRef.current) return;
+        stopPlayback(); // the newer answer failed: the older one must not keep playing under the error line
         setPipelineError(data.detail ?? "Could not speak the answer.");
         return;
       }
@@ -379,9 +380,9 @@ export function useVoicePipeline(): UseVoicePipelineResult {
       stopPlayback(); // a new answer replaces the one still playing; stopSpeaking would make this call stale
       if (!mountedRef.current) return;
       const url = URL.createObjectURL(blob);
+      audioUrlRef.current = url; // before new Audio(): a throw there still leaves the url for stopPlayback to revoke
       const audio = new Audio(url);
       audioRef.current = audio;
-      audioUrlRef.current = url;
       const cleanup = () => {
         URL.revokeObjectURL(url);
         if (audioRef.current === audio) {
@@ -399,7 +400,10 @@ export function useVoicePipeline(): UseVoicePipelineResult {
         cleanup();
       });
     } catch {
-      if (seq === speakSeqRef.current) setPipelineError(afterBlob ? "Could not play the answer aloud." : "Could not reach the speech service.");
+      if (seq === speakSeqRef.current) {
+        stopPlayback(); // pre-blob: the older answer stops; post-blob: revokes the url set before new Audio
+        setPipelineError(afterBlob ? "Could not play the answer aloud." : "Could not reach the speech service.");
+      }
     }
   }, [stopPlayback]);
 

@@ -10,7 +10,7 @@ test("transcript callback is guarded by the mounted ref", () => {
 });
 
 test("speak returns before creating Audio once unmounted", () => {
-  assert.match(src, /^\s+if \(!mountedRef\.current\) return;\s*\n\s+const url = URL\.createObjectURL\(blob\);\s*\n\s+const audio = new Audio\(/m);
+  assert.match(src, /^\s+if \(!mountedRef\.current\) return;\s*\n\s+const url = URL\.createObjectURL\(blob\);\s*\n(?:\s+audioUrlRef\.current = url;[^\n]*\n)?\s+const audio = new Audio\(/m);
 });
 
 test("pipeline cleanup pauses and clears its audio", () => {
