@@ -67,3 +67,12 @@ test("F1: a good Hermes daemon save re-seeds the drafts from the stored values",
   assert.ok(i > 0);
   assert.match(h.slice(i, i + 200), /await mutate\(\);\s*setSeeded\(false\)/);
 });
+
+test("nw-tileurl fix2: after a successful save saveTiles shows the saved, trimmed URLs in the draft", () => {
+  const p = read("app/(dash)/settings/page.tsx");
+  const save = p.slice(p.indexOf("async function saveTiles"), p.indexOf("const tilesDirty"));
+  const v = save.indexOf("setTilesVersion(");
+  const d = save.indexOf("setTileDraft((d) => (d ? { ...d, urls } : d))");
+  assert.ok(v > 0 && d > v, "the draft update comes after the version update");
+  assert.ok(d < save.indexOf("catch"), "only on the success path");
+});

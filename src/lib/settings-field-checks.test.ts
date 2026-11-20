@@ -45,7 +45,7 @@ test("nw-tileurl: appUrlError names the first offender; saveTiles runs it before
   assert.equal(appUrlError({}), null);
   const src = read("../app/(dash)/settings/page.tsx");
   const save = src.slice(src.indexOf("async function saveTiles"));
-  assert.ok(save.indexOf("appUrlError(urls, data?.config.urls)") > 0 && save.indexOf("appUrlError(") < save.indexOf("persist("));
+  assert.ok(save.indexOf("appUrlError(urls, data?.config.urls ?? {})") > 0 && save.indexOf("appUrlError(") < save.indexOf("persist("));
   assert.ok(read("./settings/dash-put.ts").includes("appUrlError("));
 });
 
