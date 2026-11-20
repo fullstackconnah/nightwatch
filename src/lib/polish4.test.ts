@@ -45,7 +45,7 @@ test("speak: only the newest call plays; stopSpeaking invalidates a pending one"
   assert.match(speak, /const seq = \+\+speakSeqRef\.current;/);
   const blob = speak.indexOf("await res.blob()");
   const stale = speak.indexOf("seq !== speakSeqRef.current", blob);
-  const teardown = speak.indexOf("stopPlayback()");
+  const teardown = speak.indexOf("stopPlayback()", blob); // from the blob on: the pre-blob failure paths call it too (polish7)
   // post-blob stale check, then the teardown helper, then the new Audio
   assert.ok(blob >= 0 && stale > blob && teardown > stale && teardown < speak.indexOf("new Audio("));
   // the check after res.json() is pinned too, before it reports the server's detail
@@ -73,9 +73,9 @@ test("speak: a throw after the blob is read says the audio failed; a fetch throw
   const speak = between(voice(), "const speak = useCallback(", "const handleTranscript");
   const blob = speak.indexOf("await res.blob()");
   const flag = speak.indexOf("afterBlob = true");
-  assert.ok(blob >= 0 && flag > speak.indexOf("seq !== speakSeqRef.current", blob) && flag < speak.indexOf("stopPlayback()"));
+  assert.ok(blob >= 0 && flag > speak.indexOf("seq !== speakSeqRef.current", blob) && flag < speak.indexOf("stopPlayback()", blob));
   assert.match(speak, /let afterBlob = false;/);
-  assert.match(speak, /if \(seq === speakSeqRef\.current\) setPipelineError\(afterBlob \? "Could not play the answer aloud\." : "Could not reach the speech service\."\);/);
+  assert.match(speak, /if \(seq === speakSeqRef\.current\) \{\s*\n(?:\s*\/\/[^\n]*\n)?\s+stopPlayback\(\);[^\n]*\n\s+setPipelineError\(afterBlob \? "Could not play the answer aloud\." : "Could not reach the speech service\."\);/);
 });
 
 test("awaitingSpeech: only the newest answer's speak clears the flag; stopping does not touch the counter", () => {

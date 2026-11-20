@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
 import { SegmentButton } from "@/components/ui/segment-button";
-import { changesFor, clock, dayClock, dropListed, feedSlots, rowClock, weekHeading, type ChangesRange } from "@/lib/home";
+import { changesFor, clock, dayClock, dropListed, feedSlots, recentHeading, rowClock, weekHeading, type ChangesRange } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
 
@@ -88,7 +88,7 @@ export function ChangesList({
     <section className="hm-chg" data-feature="changes" aria-label={week ? "Last 7 days" : "Since you last looked"}>
       <div className="hm-sec-head">
         <h2 className="microlabel min-w-0">
-          {week ? weekHeading(changes?.loggedFrom ?? null, changes ? Date.parse(changes.since) : Date.now(), Date.now(), undefined, changes?.partial === true) : fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}
+          {week ? weekHeading(changes?.loggedFrom ?? null, changes ? Date.parse(changes.since) : Date.now(), Date.now(), undefined, changes?.partial === true) : recentHeading(fallbackLabel, when, changes?.partial === true)}
           {changes?.status === "failed" ? " · app changes unknown" : ""}
         </h2>
         <div className="flex gap-1 ml-auto shrink-0" role="group" aria-label="Changes range">

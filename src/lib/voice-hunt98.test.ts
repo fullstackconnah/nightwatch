@@ -53,6 +53,24 @@ test("a refused play() says so, but only when this audio is still the current on
   assert.match(body, /setPipelineError\(afterBlob \? "Could not play the answer aloud\." : "Could not reach the speech service\."\)/); // outer catch: unreachable text kept for a pre-blob throw
 });
 
+test("polish7: a failed current speak stops the older answer; a stale one touches nothing", () => {
+  const body = SPEAK.exec(hook)?.[0] ?? "";
+  const blob = body.indexOf("await res.blob()");
+  // !res.ok path: stale check, then stopPlayback(), then the server's detail
+  const notOk = body.indexOf("setPipelineError(data.detail");
+  const stopNotOk = body.lastIndexOf("stopPlayback();", notOk);
+  assert.ok(stopNotOk > body.indexOf("res.json()") && stopNotOk < notOk && notOk < blob, "stopPlayback() before the !res.ok error");
+  assert.ok(body.lastIndexOf("seq !== speakSeqRef.current", notOk) > body.indexOf("res.json()"));
+  // outer catch: only the current call, stopPlayback() then the error
+  assert.match(body, /catch \{\s*\n\s+if \(seq === speakSeqRef\.current\) \{\s*\n(?:\s*\/\/[^\n]*\n)?\s+stopPlayback\(\);[^\n]*\n\s+setPipelineError\(afterBlob/);
+});
+
+test("polish7: the object url is stored before new Audio() so a throwing constructor cannot leak it", () => {
+  const body = SPEAK.exec(hook)?.[0] ?? "";
+  const store = body.indexOf("audioUrlRef.current = url;");
+  assert.ok(store > body.indexOf("URL.createObjectURL(blob)") && store < body.indexOf("new Audio("));
+});
+
 test("voice.ts tells a timeout from any other transport failure", () => {
   const fn = /function unreachableDetail\(([^)]*)\): string \{([\s\S]*?)\n\}/.exec(voice);
   assert.ok(fn, "unreachableDetail exists");

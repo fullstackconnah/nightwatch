@@ -9,6 +9,7 @@ import {
   dayClock,
   rowClock,
   weekHeading,
+  recentHeading,
   dropListed,
   feedSlots,
   gate,
@@ -340,6 +341,14 @@ test("H100-6 weekHeading: a partly unreadable log says so, whatever the log star
   assert.equal(weekHeading(null, SINCE16, NOW16, 0, true), "Last 7 days · latest per app");
   assert.equal(weekHeading(new Date(SINCE16 - 1000).toISOString(), SINCE16, NOW16, 0, false), "Last 7 days");
   assert.equal(weekHeading(new Date(Date.UTC(2026, 10, 10, 8, 0)).toISOString(), SINCE16, NOW16, 0), "Last 7 days · counted since Tue");
+});
+
+test("H103-1 recentHeading: a partly unreadable log says so on the Recent range too", () => {
+  assert.equal(recentHeading(false, "09:41"), "Since you last looked · 09:41");
+  assert.equal(recentHeading(true, "09:41"), "Last 24 h");
+  assert.equal(recentHeading(false, "09:41", true), "Since you last looked · 09:41 · log partly unreadable");
+  assert.equal(recentHeading(true, "", true), "Last 24 h · log partly unreadable");
+  assert.equal(recentHeading(false, "", false), "Since you last looked · ");
 });
 
 test("T16 weekHeading: a partial log names the day it counts from", () => {

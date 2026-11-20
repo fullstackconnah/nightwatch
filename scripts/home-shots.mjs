@@ -46,7 +46,7 @@ const foreign = [];
 const browser = await chromium.launch({ headless: true });
 
 /** One page on its own context. `fixture` is a key of FIX, "loading" or "error"; `state.cur` can be swapped. */
-async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false, pinned = false, widgets = "ok", containers = "ok" } = {}) {
+async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, throwStorage = false, pinned = false, widgets = "ok", containers = "ok", recentPartial = false } = {}) {
   const { name, bound, ...ctxOpts } = width;
   const context = await browser.newContext({
     ...ctxOpts,
@@ -92,7 +92,9 @@ async function open({ width = WIDTHS[0], fixture = "quiet", reduced = false, thr
     }
     if (state.cur === "loading") return; // never answered
     if (state.cur === "error") return route.fulfill({ status: 500, body: "{}" });
-    return route.fulfill({ json: (pinned ? build(WK_NOW) : FIX)[state.cur] });
+    const rep = (pinned ? build(WK_NOW) : FIX)[state.cur];
+    // recentPartial: the report says a day file of the change log could not be read (changes.partial), as the server sets it.
+    return route.fulfill({ json: recentPartial ? { ...rep, changes: { ...rep.changes, partial: true } } : rep });
   });
   await page.route("**/api/docker/containers", (route) =>
     state.containers === "fail" ? route.fulfill({ status: 500, json: { error: "Couldn't list containers" } }) : route.fulfill({ json: CONTAINERS }),
@@ -923,6 +925,25 @@ for (const width of WIDTHS) {
     record("CL", m.heading === "Last 7 days · counted since Mon", `cl3-week-partial-log@360 heading "${m.heading}"`);
     record("CL", m.headMin === 44 && Math.abs(m.headH - 44) < 0.6 && m.h2Right <= m.groupLeft - 8 + 0.5 && !m.h2Clipped, `cl3-week-partial-log@360 head ${m.headH}px (min ${m.headMin}px), h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}`); // 5
     await crop(page, "home-cl3-week-partial-log-360.png", 360, '[data-feature="changes"] .hm-sec-head');
+    await context.close();
+  }
+  // H103-1: the Recent range says "log partly unreadable" too. (a) the text ends with it; (b) the heading is left of the
+  // segment group (or on its own line above/below it) and the section does not overflow sideways.
+  for (const width of WIDTHS.filter((w) => ["390", "1440"].includes(w.name))) {
+    const { context, page } = await open({ width, fixture: "one", pinned: true, recentPartial: true });
+    await page.waitForTimeout(500);
+    const m = await measure(page);
+    const x = await page.evaluate(() => {
+      const sec = document.querySelector('[data-feature="changes"]');
+      const h = sec.querySelector("h2").getBoundingClientRect();
+      const g = sec.querySelector('[role="group"]').getBoundingClientRect();
+      return { h2Bottom: h.bottom, h2Top: h.top, groupTop: g.top, groupBottom: g.bottom, secOverflow: sec.scrollWidth - sec.clientWidth };
+    });
+    const tag = `h103-recent-partial@${width.name}`;
+    record("H103", m.heading.endsWith("· log partly unreadable"), `${tag} heading "${m.heading}"`); // (a)
+    const apart = x.h2Bottom <= x.groupTop + 0.5 || x.groupBottom <= x.h2Top + 0.5; // on its own line above/below the group
+    record("H103", (m.h2Right <= m.groupLeft - m.gap + 0.5 || apart) && x.secOverflow <= 0 && m.pageOverflow <= 0, `${tag} h2 right ${Math.round(m.h2Right)}, group left ${Math.round(m.groupLeft)}, own line ${apart}, section overflow ${x.secOverflow}, page overflow ${m.pageOverflow}`); // (b)
+    await crop(page, `home-h103-recent-partial-${width.name}.png`, width.viewport.width, '[data-feature="changes"] .hm-sec-head');
     await context.close();
   }
 }
