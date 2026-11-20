@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { parseTempMaxC, rejoinProcessRow, tempMaxRetryDue } from "./gpu-parse.ts";
+import { cellNumber, mibToBytes, parseTempMaxC, rejoinProcessRow, tempMaxRetryDue } from "./gpu-parse.ts";
 
 const gpuSrc = readFileSync(fileURLToPath(new URL("./gpu.ts", import.meta.url)), "utf8");
 
@@ -30,4 +30,24 @@ test("F6: a process name with commas keeps the memory column", () => {
   assert.deepEqual(rejoinProcessRow(["1234", "/opt/a", "b/python", "512 MiB"]), ["1234", "/opt/a,b/python", "512 MiB"]);
   assert.deepEqual(rejoinProcessRow(["1234", "python", "512"]), ["1234", "python", "512"]);
   assert.deepEqual(rejoinProcessRow(["1234"]), ["1234"]);
+});
+
+test("G1: N/A, Not Supported, Unknown Error and blank cells parse to null, not 0", () => {
+  for (const raw of ["[N/A]", "[Not Supported]", "[Unknown Error]", "", "  ", undefined, "abc"]) {
+    assert.equal(cellNumber(raw), null, String(raw));
+    assert.equal(mibToBytes(cellNumber(raw)), null, String(raw));
+  }
+});
+
+test("G1: a real 0 stays 0 and MiB converts to bytes", () => {
+  assert.equal(cellNumber("0"), 0);
+  assert.equal(mibToBytes(cellNumber("0")), 0);
+  assert.equal(mibToBytes(cellNumber("2")), 2 * 1024 * 1024);
+});
+
+test("G1: the four utilisation and memory fields use cellNumber, not a zero fallback", () => {
+  for (const name of ["utilization.gpu", "utilization.memory", "memory.used", "memory.total"]) {
+    assert.ok(gpuSrc.includes(`cellNumber(get(c, "${name}"))`), name);
+  }
+  assert.doesNotMatch(gpuSrc, /cellNumberOrZero\(get\(c, "(utilization|memory)/);
 });

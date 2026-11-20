@@ -3,7 +3,7 @@ import fsp from "node:fs/promises";
 import { promisify } from "node:util";
 import { listContainers, type ContainerSummary } from "@/lib/docker";
 import { HOST_PROC } from "@/lib/host-metrics";
-import { parseTempMaxC, rejoinProcessRow, tempMaxRetryDue } from "@/lib/gpu-parse";
+import { cell, cellNumber, mibToBytes, parseTempMaxC, rejoinProcessRow, tempMaxRetryDue } from "@/lib/gpu-parse";
 import type { GpuDevice, GpuProcess, GpuSnapshot, GpuUnavailable, GpuUnavailableReason } from "@/lib/types/gpu";
 
 /**
@@ -50,9 +50,6 @@ const DEVICE_QUERY = DEVICE_FIELDS.join(",");
 
 const PROCESS_QUERY = "pid,process_name,used_memory";
 
-// nvidia-smi reports memory in MiB (nounits strips the "MiB" suffix but not the scale).
-const MIB_TO_BYTES = 1024 * 1024;
-
 const NVIDIA_SMI_TIMEOUT_MS = 3000;
 
 // --- availability backoff ---------------------------------------------------
@@ -94,38 +91,6 @@ function cacheUnavailable(result: { reason: GpuUnavailableReason; detail: string
 }
 
 // --- csv cell parsing --------------------------------------------------------
-
-/**
- * Single helper for nvidia-smi's "no value" sentinels ([N/A], [Not Supported],
- * [Unknown Error]) and empty cells, so the check isn't repeated at every field.
- */
-function cell(raw: string | undefined): string | null {
-  const t = (raw ?? "").trim();
-  if (!t || t === "[N/A]" || t === "[Not Supported]" || t === "[Unknown Error]") return null;
-  return t;
-}
-
-function cellNumber(raw: string | undefined): number | null {
-  const v = cell(raw);
-  if (v === null) return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * utilizationPct/memUtilizationPct/memUsedBytes/memTotalBytes are typed as plain
- * `number` (not nullable) in GpuDevice — those four back a bar/gauge that has no
- * sensible way to render null, unlike the rest of the device fields which are
- * genuinely optional readouts. 0 is the least-wrong fallback when nvidia-smi
- * can't report them.
- */
-function cellNumberOrZero(raw: string | undefined): number {
-  return cellNumber(raw) ?? 0;
-}
-
-function mibToBytes(mib: number): number {
-  return mib * MIB_TO_BYTES;
-}
 
 function parseCsvLine(line: string): string[] {
   return line.split(",").map((c) => c.trim());
@@ -236,13 +201,13 @@ function parseDeviceRows(stdout: string): ParsedDeviceRow[] {
     const c = parseCsvLine(line);
     if (c.length < DEVICE_FIELDS.length) continue; // malformed row - skip rather than throw
     const device: GpuDevice = {
-      index: cellNumberOrZero(get(c, "index")),
+      index: cellNumber(get(c, "index")) ?? 0,
       name: cell(get(c, "name")) ?? "Unknown GPU",
       uuid: cell(get(c, "uuid")) ?? "",
-      utilizationPct: cellNumberOrZero(get(c, "utilization.gpu")),
-      memUtilizationPct: cellNumberOrZero(get(c, "utilization.memory")),
-      memUsedBytes: mibToBytes(cellNumberOrZero(get(c, "memory.used"))),
-      memTotalBytes: mibToBytes(cellNumberOrZero(get(c, "memory.total"))),
+      utilizationPct: cellNumber(get(c, "utilization.gpu")),
+      memUtilizationPct: cellNumber(get(c, "utilization.memory")),
+      memUsedBytes: mibToBytes(cellNumber(get(c, "memory.used"))),
+      memTotalBytes: mibToBytes(cellNumber(get(c, "memory.total"))),
       tempC: cellNumber(get(c, "temperature.gpu")),
       // Not in DEVICE_FIELDS at all - this driver has no usable "max temp"
       // --query-gpu field (see DEVICE_FIELDS comment). getGpuSnapshot fills
@@ -320,7 +285,7 @@ async function buildProcesses(rows: string[][]): Promise<GpuProcess[]> {
     return {
       pid: p.pid,
       name: p.name,
-      memBytes: p.memMiB !== null ? mibToBytes(p.memMiB) : 0,
+      memBytes: mibToBytes(p.memMiB) ?? 0,
       containerId,
       containerName: containerId !== null ? (nameMap.get(containerId) ?? null) : null,
     };

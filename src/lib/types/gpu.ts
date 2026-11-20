@@ -43,15 +43,16 @@ export interface GpuDevice {
   index: number;
   name: string;
   uuid: string;
-  /** Core/SM utilization, 0-100. */
-  utilizationPct: number;
+  /** Core/SM utilization, 0-100; null when the driver reports N/A. */
+  utilizationPct: number | null;
   /**
    * Memory-CONTROLLER bandwidth utilization, 0-100. This is not VRAM fill —
-   * never label it as such; memUsedBytes/memTotalBytes is the fill.
+   * never label it as such; memUsedBytes/memTotalBytes is the fill. null when N/A.
    */
-  memUtilizationPct: number;
-  memUsedBytes: number;
-  memTotalBytes: number;
+  memUtilizationPct: number | null;
+  /** VRAM used/total; null when the driver reports N/A (never 0). */
+  memUsedBytes: number | null;
+  memTotalBytes: number | null;
   tempC: number | null;
   /** Slowdown threshold, the only honest denominator for the thermal gauge. */
   tempMaxC: number | null;

@@ -47,7 +47,7 @@ function measuredSeries(samples: TelemetrySample[], pick: (device: GpuDevice) =>
     const device = s.gpu.devices[0];
     if (!device) continue;
     const v = pick(device);
-    if (v !== null) out.push(v);
+    if (typeof v === "number") out.push(v); // stored samples may be an older shape
   }
   return out;
 }
@@ -74,7 +74,8 @@ function buildVramOverview(device: GpuDevice): OverviewModel {
   // Deliberately not summed to memUsedBytes — driver overhead and graphics contexts
   // are not itemized by NVML, so the remainder is shown honestly rather than folded
   // into a process or silently rescaled away.
-  const unattributed = Math.max(0, device.memUsedBytes - processSum);
+  const { memUsedBytes: used, memTotalBytes: total } = device;
+  const unattributed = used === null ? 0 : Math.max(0, used - processSum);
   if (unattributed > 0) {
     segments.push({
       key: "unattributed",
@@ -84,18 +85,18 @@ function buildVramOverview(device: GpuDevice): OverviewModel {
       display: formatBytes(unattributed),
     });
   }
-  const free = Math.max(0, device.memTotalBytes - device.memUsedBytes);
-  segments.push({ key: "free", label: "free", value: free, fill: VRAM_FILL_FREE, display: formatBytes(free) });
+  const free = used === null || total === null ? null : Math.max(0, total - used);
+  if (free !== null) segments.push({ key: "free", label: "free", value: free, fill: VRAM_FILL_FREE, display: formatBytes(free) });
 
   return {
-    scale: device.memTotalBytes,
+    scale: total ?? 0,
     segments,
-    headline: `${formatBytes(device.memUsedBytes)} of ${formatBytes(device.memTotalBytes)}`,
+    headline: used === null && total === null ? "—" : `${formatBytes(used)} of ${formatBytes(total)}`,
     caption: "",
     figures: [
-      { label: "used", value: formatBytes(device.memUsedBytes) },
+      { label: "used", value: formatBytes(used) },
       { label: "free", value: formatBytes(free) },
-      { label: "total", value: formatBytes(device.memTotalBytes) },
+      { label: "total", value: formatBytes(total) },
       { label: "processes", value: String(device.processes.length) },
     ],
     // Only shown when something is actually unattributed — an idle GPU with nothing
