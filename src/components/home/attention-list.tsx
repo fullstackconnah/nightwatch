@@ -160,7 +160,7 @@ export function AttentionList({
         <h2 className="microlabel" ref={headingRef} tabIndex={-1}>
           Needs you
         </h2>
-        <span className="font-mono text-xs text-ink-dim">{display.length}</span>
+        {report && <span className="font-mono text-xs text-ink-dim">{display.length}</span>}
         <span className="flex-1" />
         {/* Always in the DOM: its slot is reserved from first paint, so it never moves anything. */}
         <Button

@@ -267,5 +267,5 @@ export function diskLine(disks: readonly { mount: string; percent: number }[]): 
       const short = name.length > DISK_NAME_MAX ? `${name.slice(0, DISK_NAME_MAX - 1)}…` : name;
       return `${short ? `${short}\u00a0` : ""}${Math.round(d.percent)}%`;
     })
-    .join(" · ");
+    .join(" ·\u00a0"); // wrap before the dot, never after it
 }
