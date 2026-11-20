@@ -90,6 +90,8 @@ async function homeState(name, partial, widths) {
       const page = await context.newPage();
       curPage = page;
       page.setDefaultTimeout(30_000);
+      const attReqs = [];
+      page.on("request", (r) => { if (r.url().includes("/api/attention")) attReqs.push(r.url()); });
       await page.clock.setFixedTime(WK_NOW);
       await page.route("**/api/attention*", (route) => {
         const since = Number(new URL(route.request().url()).searchParams.get("since"));
@@ -101,11 +103,14 @@ async function homeState(name, partial, widths) {
       await page.goto(`${BASE_URL}/`, { waitUntil: "domcontentloaded" });
       await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
       await page.locator(".hm-answer").waitFor({ timeout: 30_000 });
-      await step(`${name}@${vp}: pick 7 days`, async () => {
-        await page.getByRole("button", { name: "Last 7 days" }).click();
-        await page.waitForTimeout(600);
-      });
       const h2 = page.locator('[data-feature="changes"] h2');
+      // A click before hydration is a no-op and the heading stays "Since you last looked": wait for its time (last look read), click, then wait for the 7-day heading.
+      await step(`${name}@${vp}: pick 7 days`, async () => {
+        await page.waitForFunction(() => /^Since you last looked · [0-9]/.test(document.querySelector('[data-feature="changes"] h2')?.textContent ?? ""), null, { timeout: 15_000 });
+        await page.getByRole("button", { name: "Last 7 days" }).click();
+        await page.waitForFunction(() => /^Last 7 days/.test(document.querySelector('[data-feature="changes"] h2')?.textContent ?? ""), null, { timeout: 15_000 })
+          .catch(async (e) => { throw new Error(`heading "${await h2.textContent()}", /api/attention requests: ${attReqs.join(" | ")}; ${e.message}`); });
+      });
       const m = await h2.evaluate((el) => {
         const lh = parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.2;
         return { text: el.textContent, sw: el.scrollWidth, cw: el.clientWidth, lines: Math.round(el.getBoundingClientRect().height / lh) };
