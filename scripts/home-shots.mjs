@@ -480,14 +480,44 @@ for (const width of WIDTHS) {
     record("C6", s.minRatio >= 4.5, `${tag}: lowest text contrast ${s.minRatio.toFixed(2)}:1 at ${s.worst} (computed colours, not the pixel percentile)`);
     if (stateName === "quiet") {
       record("C7", s.painted.length === 0 && s.infinite === 0, `${tag}: ${s.painted.length} warn/bad paints ${s.painted.slice(0, 3).join("; ")}, ${s.infinite} infinite animations`);
-      const missing = FEATURES.filter((f) => !s.features[f]);
-      record("C9", missing.length === 0, `${tag}: ${FEATURES.length - missing.length} of ${FEATURES.length}${missing.length ? `, missing ${missing.join(", ")}` : ""}`);
+      const required = FEATURES.filter((f) => !(f === "slash-key" && width.name === "390")); // the "/" hint is md:block only
+      const missing = required.filter((f) => !s.features[f]);
+      record("C9", missing.length === 0, `${tag}: ${required.length - missing.length} of ${required.length}${missing.length ? `, missing ${missing.join(", ")}` : ""}`);
     }
     if (["partial", "dockerFailed", "otherFailed", "error", "loading"].includes(stateName)) {
       const honest = !/^All clear/.test(s.answerText) && s.answerTone !== "ok";
       record("C8", honest, `${tag}: "${s.answerText}" tone ${s.answerTone}`);
     }
     record("C12", s.pageOverflow <= 0 && s.sectionOverflow <= 0 && s.clipped.length === 0, `${tag}: page ${s.pageOverflow}, sections ${s.sectionOverflow}, clipped ${s.clipped.length} ${s.clipped.slice(0, 3).join("; ")}`);
+    if (stateName === "loading" || stateName === "several") {
+      // P8-1 (count only with a report), P8-2 (no visual line of Disks ends in a dot), P8-3 (the "/" hint is desktop only).
+      const p8 = await page.evaluate(() => {
+        const count = document.querySelector('[data-feature="attention"] .hm-sec-head > span.font-mono');
+        const cell = [...document.querySelectorAll('[data-feature="box-digest"] .hm-dg-cell')].find((c) => /Disks/.test(c.textContent ?? ""));
+        // Last character of every visual line: one Range per character, grouped by the rect's top.
+        const lineEnds = [];
+        const walker = cell ? document.createTreeWalker(cell, NodeFilter.SHOW_TEXT) : null;
+        for (let n = walker?.nextNode(); n; n = walker.nextNode()) {
+          let top = null;
+          for (let i = 0; i < n.length; i++) {
+            const r = document.createRange();
+            r.setStart(n, i);
+            r.setEnd(n, i + 1);
+            const b = r.getBoundingClientRect();
+            if (!b.height) continue;
+            if (top === null || Math.abs(b.top - top) > 2) lineEnds.push("");
+            top = b.top;
+            if (n.data[i].trim()) lineEnds[lineEnds.length - 1] = n.data[i];
+          }
+        }
+        const kbd = document.querySelector('[data-feature="slash-key"]');
+        const kb = kbd?.getBoundingClientRect();
+        return { count: count ? (count.textContent ?? "").trim() : null, lineEnds, kbdShown: !!kbd && !!kb && kb.width > 0 && kb.height > 0 && getComputedStyle(kbd).display !== "none" };
+      });
+      record("P8-1", stateName === "loading" ? p8.count === null : /^\d+$/.test(p8.count ?? ""), `${tag}: Needs you count ${p8.count === null ? "absent" : `"${p8.count}"`}`);
+      if (stateName === "several" && width.name === "390") record("P8-2", p8.lineEnds.length > 0 && !p8.lineEnds.includes("·"), `${tag}: Disks line ends ${JSON.stringify(p8.lineEnds)} (Range per character, grouped by line top)`);
+      if (stateName === "several") record("P8-3", p8.kbdShown === (width.name !== "390"), `${tag}: "/" hint ${p8.kbdShown ? "visible" : "hidden"}`);
+    }
     await page.screenshot({ path: join(OUT_DIR, `home-${stateName}-${width.name}.png`), fullPage: true });
     await context.close();
   }

@@ -113,7 +113,7 @@ export function Launcher({
           <kbd
             data-feature="slash-key"
             title="Press / to filter"
-            className="font-mono text-[0.6rem] text-ink-faint border border-line rounded px-1 py-px"
+            className="hidden md:block font-mono text-[0.6rem] text-ink-faint border border-line rounded px-1 py-px"
           >
             /
           </kbd>
