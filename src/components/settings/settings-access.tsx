@@ -24,6 +24,7 @@ import { ApiError, postJson } from "@/lib/client";
 import { isStepUpRefusal } from "@/lib/api-error";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { plainReason } from "@/lib/settings/page-model";
+import { isPasswordOverBytes } from "@/lib/settings-field-checks";
 import { useFormReport } from "@/components/settings/form-report";
 import { CopyButton, ScopesPanel } from "@/components/settings/settings-reference";
 import { ssoStepUpPending } from "@/lib/sso-step-up";
@@ -86,7 +87,8 @@ function ChangePasswordCard({ data }: { data: Data }) {
 
   const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
   const tooShort = next.length > 0 && next.length < 8;
-  const canSubmit = configured && current.length > 0 && next.length >= 8 && next === confirm && !saving;
+  const tooLong = isPasswordOverBytes(next);
+  const canSubmit = configured && current.length > 0 && next.length >= 8 && !tooLong && next === confirm && !saving;
   useFormReport("password", { dirty: current !== "" || next !== "" || confirm !== "", error });
 
   async function handleSave() {
@@ -128,15 +130,15 @@ function ChangePasswordCard({ data }: { data: Data }) {
         <Field
           label="New password"
           required
-          hint={!tooShort ? "at least 8 characters" : undefined}
-          error={tooShort ? "New password needs at least 8 characters." : undefined}
+          hint={!tooShort && !tooLong ? "at least 8 characters" : undefined}
+          error={tooShort ? "New password needs at least 8 characters." : tooLong ? "Too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)." : undefined}
         >
           <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
         </Field>
         <Field
           label="Confirm new password"
           required
-          error={mismatch && !tooShort ? "Passwords don't match." : undefined}
+          error={mismatch && !tooShort && !tooLong ? "Passwords don't match." : undefined}
         >
           <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>

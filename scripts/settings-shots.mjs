@@ -18,6 +18,7 @@
  *
  *   ONLY=stepup BASE_URL=http://host:3006 OUT_DIR=shots node scripts/settings-shots.mjs   runs only the step-up section
  *   ONLY=stepup-discord ... runs only the Discord step-up section on the Hermes daemon card (idle, asking, wrong, no-password)
+ *   ONLY=pw72 ... runs only the Change password card with a 73-letter new password (pw-too-long, both widths; Save disabled, hint names 72 bytes)
  *   ONLY=hunt69 ... runs only the Orchestra Clear section (saved token: Clear shown; environment-only token: no Clear)
  *   ONLY=config-notice ... runs only the config.json-unreadable head (blank, unreadable, unreadable-no-copy, healthy), from fixtures
  * Step-up states (Access: Current password field, SU checks; exit 1 when one fails), a padded crop of the card each:
@@ -1212,13 +1213,30 @@ await guarded("settings-polish", () =>
   }),
 );
 
+// ---- password 72 bytes (PR 343): the Change password card with a 73-letter new password (ONLY=pw72 runs just this) ----
+// State: pw-too-long (both widths). Nothing is submitted; every API call stays mocked.
+await guarded("pw72", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm", { hash: "#access" });
+    const c = visibleBody(page).first().locator('section:has(> div > h3:text-is("Change password"))');
+    await c.waitFor({ timeout: SLOW });
+    await field(c, "Current password").fill("x");
+    await c.getByPlaceholder("at least 8 characters").fill("a".repeat(73)); // the label "New password" is a substring of "Confirm new password"; the placeholder is unique
+    await field(c, "Confirm new password").fill("a".repeat(73));
+    await cropEl(page, s, c, "pw-too-long", false);
+    record("PW72 Save disabled", s.name, await c.getByRole("button", { name: "Save", exact: true }).isDisabled());
+    record("PW72 hint names the limit", s.name, (await c.innerText()).includes("72 bytes"));
+    await page.close();
+  }),
+);
+
 // The final records print even after failures, and on a runner kill.
 function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
   record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
   console.log(JSON.stringify({ ...checks, diag }));
   // A failed step-up check (or any FAIL record in a single-section run) fails the run.
-  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ") || k.startsWith("SP ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
+  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ") || k.startsWith("SP ") || k.startsWith("PW72 ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
   if (bad) process.exitCode = 1;
 }
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));

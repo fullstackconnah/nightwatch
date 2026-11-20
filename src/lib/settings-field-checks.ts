@@ -20,6 +20,10 @@ export function groupInputText(typed: string | undefined, stored: string): strin
   return typed !== undefined && typed.trim() === stored ? typed : stored;
 }
 
+/** bcrypt hashes only the first 72 bytes, so a longer new password would silently lose its tail. */
+export const MAX_PASSWORD_BYTES = 72;
+export const isPasswordOverBytes = (s: string): boolean => new TextEncoder().encode(s).length > MAX_PASSWORD_BYTES;
+
 export const MAX_APP_URL = 2048;
 
 /** First App URL the tiles save must refuse (the message names the container), or null. Shared by the server's mergeDashPut and the Tiles card. */
