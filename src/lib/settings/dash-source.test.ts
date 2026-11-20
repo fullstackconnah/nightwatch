@@ -22,7 +22,7 @@ test("K12: a widget save PUTs only widgets, a tile save only the four tile field
   const p = read("app/(dash)/settings/page.tsx");
   assert.match(p, /persist\(\{ widgets \}, data\.versions\?\.widgets\)/);
   assert.match(p, /persist\(\{ widgets: data\.config\.widgets\.filter/);
-  assert.match(p, /persist\(\{ groups: tileDraft\.groups, urls: tileDraft\.urls, icons: tileDraft\.icons, hidden: tileDraft\.hidden \}, tilesVersion\)/);
+  assert.match(p, /persist\(\{ groups: tileDraft\.groups, urls, icons: tileDraft\.icons, hidden: tileDraft\.hidden \}, tilesVersion\)/);
   const persist = p.slice(p.indexOf("async function persist"), p.indexOf("const why"));
   assert.ok(persist.length > 20);
   assert.doesNotMatch(persist, /setTileDraft/);
@@ -66,4 +66,13 @@ test("F1: a good Hermes daemon save re-seeds the drafts from the stored values",
   const i = h.indexOf('postJson("/api/settings/hermes-daemon"');
   assert.ok(i > 0);
   assert.match(h.slice(i, i + 200), /await mutate\(\);\s*setSeeded\(false\)/);
+});
+
+test("nw-tileurl fix2: after a successful save saveTiles shows the saved, trimmed URLs in the draft", () => {
+  const p = read("app/(dash)/settings/page.tsx");
+  const save = p.slice(p.indexOf("async function saveTiles"), p.indexOf("const tilesDirty"));
+  const v = save.indexOf("setTilesVersion(");
+  const d = save.indexOf("setTileDraft((d) => (d ? { ...d, urls } : d))");
+  assert.ok(v > 0 && d > v, "the draft update comes after the version update");
+  assert.ok(d < save.indexOf("catch"), "only on the success path");
 });

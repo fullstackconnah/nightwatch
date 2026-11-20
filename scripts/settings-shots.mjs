@@ -479,9 +479,10 @@ await guarded("C2", () =>
       const page = k.steps.length ? (await visit(s, k.fixture)).page : (shared[k.fixture] ??= (await visit(s, k.fixture)).page);
       await openStrip(page, k.strip);
       const body = page.locator(s.name === "1440" ? "#st-pane" : `#st-body-${k.strip}`);
+      const stepScope = k.scope ? body.locator(k.scope) : body; // "Current password" also labels the Change password card
       for (const st of k.steps) {
-        if (Array.isArray(st)) await field(body, st[0]).fill(st[1]);
-        else await body.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
+        if (Array.isArray(st)) await field(stepScope, st[0]).fill(st[1]);
+        else await stepScope.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
         await page.waitForTimeout(150);
       }
       if (!(await probe(body, k).catch(() => false))) missing.push(k.id);
@@ -588,6 +589,33 @@ await guarded("rcon-port-error", () =>
     record("H13 A6 field invalid", s.name, (await input.getAttribute("aria-invalid")) === "true");
     record("H13 A6 no PUT sent", s.name, mock.posts.length === before);
     await cropEl(page, s, group, "rcon-port-error");
+    await page.close();
+  }),
+);
+// ---- nw-tileurl: a schemeless App URL is refused in the card, nothing is sent, the error stays inside the card ----
+await guarded("tileurl-refused", () =>
+  each(async (s) => {
+    const { page, mock } = await visit(s, "calm", { hash: "#dashboard" });
+    const body = visibleBody(page);
+    await body.getByRole("group", { name: "Container scope" }).getByRole("button").last().click();
+    // Desktop table inputs carry an aria-label; the phone cards use a Field label "App URL" and name the container in the card heading.
+    const desk = body.locator('input[aria-label^="App URL for "]:visible').first();
+    const phone = !(await desk.count());
+    const input = phone ? body.getByLabel("App URL", { exact: true }).locator("visible=true").first() : desk;
+    const name = phone
+      ? (await input.locator("xpath=ancestor::div[contains(@class,'panel')][1]").locator("span.font-mono").first().innerText()).trim()
+      : ((await desk.getAttribute("aria-label")) ?? "").replace("App URL for ", "");
+    await input.fill("myapp.lan:8080");
+    const before = mock.posts.length;
+    await body.getByRole("button", { name: "Save tiles" }).click();
+    await page.waitForTimeout(500);
+    const line = body.locator("p.text-bad").first();
+    record("nw-tileurl error copy", s.name, (await line.innerText()) === `The App URL for ${name} must start with http:// or https://`);
+    record("nw-tileurl no PUT sent", s.name, mock.posts.length === before);
+    record("nw-tileurl typed value kept", s.name, (await input.inputValue()) === "myapp.lan:8080");
+    const inside = await line.evaluate((el) => { const r = el.getBoundingClientRect(), c = el.parentElement.getBoundingClientRect(); return r.right <= c.right + 0.5 && el.scrollWidth <= el.clientWidth + 1; });
+    record("nw-tileurl error line inside the card", s.name, inside);
+    await cropEl(page, s, line.locator("xpath=.."), "tileurl-refused");
     await page.close();
   }),
 );
@@ -1036,7 +1064,8 @@ await guarded("hunt69", () =>
       const c = row(page);
       await c.waitFor({ timeout: SLOW });
       const clear = await c.getByRole("button", { name: /^Clear/ }).count();
-      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((n) => Math.round(n * 100) / 100).join(","); });
+      // Offsets from the card's right and bottom edges: the env-only hint line above the field legitimately moves the card's top, not the Save control.
+      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); const q = e.closest('section').getBoundingClientRect(); return [q.right - r.right, q.bottom - r.bottom, r.width, r.height].map((n) => Math.round(n * 100) / 100).join(","); });
       await cropEl(page, s, c, name, true);
       await page.close();
       return { clear, save };
