@@ -62,7 +62,7 @@ function VoiceExchangeCards({ exchange }: { exchange: VoiceExchange }) {
       )}
       {exchange.error !== null && (
         <div className="rounded-md border border-bad/30 bg-bad/5 px-3 py-2.5">
-          <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words">{exchange.error}</p>
+          <p className="font-mono text-xs text-bad/90 whitespace-pre-wrap break-words text-pretty">{exchange.error}</p>
         </div>
       )}
     </div>

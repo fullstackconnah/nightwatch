@@ -25,7 +25,9 @@ export async function startOrRemove(container: Startable, timeoutMs: number): Pr
   try {
     await container.start({ abortSignal: AbortSignal.timeout(timeoutMs) } as never);
   } catch (e) {
-    await container.remove({ force: true, abortSignal: AbortSignal.timeout(timeoutMs) } as never).catch(() => {});
+    await container.remove({ force: true, abortSignal: AbortSignal.timeout(timeoutMs) } as never).catch((re) => {
+      console.warn(`[docker] created container could not be removed after a failed start: ${re instanceof Error ? re.message : String(re)}`);
+    });
     throw e;
   }
 }
