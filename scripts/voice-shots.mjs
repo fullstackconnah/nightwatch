@@ -58,7 +58,7 @@ async function unreachable() {
     await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: elevated ? { elevated: true, expiresAt: until } : { elevated: false } }));
     await page.route("**/api/voice/status", (route) => route.fulfill({ json: { configured: true } }));
     await page.route("**/api/voice/transcribe", (route) => route.fulfill({ status: 502, json: { status: "unreachable", detail: DETAIL } }));
-    await page.goto(URL_, { waitUntil: "domcontentloaded" });
+    await page.goto(URL_, { waitUntil: "domcontentloaded", timeout: 90_000 }); // a fresh test stack's first load is slow (as networks-shots)
     await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
     // As kiosk-shots visit(): a click before the page hydrates does nothing, so the PIN pad never opened.
     await page.locator('[data-kiosk-theme="sunroom"]').first().waitFor({ state: "attached" });
