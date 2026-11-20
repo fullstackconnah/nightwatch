@@ -479,9 +479,10 @@ await guarded("C2", () =>
       const page = k.steps.length ? (await visit(s, k.fixture)).page : (shared[k.fixture] ??= (await visit(s, k.fixture)).page);
       await openStrip(page, k.strip);
       const body = page.locator(s.name === "1440" ? "#st-pane" : `#st-body-${k.strip}`);
+      const stepScope = k.scope ? body.locator(k.scope) : body; // "Current password" also labels the Change password card
       for (const st of k.steps) {
-        if (Array.isArray(st)) await field(body, st[0]).fill(st[1]);
-        else await body.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
+        if (Array.isArray(st)) await field(stepScope, st[0]).fill(st[1]);
+        else await stepScope.getByRole("button", { name: st, exact: st === "Replace" }).first().click();
         await page.waitForTimeout(150);
       }
       if (!(await probe(body, k).catch(() => false))) missing.push(k.id);
@@ -1063,7 +1064,8 @@ await guarded("hunt69", () =>
       const c = row(page);
       await c.waitFor({ timeout: SLOW });
       const clear = await c.getByRole("button", { name: /^Clear/ }).count();
-      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map((n) => Math.round(n * 100) / 100).join(","); });
+      // Offsets from the card's right and bottom edges: the env-only hint line above the field legitimately moves the card's top, not the Save control.
+      const save = await c.getByRole("button", { name: "Save", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); const q = e.closest('section').getBoundingClientRect(); return [q.right - r.right, q.bottom - r.bottom, r.width, r.height].map((n) => Math.round(n * 100) / 100).join(","); });
       await cropEl(page, s, c, name, true);
       await page.close();
       return { clear, save };
