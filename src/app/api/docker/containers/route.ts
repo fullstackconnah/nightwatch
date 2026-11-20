@@ -6,7 +6,7 @@ import {
   type CreateContainerSpec,
 } from "@/lib/docker";
 import { validateSpecShape } from "@/lib/create-spec";
-import { createErrorCopy } from "@/lib/docker-create-error";
+import { createErrorResult } from "@/lib/docker-create-error";
 import { buildTiles, orderedGroups } from "@/lib/tiles";
 import { resolveWidgetInstances } from "@/lib/widgets";
 import { isTestContainer } from "@/lib/test-container";
@@ -58,9 +58,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, id });
   } catch (e) {
     console.error("docker create failed", e);
-    return NextResponse.json(
-      { error: createErrorCopy(String(Reflect.get(Object(e), "message") ?? "")) },
-      { status: 500 },
-    );
+    const { copy, status } = createErrorResult(String(Reflect.get(Object(e), "message") ?? ""));
+    return NextResponse.json({ error: copy }, { status });
   }
 }

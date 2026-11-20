@@ -167,7 +167,7 @@ export async function checkCreateSpecHost(spec: Checkable, deps: CreateDeps): Pr
         }
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code === "ENOENT") break; // missing tail: Docker refuses the mount
-        return `Mounting "${v.host}" is refused: cannot check "${cur}".`;
+        return `Mounting "${v.host}" is refused: cannot check "${cur}". Try again, or pick a path nightwatch can read.`;
       }
     }
   }
@@ -177,7 +177,7 @@ export async function checkCreateSpecHost(spec: Checkable, deps: CreateDeps): Pr
       return `Volume "${v.host}" already exists; creating a container may not reuse it.`;
     } catch (e) {
       if ((e as { statusCode?: number }).statusCode !== 404) {
-        return `Volume "${v.host}" could not be checked.`;
+        return `Volume "${v.host}" could not be checked. Docker did not answer; try again.`;
       }
     }
   }
