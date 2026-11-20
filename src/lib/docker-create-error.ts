@@ -17,3 +17,15 @@ export function createErrorCopy(message: string): string {
   }
   return "Docker failed to create it.";
 }
+
+type Startable = { start(o: never): Promise<unknown>; remove(o: never): Promise<unknown> };
+
+/** Start a just-created container; if the start fails, remove it (a leftover holds its name and blocks the retry) and rethrow the start error. Volumes are kept. */
+export async function startOrRemove(container: Startable, timeoutMs: number): Promise<void> {
+  try {
+    await container.start({ abortSignal: AbortSignal.timeout(timeoutMs) } as never);
+  } catch (e) {
+    await container.remove({ force: true, abortSignal: AbortSignal.timeout(timeoutMs) } as never).catch(() => {});
+    throw e;
+  }
+}

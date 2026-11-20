@@ -9,6 +9,7 @@ import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVol
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
 import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
+import { startOrRemove } from "@/lib/docker-create-error";
 
 /** Deadline for a one-shot Docker call (list, inspect, create, start). Not a client-wide timeout: docker-modem would apply that to the quiet follow streams too. */
 export const DOCKER_CALL_MS = 10_000;
@@ -887,7 +888,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
       NetworkMode: createNetwork(spec),
     },
   });
-  await container.start({ abortSignal: AbortSignal.timeout(DOCKER_CALL_MS) } as never);
+  await startOrRemove(container, DOCKER_CALL_MS);
   return container.id;
 }
 

@@ -18,7 +18,8 @@ test("H21U F1: one-shot docker calls carry a deadline, the pull an idle guard", 
   assert.match(docker, /^\s+const info = await docker\.getContainer\(id\)\.inspect\(\{ abortSignal: AbortSignal\.timeout\(DOCKER_CALL_MS\) \}\);/m);
   assert.match(docker, /^\s+abortSignal: AbortSignal\.timeout\(DOCKER_LOGS_MS\),/m);
   assert.match(docker, /^\s+abortSignal: AbortSignal\.timeout\(DOCKER_CALL_MS\),\s*$/m);
-  assert.match(docker, /^\s+await container\.start\(\{ abortSignal: AbortSignal\.timeout\(DOCKER_CALL_MS\) \} as never\);/m);
+  assert.match(docker, /^\s+await startOrRemove\(container, DOCKER_CALL_MS\);/m);
+  assert.match(src("./docker-create-error.ts"), /^\s+await container\.start\(\{ abortSignal: AbortSignal\.timeout\(timeoutMs\) \} as never\);/m);
   assert.match(docker, /^\s+const stop = guardPullIdle\(/m);
   // The pull request carries a cancellable (not AbortSignal.timeout) deadline, cleared once the stream arrives.
   assert.match(docker, /^\s+const t = setTimeout\(\(\) => ac\.abort\(\), DOCKER_CALL_MS\);/m);
