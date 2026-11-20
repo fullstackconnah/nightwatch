@@ -87,12 +87,16 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
     if (w.some((x) => typeof x.id === "string" && x.id.startsWith("label:"))) return { error: `Widget ids can't start with "label:"` };
   }
   if (present.includes("groups") && (b.groups as unknown[]).length > 200) return { error: "Too many groups (the most is 200)" };
-  if (present.includes("groups") && (b.groups as { name?: unknown; containers?: unknown }[]).some((g) => typeof g.name !== "string" || !g.name || !Array.isArray(g.containers) || g.containers.some((c) => typeof c !== "string"))) {
+  // Like URLs: a bad group is refused only when no identical one is already stored (an old hand-edited config must not block every save).
+  const storedGroups = new Set((current.groups ?? []).map((g) => JSON.stringify([g?.name, g?.containers])));
+  if (present.includes("groups") && (b.groups as { name?: unknown; containers?: unknown }[]).some((g) => (typeof g.name !== "string" || !g.name || !Array.isArray(g.containers) || g.containers.some((c) => typeof c !== "string")) && !storedGroups.has(JSON.stringify([g.name, g.containers])))) {
     return { error: "Each group needs a name and a list of containers" };
   }
   const urlError = present.includes("urls") ? appUrlError(b.urls as Record<string, unknown>, current.urls ?? {}) : null;
   if (urlError) return { error: urlError };
   const fields = Object.fromEntries(present.map((k) => [k, b[k]]));
+  // appUrlError checks the trimmed value, so store it trimmed too.
+  if (present.includes("urls")) fields.urls = Object.fromEntries(Object.entries(b.urls as Record<string, unknown>).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
   if (present.includes("widgets")) fields.widgets = mergeWidgetSecrets(current.widgets ?? [], b.widgets as unknown[]);
   return { next: { ...current, ...fields } as AppConfig };
 }
