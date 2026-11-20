@@ -88,7 +88,7 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
   }
   if (present.includes("groups") && (b.groups as unknown[]).length > 200) return { error: "Too many groups (the most is 200)" };
   // Like URLs: a bad group is refused only when no identical one is already stored (an old hand-edited config must not block every save).
-  const storedGroups = new Set((current.groups ?? []).map((g) => JSON.stringify([g?.name, g?.containers])));
+  const storedGroups = new Set((Array.isArray(current.groups) ? current.groups : []).map((g) => JSON.stringify([g?.name, g?.containers])));
   if (present.includes("groups") && (b.groups as { name?: unknown; containers?: unknown }[]).some((g) => (typeof g.name !== "string" || !g.name || !Array.isArray(g.containers) || g.containers.some((c) => typeof c !== "string")) && !storedGroups.has(JSON.stringify([g.name, g.containers])))) {
     return { error: "Each group needs a name and a list of containers" };
   }

@@ -260,3 +260,8 @@ test("groups: a stored bad group that changed but is still bad, or a new bad one
 test("urls: a value is stored trimmed", () => {
   assert.equal(ok(mergeDashPut(current, { urls: { jellyfin: " http://homelab.local:8097 " } })).urls?.jellyfin, "http://homelab.local:8097");
 });
+test("groups: a stored groups value that is not a list breaks no save", () => {
+  const broken = { ...current, groups: {} } as unknown as AppConfig;
+  assert.doesNotThrow(() => ok(mergeDashPut(broken, { urls: { jellyfin: "http://x" } })));
+  assert.deepEqual(ok(mergeDashPut(broken, { groups: [{ name: "Media", containers: ["jellyfin"] }] })).groups, [{ name: "Media", containers: ["jellyfin"] }]);
+});
