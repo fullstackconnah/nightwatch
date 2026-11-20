@@ -289,7 +289,14 @@ export function GpuView({ samples, status }: { samples: TelemetrySample[]; statu
                 </div>
                 {/* Percentage has a real ceiling — 100 — so a fixed max keeps a 2% idle
                     blip from drawing as a full-height spike. */}
-                <Sparkline data={utilSeries} max={100} className="text-accent" height={72} />
+                {/* A card that never reports utilisation would say "collecting…" for ever. */}
+                {device.utilizationPct === null && utilSeries.length < 2 ? (
+                  <div className="flex items-center justify-center text-ink-faint text-xs" style={{ height: 72 }}>
+                    not reported
+                  </div>
+                ) : (
+                  <Sparkline data={utilSeries} max={100} className="text-accent" height={72} />
+                )}
                 <div className="flex gap-6 mt-3 pt-3 border-t border-line">
                   <div>
                     <div className="microlabel">SM CLOCK</div>

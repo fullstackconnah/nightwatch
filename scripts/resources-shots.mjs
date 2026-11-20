@@ -154,7 +154,7 @@ async function hintPages(run, w) {
 // gpu-na (nw-gpuna): a card whose driver reports N/A for utilisation and VRAM. The GPU view reads its samples from the
 // /api/telemetry/stream EventSource, so an init script stands in for that one stream and sends a history whose first
 // device has the four fields null. Expect the dash, never "0%", "0 B of 0 B" or "NaN".
-const GPU_NA_PER_WIDTH = 4;
+const GPU_NA_PER_WIDTH = 5;
 let gnRan = 0, gnPass = 0;
 const gn = (key, where, ok, value) => { gnRan++; if (ok) gnPass++; check(key, where, ok, value); };
 const gpuNaStream = (page) =>
@@ -187,6 +187,8 @@ async function gpuNa(run, w) {
     gn("utilisation value is the dash", `gpu-na@${w}`, row.replace("CORE UTILIZATION", "").trim() === "—", { row });
     gn("no NaN in the GPU view", `gpu-na@${w}`, !t.includes("NaN"), null);
     gn("no 0% in the GPU view", `gpu-na@${w}`, !/(^|\s)0%/.test(t), null);
+    const colText = await col.innerText();
+    gn("util chart says not reported, not collecting", `gpu-na@${w}`, colText.includes("not reported") && !colText.includes("collecting"), { colText });
   }, gpuNaStream, gnVram);
 }
 
