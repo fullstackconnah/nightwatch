@@ -337,6 +337,15 @@ export function useVoicePipeline(): UseVoicePipelineResult {
     };
   }, []);
 
+  // The one way playback ends early: a new answer, the stop control and the mic tap all come through here.
+  const stopSpeaking = useCallback(() => {
+    audioRef.current?.pause(); // pause() fires no `ended`, so the url is revoked here
+    if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+    audioRef.current = null;
+    audioUrlRef.current = null;
+    setSpeaking(false);
+  }, []);
+
   const speak = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -352,27 +361,32 @@ export function useVoicePipeline(): UseVoicePipelineResult {
         return;
       }
       const blob = await res.blob();
+      stopSpeaking(); // a new answer replaces the one still playing
       if (!mountedRef.current) return;
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
       audioUrlRef.current = url;
       const cleanup = () => {
-        setSpeaking(false);
         URL.revokeObjectURL(url);
         if (audioRef.current === audio) {
           audioRef.current = null;
           audioUrlRef.current = null;
+          setSpeaking(false); // only the current audio: a replaced one must not clear the new answer's flag
         }
       };
       audio.onended = cleanup;
       audio.onerror = cleanup;
       setSpeaking(true);
-      await audio.play().catch(cleanup);
+      await audio.play().catch(() => {
+        // a replaced or stopped audio rejects with AbortError and has already nulled the ref: say nothing then
+        if (audioRef.current === audio) setPipelineError("Could not play the answer aloud.");
+        cleanup();
+      });
     } catch {
       setPipelineError("Could not reach the speech service.");
     }
-  }, []);
+  }, [stopSpeaking]);
 
   const handleTranscript = useCallback(
     async (text: string) => {
@@ -432,15 +446,13 @@ export function useVoicePipeline(): UseVoicePipelineResult {
 
   const toggleRecording = useCallback(() => {
     if (recorder.state === "recording") recorder.stop();
-    else if (recorder.state === "idle" && state !== "asking") void recorder.start();
-  }, [recorder, state]);
+    else if (recorder.state === "idle" && state !== "asking") {
+      stopSpeaking(); // the mic never records the speaker
+      void recorder.start();
+    }
+  }, [recorder, state, stopSpeaking]);
 
   const submitText = useCallback((text: string) => handleTranscript(text), [handleTranscript]);
-
-  const stopSpeaking = useCallback(() => {
-    audioRef.current?.pause();
-    setSpeaking(false);
-  }, []);
 
   const dismissError = useCallback(() => {
     setPipelineError(null);

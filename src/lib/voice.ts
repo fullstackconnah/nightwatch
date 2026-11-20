@@ -1,4 +1,5 @@
 import { systemSetting, unconfiguredDetail } from "@/lib/config";
+import { isTimeout } from "@/lib/integration-client";
 import { readCapped } from "@/lib/read-capped";
 
 /**
@@ -67,8 +68,8 @@ export const VOICE_UNCONFIGURED_DETAIL =
   "VOICE_SERVER_URL, e.g. http://homelab.local:8970, in the server environment) — it's read " +
   "fresh on every request, so nothing else needs to change once it's set.";
 
-function unreachableDetail(): string {
-  return `Voice server did not respond within ${TIMEOUT_MS / 1000}s.`;
+function unreachableDetail(e: unknown): string {
+  return isTimeout(e) ? `Voice server did not respond within ${TIMEOUT_MS / 1000}s.` : "Voice server is not reachable.";
 }
 
 /** One shape for every problem status, same convention as HermesStatusProblem. */
@@ -120,8 +121,8 @@ export async function transcribeAudio(audio: Buffer, contentType: string): Promi
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
-    return { status: "unreachable", detail: unreachableDetail() };
+  } catch (e) {
+    return { status: "unreachable", detail: unreachableDetail(e) };
   }
 
   if (!res.ok) {
@@ -164,8 +165,8 @@ export async function speakText(text: string): Promise<VoiceSpeakResult> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
-    return { status: "unreachable", detail: unreachableDetail() };
+  } catch (e) {
+    return { status: "unreachable", detail: unreachableDetail(e) };
   }
 
   if (!res.ok || !res.body) {
