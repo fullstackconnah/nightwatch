@@ -112,8 +112,8 @@ export abstract class IntegrationClient<C> {
   /** `timeoutMs` is passed in rather than read from instance state: a client is a
    *  singleton shared by concurrent requests, so anything stashed on `this`
    *  for the duration of one request is a race. No URL: the browser never sees the upstream host. */
-  protected unreachableDetail(timeoutMs: number = this.timeoutMs): string {
-    return `${this.displayName} did not respond within ${timeoutMs / 1000}s.`;
+  protected unreachableDetail(timeoutMs: number = this.timeoutMs, timedOut = true): string {
+    return timedOut ? `${this.displayName} did not respond within ${timeoutMs / 1000}s.` : `${this.displayName} is not reachable.`;
   }
 
   protected unconfigured(): ProbeFail {
@@ -144,9 +144,9 @@ export abstract class IntegrationClient<C> {
       });
     } catch (e) {
       if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
-      console.error(`${this.displayName} at ${base} did not respond within ${timeoutMs / 1000}s.`);
       const timedOut = isTimeout(e);
-      return { status: "unreachable", detail: this.unreachableDetail(timeoutMs), ...(timedOut && { timedOut }) };
+      console.error(`${this.displayName} at ${base} ${timedOut ? `did not respond within ${timeoutMs / 1000}s` : "is not reachable"}.`);
+      return { status: "unreachable", detail: this.unreachableDetail(timeoutMs, timedOut), ...(timedOut && { timedOut }) };
     }
 
     if (res.status === 401 || res.status === 403) {

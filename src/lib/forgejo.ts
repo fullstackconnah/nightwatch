@@ -2,6 +2,7 @@ import { loadConfig, unconfiguredDetail } from "./config.ts";
 import { Memo } from "./cache.ts";
 import { readJsonCapped } from "./read-capped.ts";
 import { commitDate, newestFirst } from "./git/commit-order.ts";
+import { isTimeout } from "./integration-client.ts";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -76,8 +77,8 @@ async function forgejoFetch<T>(baseUrl: string, token: string, path: string): Pr
       signal: AbortSignal.timeout(FORGEJO_TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
-    return { ok: false, kind: "unreachable", detail: `Forgejo did not respond within ${FORGEJO_TIMEOUT_MS / 1000}s.` };
+  } catch (e) {
+    return { ok: false, kind: "unreachable", detail: isTimeout(e) ? `Forgejo did not respond within ${FORGEJO_TIMEOUT_MS / 1000}s.` : "Forgejo is not reachable." };
   }
   if (res.status === 401 || res.status === 403) {
     return { ok: false, kind: "unauthorized", detail: `Forgejo rejected the API token (HTTP ${res.status}).` };
