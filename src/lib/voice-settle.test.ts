@@ -29,7 +29,7 @@ test("a running job waits", () => {
 });
 
 test("useHermesRun memoises jobView and handleTranscript resets the run", () => {
-  assert.match(read("./use-hermes.ts"), /const job = useMemo\(\(\) => jobView\(data, error\), \[data, error\]\);/);
+  assert.match(read("./use-hermes.ts"), /const job = useMemo\(\(\) => askDeadline\(jobView\(data, error\), /);
   assert.match(read("./use-voice.ts"), /activeExchangeId\.current = id;[\s\S]{0,200}run\.reset\(\);/);
 });
 
