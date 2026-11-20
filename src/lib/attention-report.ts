@@ -45,7 +45,7 @@ export interface AttentionReport {
   checkedAt: string; // when the memo computed, not the request time
   probes: ProbeStatus[]; // 9 in priority order, 10 when the outside check is on
   hits: AttentionHit[]; // sortHits: bad first, then oldest (since ?? firstSeen)
-  changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[]; loggedFrom: string | null }; // loggedFrom: ISO date the stored log covers from; null = no log (live state only)
+  changes: { since: string; status: "answered" | "failed"; error?: string; events: ChangeEvent[]; loggedFrom: string | null; partial?: true }; // partial: a day file of the log could not be read, so events may be missing. loggedFrom: ISO date the stored log covers from; null = no log (live state only)
 }
 
 /** What a probe finds, before the report adds id, firstSeen and owner. */

@@ -118,12 +118,13 @@ test("T13 an event 3 days old, written today, is read for a 7-day window and not
   const r = await readChangeLog(NOW - 7 * DAY, NOW);
   assert.deepEqual(r.lines, [line]);
   assert.equal(r.loggedFrom, Math.max(NOW, NOW - 30 * DAY));
+  assert.equal(r.partial, false);
   await recordChangeLogTick(NOW + 30_000, async () => [live("a")]);
   assert.equal(fs.existsSync(today()), true);
 });
 
 test("reading with no directory or no baseline gives no lines and loggedFrom null", async () => {
-  assert.deepEqual(await readChangeLog(NOW - DAY, NOW), { lines: [], loggedFrom: null });
+  assert.deepEqual(await readChangeLog(NOW - DAY, NOW), { lines: [], loggedFrom: null, partial: false });
 });
 
 test("a file dated before since is not read", async () => {
@@ -189,6 +190,7 @@ test("H46-2 one unreadable day file is skipped and warned once; the readable lin
     const first = await readChangeLog(NOW - 2 * DAY, NOW);
     assert.deepEqual(first.lines, [line]);
     assert.equal(typeof first.loggedFrom, "number");
+    assert.equal(first.partial, true);
     await readChangeLog(NOW - 2 * DAY, NOW);
     assert.equal(w.calls.filter((c) => c.includes("could not be read")).length, 1);
   } finally {
