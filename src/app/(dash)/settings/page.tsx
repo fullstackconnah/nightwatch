@@ -32,6 +32,7 @@ import { LabelConventionPanel } from "@/components/settings/settings-reference";
 import { SettingsTiles, isCustomized } from "@/components/settings/settings-tiles";
 import { SettingsWidgets } from "@/components/settings/settings-widgets";
 import { useClampedLead } from "@/components/strips/use-answer-clamped";
+import { appUrlError } from "@/lib/settings-field-checks";
 
 export default function SettingsPage() {
   const { data, error, mutate } = useSettingsFull((at) => setLoadedAt(at));
@@ -107,6 +108,8 @@ export default function SettingsPage() {
 
   async function saveTiles() {
     if (!tileDraft) return;
+    const urlError = appUrlError(tileDraft.urls); // same check as the server; nothing is sent, the typed values stay
+    if (urlError) return setDashError((d) => ({ ...d, tiles: urlError }));
     setSavingTiles(true);
     setDashError((d) => ({ ...d, tiles: null }));
     try {

@@ -19,3 +19,14 @@ export function rconPortFieldError(raw: string): string | null {
 export function groupInputText(typed: string | undefined, stored: string): string {
   return typed !== undefined && typed.trim() === stored ? typed : stored;
 }
+
+export const MAX_APP_URL = 2048;
+
+/** First App URL the tiles save must refuse (the message names the container), or null. Shared by the server's mergeDashPut and the Tiles card. */
+export function appUrlError(urls: Record<string, unknown>): string | null {
+  for (const [name, v] of Object.entries(urls)) {
+    if (typeof v === "string" && v.length > MAX_APP_URL) return `The App URL for ${name} is too long (the most is ${MAX_APP_URL} characters)`;
+    if (typeof v !== "string" || !/^https?:\/\/\S+$/i.test(v.trim())) return `The App URL for ${name} must start with http:// or https://`;
+  }
+  return null;
+}

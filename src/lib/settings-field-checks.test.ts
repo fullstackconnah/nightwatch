@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BUDGET_HINT, RCON_PORT_COPY, groupInputText, rconPortFieldError } from "./settings-field-checks.ts";
+import { BUDGET_HINT, RCON_PORT_COPY, appUrlError, groupInputText, rconPortFieldError } from "./settings-field-checks.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -36,4 +36,15 @@ test("A7: no per-section 'saved' stamp claims beyond its own section", () => {
   const src = read("../components/settings/settings-access.tsx");
   // one read (the system card, which owns the block stamp); orchestra and OIDC sections no longer read it
   assert.equal(src.split("system.updatedAt").length - 1, 1);
+});
+
+test("nw-tileurl: appUrlError names the first offender; saveTiles runs it before the PUT with the server's text", () => {
+  assert.equal(appUrlError({ a: "http://a.lan", b: "myapp.lan:8080", c: "x" }), "The App URL for b must start with http:// or https://");
+  assert.equal(appUrlError({ a: "https://a.lan/" + "a".repeat(2048) }), "The App URL for a is too long (the most is 2048 characters)");
+  assert.equal(appUrlError({ a: " http://a.lan " }), null);
+  assert.equal(appUrlError({}), null);
+  const src = read("../app/(dash)/settings/page.tsx");
+  const save = src.slice(src.indexOf("async function saveTiles"));
+  assert.ok(save.indexOf("appUrlError(tileDraft.urls)") > 0 && save.indexOf("appUrlError(") < save.indexOf("persist("));
+  assert.ok(read("./settings/dash-put.ts").includes("appUrlError("));
 });

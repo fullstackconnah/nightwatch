@@ -1,5 +1,6 @@
 import type { AppConfig, WidgetInstance } from "../config.ts";
 import { widgetTarget } from "../widgets/target.ts";
+import { appUrlError } from "../settings-field-checks.ts";
 
 /** O1/J1: widget secrets are write-only. The browser gets keySet/passwordSet instead of the values, and header names with blank values. */
 export function publicWidgets(widgets: WidgetInstance[]): WidgetInstance[] {
@@ -86,6 +87,11 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
     if (w.some((x) => typeof x.id === "string" && x.id.startsWith("label:"))) return { error: `Widget ids can't start with "label:"` };
   }
   if (present.includes("groups") && (b.groups as unknown[]).length > 200) return { error: "Too many groups (the most is 200)" };
+  if (present.includes("groups") && (b.groups as { name?: unknown; containers?: unknown }[]).some((g) => typeof g.name !== "string" || !g.name || !Array.isArray(g.containers) || g.containers.some((c) => typeof c !== "string"))) {
+    return { error: "Each group needs a name and a list of containers" };
+  }
+  const urlError = present.includes("urls") ? appUrlError(b.urls as Record<string, unknown>) : null;
+  if (urlError) return { error: urlError };
   const fields = Object.fromEntries(present.map((k) => [k, b[k]]));
   if (present.includes("widgets")) fields.widgets = mergeWidgetSecrets(current.widgets ?? [], b.widgets as unknown[]);
   return { next: { ...current, ...fields } as AppConfig };

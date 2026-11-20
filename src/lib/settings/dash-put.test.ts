@@ -206,3 +206,32 @@ test("restore drill date: a widget save and a tile save both keep restoreTestedO
   assert.equal(ok(mergeDashPut(withDrill, { widgets: [] })).restoreTestedOn, "2026-10-12");
   assert.equal(ok(mergeDashPut(withDrill, { groups: [], urls: {}, icons: {}, hidden: [] })).restoreTestedOn, "2026-10-12");
 });
+
+// nw-tileurl: App URLs must be http(s); groups must have a name and a containers list.
+const BAD_URL = "The App URL for x must start with http:// or https://";
+const putUrls = (urls: unknown) => mergeDashPut(current, { urls });
+test("urls: refuses a value that is not http(s), blank or not a string", () => {
+  for (const v of ["myapp.lan:8080", "javascript:alert(1)", "", 42, null, {}]) {
+    assert.deepEqual(putUrls({ x: v }), { error: BAD_URL }, String(v));
+  }
+});
+test("urls: refuses a value over 2048 characters with the too-long message", () => {
+  assert.deepEqual(putUrls({ x: "https://a.lan/" + "a".repeat(2048) }), { error: "The App URL for x is too long (the most is 2048 characters)" });
+});
+test("urls: accepts http(s) in any case and stores the value as sent", () => {
+  const next = ok(putUrls({ a: "http://a.lan:8080", b: "HTTPS://x.y/z" }));
+  assert.deepEqual(next.urls, { a: "http://a.lan:8080", b: "HTTPS://x.y/z" });
+});
+test("urls: a body without urls keeps a stored bad one untouched", () => {
+  const bad = { ...current, urls: { x: "myapp.lan:8080" } } as unknown as AppConfig;
+  assert.deepEqual(ok(mergeDashPut(bad, { hidden: [] })).urls, { x: "myapp.lan:8080" });
+});
+test("groups: refuses a group without a name and a string containers list", () => {
+  for (const g of [[{}], [{ name: "a" }], [{ name: "a", containers: "x" }], [{ name: "", containers: [] }], [{ name: "a", containers: [1] }]]) {
+    assert.deepEqual(mergeDashPut(current, { groups: g }), { error: "Each group needs a name and a list of containers" }, JSON.stringify(g));
+  }
+});
+test("groups: accepts a well-formed group and an empty list", () => {
+  assert.deepEqual(ok(mergeDashPut(current, { groups: [{ name: "a", containers: ["b"] }] })).groups, [{ name: "a", containers: ["b"] }]);
+  assert.deepEqual(ok(mergeDashPut(current, { groups: [] })).groups, []);
+});
