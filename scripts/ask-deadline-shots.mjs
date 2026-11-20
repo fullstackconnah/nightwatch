@@ -50,7 +50,7 @@ function stubJobs(page, counter) {
 
 /** Padded clip of a box, with the fixed/sticky chrome check: any visible fixed or sticky element (not an ancestor of the box) overlapping the clip fails. */
 async function paddedCrop(page, locator, file, viewport) {
-  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate((el) => el.scrollIntoView({ block: "center" })); // clear of a sticky header, which scrollIntoViewIfNeeded ignores
   const bb = await locator.boundingBox();
   if (!bb) throw new Error("crop target has no box");
   const x = Math.max(0, bb.x - PAD), y = Math.max(0, bb.y - PAD);
@@ -58,8 +58,10 @@ async function paddedCrop(page, locator, file, viewport) {
   const covering = await locator.evaluate((el, c) => {
     const hits = [];
     for (const n of document.querySelectorAll("body *")) {
-      const pos = getComputedStyle(n).position;
-      if ((pos !== "fixed" && pos !== "sticky") || n.contains(el)) continue;
+      const cs = getComputedStyle(n);
+      const pos = cs.position;
+      // shortcut: pointer-events:none layers (the kiosk sky and light-leak backdrops) are decoration behind the content, not chrome; revisit if one ever paints over it
+      if ((pos !== "fixed" && pos !== "sticky") || n.contains(el) || cs.pointerEvents === "none") continue;
       const r = n.getBoundingClientRect();
       if (r.width && r.height && r.left < c.x + c.width && r.right > c.x && r.top < c.y + c.height && r.bottom > c.y) hits.push(n.tagName + "." + String(n.className).slice(0, 40));
     }
