@@ -37,8 +37,9 @@ describe("hunt 8 polish 5: size caps in mergeDashPut", () => {
     assert.deepEqual(mergeDashPut(cur, { widgets: many(501) }), { error: "Too many widgets (the most is 500)" });
   });
   it("200 groups pass, 201 are refused", () => {
-    assert.ok("next" in mergeDashPut(cur, { groups: many(200) }));
-    assert.deepEqual(mergeDashPut(cur, { groups: many(201) }), { error: "Too many groups (the most is 200)" });
+    const groups = (n: number) => many(n).map((g) => ({ ...g, containers: [] }));
+    assert.ok("next" in mergeDashPut(cur, { groups: groups(200) }));
+    assert.deepEqual(mergeDashPut(cur, { groups: groups(201) }), { error: "Too many groups (the most is 200)" });
   });
   it("the settings route reads the body with readCapped and caps it at 1 MB with a 413", () => {
     const src = read("../app/api/settings/route.ts");
