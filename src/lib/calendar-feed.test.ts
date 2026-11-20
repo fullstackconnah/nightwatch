@@ -281,7 +281,7 @@ describe("saving a calendar link", () => {
 
   it("a bad link is refused before any fetch, with the fixed copy", async () => {
     const r = await route({ url: "nope" });
-    assert.deepEqual(r, { error: "That isn't a link. Paste the whole private link from your calendar's sharing settings." });
+    assert.deepEqual(r, { error: "That isn't a link. Paste the private link from your calendar's sharing settings." });
     assert.equal(calls.length, 0);
     assert.equal(savedUrl(), LINK);
   });

@@ -72,11 +72,13 @@ const TIER = { local: "Local", openrouter: "OpenRouter", anthropic: "Anthropic" 
 /** Old anchors map to the strip that now holds them (an old bookmark). */
 export const legacyStripHash = (hash: string): string => ({ "#integrations": "#homeassistant", "#reference": "#dashboard" } as Record<string, string>)[hash] ?? hash;
 
-/** A save error as one plain phrase: a message holding an address, a URL, a host:port or a long detail is replaced (rule 4). */
-export function plainReason(raw: string): string {
+/** A save error as one plain phrase: a message holding an address, a URL, a host:port or a long detail is replaced (rule 4).
+ *  The banner and strip pass SEE_CARD (the card holds the full error, and the browser may have refused it); the cards set their own error with the default. */
+export const SEE_CARD = "see the card for the reason";
+export function plainReason(raw: string, withheld = "the server refused it"): string {
   const s = raw.replace(/\s+/g, " ").trim().replace(/\.$/, "");
   const leaks = /:\/\/|\b\d{1,3}(\.\d{1,3}){3}\b|\w:\d{2,5}\b|\.(local|lan|internal)\b/i;
-  return !s || s.length > 80 || leaks.test(s) ? "the server refused it" : s;
+  return !s || s.length > 80 || leaks.test(s) ? withheld : s;
 }
 
 const ago = (ms: number) => `${ageText(Math.max(0, ms))} ago`;
@@ -146,7 +148,7 @@ export function settingsModel(i: ModelInput): Model {
   }
   if (failed) {
     chip = { tone: "warn", label: "Not saved" };
-    answer = `Couldn’t save ${FORM_TITLE[failed]}: ${plainReason(i.forms[failed]!.error!)}. Your changes are kept, so you can try again.`;
+    answer = `Couldn’t save ${FORM_TITLE[failed]}: ${plainReason(i.forms[failed]!.error!, SEE_CARD)}. Your changes are kept, so you can try again.`;
     autoTarget = FORMS[failed];
   }
   // An unreadable config.json is the root cause of the rows above (defaults make sign-in look off, saves fail), so it wins.
@@ -194,7 +196,7 @@ export function settingsModel(i: ModelInput): Model {
   };
   const strips = ORDER.map((id): Strip => {
     const err = FORM_IDS.find((f) => FORMS[f] === id && i.forms[f]?.error);
-    if (err) return { id, title: TITLES[id], state: `Couldn’t save: ${plainReason(i.forms[err]!.error!)}`, tone: "warn" };
+    if (err) return { id, title: TITLES[id], state: `Couldn’t save: ${plainReason(i.forms[err]!.error!, SEE_CARD)}`, tone: "warn" };
     if (draftStrips.includes(id)) return { id, title: TITLES[id], state: "Edited · not saved", tone: null };
     return { id, title: TITLES[id], ...base[id] };
   });

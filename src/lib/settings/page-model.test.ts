@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { nextOpen } from "../strips.ts";
 import type { SettingsFullResponse } from "../../components/settings/settings-integrations.tsx";
-import { legacyStripHash, plainReason, settingsModel, type FormId, type ModelInput, type StripId } from "./page-model.ts";
+import { calendarLinkError } from "../settings-checks.ts";
+import { legacyStripHash,plainReason, settingsModel, type FormId, type ModelInput, type StripId } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-05T10:00:00Z");
 const DAY = 86_400_000;
@@ -229,7 +230,7 @@ test("the Calendar strip says whether a link is saved, and counts as one set-up 
   assert.match(withCalendar(true).answer, /^All 9 integrations are set up/);
   assert.match(withCalendar(false).answer, /^8 of 9 integrations are set up/);
   const failed = model({ forms: { calendar: { dirty: true, error: "That link opened, but it isn't a calendar. Copy the private calendar link, not the calendar's page." } } });
-  assert.equal(strip(failed, "calendar").state, "Couldn’t save: the server refused it");
+  assert.equal(strip(failed, "calendar").state, "Couldn’t save: see the card for the reason");
 });
 
 test("last change is the newest updatedAt, named by its source", () => {
@@ -282,6 +283,16 @@ test("a form's error beats its draft, which beats the base line", () => {
 });
 
 // ---- the save-failure reason is plain: no host, address or long detail (rule 4) ----
+
+test("banner and strip point at the card when the reason is withheld; the calendar link refusal stays whole", () => {
+  const msg = calendarLinkError("not a link")!;
+  assert.equal(plainReason(msg), msg.replace(/\.$/, ""));
+  for (const error of ["x".repeat(120), "App URL must start with http://"]) {
+    const m = model({ forms: { calendar: { dirty: true, error } } });
+    assert.match(m.answer, /: see the card for the reason\. Your changes are kept/);
+    assert.equal(strip(m, "calendar").state, "Couldn’t save: see the card for the reason");
+  }
+});
 
 test("plainReason keeps a short message and hides anything holding a host", () => {
   const ip = ["10", "0", "0", "5"].join(".");
