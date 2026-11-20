@@ -59,7 +59,8 @@ const cropElement = async (page, loc, state, vpName, firstRows = 0) => {
   }, { fr: firstRows, gap: TOP_GAP });
   const r = await loc.evaluate((el, fr) => {
     const t = el.getBoundingClientRect();
-    const b = { left: t.left, top: t.top, width: t.width, height: fr ? el.querySelectorAll("div.grid")[fr - 1].getBoundingClientRect().bottom - t.top : t.height };
+    const last = fr ? el.querySelectorAll("div.grid")[fr - 1] : null; // a panel with fewer rows (the empty footprint) is cropped whole
+    const b = { left: t.left, top: t.top, width: t.width, height: last ? last.getBoundingClientRect().bottom - t.top : t.height };
     const pad = 16;
     const x = Math.max(0, b.left - pad), y = b.top - pad, w = Math.min(b.width + 2 * pad, innerWidth - x), h = b.height + 2 * pad;
     const over = [...document.querySelectorAll("body *")].filter((e) => {
