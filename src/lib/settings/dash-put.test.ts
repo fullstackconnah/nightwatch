@@ -245,3 +245,23 @@ test("urls: an unchanged stored bad value is accepted and kept; a changed or new
 test("groups: a null group is refused, not thrown", () => {
   assert.ok("error" in mergeDashPut(current, { groups: [null] }));
 });
+// nw-tilestore: a stored bad group (empty name) must not block a tile save, like a stored bad URL.
+const badGroup = { name: "", containers: ["a"] };
+const badStored = { ...current, groups: [badGroup] } as unknown as AppConfig;
+const groupMsg = { error: "Each group needs a name and a list of containers" };
+test("groups: a stored bad group sent back unchanged is accepted and kept", () => {
+  const next = ok(mergeDashPut(badStored, { groups: [{ name: "", containers: ["a"] }], urls: { jellyfin: "http://x" } }));
+  assert.deepEqual(next.groups, [badGroup]);
+});
+test("groups: a stored bad group that changed but is still bad, or a new bad one, is refused", () => {
+  assert.deepEqual(mergeDashPut(badStored, { groups: [{ name: "", containers: ["a", "b"] }] }), groupMsg);
+  assert.deepEqual(mergeDashPut(current, { groups: [{ name: "", containers: ["a"] }] }), groupMsg);
+});
+test("urls: a value is stored trimmed", () => {
+  assert.equal(ok(mergeDashPut(current, { urls: { jellyfin: " http://homelab.local:8097 " } })).urls?.jellyfin, "http://homelab.local:8097");
+});
+test("groups: a stored groups value that is not a list breaks no save", () => {
+  const broken = { ...current, groups: {} } as unknown as AppConfig;
+  assert.doesNotThrow(() => ok(mergeDashPut(broken, { urls: { jellyfin: "http://x" } })));
+  assert.deepEqual(ok(mergeDashPut(broken, { groups: [{ name: "Media", containers: ["jellyfin"] }] })).groups, [{ name: "Media", containers: ["jellyfin"] }]);
+});
