@@ -32,6 +32,7 @@ const badShapes: [string, unknown, RegExp][] = [
   ["env row without value", { image: "i", env: [{ key: "A" }] }, /env/],
   ["name with a space", { image: "x", name: "a b" }, /^name is invalid$/],
   ["name with a leading dash", { image: "x", name: "-a" }, /^name is invalid$/],
+  ["a one-character name (Docker needs two)", { image: "x", name: "a" }, /^name is invalid$/],
   ["image with whitespace", { image: "ngi nx" }, /^image is invalid$/],
   ["env key with =", { image: "x", env: [{ key: "A=B", value: "1" }] }, /^env\.key is invalid$/],
   ["env key with a space", { image: "x", env: [{ key: "A B", value: "1" }] }, /^env\.key is invalid$/],
@@ -50,7 +51,7 @@ test("validateSpecShape accepts every restart policy and protocol the UI sends",
 });
 
 test("validateSpecShape accepts valid names, a digest image, a blank env key and a spaced env value", () => {
-  for (const name of ["ok-1", "a", ""]) assert.equal(validateSpecShape({ image: "x", name }), null);
+  for (const name of ["ok-1", "ab", ""]) assert.equal(validateSpecShape({ image: "x", name }), null);
   assert.equal(validateSpecShape({ image: "x" }), null);
   assert.equal(validateSpecShape({ image: "ghcr.io/a/b:1.2@sha256:abc" }), null);
   assert.equal(validateSpecShape({ image: "x", env: [{ key: "", value: "1" }] }), null);
@@ -61,7 +62,7 @@ test("validateSpecShape accepts a minimal and a full spec", () => {
   assert.equal(validateSpecShape({ image: "img" }), null);
   assert.equal(
     validateSpecShape({
-      name: "n",
+      name: "nm",
       image: "img",
       ports: [{ host: 8080, container: 80, protocol: "tcp" }],
       env: [{ key: "A", value: "b" }],

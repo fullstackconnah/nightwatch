@@ -66,7 +66,7 @@ export function validateSpecShape(body: unknown): string | null {
     if (body[f] !== undefined && typeof body[f] !== "string") return `${f} must be a string`;
   }
   if (/\s/.test(body.image)) return "image is invalid";
-  if (body.name && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(body.name as string)) return "name is invalid";
+  if (body.name && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/.test(body.name as string)) return "name is invalid";
   if (body.restartPolicy !== undefined && !restartPolicies.includes(body.restartPolicy as string)) return "restartPolicy is invalid";
   for (const [list, fields] of Object.entries(rowShapes)) {
     const rows = body[list];
