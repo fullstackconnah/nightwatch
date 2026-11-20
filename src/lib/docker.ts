@@ -7,7 +7,7 @@ import { REMOVE_OPTIONS } from "@/lib/container-remove";
 import { classifyImages } from "@/lib/image-reclaim";
 import { isOrphanVolume, orphanVolumeNames, pruneFailure, removeVolumes, usedVolumeNames } from "@/lib/orphan-volumes";
 import { createSwr, mapWithin, withTimeout, type Swr } from "@/lib/single-flight";
-import { buildMounts, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
+import { buildMounts, buildPortBindings, checkCreateSpecHost, createNetwork, validateCreateSpec } from "@/lib/create-spec";
 import { guardPullIdle, PULL_IDLE_MS } from "@/lib/pull-idle";
 import { startOrRemove } from "@/lib/docker-create-error";
 
@@ -867,13 +867,7 @@ export async function createAndStartContainer(spec: CreateContainerSpec): Promis
     }) as never);
   });
 
-  const exposedPorts: Record<string, object> = {};
-  const portBindings: Record<string, { HostPort: string }[]> = {};
-  for (const p of spec.ports) {
-    const key = `${p.container}/${p.protocol || "tcp"}`;
-    exposedPorts[key] = {};
-    portBindings[key] = [{ HostPort: String(p.host) }];
-  }
+  const { exposedPorts, portBindings } = buildPortBindings(spec.ports);
 
   const container = await docker.createContainer({
     abortSignal: AbortSignal.timeout(DOCKER_CALL_MS),

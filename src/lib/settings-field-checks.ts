@@ -26,12 +26,15 @@ export const isPasswordOverBytes = (s: string): boolean => new TextEncoder().enc
 
 export const MAX_APP_URL = 2048;
 
+/** A link a tile may render: http or https only. */
+export const WEB_URL = /^https?:\/\/\S+$/i;
+
 /** First App URL the tiles save must refuse (the message names the container), or null. Shared by the server's mergeDashPut and the Tiles card. */
 export function appUrlError(urls: Record<string, unknown>, stored: Record<string, unknown> = {}): string | null {
   for (const [name, v] of Object.entries(urls)) {
     if (name in stored && v === stored[name]) continue; // unchanged: a stored bad value for a removed container must not block the save
     if (typeof v === "string" && v.length > MAX_APP_URL) return `The App URL for ${name} is too long (the most is ${MAX_APP_URL} characters)`;
-    if (typeof v !== "string" || !/^https?:\/\/\S+$/i.test(v.trim())) return `The App URL for ${name} must start with http:// or https://`;
+    if (typeof v !== "string" || !WEB_URL.test(v.trim())) return `The App URL for ${name} must start with http:// or https://`;
   }
   return null;
 }

@@ -1,5 +1,6 @@
 import { loadConfig, publicHost } from "./config.ts";
 import { parseDashboardLabels, resolveIconUrl } from "./labels.ts";
+import { WEB_URL } from "./settings-field-checks.ts";
 import type { ContainerSummary, RuntimeContainer } from "./docker.ts";
 
 /** Zero-config icons for images we recognise (selfh.st slugs). */
@@ -72,7 +73,9 @@ export function buildTiles<T extends ContainerSummary>(
 
   return containers.map((c) => {
     const dl = parseDashboardLabels(c.labels);
-    const url = cfg.urls[c.name] ?? dl.url ?? inferUrl(c);
+    // A stored or labelled URL is rendered as an href, so only http(s) counts; anything else falls through.
+    const webUrl = (u: unknown) => (typeof u === "string" && WEB_URL.test(u.trim()) ? u.trim() : null);
+    const url = webUrl(cfg.urls[c.name]) ?? webUrl(dl.url) ?? inferUrl(c);
     const iconRaw =
       cfg.icons[c.name] ??
       dl.icon ??
