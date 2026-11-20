@@ -170,7 +170,15 @@ try {
       await dialog.getByRole("button", { name: "Pulling & starting…" }).waitFor({ state: "visible", timeout: 5_000 });
       check(`cform-busy @${name}: Cancel disabled`, await dialog.getByRole("button", { name: "Cancel" }).evaluate((el) => el.disabled === true), "");
       check(`cform-busy @${name}: X disabled`, await dialog.getByRole("button", { name: "Close" }).evaluate((el) => el.disabled === true), "");
-      await dialog.focus(); // the pressed submit button is disabled now; Escape must reach the dialog's own key handler
+      // Focus must stay on the busy submit button and the dialog itself must show no ring (its own inset .panel highlight is not one).
+      check(`cform-busy @${name}: focus stays on the submit button`, await page.evaluate(() => document.activeElement?.textContent?.trim() === "Pulling & starting…" && document.activeElement.getAttribute("aria-disabled") === "true"), "");
+      const ring = await dialog.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        const shadowLeft = cs.boxShadow.replace(/rgba?\([^)]*\)[^()]*?\binset\b/g, "").replace(/[,\s]/g, "");
+        return { outlineStyle: cs.outlineStyle, outlineWidth: cs.outlineWidth, boxShadow: cs.boxShadow, noOutline: cs.outlineStyle === "none" || cs.outlineWidth === "0px", noShadowRing: shadowLeft === "" || shadowLeft === "none" };
+      });
+      check(`cform-busy @${name}: dialog shows no focus ring`, ring.noOutline && ring.noShadowRing, JSON.stringify(ring));
+      // Escape is pressed with focus where the user has it (the busy submit button); its keydown bubbles to the dialog's handler.
       await page.keyboard.press("Escape");
       await page.waitForTimeout(300);
       check(`cform-busy @${name}: Escape leaves the dialog`, await dialog.isVisible(), "");
