@@ -317,6 +317,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   // state machine step covers, distinct from "asking" (job still running)
   // and "speaking" (audio actually playing).
   const [awaitingSpeech, setAwaitingSpeech] = useState(false);
+  const awaitingSeqRef = useRef(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const activeExchangeId = useRef<string | null>(null);
   const run = useHermesRun();
@@ -340,8 +341,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   }, []);
 
   // The one way playback ends early: a new answer, the stop control and the mic tap all come through here.
-  const stopSpeaking = useCallback(() => {
-    speakSeqRef.current++; // an answer still loading must not start playing afterwards
+  const stopPlayback = useCallback(() => {
     audioRef.current?.pause(); // pause() fires no `ended`, so the url is revoked here
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     audioRef.current = null;
@@ -349,11 +349,17 @@ export function useVoicePipeline(): UseVoicePipelineResult {
     setSpeaking(false);
   }, []);
 
+  const stopSpeaking = useCallback(() => {
+    speakSeqRef.current++; // an answer still loading must not start playing afterwards
+    stopPlayback();
+  }, [stopPlayback]);
+
   const speak = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
     const seq = ++speakSeqRef.current;
     setPipelineError(null); // a stale error must not sit over the next answer
+    let afterBlob = false; // a throw once the audio is in hand is a playback failure, not an unreachable service
     try {
       const res = await fetch("/api/voice/speak", {
         method: "POST",
@@ -369,7 +375,8 @@ export function useVoicePipeline(): UseVoicePipelineResult {
       }
       const blob = await res.blob();
       if (seq !== speakSeqRef.current) return; // no object URL exists yet, nothing to revoke
-      stopSpeaking(); // a new answer replaces the one still playing
+      afterBlob = true;
+      stopPlayback(); // a new answer replaces the one still playing; stopSpeaking would make this call stale
       if (!mountedRef.current) return;
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -392,9 +399,9 @@ export function useVoicePipeline(): UseVoicePipelineResult {
         cleanup();
       });
     } catch {
-      if (seq === speakSeqRef.current) setPipelineError("Could not reach the speech service.");
+      if (seq === speakSeqRef.current) setPipelineError(afterBlob ? "Could not play the answer aloud." : "Could not reach the speech service.");
     }
-  }, [stopSpeaking]);
+  }, [stopPlayback]);
 
   const handleTranscript = useCallback(
     async (text: string) => {
@@ -432,7 +439,10 @@ export function useVoicePipeline(): UseVoicePipelineResult {
       setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, answer, error: null } : ex)));
       activeExchangeId.current = null;
       setAwaitingSpeech(true);
-      void speak(answer || "I didn't get an answer back.").finally(() => setAwaitingSpeech(false));
+      const mine = ++awaitingSeqRef.current; // an older answer settling must not clear the flag of a newer one
+      void speak(answer || "I didn't get an answer back.").finally(() => {
+        if (awaitingSeqRef.current === mine) setAwaitingSpeech(false);
+      });
       return;
     }
     setExchanges((prev) => prev.map((ex) => (ex.id === id ? { ...ex, error: s.error } : ex)));

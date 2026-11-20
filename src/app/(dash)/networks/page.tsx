@@ -329,13 +329,16 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
       }
     }
 
-    // Order by the window total (not this tick's rate) so rows hold still under a finger.
-    const windowTotal = (id: string) =>
-      samples.reduce((a, s) => a + (s.containers[id] ? s.containers[id].rxRate + s.containers[id].txRate : 0), 0);
+    // Order by the window mean (not this tick's rate) so rows hold still under a finger; a mean is the same unit
+    // as the current-rate fallback below, a sum over the window would not be.
+    const windowMean = (id: string) => {
+      const own = samples.filter((s) => s.containers[id]);
+      return own.reduce((a, s) => a + s.containers[id].rxRate + s.containers[id].txRate, 0) / (own.length || 1);
+    };
     return [...groups.values()]
       .filter((r) => r.rx + r.tx > 0 || recentlyActive.has(r.id) || compareIds.includes(r.id))
       // A row with no samples of its own (its traffic came from a namespace sharer) falls back to its current rate.
-      .sort((a, b) => (windowTotal(b.id) || b.rx + b.tx) - (windowTotal(a.id) || a.rx + a.tx) || a.name.localeCompare(b.name));
+      .sort((a, b) => (windowMean(b.id) || b.rx + b.tx) - (windowMean(a.id) || a.rx + a.tx) || a.name.localeCompare(b.name));
   }, [data, latest, samples, compareIds]);
 
   const total = rows.reduce((a, r) => a + r.rx + r.tx, 0);

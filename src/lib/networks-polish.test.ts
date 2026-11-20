@@ -29,7 +29,7 @@ test("both lists sort by the window total, not the latest tick", () => {
   assert.match(bridges, /seriesTotal\(/);
   assert.match(bridges, /localeCompare/);
   const foot = src.slice(src.indexOf("return [...groups.values()]"), src.indexOf("const total = rows.reduce"));
-  assert.match(foot, /windowTotal/);
+  assert.match(foot, /windowMean/);
   assert.match(foot, /localeCompare/);
   assert.doesNotMatch(foot, /b\.rx \+ b\.tx - \(a\.rx \+ a\.tx\)/);
   assert.match(read("../components/resources/net-throughput.tsx"), /export function seriesTotal\(/);
