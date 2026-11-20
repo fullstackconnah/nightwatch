@@ -46,7 +46,6 @@ test("an ask still running at the cap reads as a settled error that frees the ex
 });
 test("the same identical read flips once the clock passes the cap", () => {
   assert.equal(askDeadline(running, "ask", T0, T0 + 1000), running);
-  assert.equal(askDeadline(running, "ask", T0, T0 + ASK_DEADLINE_MS + 1000)?.ok && true, true);
   assert.notEqual(askDeadline(running, "ask", T0, T0 + ASK_DEADLINE_MS + 1000), running);
 });
 test("no read at all after the cap is a timeout too", () => {

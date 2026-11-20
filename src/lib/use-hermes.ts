@@ -80,6 +80,8 @@ export function useHermesRun(): UseHermesRunResult {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [kind, setKind] = useState<HermesJobKind | null>(null);
+  // The cap follows the job that actually started, not the last start() call (a refused start must not lift it).
+  const [jobKind, setJobKind] = useState<HermesJobKind | null>(null);
   // Client clock at the moment the jobId came back (the daemon's startedAt is nullable and on another clock).
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [expiredFor, setExpiredFor] = useState<string | null>(null);
@@ -87,14 +89,14 @@ export function useHermesRun(): UseHermesRunResult {
   const { data, error } = useHermesJob(jobId, expired);
   // A stuck job returns the same body every poll and SWR will not re-render on it, so the cap needs its own timer.
   const now = expired && startedAt !== null ? startedAt + ASK_DEADLINE_MS : 0;
-  const job = useMemo(() => askDeadline(jobView(data, error), kind, startedAt, now), [data, error, kind, startedAt, now]);
+  const job = useMemo(() => askDeadline(jobView(data, error), jobKind, startedAt, now), [data, error, jobKind, startedAt, now]);
   const settled = data?.ok === true && data.job.state !== "running";
 
   useEffect(() => {
-    if (!jobId || kind !== "ask" || startedAt === null || settled) return;
+    if (!jobId || jobKind !== "ask" || startedAt === null || settled) return;
     const t = setTimeout(() => setExpiredFor(jobId), Math.max(0, startedAt + ASK_DEADLINE_MS - Date.now()));
     return () => clearTimeout(t);
-  }, [jobId, kind, startedAt, settled]);
+  }, [jobId, jobKind, startedAt, settled]);
 
   const start = useCallback(async (kind: HermesJobKind, question?: string): Promise<string | null> => {
     setStarting(true);
@@ -108,6 +110,7 @@ export function useHermesRun(): UseHermesRunResult {
       setStartedAt(Date.now());
       setExpiredFor(null);
       setJobId(body.jobId);
+      setJobKind(kind);
       return null;
     } catch (e) {
       const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "could not start run";
@@ -120,6 +123,7 @@ export function useHermesRun(): UseHermesRunResult {
 
   const reset = useCallback(() => {
     setJobId(null);
+    setJobKind(null);
     setStartedAt(null);
     setExpiredFor(null);
     setStartError(null);

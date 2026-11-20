@@ -48,26 +48,37 @@ function stubJobs(page, counter) {
   });
 }
 
-/** Padded clip of a box, with the fixed/sticky chrome check: any visible fixed or sticky element (not an ancestor of the box) overlapping the clip fails. */
+/** Padded clip of a box; fixed or sticky chrome that only overlaps the padding trims the clip, chrome over the box itself fails the check. */
 async function paddedCrop(page, locator, file, viewport) {
-  await locator.evaluate((el) => el.scrollIntoView({ block: "center" })); // clear of a sticky header, which scrollIntoViewIfNeeded ignores
+  await locator.scrollIntoViewIfNeeded();
   const bb = await locator.boundingBox();
   if (!bb) throw new Error("crop target has no box");
   const x = Math.max(0, bb.x - PAD), y = Math.max(0, bb.y - PAD);
   const clip = { x, y, width: Math.min(viewport.width - x, bb.width + PAD * 2), height: Math.min(viewport.height - y, bb.height + PAD * 2) };
-  const covering = await locator.evaluate((el, c) => {
+  const chrome = await locator.evaluate((el, c) => {
     const hits = [];
+    const round = (v) => Math.round(v * 10) / 10;
     for (const n of document.querySelectorAll("body *")) {
       const cs = getComputedStyle(n);
       const pos = cs.position;
       // shortcut: pointer-events:none layers (the kiosk sky and light-leak backdrops) are decoration behind the content, not chrome; revisit if one ever paints over it
       if ((pos !== "fixed" && pos !== "sticky") || n.contains(el) || cs.pointerEvents === "none") continue;
       const r = n.getBoundingClientRect();
-      if (r.width && r.height && r.left < c.x + c.width && r.right > c.x && r.top < c.y + c.height && r.bottom > c.y) hits.push(n.tagName + "." + String(n.className).slice(0, 40));
+      if (r.width && r.height && r.left < c.x + c.width && r.right > c.x && r.top < c.y + c.height && r.bottom > c.y) {
+        hits.push({ el: n.tagName + "." + String(n.className).slice(0, 40), left: round(r.left), top: round(r.top), right: round(r.right), bottom: round(r.bottom) });
+      }
     }
     return hits;
   }, clip);
-  rec(`${file}: crop not covered by fixed or sticky chrome`, covering.length === 0, covering);
+  let covered = false;
+  for (const r of chrome) {
+    if (r.left < bb.x + bb.width && r.right > bb.x && r.top < bb.y + bb.height && r.bottom > bb.y) { covered = true; continue; }
+    if (r.bottom <= bb.y) { const ny = Math.max(clip.y, r.bottom); clip.height -= ny - clip.y; clip.y = ny; }
+    else if (r.top >= bb.y + bb.height) clip.height = Math.min(clip.height, r.top - clip.y);
+    else if (r.right <= bb.x) { const nx = Math.max(clip.x, r.right); clip.width -= nx - clip.x; clip.x = nx; }
+    else clip.width = Math.min(clip.width, r.left - clip.x);
+  }
+  rec(`${file}: crop not covered by fixed or sticky chrome`, !covered, { box: bb, clip, chrome });
   await page.screenshot({ path: join(OUT_DIR, file), clip });
 }
 
@@ -196,6 +207,22 @@ async function hermesAskTimeout(name, viewport, extra) {
       rec("390: crop clears the fixed bottom nav", !nav || !bb || bb.y + bb.height + PAD <= nav.y, { crop: bb && bb.y + bb.height + PAD, navTop: nav?.y });
     }
     await page.screenshot({ path: join(OUT_DIR, `hermes-ask-timeout-${name}-full.png`), fullPage: true });
+
+    if (name === "1280") {
+      // A refused start after the timeout must leave the timeout read and polling paused (the cap follows the job's own kind).
+      await page.unroute("**/api/hermes-ctl/run");
+      await page.route("**/api/hermes-ctl/run", (route) => route.fulfill({ status: 409, json: { error: "a job is already running" } }));
+      await step("1280: digest start refused after the timeout", async () => {
+        await page.getByRole("button", { name: "Run digest" }).first().click();
+        await page.waitForTimeout(1500);
+      });
+      rec("1280: timeout copy still shown after a refused start", (await band.locator("p").textContent())?.trim() === COPY, null);
+      rec("1280: Ask still enabled after a refused start", (await detail.getByRole("textbox", { name: "Ask Hermes" }).inputValue()) !== "" && (await detail.getByRole("button", { name: /^Ask$/ }).isEnabled()), null);
+      const held = jobs.n;
+      await page.clock.runFor(6000);
+      await page.waitForTimeout(500);
+      rec("1280: no job GET after a refused start", jobs.n === held, { held, after: jobs.n });
+    }
     await context.close();
   } finally {
     await browser.close();
