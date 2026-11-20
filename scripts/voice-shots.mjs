@@ -67,7 +67,7 @@ async function unreachable() {
     // elevate: the admin PIN pad, as kiosk-shots "fullview elevated"
     await step("open admin pad", async () => {
       await page.getByRole("button", { name: /^Admin/ }).first().click();
-      await page.locator("[role=dialog]").first().waitFor();
+      await page.getByRole("button", { name: "digit 0" }).waitFor(); // the pad's own key: the first [role=dialog] in the DOM can be another widget's hidden one
     });
     await step("type pin", async () => {
       for (const dg of "0000") await page.getByRole("button", { name: `digit ${dg}` }).click();
