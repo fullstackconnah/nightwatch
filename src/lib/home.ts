@@ -56,6 +56,11 @@ export function weekHeading(loggedFrom: string | null, sinceMs: number, now: num
   return `Last 7 days · counted since ${day === "Today" ? "today" : day}`;
 }
 
+/** The Recent heading: the 24 h fallback or "since you last looked", plus the same unreadable-log note the 7-day heading carries. */
+export function recentHeading(fallbackLabel: boolean, when: string, partial?: boolean): string {
+  return `${fallbackLabel ? "Last 24 h" : `Since you last looked · ${when}`}${partial ? " · log partly unreadable" : ""}`;
+}
+
 /** 7-day range: null until the report on screen is the one asked for (keepPreviousData shows the old one). */
 export function changesFor<C extends { since: string }>(
   changes: C | null,
