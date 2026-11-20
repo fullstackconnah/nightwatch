@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `New password must be at least ${MIN_LENGTH} characters` }, { status: 400 });
   }
   if (isPasswordOverBytes(newPassword)) {
-    return NextResponse.json({ error: "New password is too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)" }, { status: 400 });
+    return NextResponse.json({ error: "New password is too long: the most is 72 bytes" }, { status: 400 });
   }
 
   const candidates = candidatePasswordHashes();

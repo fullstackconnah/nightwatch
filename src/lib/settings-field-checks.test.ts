@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { plainReason } from "./settings/page-model.ts";
 import { BUDGET_HINT, MAX_PASSWORD_BYTES, RCON_PORT_COPY, appUrlError, groupInputText, isPasswordOverBytes, rconPortFieldError } from "./settings-field-checks.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -52,7 +53,10 @@ test("password 72-byte limit: the route refuses before hashing; the card disable
   const tooLong = route.indexOf("isPasswordOverBytes(newPassword)");
   assert.ok(tooLong > route.indexOf("newPassword.length < MIN_LENGTH"));
   assert.ok(tooLong < route.indexOf("bcrypt.hashSync("));
-  assert.match(route, /New password is too long: the most is 72 bytes \(72 plain letters, fewer with accents or emoji\)[^]{0,80}status: 400/);
+  assert.match(route, /"New password is too long: the most is 72 bytes"[^]{0,40}status: 400/);
+  assert.ok(tooLong < route.indexOf("checkCurrentPassword("), "a too-long request must not use up a rate-limiter attempt");
+  const sent = /isPasswordOverBytes\(newPassword\)[^]*?error: "([^"]+)"/.exec(route)![1];
+  assert.equal(plainReason(sent), sent.replace(/\.$/, "")); // the form shows the server's own words, not "the server refused it"
   const ui = read("../components/settings/settings-access.tsx");
   assert.match(ui, /const tooLong = isPasswordOverBytes\(next\)/);
   assert.match(ui, /canSubmit = [^;]*!tooLong/);
