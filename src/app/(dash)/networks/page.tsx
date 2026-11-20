@@ -192,7 +192,7 @@ function BridgeRow({
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 px-3 py-3 border-b border-line/50 last:border-0">
-      <div className="min-w-0">
+      <div className="min-w-0 col-span-2 md:col-span-1">
         <div className="flex items-baseline gap-2 min-w-0">
           <span className="font-mono text-sm truncate" title={name}>
             {name}
@@ -221,7 +221,7 @@ function BridgeRow({
         <ThroughputChart series={series} peak={peak} height={34} />
       </div>
 
-      <div className="text-right shrink-0">
+      <div className="col-span-2 md:col-span-1 text-right shrink-0">
         <RateReadout rx={now.rx} tx={now.tx} className="justify-end" />
         <div className="font-mono text-[0.65rem] text-ink-faint tabular-nums mt-0.5">
           {idle ? "idle" : `peak ${formatRate(peak)}`}
@@ -334,7 +334,8 @@ function ContainerFootprint({ samples }: { samples: TelemetrySample[] }) {
       samples.reduce((a, s) => a + (s.containers[id] ? s.containers[id].rxRate + s.containers[id].txRate : 0), 0);
     return [...groups.values()]
       .filter((r) => r.rx + r.tx > 0 || recentlyActive.has(r.id) || compareIds.includes(r.id))
-      .sort((a, b) => windowTotal(b.id) - windowTotal(a.id) || a.name.localeCompare(b.name));
+      // A row with no samples of its own (its traffic came from a namespace sharer) falls back to its current rate.
+      .sort((a, b) => (windowTotal(b.id) || b.rx + b.tx) - (windowTotal(a.id) || a.rx + a.tx) || a.name.localeCompare(b.name));
   }, [data, latest, samples, compareIds]);
 
   const total = rows.reduce((a, r) => a + r.rx + r.tx, 0);
