@@ -235,3 +235,13 @@ test("groups: accepts a well-formed group and an empty list", () => {
   assert.deepEqual(ok(mergeDashPut(current, { groups: [{ name: "a", containers: ["b"] }] })).groups, [{ name: "a", containers: ["b"] }]);
   assert.deepEqual(ok(mergeDashPut(current, { groups: [] })).groups, []);
 });
+// nw-tileurl fix1: only changed App URLs are checked, so a stored bad one for a removed container cannot block a save.
+const gone = { ...current, urls: { gone: "old.lan:80" } } as unknown as AppConfig;
+test("urls: an unchanged stored bad value is accepted and kept; a changed or new bad one is refused by name", () => {
+  assert.deepEqual(ok(mergeDashPut(gone, { urls: { gone: "old.lan:80", a: "http://a" } })).urls, { gone: "old.lan:80", a: "http://a" });
+  assert.deepEqual(mergeDashPut(gone, { urls: { gone: "other.lan:80" } }), { error: "The App URL for gone must start with http:// or https://" });
+  assert.deepEqual(mergeDashPut(gone, { urls: { gone: "old.lan:80", b: "b.lan" } }), { error: "The App URL for b must start with http:// or https://" });
+});
+test("groups: a null group is refused, not thrown", () => {
+  assert.ok("error" in mergeDashPut(current, { groups: [null] }));
+});

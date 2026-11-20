@@ -22,7 +22,7 @@ test("K12: a widget save PUTs only widgets, a tile save only the four tile field
   const p = read("app/(dash)/settings/page.tsx");
   assert.match(p, /persist\(\{ widgets \}, data\.versions\?\.widgets\)/);
   assert.match(p, /persist\(\{ widgets: data\.config\.widgets\.filter/);
-  assert.match(p, /persist\(\{ groups: tileDraft\.groups, urls: tileDraft\.urls, icons: tileDraft\.icons, hidden: tileDraft\.hidden \}, tilesVersion\)/);
+  assert.match(p, /persist\(\{ groups: tileDraft\.groups, urls, icons: tileDraft\.icons, hidden: tileDraft\.hidden \}, tilesVersion\)/);
   const persist = p.slice(p.indexOf("async function persist"), p.indexOf("const why"));
   assert.ok(persist.length > 20);
   assert.doesNotMatch(persist, /setTileDraft/);

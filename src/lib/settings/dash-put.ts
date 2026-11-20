@@ -90,7 +90,7 @@ export function mergeDashPut(current: AppConfig, body: unknown): { next: AppConf
   if (present.includes("groups") && (b.groups as { name?: unknown; containers?: unknown }[]).some((g) => typeof g.name !== "string" || !g.name || !Array.isArray(g.containers) || g.containers.some((c) => typeof c !== "string"))) {
     return { error: "Each group needs a name and a list of containers" };
   }
-  const urlError = present.includes("urls") ? appUrlError(b.urls as Record<string, unknown>) : null;
+  const urlError = present.includes("urls") ? appUrlError(b.urls as Record<string, unknown>, current.urls ?? {}) : null;
   if (urlError) return { error: urlError };
   const fields = Object.fromEntries(present.map((k) => [k, b[k]]));
   if (present.includes("widgets")) fields.widgets = mergeWidgetSecrets(current.widgets ?? [], b.widgets as unknown[]);

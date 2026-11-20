@@ -45,6 +45,18 @@ test("nw-tileurl: appUrlError names the first offender; saveTiles runs it before
   assert.equal(appUrlError({}), null);
   const src = read("../app/(dash)/settings/page.tsx");
   const save = src.slice(src.indexOf("async function saveTiles"));
-  assert.ok(save.indexOf("appUrlError(tileDraft.urls)") > 0 && save.indexOf("appUrlError(") < save.indexOf("persist("));
+  assert.ok(save.indexOf("appUrlError(urls, data?.config.urls)") > 0 && save.indexOf("appUrlError(") < save.indexOf("persist("));
   assert.ok(read("./settings/dash-put.ts").includes("appUrlError("));
+});
+
+test("nw-tileurl fix1: appUrlError skips values equal to the stored one; saveTiles trims what it checks and sends", () => {
+  const stored = { gone: "old.lan:80" };
+  assert.equal(appUrlError({ gone: "old.lan:80", a: "http://a" }, stored), null);
+  assert.equal(appUrlError({ gone: "other.lan:80" }, stored), "The App URL for gone must start with http:// or https://");
+  assert.equal(appUrlError({ gone: "old.lan:80", b: "b.lan" }, stored), "The App URL for b must start with http:// or https://");
+  const src = read("../app/(dash)/settings/page.tsx");
+  const save = src.slice(src.indexOf("async function saveTiles"), src.indexOf("const tilesDirty"));
+  assert.ok(save.includes("trim()") && save.includes("data?.config.urls") && save.includes("urls,"));
+  assert.ok(!save.includes("urls: tileDraft.urls"));
+  assert.ok(read("./settings/dash-put.ts").includes("current.urls"));
 });

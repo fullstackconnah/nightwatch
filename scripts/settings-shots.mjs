@@ -597,8 +597,13 @@ await guarded("tileurl-refused", () =>
     const { page, mock } = await visit(s, "calm", { hash: "#dashboard" });
     const body = visibleBody(page);
     await body.getByRole("group", { name: "Container scope" }).getByRole("button").last().click();
-    const input = body.locator('input[aria-label^="App URL for "]:visible').first();
-    const name = ((await input.getAttribute("aria-label")) ?? "").replace("App URL for ", "");
+    // Desktop table inputs carry an aria-label; the phone cards use a Field label "App URL" and name the container in the card heading.
+    const desk = body.locator('input[aria-label^="App URL for "]:visible').first();
+    const phone = !(await desk.count());
+    const input = phone ? body.getByLabel("App URL", { exact: true }).locator("visible=true").first() : desk;
+    const name = phone
+      ? (await input.locator("xpath=ancestor::div[contains(@class,'panel')][1]").locator("span.font-mono").first().innerText()).trim()
+      : ((await desk.getAttribute("aria-label")) ?? "").replace("App URL for ", "");
     await input.fill("myapp.lan:8080");
     const before = mock.posts.length;
     await body.getByRole("button", { name: "Save tiles" }).click();

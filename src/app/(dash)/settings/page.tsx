@@ -108,12 +108,14 @@ export default function SettingsPage() {
 
   async function saveTiles() {
     if (!tileDraft) return;
-    const urlError = appUrlError(tileDraft.urls); // same check as the server; nothing is sent, the typed values stay
+    // Trim what is checked and sent (the form keeps what was typed); compare with the config as last loaded, as the server does.
+    const urls = Object.fromEntries(Object.entries(tileDraft.urls).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
+    const urlError = appUrlError(urls, data?.config.urls); // same check as the server; nothing is sent, the typed values stay
     if (urlError) return setDashError((d) => ({ ...d, tiles: urlError }));
     setSavingTiles(true);
     setDashError((d) => ({ ...d, tiles: null }));
     try {
-      const res = await persist({ groups: tileDraft.groups, urls: tileDraft.urls, icons: tileDraft.icons, hidden: tileDraft.hidden }, tilesVersion);
+      const res = await persist({ groups: tileDraft.groups, urls, icons: tileDraft.icons, hidden: tileDraft.hidden }, tilesVersion);
       setTilesVersion(res.versions?.tiles);
     } catch (e) {
       setDashError((d) => ({ ...d, tiles: `Couldn’t save tiles: ${why(e)}.` }));
