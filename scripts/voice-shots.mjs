@@ -60,6 +60,9 @@ async function unreachable() {
     await page.route("**/api/voice/transcribe", (route) => route.fulfill({ status: 502, json: { status: "unreachable", detail: DETAIL } }));
     await page.goto(URL_, { waitUntil: "domcontentloaded" });
     await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    // As kiosk-shots visit(): a click before the page hydrates does nothing, so the PIN pad never opened.
+    await page.locator('[data-kiosk-theme="sunroom"]').first().waitFor({ state: "attached" });
+    await page.waitForTimeout(1200);
 
     // elevate: the admin PIN pad, as kiosk-shots "fullview elevated"
     await step("open admin pad", async () => {
