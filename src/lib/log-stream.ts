@@ -170,11 +170,16 @@ export async function readContainerLogTail(
   tail: number,
   /** Resume mode: only lines newer than this epoch ms (docker `since` is whole seconds, so filtered again below). */
   sinceMs?: number,
+  /** Client gone: skip the read, or cut a running one short. */
+  signal?: AbortSignal,
 ): Promise<{ lines: LogLine[]; short: boolean }> {
   const id = await resolveContainerId(name);
+  signal?.throwIfAborted();
   const container = docker.getContainer(id);
   // Shares the log-read deadline with containerLogs: a 2000-line read must not get less time than a 200-line one.
-  const buf = (await container.logs(oneShotLogOptions(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS))) as unknown as Buffer;
+  const opts = oneShotLogOptions(tail, sinceMs, LOG_TAIL_MAX, DOCKER_LOGS_MS);
+  if (signal) opts.abortSignal = AbortSignal.any([opts.abortSignal, signal]);
+  const buf = (await container.logs(opts)) as unknown as Buffer;
 
   const lines: LogLine[] = [];
   const demuxer = createLogDemuxer(name, (line) => lines.push(line), sinceMs === undefined ? "s" : "r");
