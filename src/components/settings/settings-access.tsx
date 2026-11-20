@@ -131,6 +131,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
           label="New password"
           required
           hint={!tooShort && !tooLong ? "at least 8 characters" : undefined}
+          errorClassName="text-bad"
           error={tooShort ? "New password needs at least 8 characters." : tooLong ? "Too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)." : undefined}
         >
           <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
@@ -139,6 +140,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
           label="Confirm new password"
           required
           error={mismatch && !tooShort && !tooLong ? "Passwords don't match." : undefined}
+          errorClassName="text-bad"
         >
           <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
         </Field>

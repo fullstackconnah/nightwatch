@@ -295,6 +295,9 @@ type Item = { key: string; gid: string; group: PGroup } | { key: string; gid: st
 
 export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: string; stale?: boolean } = {}) {
   const { data, isLoading, error } = useProcesses(2000);
+  // A failed poll keeps the previous rows (keepPreviousData): show them as not current instead of wiping the table.
+  const pollFailed = !!error && !!data;
+  const isStale = stale || pollFailed;
   // Containers by default: "which app is eating the box" is the question actually being asked.
   const [view, setView] = useState<View>("containers");
   const [sort, setSort] = useState<{ key: SortKey; dir: SortDir }>({ key: "cpu", dir: "desc" });
@@ -349,7 +352,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
   }, []);
 
   // ---- grouped view: the calm ranker (shape brief s3) ----
-  const held = hover || focusIn || open.size > 0 || stale;
+  const held = hover || focusIn || open.size > 0 || isStale;
   const rk = useRef<{ key: string; ranker: Ranker; procs: Map<string, number[]> } | null>(null);
   const rkKey = `${gsort}|${q.toLowerCase()}`;
   if (!rk.current || rk.current.key !== rkKey) rk.current = { key: rkKey, ranker: createRanker(), procs: new Map() };
@@ -469,7 +472,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
     <p className="text-ink-faint text-sm">No processes reported.</p>
   );
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="panel px-4 py-6">
         <div className="microlabel !text-warn/80">process scan failed</div>
@@ -525,7 +528,7 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
       <section
         className="panel pt-panel"
         aria-label={grouped ? "Processes by container" : "All processes"}
-        data-stale={stale || undefined}
+        data-stale={isStale || undefined}
         onPointerEnter={() => setHover(true)}
         onPointerLeave={() => setHover(false)}
         onFocus={() => setFocusIn(true)}
@@ -594,6 +597,11 @@ export function ProcessTable({ initialQuery, stale = false }: { initialQuery?: s
             )}
             <ViewSwitch view={view} onChange={setView} />
           </div>
+          {pollFailed && (
+            <p role="status" className="microlabel !text-warn/80 basis-full m-0">
+              not updating: the last scan failed
+            </p>
+          )}
         </div>
 
         {grouped ? (

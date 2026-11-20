@@ -96,3 +96,19 @@ test("nw-tileurl fix1: appUrlError skips values equal to the stored one; saveTil
   assert.ok(!save.includes("urls: tileDraft.urls"));
   assert.ok(read("./settings/dash-put.ts").includes("current.urls"));
 });
+
+test("polish11: a stored URL with spaces round it is unchanged when the trimmed draft matches; real changes and odd stored types are safe", () => {
+  assert.equal(appUrlError({ a: "ftp://x" }, { a: " ftp://x " }), null);
+  assert.equal(appUrlError({ a: " ftp://x " }, { a: "ftp://x" }), null);
+  assert.equal(appUrlError({ a: "ftp://y" }, { a: "ftp://x" }), "The App URL for a must start with http:// or https://");
+  assert.equal(appUrlError({ a: "ftp://y" }, { a: " ftp://x " }), "The App URL for a must start with http:// or https://");
+  for (const odd of [5, null, { x: 1 }, undefined]) {
+    assert.equal(appUrlError({ a: "http://a.lan" }, { a: odd }), null);
+    assert.equal(appUrlError({ a: "ftp://x" }, { a: odd }), "The App URL for a must start with http:// or https://");
+  }
+});
+
+test("polish11: the password fields' Save-blocking messages use the house error tone", () => {
+  const src = read("../components/settings/settings-access.tsx");
+  assert.equal(src.match(/errorClassName="text-bad"/g)?.length, 2);
+});
