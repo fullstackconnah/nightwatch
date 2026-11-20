@@ -129,7 +129,7 @@ try {
         ctx = await open(browser, vp, state, setup);
         await fn(ctx.page, where);
         if (full) await ctx.page.screenshot({ path: join(OUT_DIR, `networks-${state}-${vp.name}-full.png`), fullPage: true });
-        await cropElement(ctx.page, crop(ctx.page), state, vp.name, vp.name === "390" ? 4 : 0);
+        await cropElement(ctx.page, crop(ctx.page), state, vp.name, vp.name === "390" ? 3 : 0); // 3 rows: taller rows at 390 since the readout sits below the text
         const o = await ctx.page.evaluate(docOverflow);
         check("document overflow", where, o.scroll <= o.client, o);
       } catch (e) {
