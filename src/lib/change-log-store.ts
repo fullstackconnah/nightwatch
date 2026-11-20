@@ -128,7 +128,7 @@ async function appendLines(ts: number, lines: ChangeLine[]): Promise<void> {
 /**
  * The lines that can fall after `sinceMs` (an event was written at or after its own time, so a
  * file dated before `since` holds none) and the date the log covers from. A missing
- * baseline or any read failure (a day file included) gives no lines and `loggedFrom: null` (live-only rows).
+ * baseline or any read failure gives no lines and `loggedFrom: null` (live-only rows).
  */
 // shortcut: reads and parses up to 30 day files per call, add an mtime cache like metrics-history when the attention route gets slow
 export async function readChangeLog(sinceMs: number, now: number): Promise<{ lines: ChangeLine[]; loggedFrom: number | null }> {
@@ -159,7 +159,6 @@ export async function readChangeLog(sinceMs: number, now: number): Promise<{ lin
       g.__changeLogWarned?.delete(WARN_READ_FILE); // a clean read re-arms both, so a later outage warns again
       g.__changeLogWarned?.delete(WARN_READ_FAILED);
     }
-    if (rejected) return { lines: [], loggedFrom: null }; // a partial log must not read as full coverage
     return { lines, loggedFrom: Math.max(baseline.seededAt, now - RETENTION_DAYS * DAY_MS) };
   } catch (err) {
     warnOnce(WARN_READ_FAILED, err);

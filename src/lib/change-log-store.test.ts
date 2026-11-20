@@ -179,7 +179,7 @@ test("H46-2 a tick that fails, recovers and fails again warns both times", async
   }
 });
 
-test("H46-2 one unreadable day file is warned once and gives no log coverage (H100-6), not a partial log", async () => {
+test("H46-2 one unreadable day file is skipped and warned once; the readable lines are still returned", async () => {
   await seed([live("a")]);
   const line = { at: NOW - 1000, k: "start", name: "a", id: "a-id" };
   fs.writeFileSync(today(), `${JSON.stringify(line)}\n`);
@@ -187,8 +187,8 @@ test("H46-2 one unreadable day file is warned once and gives no log coverage (H1
   const w = spyWarn();
   try {
     const first = await readChangeLog(NOW - 2 * DAY, NOW);
-    assert.equal(first.lines.length, 0);
-    assert.equal(first.loggedFrom, null);
+    assert.deepEqual(first.lines, [line]);
+    assert.equal(typeof first.loggedFrom, "number");
     await readChangeLog(NOW - 2 * DAY, NOW);
     assert.equal(w.calls.filter((c) => c.includes("could not be read")).length, 1);
   } finally {
