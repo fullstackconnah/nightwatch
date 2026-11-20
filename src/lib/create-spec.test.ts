@@ -30,6 +30,11 @@ const badShapes: [string, unknown, RegExp][] = [
   ["restartPolicy unknown", { image: "i", restartPolicy: "sometimes" }, /restartPolicy/],
   ["port protocol sctp", { image: "i", ports: [{ host: 80, container: 80, protocol: "sctp" }] }, /ports/],
   ["env row without value", { image: "i", env: [{ key: "A" }] }, /env/],
+  ["name with a space", { image: "x", name: "a b" }, /^name is invalid$/],
+  ["name with a leading dash", { image: "x", name: "-a" }, /^name is invalid$/],
+  ["image with whitespace", { image: "ngi nx" }, /^image is invalid$/],
+  ["env key with =", { image: "x", env: [{ key: "A=B", value: "1" }] }, /^env\.key is invalid$/],
+  ["env key with a space", { image: "x", env: [{ key: "A B", value: "1" }] }, /^env\.key is invalid$/],
 ];
 
 for (const [label, body, re] of badShapes) {
@@ -42,6 +47,14 @@ for (const [label, body, re] of badShapes) {
 test("validateSpecShape accepts every restart policy and protocol the UI sends", () => {
   for (const restartPolicy of ["unless-stopped", "always", "on-failure", "no"]) assert.equal(validateSpecShape({ image: "i", restartPolicy }), null);
   for (const protocol of ["tcp", "udp"]) assert.equal(validateSpecShape({ image: "i", ports: [{ host: 80, container: 80, protocol }] }), null);
+});
+
+test("validateSpecShape accepts valid names, a digest image, a blank env key and a spaced env value", () => {
+  for (const name of ["ok-1", "a", ""]) assert.equal(validateSpecShape({ image: "x", name }), null);
+  assert.equal(validateSpecShape({ image: "x" }), null);
+  assert.equal(validateSpecShape({ image: "ghcr.io/a/b:1.2@sha256:abc" }), null);
+  assert.equal(validateSpecShape({ image: "x", env: [{ key: "", value: "1" }] }), null);
+  assert.equal(validateSpecShape({ image: "x", env: [{ key: "A_1", value: "x=y z" }] }), null);
 });
 
 test("validateSpecShape accepts a minimal and a full spec", () => {
