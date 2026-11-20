@@ -85,7 +85,7 @@ async function kioskAskTimeout() {
     await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? ((elevated = true), route.fulfill({ json: { ok: true, expiresAt: until } })) : route.fallback()));
     await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: elevated ? { elevated: true, expiresAt: until } : { elevated: false } }));
     await page.route("**/api/voice/status", (route) => route.fulfill({ json: { configured: true } }));
-    await page.route("**/api/voice/transcribe", (route) => route.fulfill({ json: { text: "Is the backup healthy?" } }));
+    await page.route("**/api/voice/transcribe", (route) => route.fulfill({ json: { status: "ok", text: "Is the backup healthy?" } }));
     await page.route("**/api/hermes-ctl/run", (route) => route.fulfill({ json: { jobId: "job-ask" } }));
     await stubJobs(page, jobs);
     await page.goto(`${BASE_URL}/kiosk?theme=sunroom&wx=off&layout=standard`, { waitUntil: "domcontentloaded", timeout: 90_000 });
