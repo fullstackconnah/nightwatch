@@ -5,7 +5,7 @@
   {"id":"A4","strip":"access","by":"button","name":"Save","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"Change password\"))","exact":true},
   {"id":"A5","strip":"access","by":"label","name":"MCP token","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"System\"))"},
   {"id":"A6","strip":"access","by":"button","name":"Generate","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"System\"))"},
-  {"id":"A7","strip":"access","by":"button","name":"Copy MCP token","width":"both","fixture":"calm","steps":["Generate","Yes, generate"],"scope":"section:has(> div > h3:text-is(\"System\"))"},
+  {"id":"A7","strip":"access","by":"button","name":"Copy MCP token","width":"both","fixture":"calm","steps":[["Current password","not-the-password"],"Generate","Yes, generate"],"scope":"section:has(> div > h3:text-is(\"System\"))"},
   {"id":"A8","strip":"access","by":"label","name":"Kiosk PIN","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"System\"))"},
   {"id":"A9","strip":"access","by":"button","name":"Save","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"System\"))","exact":true},
   {"id":"A10","strip":"access","by":"label","name":"Issuer","width":"both","fixture":"calm","steps":[],"scope":"section:has(> div > h3:text-is(\"SSO / OIDC\"))"},
