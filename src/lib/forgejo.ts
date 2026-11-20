@@ -505,8 +505,9 @@ export async function triggerPushMirrorSync(
       headers: { Authorization: `token ${creds.token}` },
       signal: AbortSignal.timeout(FORGEJO_TIMEOUT_MS),
     });
-  } catch {
-    return { ok: false, status: 502, detail: "Forgejo did not respond to the sync request." };
+  } catch (e) {
+    const detail = isTimeout(e) ? `Forgejo did not respond to the sync request within ${FORGEJO_TIMEOUT_MS / 1000}s.` : "Forgejo is not reachable.";
+    return { ok: false, status: 502, detail };
   }
 
   await res.body?.cancel(); // status is all we need; free the socket
