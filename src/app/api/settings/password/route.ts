@@ -5,6 +5,7 @@ import { candidatePasswordHashes } from "@/lib/auth-server";
 import { SESSION_COOKIE, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { epochOf, loadConfigForSave, readAuthStateForSave, saveAuthState, saveConfig, saveErrorText, type AppConfig, type AuthState } from "@/lib/config";
 import { isSecureRequest } from "@/lib/oidc-origin";
+import { isPasswordOverBytes } from "@/lib/settings-field-checks";
 import { checkCurrentPassword, currentPasswordLimiter } from "@/lib/step-up";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,9 @@ export async function POST(req: NextRequest) {
 
   if (!newPassword || newPassword.length < MIN_LENGTH) {
     return NextResponse.json({ error: `New password must be at least ${MIN_LENGTH} characters` }, { status: 400 });
+  }
+  if (isPasswordOverBytes(newPassword)) {
+    return NextResponse.json({ error: "New password is too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)" }, { status: 400 });
   }
 
   const candidates = candidatePasswordHashes();

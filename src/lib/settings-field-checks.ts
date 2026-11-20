@@ -19,3 +19,7 @@ export function rconPortFieldError(raw: string): string | null {
 export function groupInputText(typed: string | undefined, stored: string): string {
   return typed !== undefined && typed.trim() === stored ? typed : stored;
 }
+
+/** bcrypt hashes only the first 72 bytes, so a longer new password would silently lose its tail. */
+export const MAX_PASSWORD_BYTES = 72;
+export const isPasswordOverBytes = (s: string): boolean => new TextEncoder().encode(s).length > MAX_PASSWORD_BYTES;

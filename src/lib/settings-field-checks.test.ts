@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BUDGET_HINT, RCON_PORT_COPY, groupInputText, rconPortFieldError } from "./settings-field-checks.ts";
+import { BUDGET_HINT, MAX_PASSWORD_BYTES, RCON_PORT_COPY, groupInputText, isPasswordOverBytes, rconPortFieldError } from "./settings-field-checks.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -36,4 +36,26 @@ test("A7: no per-section 'saved' stamp claims beyond its own section", () => {
   const src = read("../components/settings/settings-access.tsx");
   // one read (the system card, which owns the block stamp); orchestra and OIDC sections no longer read it
   assert.equal(src.split("system.updatedAt").length - 1, 1);
+});
+
+test("password 72-byte limit: measured in UTF-8 bytes, not characters", () => {
+  assert.equal(MAX_PASSWORD_BYTES, 72);
+  assert.equal(isPasswordOverBytes(""), false);
+  assert.equal(isPasswordOverBytes("a".repeat(72)), false);
+  assert.equal(isPasswordOverBytes("a".repeat(73)), true);
+  assert.equal(isPasswordOverBytes("\u{1F600}".repeat(18)), false); // 72 bytes
+  assert.equal(isPasswordOverBytes("\u{1F600}".repeat(19)), true); // 76 bytes
+});
+
+test("password 72-byte limit: the route refuses before hashing; the card disables Save and shows the copy", () => {
+  const route = read("../app/api/settings/password/route.ts");
+  const tooLong = route.indexOf("isPasswordOverBytes(newPassword)");
+  assert.ok(tooLong > route.indexOf("newPassword.length < MIN_LENGTH"));
+  assert.ok(tooLong < route.indexOf("bcrypt.hashSync("));
+  assert.match(route, /New password is too long: the most is 72 bytes \(72 plain letters, fewer with accents or emoji\)[^]{0,80}status: 400/);
+  const ui = read("../components/settings/settings-access.tsx");
+  assert.match(ui, /const tooLong = isPasswordOverBytes\(next\)/);
+  assert.match(ui, /canSubmit = [^;]*!tooLong/);
+  assert.ok(ui.includes("Too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)."));
+  assert.ok(!/isPasswordOverBytes\(current\)/.test(ui), "the current password is never length-checked");
 });
