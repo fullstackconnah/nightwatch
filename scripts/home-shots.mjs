@@ -480,8 +480,9 @@ for (const width of WIDTHS) {
     record("C6", s.minRatio >= 4.5, `${tag}: lowest text contrast ${s.minRatio.toFixed(2)}:1 at ${s.worst} (computed colours, not the pixel percentile)`);
     if (stateName === "quiet") {
       record("C7", s.painted.length === 0 && s.infinite === 0, `${tag}: ${s.painted.length} warn/bad paints ${s.painted.slice(0, 3).join("; ")}, ${s.infinite} infinite animations`);
-      const missing = FEATURES.filter((f) => !s.features[f]);
-      record("C9", missing.length === 0, `${tag}: ${FEATURES.length - missing.length} of ${FEATURES.length}${missing.length ? `, missing ${missing.join(", ")}` : ""}`);
+      const required = FEATURES.filter((f) => !(f === "slash-key" && width.name === "390")); // the "/" hint is md:block only
+      const missing = required.filter((f) => !s.features[f]);
+      record("C9", missing.length === 0, `${tag}: ${required.length - missing.length} of ${required.length}${missing.length ? `, missing ${missing.join(", ")}` : ""}`);
     }
     if (["partial", "dockerFailed", "otherFailed", "error", "loading"].includes(stateName)) {
       const honest = !/^All clear/.test(s.answerText) && s.answerTone !== "ok";
