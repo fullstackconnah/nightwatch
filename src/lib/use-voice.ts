@@ -325,6 +325,8 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   const startingRef = useRef(false); // set synchronously, ahead of the render that flips run.starting
   const mountedRef = useRef(true);
   const audioUrlRef = useRef<string | null>(null);
+  // Bumped by every speak() and by stopSpeaking(): a call that is no longer the newest plays nothing.
+  const speakSeqRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true; // strict-mode remount re-arms it
@@ -339,6 +341,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
 
   // The one way playback ends early: a new answer, the stop control and the mic tap all come through here.
   const stopSpeaking = useCallback(() => {
+    speakSeqRef.current++; // an answer still loading must not start playing afterwards
     audioRef.current?.pause(); // pause() fires no `ended`, so the url is revoked here
     if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
     audioRef.current = null;
@@ -349,18 +352,23 @@ export function useVoicePipeline(): UseVoicePipelineResult {
   const speak = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    const seq = ++speakSeqRef.current;
+    setPipelineError(null); // a stale error must not sit over the next answer
     try {
       const res = await fetch("/api/voice/speak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: trimmed.slice(0, MAX_SPEAK_CHARS) }),
       });
+      if (seq !== speakSeqRef.current) return; // superseded while fetching
       if (!res.ok) {
         const data: { detail?: string } = await res.json().catch(() => ({}));
+        if (seq !== speakSeqRef.current) return;
         setPipelineError(data.detail ?? "Could not speak the answer.");
         return;
       }
       const blob = await res.blob();
+      if (seq !== speakSeqRef.current) return; // no object URL exists yet, nothing to revoke
       stopSpeaking(); // a new answer replaces the one still playing
       if (!mountedRef.current) return;
       const url = URL.createObjectURL(blob);
@@ -384,7 +392,7 @@ export function useVoicePipeline(): UseVoicePipelineResult {
         cleanup();
       });
     } catch {
-      setPipelineError("Could not reach the speech service.");
+      if (seq === speakSeqRef.current) setPipelineError("Could not reach the speech service.");
     }
   }, [stopSpeaking]);
 

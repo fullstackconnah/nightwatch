@@ -92,6 +92,32 @@ async function readRows(page, where) {
   return rows.evaluateAll((els) => els.map((e) => ({ text: e.innerText, h: e.getBoundingClientRect().height })));
 }
 
+// 390 only: below md the text block spans the full row, so line 3 (subnet + count) must not ellipse, and a name of
+// 31 characters or fewer (homelab-dashboard-test_internal) must not either; longer names may truncate and keep their title.
+async function clipChecks(page, where) {
+  if (!where.endsWith("@390")) return;
+  const r = await bridgeRows(page).evaluateAll((rows) => {
+    const clipped = (el) => el.scrollWidth > el.clientWidth;
+    const line3 = [];
+    const names = [];
+    for (const row of rows) {
+      const block = row.firstElementChild;
+      const l3 = block.querySelectorAll(":scope > div.truncate")[1];
+      if (l3 && clipped(l3)) line3.push(l3.textContent.trim());
+      const nm = block.querySelector("span.truncate");
+      if (nm && clipped(nm)) names.push(nm.textContent.trim());
+    }
+    return { line3, names };
+  });
+  check("line 3 not clipped at 390", where, r.line3.length === 0, { clipped: r.line3.length, first: r.line3[0] ?? null });
+  const short = r.names.filter((t) => t.length <= 31);
+  check("name line not clipped at 390 (names of 31 characters or fewer)", where, short.length === 0, {
+    clipped: r.names.length,
+    clippedShort: short.length,
+    first: short[0] ?? r.names[0] ?? null,
+  });
+}
+
 const browser = await chromium.launch();
 try {
   for (const vp of VIEWPORTS) {
@@ -129,6 +155,7 @@ try {
         normalHeights = info.map((i) => i.h);
         const bad = info.filter((i) => /docker unavailable|reading networks…/.test(i.text)).length;
         check("no bridge row shows a docker-read placeholder", where, bad === 0, { bad, rows: info.length });
+        await clipChecks(page, where);
       }, undefined, (page) => bridgeSection(page), true);
     } else if (ONLY === "nets-failed") {
       const ctx = await open(browser, vp, "normal-heights");
@@ -150,6 +177,7 @@ try {
       const diffs = info.map((i, k) => Math.abs(i.h - (normalHeights?.[k] ?? NaN)));
       const same = normalHeights !== null && normalHeights.length === info.length && diffs.every((d) => d <= 1);
       check("row height equals the normal state within 1 px", where, same, { maxDiff: Math.max(...diffs), rows: info.length, normalRows: normalHeights?.length ?? null });
+      await clipChecks(page, where);
     }, (page) => page.route(/\/api\/docker\/networks(\?|$)/, (route) => json(route, { error: "unreachable" }, 502)), (page) => bridgeSection(page));
 
     // The route is held: never fulfilled, never continued, so the read stays loading for the whole capture.
@@ -159,6 +187,7 @@ try {
       check("every bridge row says reading networks…", where, missing === 0, { rows: info.length, missing });
       const stale = info.filter((i) => i.text.includes("not a docker network")).length;
       check("no bridge row claims not a docker network", where, stale === 0, { stale });
+      await clipChecks(page, where);
     }, (page) => page.route(/\/api\/docker\/networks(\?|$)/, () => new Promise(() => {})), (page) => bridgeSection(page));
 
     await run("containers-failed", async (page, where) => {
