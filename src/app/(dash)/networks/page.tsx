@@ -211,8 +211,8 @@ function BridgeRow({
             ? dockerState === "ready"
               ? "not a docker network"
               : dockerState === "loading"
-                ? "reading docker networks…"
-                : "docker details unavailable"
+                ? "reading networks…"
+                : "docker unavailable"
             : `${attached} ${attached === 1 ? "container" : "containers"}`}
         </div>
       </div>

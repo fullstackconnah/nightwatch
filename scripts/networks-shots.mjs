@@ -121,13 +121,13 @@ try {
         // The docker read answers after the section renders; the check below must not run on the loading rows.
         await bridgeSection(page).waitFor({ timeout: SLOW });
         await page.waitForFunction(
-          () => ![...document.querySelectorAll("div.grid")].some((e) => e.innerText.includes("reading docker networks…")),
+          () => ![...document.querySelectorAll("div.grid")].some((e) => e.innerText.includes("reading networks…")),
           null,
           { timeout: SLOW },
         );
         const info = await readRows(page, where);
         normalHeights = info.map((i) => i.h);
-        const bad = info.filter((i) => /docker details unavailable|reading docker networks…/.test(i.text)).length;
+        const bad = info.filter((i) => /docker unavailable|reading networks…/.test(i.text)).length;
         check("no bridge row shows a docker-read placeholder", where, bad === 0, { bad, rows: info.length });
       }, undefined, (page) => bridgeSection(page), true);
     } else if (ONLY === "nets-failed") {
@@ -143,8 +143,8 @@ try {
 
     await run("nets-failed", async (page, where) => {
       const info = await readRows(page, where);
-      const missing = info.filter((i) => !i.text.includes("docker details unavailable")).length;
-      check("every bridge row says docker details unavailable", where, missing === 0, { rows: info.length, missing });
+      const missing = info.filter((i) => !i.text.includes("docker unavailable")).length;
+      check("every bridge row says docker unavailable", where, missing === 0, { rows: info.length, missing });
       const stale = info.filter((i) => /not a docker network|subnet unknown/.test(i.text)).length;
       check("no bridge row claims not a docker network or subnet unknown", where, stale === 0, { stale });
       const diffs = info.map((i, k) => Math.abs(i.h - (normalHeights?.[k] ?? NaN)));
@@ -155,8 +155,8 @@ try {
     // The route is held: never fulfilled, never continued, so the read stays loading for the whole capture.
     await run("nets-loading", async (page, where) => {
       const info = await readRows(page, where);
-      const missing = info.filter((i) => !i.text.includes("reading docker networks…")).length;
-      check("every bridge row says reading docker networks…", where, missing === 0, { rows: info.length, missing });
+      const missing = info.filter((i) => !i.text.includes("reading networks…")).length;
+      check("every bridge row says reading networks…", where, missing === 0, { rows: info.length, missing });
       const stale = info.filter((i) => i.text.includes("not a docker network")).length;
       check("no bridge row claims not a docker network", where, stale === 0, { stale });
     }, (page) => page.route(/\/api\/docker\/networks(\?|$)/, () => new Promise(() => {})), (page) => bridgeSection(page));

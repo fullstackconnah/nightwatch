@@ -10,8 +10,8 @@ test("bridge rows tell loading, failed and ready docker reads apart", () => {
   const src = page();
   assert.match(src, /const \{ data: dockerNets, error: dockerError \} = useSWR</);
   assert.match(src, /dockerNets \? "ready" : dockerError \? "failed" : "loading"/);
-  assert.ok(src.includes("docker details unavailable"));
-  assert.ok(src.includes("reading docker networks…"));
+  assert.ok(src.includes('"docker unavailable"'));
+  assert.ok(src.includes('"reading networks…"'));
 });
 
 test("container footprint says why it has no rows", () => {
