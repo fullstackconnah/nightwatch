@@ -43,3 +43,27 @@ export function rejoinProcessRow(cols: string[]): string[] {
   if (cols.length <= 3) return cols;
   return [cols[0], cols.slice(1, -1).join(","), cols[cols.length - 1]];
 }
+
+/**
+ * Single helper for nvidia-smi's "no value" sentinels ([N/A], [Not Supported],
+ * [Unknown Error]) and empty cells, so the check isn't repeated at every field.
+ */
+export function cell(raw: string | undefined): string | null {
+  const t = (raw ?? "").trim();
+  if (!t || t === "[N/A]" || t === "[Not Supported]" || t === "[Unknown Error]") return null;
+  return t;
+}
+
+export function cellNumber(raw: string | undefined): number | null {
+  const v = cell(raw);
+  if (v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+const MIB_TO_BYTES = 1024 * 1024;
+
+/** null stays null: an unreported memory size must never become "0 B". */
+export function mibToBytes(mib: number | null): number | null {
+  return mib === null ? null : mib * MIB_TO_BYTES;
+}
