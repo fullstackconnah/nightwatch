@@ -323,7 +323,7 @@ try {
         check("not-updating marker visible", `processes-poll-failed@${vp.name}`, await note.isVisible(), null);
         check("table marked stale", `processes-poll-failed@${vp.name}`, (await page.locator(".pt-panel[data-stale]").count()) === 1, null);
       }, (page) => page.route(/\/api\/processes(\?|$)/, (route) => (++calls === 1 ? route.continue() : json(route, { error: "unreachable" }, 500))),
-      (page) => page.locator(".pt-panel"));
+      (page) => page.locator(".pt-panel .pt-head")); // header block only: the whole panel is taller than the viewport, so chrome would cover it
     };
 
     if (ONLY === "processes-poll-failed") {
