@@ -57,32 +57,59 @@ async function openDialog(browser, opts, hold) {
     if (pathname.endsWith("/api/docker/disk-usage")) return json(route, 200, diskFor("full"));
     return json(route, 200, {});
   });
+  const apiUrls = [];
+  page.on("request", (r) => { if (r.url().includes("/api/")) apiUrls.push(`${r.method()} ${new URL(r.url()).pathname}`); });
   await page.goto(`${BASE_URL}/docker`, { waitUntil: "domcontentloaded" });
-  await page.locator('[data-feature="create"]').click();
+  // Hydration signal (as docker-shots.mjs): the chore rows only render once the client has fetched the mocked reads.
+  await page.locator("[data-chore]").first().waitFor({ timeout: 30_000 });
   const dialog = page.getByRole("dialog");
-  await dialog.waitFor({ state: "visible", timeout: 20_000 });
-  return { context, page, dialog, posts, errors };
+  const btn = page.locator('[data-feature="create"]');
+  let tries = 0;
+  for (; tries < 5; ) {
+    tries++;
+    await btn.click();
+    if (await dialog.waitFor({ state: "visible", timeout: 3_000 }).then(() => true, () => false)) return { context, page, dialog, posts, errors };
+  }
+  const facts = {
+    tries, visible: await btn.isVisible(), enabled: await btn.isEnabled().catch(() => false),
+    readyState: await page.evaluate(() => document.readyState), apiRequests: apiUrls.join(" | "), pageerrors: errors.join("; "),
+  };
+  throw new Error(`dialog did not open ${JSON.stringify(facts)}`);
 }
 
-// Padded (16 px) viewport clip of the fixed dialog, clamped to the viewport; fails when other fixed or sticky chrome covers it.
+// Padded (16 px) viewport clip of the fixed dialog, clamped to the viewport. Chrome (fixed or sticky) covers the dialog only when
+// it intersects the dialog's own box AND is painted above it at the intersection centre (elementsFromPoint order); chrome behind the scrim does not count.
 async function crop(page, dialog, file, label) {
-  const { clip, covered } = await dialog.evaluate((el, pad) => {
+  const { clip, covered, rects } = await dialog.evaluate((el, pad) => {
     const r = el.getBoundingClientRect();
     const x = Math.max(0, r.left - pad), y = Math.max(0, r.top - pad);
     const box = { left: x, top: y, right: Math.min(innerWidth, r.right + pad), bottom: Math.min(innerHeight, r.bottom + pad) };
+    const rect = (b) => [b.left, b.top, b.right, b.bottom].map(Math.round).join(",");
+    const rects = [];
     const covered = [...document.querySelectorAll("body *")].filter((e) => {
       const cs = getComputedStyle(e);
       if (!["fixed", "sticky"].includes(cs.position) || cs.visibility === "hidden" || cs.display === "none" || e.contains(el)) return false;
       const b = e.getBoundingClientRect();
-      return b.width > 0 && b.height > 0 && b.left < box.right && b.right > box.left && b.top < box.bottom && b.bottom > box.top;
-    }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}`);
-    return { clip: { x, y, width: box.right - x, height: box.bottom - y }, covered };
+      const l = Math.max(b.left, r.left), t = Math.max(b.top, r.top), rt = Math.min(b.right, r.right), bt = Math.min(b.bottom, r.bottom);
+      if (!(b.width > 0 && b.height > 0 && l < rt && t < bt)) return false;
+      const stack = document.elementsFromPoint((l + rt) / 2, (t + bt) / 2);
+      const above = stack.findIndex((s) => e === s || e.contains(s)), dlg = stack.findIndex((s) => el === s || el.contains(s));
+      rects.push(`${e.tagName.toLowerCase()}[${rect(b)}] above=${above} dialog=${dlg}`);
+      return above !== -1 && (dlg === -1 || above < dlg);
+    }).map((e) => `${e.tagName.toLowerCase()}.${String(e.className).slice(0, 30)}[${rect(e.getBoundingClientRect())}]`);
+    return { clip: { x, y, width: box.right - x, height: box.bottom - y }, covered, rects: [`dialog[${rect(r)}]`, `clip[${rect(box)}]`, ...rects] };
   }, 16);
-  check(`${label} crop clear of fixed or sticky chrome`, covered.length === 0, covered.join(", "));
+  check(`${label} crop clear of fixed or sticky chrome`, covered.length === 0, `${covered.join(", ")} | ${rects.join(" ; ")}`);
   await page.screenshot({ path: join(OUT_DIR, file), clip });
 }
 
 const noSidewaysScroll = (dialog) => dialog.evaluate((el) => el.scrollWidth <= el.clientWidth && document.documentElement.scrollWidth <= innerWidth);
+// A timeout names what the dialog showed and how many create POSTs went out.
+async function waitAlert(alert, dialog, posts) {
+  try { await alert.waitFor({ state: "visible", timeout: 5_000 }); } catch (e) {
+    throw new Error(`alert not shown: dialog="${(await dialog.innerText().catch(() => "?")).slice(0, 300).replace(/\s+/g, " ")}" posts=${posts.length}`);
+  }
+}
 const msg = (e) => String(e?.message ?? e).split(/\r?\n/)[0];
 
 const browser = await chromium.launch({ headless: true });
@@ -98,7 +125,7 @@ try {
       await dialog.getByLabel("Host port 1").fill("8080");
       await dialog.getByRole("button", { name: "Create & start" }).click();
       const alert = dialog.getByRole("alert");
-      await alert.waitFor({ state: "visible", timeout: 5_000 });
+      await waitAlert(alert, dialog, posts);
       check(`cform-port-refused @${name}: message`, (await alert.innerText()) === PORT_MSG, await alert.innerText());
       await page.waitForTimeout(300);
       check(`cform-port-refused @${name}: no create request`, posts.length === 0, `${posts.length} POSTs`);
@@ -121,7 +148,7 @@ try {
       await dialog.getByLabel("Variable value 1").fill("x");
       await dialog.getByRole("button", { name: "Create & start" }).click();
       const alert = dialog.getByRole("alert");
-      await alert.waitFor({ state: "visible", timeout: 5_000 });
+      await waitAlert(alert, dialog, posts);
       check(`cform-env-refused @${name}: message`, (await alert.innerText()) === ENV_MSG, await alert.innerText());
       await page.waitForTimeout(300);
       check(`cform-env-refused @${name}: no create request`, posts.length === 0, `${posts.length} POSTs`);
