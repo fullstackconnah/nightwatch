@@ -134,7 +134,8 @@ describe("McManagerClient slow actions and reasons (hunt 7 A1 A2)", () => {
     assert.ok(probe.status !== "ok" && probe.detail.includes("slug already exists"));
   });
   it("uses the 120 s limit for slow actions and keeps 6 s for reads", async () => {
-    stubFetch(new Error("boom"));
+    // A real timeout: a plain network error now reads "not reachable" (hunt 98).
+    stubFetch(new DOMException("timed out", "TimeoutError"));
     const c = new TestableManagerClient();
     const slow = await c.runBackup();
     const fast = await c.instances();

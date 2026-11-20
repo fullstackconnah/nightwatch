@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { loadConfig, unconfiguredDetail } from "./config.ts";
 import { KeyedMemo } from "./cache.ts";
 import { fetchNoCrossOriginRedirect } from "./safe-fetch.ts";
+import { isTimeout } from "./integration-client.ts";
 import type {
   ProxyCertificate,
   ProxyManagerSnapshot,
@@ -97,7 +98,7 @@ async function login(creds: NpmCredentials): Promise<AuthResult> {
     });
   } catch (e) {
     if (e instanceof Error && e.message.startsWith("redirected")) return { ok: false, reason: "unreachable", detail: "NPM redirected to another host." };
-    return { ok: false, reason: "unreachable", detail: `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` };
+    return { ok: false, reason: "unreachable", detail: isTimeout(e) ? `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` : "NPM is not reachable." };
   }
 
   if (res.status === 401 || res.status === 403) {
@@ -146,8 +147,8 @@ async function npmGet<T>(url: string, token: string): Promise<ApiResult<T>> {
       signal: AbortSignal.timeout(API_TIMEOUT_MS),
       cache: "no-store",
     });
-  } catch {
-    return { kind: "error", detail: `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` };
+  } catch (e) {
+    return { kind: "error", detail: isTimeout(e) ? `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` : "NPM is not reachable." };
   }
   if (res.status === 401 || res.status === 403) return { kind: "unauthorized" };
   if (!res.ok) return { kind: "error", detail: `NPM returned HTTP ${res.status}.` };

@@ -9,6 +9,7 @@ import type {
 import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "@/lib/config";
 import { JOB_ID_RE, mapJobBody } from "@/lib/hermes-job-map";
 import { readCapped } from "@/lib/read-capped";
+import { isTimeout } from "@/lib/integration-client";
 
 /**
  * Server-only client for the Hermes ops daemon's HTTP control API.
@@ -50,8 +51,8 @@ export const HERMES_UNCONFIGURED_DETAIL =
   "card (or HERMES_API_URL / HERMES_API_TOKEN in the server environment) — both are read " +
   "fresh on every request, so nothing else needs to change once they're set.";
 
-function unreachableDetail(url: string, timeoutMs: number): string {
-  return `Hermes at ${url} did not respond within ${timeoutMs / 1000}s.`;
+function unreachableDetail(url: string, timeoutMs: number, timedOut: boolean): string {
+  return timedOut ? `Hermes at ${url} did not respond within ${timeoutMs / 1000}s.` : `Hermes at ${url} is not reachable.`;
 }
 
 function unauthorizedDetail(httpStatus: number): string {
@@ -74,8 +75,8 @@ async function hermesFetch(creds: HermesCredentials, path: string, init?: Reques
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
-  } catch {
-    return { kind: "unreachable", detail: unreachableDetail(creds.url, timeoutMs) };
+  } catch (e) {
+    return { kind: "unreachable", detail: unreachableDetail(creds.url, timeoutMs, isTimeout(e)) };
   }
   if (res.status === 401 || res.status === 403) {
     return { kind: "unauthorized", detail: unauthorizedDetail(res.status) };

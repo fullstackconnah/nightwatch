@@ -2,6 +2,7 @@
 import { loadConfig, unconfiguredDetail } from "./config.ts";
 import { cachedByKey } from "./weather-cache.ts";
 import { readJsonCapped } from "./read-capped.ts";
+import { isTimeout } from "./integration-client.ts";
 
 /**
  * Server-only Open-Meteo client for the public /kiosk weather card.
@@ -550,8 +551,8 @@ async function fetchWeather(cfg: DisplayConfig): Promise<WeatherResponse> {
   let res: Response;
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), cache: "no-store" });
-  } catch {
-    return { status: "unreachable", detail: `Open-Meteo did not respond within ${TIMEOUT_MS / 1000}s.` };
+  } catch (e) {
+    return { status: "unreachable", detail: isTimeout(e) ? `Open-Meteo did not respond within ${TIMEOUT_MS / 1000}s.` : "Open-Meteo is not reachable." };
   }
   if (!res.ok) return { status: "unreachable", detail: `Open-Meteo returned HTTP ${res.status}.` };
 
