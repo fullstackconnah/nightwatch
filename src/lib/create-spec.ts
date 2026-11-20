@@ -77,6 +77,9 @@ export function validateSpecShape(body: unknown): string | null {
       for (const [f, ok] of Object.entries(fields)) {
         if (row[f] === undefined ? requiredFields.has(`${list}.${f}`) : !ok(row[f])) return `${list}.${f} is invalid`;
       }
+      // The browser form refuses these; API callers must not have them dropped silently.
+      if (list === "volumes" && !row.host !== !row.container) return "Volume rows need both a host path and a container path.";
+      if (list === "env" && !row.key && row.value) return "Variable rows need a name.";
     }
   }
   return null;
@@ -108,6 +111,20 @@ export function validateCreateSpec(spec: Checkable): string | null {
     return `Network "${net}" is not allowed. Allowed: ${createNetworks().join(", ")}.`;
   }
   return null;
+}
+
+/** Docker's PortBindings value is a list: every host port a row names is published, an exact repeat once. */
+export function buildPortBindings(ports: { host: number; container: number; protocol?: string }[]) {
+  const exposedPorts: Record<string, object> = {};
+  const portBindings: Record<string, { HostPort: string }[]> = {};
+  for (const p of ports) {
+    const key = `${p.container}/${p.protocol || "tcp"}`;
+    const list = (portBindings[key] ??= []);
+    const HostPort = String(p.host);
+    exposedPorts[key] = {};
+    if (!list.some((b) => b.HostPort === HostPort)) list.push({ HostPort });
+  }
+  return { exposedPorts, portBindings };
 }
 
 // Bind mounts are always read-only (the spec's readonly flag is ignored for them) and use the same

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
@@ -40,5 +40,26 @@ describe("buildTiles", () => {
       hidden: true,
       hasWidget: false,
     });
+  });
+
+  const urlOf = (labelUrl: string | undefined) =>
+    buildTiles([{ ...container, ports: [], labels: labelUrl === undefined ? {} : { "dashboard.url": labelUrl } }], new Set())[0].tile.url;
+
+  it("ignores a label URL that is not http or https", () => {
+    assert.notEqual(urlOf("javascript:alert(1)"), "javascript:alert(1)");
+    assert.equal(urlOf("  http://example.test:1  "), "http://example.test:1");
+  });
+
+  it("skips a stored non-http URL for a good label, and a good stored URL wins, trimmed", () => {
+    const cfgPath = join(process.env.DATA_DIR!, "config.json");
+    let t = 1_700_000_000;
+    const write = (u: string) => {
+      writeFileSync(cfgPath, JSON.stringify({ urls: { jellyfin: u } }));
+      utimesSync(cfgPath, ++t, t); // loadConfig caches by mtime
+    };
+    write("ftp://x");
+    assert.equal(urlOf("http://label.test"), "http://label.test");
+    write("  https://stored.test  ");
+    assert.equal(urlOf("http://label.test"), "https://stored.test");
   });
 });

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildMounts, checkCreateSpecHost, validateCreateSpec, validateSpecShape } from "./create-spec.ts";
+import { buildMounts, buildPortBindings, checkCreateSpecHost, validateCreateSpec, validateSpecShape } from "./create-spec.ts";
 
 const badShapes: [string, unknown, RegExp][] = [
   ["null body", null, /object/],
@@ -36,7 +36,24 @@ const badShapes: [string, unknown, RegExp][] = [
   ["image with whitespace", { image: "ngi nx" }, /^image is invalid$/],
   ["env key with =", { image: "x", env: [{ key: "A=B", value: "1" }] }, /^env\.key is invalid$/],
   ["env key with a space", { image: "x", env: [{ key: "A B", value: "1" }] }, /^env\.key is invalid$/],
+  ["a volume row with only a host", { image: "x", volumes: [{ host: "/a", container: "" }] }, /^Volume rows need both a host path and a container path\.$/],
+  ["a volume row with only a container", { image: "x", volumes: [{ host: "", container: "/d" }] }, /^Volume rows need both a host path and a container path\.$/],
+  ["a variable row with a value and no name", { image: "x", env: [{ key: "", value: "1" }] }, /^Variable rows need a name\.$/],
 ];
+
+test("buildPortBindings publishes every host port on one container port, once each", () => {
+  const r = buildPortBindings([
+    { host: 8080, container: 80 },
+    { host: 9090, container: 80 },
+    { host: 8080, container: 80, protocol: "tcp" },
+    { host: 53, container: 53, protocol: "udp" },
+    { host: 5353, container: 53, protocol: "tcp" },
+  ]);
+  assert.deepEqual(r.portBindings["80/tcp"], [{ HostPort: "8080" }, { HostPort: "9090" }]);
+  assert.deepEqual(Object.keys(r.exposedPorts).sort(), ["53/tcp", "53/udp", "80/tcp"]);
+  assert.deepEqual(r.portBindings["53/udp"], [{ HostPort: "53" }]);
+  assert.deepEqual(r.portBindings["53/tcp"], [{ HostPort: "5353" }]);
+});
 
 for (const [label, body, re] of badShapes) {
   test(`validateSpecShape refuses ${label}`, () => {
@@ -54,7 +71,7 @@ test("validateSpecShape accepts valid names, a digest image, a blank env key and
   for (const name of ["ok-1", "ab", ""]) assert.equal(validateSpecShape({ image: "x", name }), null);
   assert.equal(validateSpecShape({ image: "x" }), null);
   assert.equal(validateSpecShape({ image: "ghcr.io/a/b:1.2@sha256:abc" }), null);
-  assert.equal(validateSpecShape({ image: "x", env: [{ key: "", value: "1" }] }), null);
+  assert.equal(validateSpecShape({ image: "x", env: [{ key: "", value: "" }], volumes: [{ host: "", container: "" }] }), null); // all-empty rows are dropped later
   assert.equal(validateSpecShape({ image: "x", env: [{ key: "A_1", value: "x=y z" }] }), null);
 });
 
