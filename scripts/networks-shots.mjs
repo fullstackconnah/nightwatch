@@ -50,10 +50,16 @@ async function open(browser, vp, state, setup) {
 }
 
 // Padded crop (16 px, clamped to the page) of one element; fails when fixed or sticky chrome overlaps the crop rect.
-const cropElement = async (page, loc, state, vpName) => {
-  await loc.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
-  const r = await loc.evaluate((el) => {
-    const b = el.getBoundingClientRect();
+// firstRows (narrow viewports): crop only the heading plus the first N "div.grid" rows, with the top parked under the sticky header.
+const TOP_GAP = 96; // park the section top this far down: clears the 390 sticky header, plus the 16 px pad
+const cropElement = async (page, loc, state, vpName, firstRows = 0) => {
+  await loc.evaluate((el, { fr, gap }) => {
+    el.scrollIntoView({ block: fr ? "start" : "center", behavior: "instant" });
+    if (fr) scrollBy(0, -gap);
+  }, { fr: firstRows, gap: TOP_GAP });
+  const r = await loc.evaluate((el, fr) => {
+    const t = el.getBoundingClientRect();
+    const b = { left: t.left, top: t.top, width: t.width, height: fr ? el.querySelectorAll("div.grid")[fr - 1].getBoundingClientRect().bottom - t.top : t.height };
     const pad = 16;
     const x = Math.max(0, b.left - pad), y = b.top - pad, w = Math.min(b.width + 2 * pad, innerWidth - x), h = b.height + 2 * pad;
     const over = [...document.querySelectorAll("body *")].filter((e) => {
@@ -63,9 +69,10 @@ const cropElement = async (page, loc, state, vpName) => {
       const q = e.getBoundingClientRect();
       return q.width > 0 && q.height > 0 && q.left < x + w && q.right > x && q.top < y + h && q.bottom > y;
     }).map((e) => e.tagName.toLowerCase() + "." + String(e.className).slice(0, 30));
-    return { clip: { x, y: Math.max(0, y + scrollY), width: w, height: h }, over };
-  });
+    return { clip: { x, y: Math.max(0, y + scrollY), width: w, height: h }, over, h };
+  }, firstRows);
   check("crop not covered by fixed or sticky chrome", `${state}@${vpName}`, r.over.length === 0, r.over);
+  if (firstRows) console.log(`crop ${state}@${vpName}: heading + ${firstRows} rows, ${Math.round(r.h)} px`);
   await page.screenshot({ path: join(OUT_DIR, `networks-${state}-${vpName}.png`), fullPage: true, clip: r.clip });
 };
 
@@ -95,7 +102,7 @@ try {
         ctx = await open(browser, vp, state, setup);
         await fn(ctx.page, where);
         if (full) await ctx.page.screenshot({ path: join(OUT_DIR, `networks-${state}-${vp.name}-full.png`), fullPage: true });
-        await cropElement(ctx.page, crop(ctx.page), state, vp.name);
+        await cropElement(ctx.page, crop(ctx.page), state, vp.name, vp.name === "390" ? 4 : 0);
         const o = await ctx.page.evaluate(docOverflow);
         check("document overflow", where, o.scroll <= o.client, o);
       } catch (e) {
@@ -110,6 +117,13 @@ try {
     let normalHeights = null;
     if (!ONLY || ONLY === "normal") {
       await run("normal", async (page, where) => {
+        // The docker read answers after the section renders; the check below must not run on the loading rows.
+        await bridgeSection(page).waitFor({ timeout: SLOW });
+        await page.waitForFunction(
+          () => ![...document.querySelectorAll("div.grid")].some((e) => e.innerText.includes("reading docker networks…")),
+          null,
+          { timeout: SLOW },
+        );
         const info = await readRows(page, where);
         normalHeights = info.map((i) => i.h);
         const bad = info.filter((i) => /docker details unavailable|reading docker networks…/.test(i.text)).length;

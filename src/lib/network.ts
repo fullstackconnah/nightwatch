@@ -987,9 +987,9 @@ async function collectNetworkSnapshot(): Promise<NetworkSnapshot> {
     const interfaces = await Promise.all(names.map((name) => buildInterface(name, ctx)));
     interfaces.sort((a, b) => ROLE_SORT_ORDER[a.role] - ROLE_SORT_ORDER[b.role] || a.name.localeCompare(b.name));
 
-    // One owner lookup (one docker call, one passwd read) shared by listening
-    // sockets and established connections — both attribute off "local port ->
-    // who bound it".
+    // The owner maps read in the Promise.all above (one docker call, one passwd
+    // read) are shared by listening sockets and established connections — both
+    // attribute off "local port -> who bound it".
     const sockets = await buildListeningSockets(warnings, portOwner, uidToUser);
     const { connections: allConnections, available: connectionsAvailable } = await buildEstablishedConnections(
       warnings,
