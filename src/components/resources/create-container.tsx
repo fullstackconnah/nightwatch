@@ -6,10 +6,7 @@ import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select } from "@/components/ui/input";
 import { postJson } from "@/lib/client";
-
-interface PortRow { host: string; container: string; protocol: "tcp" | "udp" }
-interface EnvRow { key: string; value: string }
-interface VolRow { host: string; container: string; readonly: boolean }
+import { checkRows, type EnvRow, type PortRow, type VolRow } from "@/lib/create-form";
 
 /**
  * One-off container creation. Compose-based stacks stay in Dockge — this is
@@ -51,26 +48,29 @@ export function CreateContainerDialog({
   function onDialogKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      if (!busy) onClose(); // a pull in flight must report its result or error here
       return;
     }
     onTab(e);
   }
 
   async function submit() {
-    setBusy(true);
     setError(null);
+    const rows = checkRows(ports, env, vols);
+    if ("error" in rows) {
+      setError(rows.error);
+      return;
+    }
+    setBusy(true);
     try {
       await postJson("/api/docker/containers", {
         image: image.trim(),
         name: name.trim() || undefined,
         network: network.trim() || undefined,
         restartPolicy: restart,
-        ports: ports
-          .filter((p) => p.host && p.container)
-          .map((p) => ({ host: Number(p.host), container: Number(p.container), protocol: p.protocol })),
-        env: env.filter((e) => e.key),
-        volumes: vols.filter((v) => v.host && v.container),
+        ports: rows.ports,
+        env: rows.env,
+        volumes: rows.volumes,
       });
       onCreated();
     } catch (e) {
@@ -104,8 +104,9 @@ export function CreateContainerDialog({
       >
         <button
           onClick={onClose}
+          disabled={busy}
           aria-label="Close"
-          className="absolute right-1 top-1 h-11 w-11 md:h-8 md:w-8 flex items-center justify-center text-ink-dim hover:text-ink cursor-pointer"
+          className="absolute right-1 top-1 h-11 w-11 md:h-8 md:w-8 flex items-center justify-center text-ink-dim hover:text-ink cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
         >
           <X size={16} />
         </button>
@@ -198,9 +199,9 @@ export function CreateContainerDialog({
           ))}
         </section>
 
-        {error && <p className="text-bad text-xs">{error}</p>}
+        {error && <p role="alert" className="text-bad text-xs">{error}</p>}
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !image.trim()}>
             {busy ? "Pulling & starting…" : "Create & start"}
           </Button>
