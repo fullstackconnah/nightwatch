@@ -311,6 +311,26 @@ try {
       }
     };
 
+    // Hunt 111: /api/processes answers once, then fails; the table keeps its rows and says it is not updating.
+    const processesPollFailed = () => {
+      let calls = 0;
+      return run("processes-poll-failed", "metric=all", async (page) => {
+        const items = page.locator(".pt-item");
+        await items.first().waitFor({ timeout: SLOW });
+        const note = page.getByRole("status").filter({ hasText: "not updating: the last scan failed" });
+        await note.waitFor({ timeout: SLOW });
+        check("table keeps at least one row", `processes-poll-failed@${vp.name}`, (await items.count()) >= 1, { rows: await items.count() });
+        check("not-updating marker visible", `processes-poll-failed@${vp.name}`, await note.isVisible(), null);
+        check("table marked stale", `processes-poll-failed@${vp.name}`, (await page.locator(".pt-panel[data-stale]").count()) === 1, null);
+      }, (page) => page.route(/\/api\/processes(\?|$)/, (route) => (++calls === 1 ? route.continue() : json(route, { error: "unreachable" }, 500))),
+      (page) => page.locator(".pt-panel"));
+    };
+
+    if (ONLY === "processes-poll-failed") {
+      await processesPollFailed();
+      continue;
+    }
+
     if (ONLY === "hint-pages") {
       await hintPages(run, vp.name);
       continue;
@@ -413,6 +433,8 @@ try {
       });
     }, (page) => page.locator(".panel", { has: page.getByText("DISK GROWTH", { exact: true }) }).last());
 
+    await processesPollFailed();
+
     await run("all-filter", "metric=all", async (page) => {
       const items = page.locator(".pt-item");
       await items.first().waitFor({ timeout: SLOW });
@@ -433,7 +455,7 @@ try {
 }
 check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
 // A mistyped SHOTS_ONLY would otherwise run the default sections and look green.
-check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root"].includes(ONLY), ONLY);
+check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root", "processes-poll-failed"].includes(ONLY), ONLY);
 if (ONLY === "hint-pages") {
   check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
   console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);

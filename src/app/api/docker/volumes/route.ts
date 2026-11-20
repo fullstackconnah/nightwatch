@@ -14,7 +14,7 @@ export async function GET() {
       for (const m of c.Mounts || []) {
         if (m.Type === "volume" && m.Name) {
           const list = usedBy.get(m.Name) || [];
-          list.push((c.Names?.[0] || "").replace(/^\//, ""));
+          list.push((c.Names?.[0] || c.Id.slice(0, 12)).replace(/^\//, ""));
           usedBy.set(m.Name, list);
         }
       }
