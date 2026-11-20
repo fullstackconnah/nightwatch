@@ -7,7 +7,7 @@
 import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { QUIET, ROUTES } from "./fixtures/kiosk/fixtures.mjs";
+import { PINNED_ISO, QUIET, ROUTES, ZONE } from "./fixtures/kiosk/fixtures.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -47,12 +47,14 @@ const rec = (key, ok, value) => {
 async function unreachable() {
   const browser = await chromium.launch({ headless: true, args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
   try {
-    const context = await browser.newContext({ viewport: VIEWPORT, permissions: ["microphone"] });
+    const context = await browser.newContext({ viewport: VIEWPORT, permissions: ["microphone"], timezoneId: ZONE });
+    // Daytime, as kiosk-shots: on the real clock a night run gets the night overlay and the PIN pad never opens. Time still flows (the recorder needs it).
+    await context.clock.install({ time: new Date(PINNED_ISO) });
     const page = await context.newPage();
     curPage = page;
     page.setDefaultTimeout(STEP_MS);
     let elevated = false; // the page recovers elevation from /refresh on mount, so it must answer "not elevated" until the PIN POST (an always-true stub hides the Admin button)
-    const until = Date.now() + 600_000;
+    const until = Date.parse(PINNED_ISO) + 600_000;
     await page.route("**/kiosk/api/**", (route) => route.fulfill({ json: ROUTES[new URL(route.request().url()).pathname] ?? QUIET }));
     await page.route("**/api/auth/kiosk", (route) => (route.request().method() === "POST" ? ((elevated = true), route.fulfill({ json: { ok: true, expiresAt: until } })) : route.fallback()));
     await page.route("**/api/auth/kiosk/refresh", (route) => route.fulfill({ json: elevated ? { elevated: true, expiresAt: until } : { elevated: false } }));
