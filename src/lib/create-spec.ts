@@ -53,7 +53,7 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const isPort = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 65535;
 const rowShapes: Record<string, Record<string, (v: unknown) => boolean>> = {
   ports: { host: isPort, container: isPort, protocol: (v) => v === "tcp" || v === "udp" },
-  env: { key: (v) => typeof v === "string", value: (v) => typeof v === "string" },
+  env: { key: (v) => typeof v === "string" && !/[=\s]/.test(v), value: (v) => typeof v === "string" },
   volumes: { host: (v) => typeof v === "string", container: (v) => typeof v === "string", readonly: (v) => typeof v === "boolean" },
 };
 const requiredFields = new Set(["ports.host", "ports.container", "env.value"]);
@@ -65,6 +65,8 @@ export function validateSpecShape(body: unknown): string | null {
   for (const f of ["name", "network", "restartPolicy"]) {
     if (body[f] !== undefined && typeof body[f] !== "string") return `${f} must be a string`;
   }
+  if (/\s/.test(body.image)) return "image is invalid";
+  if (body.name && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(body.name as string)) return "name is invalid";
   if (body.restartPolicy !== undefined && !restartPolicies.includes(body.restartPolicy as string)) return "restartPolicy is invalid";
   for (const [list, fields] of Object.entries(rowShapes)) {
     const rows = body[list];
