@@ -62,4 +62,14 @@ describe("buildTiles", () => {
     write("  https://stored.test  ");
     assert.equal(urlOf("http://label.test"), "https://stored.test");
   });
+
+  it("a stored URL that is not text falls through instead of throwing", () => {
+    const cfgPath = join(process.env.DATA_DIR!, "config.json");
+    writeFileSync(cfgPath, JSON.stringify({ urls: { jellyfin: 5, other: { a: 1 } } }));
+    utimesSync(cfgPath, 1_700_001_000, 1_700_001_000);
+    const other = { ...container, id: "def", name: "other", labels: {} };
+    const tiles = buildTiles([container, other], new Set());
+    assert.equal(tiles[0].tile.url, "http://example.test:8096");
+    assert.ok(tiles[1].tile.url === null || typeof tiles[1].tile.url === "string");
+  });
 });

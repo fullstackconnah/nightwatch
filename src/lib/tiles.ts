@@ -74,7 +74,7 @@ export function buildTiles<T extends ContainerSummary>(
   return containers.map((c) => {
     const dl = parseDashboardLabels(c.labels);
     // A stored or labelled URL is rendered as an href, so only http(s) counts; anything else falls through.
-    const webUrl = (u: string | null | undefined) => (u && WEB_URL.test(u.trim()) ? u.trim() : null);
+    const webUrl = (u: unknown) => (typeof u === "string" && WEB_URL.test(u.trim()) ? u.trim() : null);
     const url = webUrl(cfg.urls[c.name]) ?? webUrl(dl.url) ?? inferUrl(c);
     const iconRaw =
       cfg.icons[c.name] ??
