@@ -664,9 +664,9 @@ function ResourcesPageInner() {
     mutate: mutateSummary,
   } = useSWR<HistoryApiResponse>(summaryKey, fetcher, { refreshInterval: 30000, keepPreviousData: true });
   const timelineError = (historyError ?? summaryError) as unknown;
-  const historyBucketTimes = useMemo(() => historyData?.host.map((b) => b.t) ?? [], [historyData]);
+  const historyBucketTimes = useMemo(() => historyData?.host?.map((b) => b.t) ?? [], [historyData]);
   const historyHostPoints = useMemo(() => {
-    if (!historyData || !historyMetric) return undefined;
+    if (!historyData?.host || !historyMetric) return undefined;
     return historyData.host.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
   }, [historyData, historyMetric]);
   // LIVE with compares draws the 60-sample SSE ring through the same points props.
@@ -688,7 +688,7 @@ function ResourcesPageInner() {
     };
   }, [historyMetric, historyRange, chartIds, samples, containers]);
   const historyContainerPoints = useMemo(() => {
-    if (!historyData || !historyMetric) return {};
+    if (!historyData?.containers || !historyMetric) return {};
     const out: Record<string, (number | null)[]> = {};
     for (const [name, buckets] of Object.entries(historyData.containers)) {
       out[name] = buckets.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));

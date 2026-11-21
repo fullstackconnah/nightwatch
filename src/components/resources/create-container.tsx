@@ -65,6 +65,8 @@ export function CreateContainerDialog({
     }
     setBusy(true);
     submitRef.current?.focus(); // disabling Cancel (or this button) would drop focus onto the dialog and ring it
+    // Read before the post: a drop while the create is in flight must not read as "nothing was sent".
+    const wasOffline = typeof navigator !== "undefined" && navigator.onLine === false;
     try {
       await postJson("/api/docker/containers", {
         image: image.trim(),
@@ -77,7 +79,7 @@ export function CreateContainerDialog({
       });
       onCreated();
     } catch (e) {
-      setError(createFailedCopy(e instanceof Error ? e.message : undefined, e instanceof ApiError ? e.status : undefined, typeof navigator !== "undefined" && navigator.onLine === false));
+      setError(createFailedCopy(e instanceof Error ? e.message : undefined, e instanceof ApiError ? e.status : undefined, wasOffline));
       setBusy(false);
     }
   }

@@ -99,7 +99,9 @@ export function rconCommand(opts: {
       }
     });
     socket.on("close", () => {
-      if (!settled) fail(new Error("rcon unreachable"));
+      // The server may reply then close at once (stop); a collected reply is a success.
+      if (responses.length) done(responses.join(""));
+      else fail(new Error("rcon unreachable"));
     });
   });
 }
