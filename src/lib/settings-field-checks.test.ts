@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { plainReason } from "./settings/page-model.ts";
-import { BUDGET_HINT, MAX_PASSWORD_BYTES, RCON_PORT_COPY, appUrlError, appUrlOffender, groupInputText, isPasswordOverBytes, passwordFieldHints, rconPortFieldError } from "./settings-field-checks.ts";
+import { BUDGET_HINT, budgetFieldError, MAX_PASSWORD_BYTES, RCON_PORT_COPY, appUrlError, appUrlOffender, groupInputText, isPasswordOverBytes, passwordFieldHints, rconPortFieldError } from "./settings-field-checks.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -28,9 +28,9 @@ test("A5: budget hint copy comes from MAX_BUDGET_USD", () => {
 
 test("P1: a budget over the cap is refused in the browser before the post; server texts name no field", () => {
   const src = read("../components/settings/settings-hermes.tsx");
-  const refuse = src.indexOf("Daily budget: the most is $${MAX_BUDGET_USD}");
+  const refuse = src.indexOf("budgetFieldError(pipelineBudget, daemon?.pipelineDailyBudgetUsd)");
   assert.ok(refuse > 0 && refuse < src.indexOf('postJson("/api/settings/hermes-daemon"'));
-  assert.ok(src.includes("n > MAX_BUDGET_USD"));
+  assert.equal(budgetFieldError("1001", 5), "Daily budget: the most is $1000");
   const checks = read("./settings-checks.ts");
   assert.ok(!checks.includes("pipelineDailyBudgetUsd must"));
   assert.ok(checks.includes("`Daily budget must be at most ${MAX_BUDGET_USD}`"));
@@ -150,4 +150,18 @@ test("polish12: the refused App URL is marked invalid on both layouts and the ma
   const tiles = read("../components/settings/settings-tiles.tsx");
   assert.equal(tiles.match(/aria-invalid=\{invalidUrl === name \|\| undefined\}/g)?.length, 2);
   assert.ok(read("../components/ui/input.tsx").includes('children.props["aria-invalid"]'));
+});
+
+test("budgetFieldError: an unchanged stored cap above the max is not refused; any other value over it is", () => {
+  assert.equal(budgetFieldError("5000", 5000), null);
+  assert.equal(budgetFieldError("5000.0", 5000), null);
+  assert.ok(budgetFieldError("6000", 5000));
+  assert.ok(budgetFieldError("1001", 500));
+  for (const stored of ["abc", null, undefined, NaN, {}]) assert.ok(budgetFieldError("1001", stored));
+  assert.equal(budgetFieldError("", 5000), null);
+  assert.equal(budgetFieldError("  ", undefined), null);
+  assert.ok(budgetFieldError("1e9", 500));
+  assert.ok(budgetFieldError("-1", 500));
+  assert.ok(budgetFieldError("abc", 500));
+  assert.equal(budgetFieldError("1000", 5), null);
 });

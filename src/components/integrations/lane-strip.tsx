@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/client";
 import { relativeTime } from "@/lib/format";
+import { laneActivityText } from "@/lib/lane-activity";
 import {
   agentLook,
   checkpointView,
@@ -206,7 +207,7 @@ export function LaneStrip({ o, stale }: { o: OrchestratorSummary; stale: boolean
     ((first as HTMLElement | null) ?? nameRef.current)?.focus();
   }, [held]);
 
-  const meta = [o.model, o.home, o.lastActivityAt ? `active ${relativeTime(o.lastActivityAt)}` : "no activity yet"].filter((x): x is string => Boolean(x));
+  const meta = [o.model, o.home, laneActivityText(o.lastActivityAt) ?? "no activity yet"].filter((x): x is string => Boolean(x));
   const pillOn = m.fresh + m.left > 0;
 
   return (
