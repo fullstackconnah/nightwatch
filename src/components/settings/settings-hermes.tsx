@@ -23,8 +23,7 @@ import { fetcher, postJson } from "@/lib/client";
 import { useFormReport } from "@/components/settings/form-report";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { BUDGET_HINT } from "@/lib/settings-field-checks";
-import { MAX_BUDGET_USD } from "@/lib/settings-checks";
+import { BUDGET_HINT, budgetFieldError } from "@/lib/settings-field-checks";
 import { SecretField, useSettingsFull } from "@/components/settings/settings-integrations";
 import { NO_PASSWORD_WARNING, StepUpField } from "@/components/settings/settings-access";
 import { isStepUpRefusal } from "@/lib/api-error";
@@ -375,10 +374,9 @@ function HermesDaemonCard() {
       if (webhookDraft.trim()) body.discordWebhookUrl = webhookDraft.trim();
       if (botTokenDraft.trim()) body.discordBotToken = botTokenDraft.trim();
       if (pipelineBudget.trim()) {
-        const n = Number(pipelineBudget);
-        if (!Number.isFinite(n) || n < 0) throw new Error("Daily budget must be a non-negative number");
-        if (n > MAX_BUDGET_USD) throw new Error(`Daily budget: the most is $${MAX_BUDGET_USD}`);
-        body.pipelineDailyBudgetUsd = n;
+        const budgetError = budgetFieldError(pipelineBudget, daemon?.pipelineDailyBudgetUsd);
+        if (budgetError) throw new Error(budgetError);
+        body.pipelineDailyBudgetUsd = Number(pipelineBudget);
       }
       if (askPassword) body.currentPassword = password;
       await postJson("/api/settings/hermes-daemon", body);

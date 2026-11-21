@@ -4,6 +4,15 @@ import { MAX_BUDGET_USD, rconPortError } from "./settings-checks.ts";
 export const RCON_PORT_COPY = "Port must be a whole number from 1 to 65535.";
 export const BUDGET_HINT = `Blank keeps the current cap. It can't be removed; the most is $${MAX_BUDGET_USD}.`;
 
+/** The Hermes daily-budget box, matching the server's change-only cap (budgetChangeError): the stored value itself is never refused for being over the cap. Blank keeps the cap. */
+export function budgetFieldError(text: string, stored: unknown): string | null {
+  if (!text.trim()) return null;
+  const n = Number(text);
+  if (!Number.isFinite(n) || n < 0) return "Daily budget must be a non-negative number";
+  if (typeof stored === "number" && Number.isFinite(stored) && n === stored) return null;
+  return n > MAX_BUDGET_USD ? `Daily budget: the most is $${MAX_BUDGET_USD}` : null;
+}
+
 /** Blank keeps the stored port (no error). Anything else must be a whole number the server's rconPortError accepts. */
 export function rconPortFieldError(raw: string): string | null {
   const t = raw.trim();
