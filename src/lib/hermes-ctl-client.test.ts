@@ -87,6 +87,24 @@ describe("runHermesJob", () => {
     assert.equal((await runHermesJob("digest") as { status: string }).status, "unreachable");
   });
 
+  it("keeps the Hermes URL and host out of the reason a person reads, and in the server log", async () => {
+    const logged: string[] = [];
+    const realError = console.error;
+    console.error = (...a: unknown[]) => void logged.push(a.join(" "));
+    try {
+      for (const err of [new Error("connect ECONNREFUSED"), Object.assign(new Error("t"), { name: "TimeoutError" })]) {
+        stubFetch(err);
+        const r = (await runHermesJob("digest")) as { status: string; detail: string };
+        assert.equal(r.status, "unreachable");
+        assert.match(r.detail, /^Hermes (is not reachable|did not respond within \d+s)\.$/);
+        assert.doesNotMatch(r.detail, /hermes\.test|8765|http/i);
+      }
+    } finally {
+      console.error = realError;
+    }
+    assert.ok(logged.some((l) => l.includes("http://hermes.test:8765")), "the URL stays in the server log");
+  });
+
   it("reports an unexpected HTTP status as an error", async () => {
     stubFetch(new Response("boom", { status: 500 }));
     const r = await runHermesJob("digest");

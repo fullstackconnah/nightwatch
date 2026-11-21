@@ -51,8 +51,9 @@ export const HERMES_UNCONFIGURED_DETAIL =
   "card (or HERMES_API_URL / HERMES_API_TOKEN in the server environment) — both are read " +
   "fresh on every request, so nothing else needs to change once they're set.";
 
-function unreachableDetail(url: string, timeoutMs: number, timedOut: boolean): string {
-  return timedOut ? `Hermes at ${url} did not respond within ${timeoutMs / 1000}s.` : `Hermes at ${url} is not reachable.`;
+// The reason is shown to people: no URL or host in it (the URL goes to the server log in hermesFetch).
+function unreachableDetail(timeoutMs: number, timedOut: boolean): string {
+  return timedOut ? `Hermes did not respond within ${timeoutMs / 1000}s.` : "Hermes is not reachable.";
 }
 
 function unauthorizedDetail(httpStatus: number): string {
@@ -76,7 +77,9 @@ async function hermesFetch(creds: HermesCredentials, path: string, init?: Reques
       cache: "no-store",
     });
   } catch (e) {
-    return { kind: "unreachable", detail: unreachableDetail(creds.url, timeoutMs, isTimeout(e)) };
+    const timedOut = isTimeout(e);
+    console.error(`Hermes at ${creds.url} ${timedOut ? `did not respond within ${timeoutMs / 1000}s` : "is not reachable"}.`);
+    return { kind: "unreachable", detail: unreachableDetail(timeoutMs, timedOut) };
   }
   if (res.status === 401 || res.status === 403) {
     return { kind: "unauthorized", detail: unauthorizedDetail(res.status) };

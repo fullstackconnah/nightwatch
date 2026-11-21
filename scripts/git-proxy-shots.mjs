@@ -416,6 +416,35 @@ await guarded("git-honest", async () => {
   }
 });
 
+// strip-long-name (polish 16): ONLY=strip-long-name. The first strip is renamed in the DOM to a long unbroken release name
+// (the git strips' titles are static words, so the fixture cannot carry it); a padded crop of the strip list per width.
+const LONG_NAME = "A.Long.Release.Name.2019.1080p.BluRay.x264-GRP.With.More.Words.To.Be.Sure";
+await guarded("strip-long-name", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "git", "calm");
+    const vp = `git@${s.name}`;
+    await page.locator("[data-row-id] .st-name").first().evaluate((el, t) => { el.textContent = t; }, LONG_NAME);
+    const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
+    const list = page.locator("[data-feature=strips]");
+    await list.scrollIntoViewIfNeeded();
+    const m = await page.evaluate(() => {
+      const row = document.querySelector("[data-row-id] .st-sh");
+      const name = row.querySelector(".st-name").getBoundingClientRect();
+      const r = row.getBoundingClientRect();
+      return { rowFits: row.scrollWidth <= row.clientWidth, pageFits: document.documentElement.scrollWidth <= window.innerWidth, nameInRow: name.right <= r.right + 0.5 };
+    });
+    record("SLN-1 row scrollWidth <= clientWidth", vp, m.rowFits);
+    record("SLN-2 page scrollWidth <= innerWidth", vp, m.pageFits);
+    record("SLN-3 name right edge inside the row", vp, m.nameInRow);
+    const box = await list.boundingBox();
+    const pad = 16;
+    const clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: box.height + 2 * pad };
+    await page.screenshot({ path: join(OUT_DIR, `strip-long-name-${s.name}.png`), fullPage: true, clip });
+    await tag.evaluate((el) => el.remove());
+    await page.close();
+  }),
+);
+
 // C12: under reduced motion nothing in main has a transition duration.
 await guarded("C12", () =>
   each(async (s) => {
