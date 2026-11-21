@@ -47,6 +47,8 @@ test("B6: lanes say 'not reachable' on a route-level error", () => {
   assert.match(s, /const \{ data, error \} = useOrchestraStatus\(\)/);
   assert.match(s, /homeLanesStatusText\(data\?\.status, Boolean\(error\)\)/);
   assert.equal(homeLanesStatusText(undefined, true), "not reachable");
+  assert.match(s, /data\?\.status === "ok" && !error/);
+  assert.equal(homeLanesStatusText("ok", true), "not reachable");
 });
 
 test("B7: orphans are null while sizes are pending", () => {

@@ -20,3 +20,13 @@ test("consoleHint: stopped and stale together give the stopped sentence", () => 
 test("consoleHint: running, answering, fresh has no hint", () => {
   assert.equal(consoleHint("ok", true, false), null);
 });
+test("consoleHint: a paused server says paused, not booting", () => {
+  assert.equal(consoleHint("unavailable", true, false, true), "server is paused — resume it to use the console");
+});
+test("consoleHint: a paused server is refused even when RCON answers", () => {
+  assert.equal(consoleHint("ok", true, false, true), "server is paused — resume it to use the console");
+});
+test("consoleHint: paused loses to unconfigured and to stopped", () => {
+  assert.equal(consoleHint("unconfigured", true, false, true), "RCON not configured — add it in Settings → Integrations");
+  assert.equal(consoleHint("ok", false, false, true), "server is stopped — start it to use the console");
+});

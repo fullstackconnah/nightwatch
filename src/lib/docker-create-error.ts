@@ -29,7 +29,7 @@ export function createErrorResult(message: string): { copy: string; status: numb
     return r("The Docker host is out of disk space. Free some space, then try again.", 500);
   }
   if (/abort/i.test(m)) {
-    return r("Docker did not answer within 10 seconds. Check that Docker is running, then try again.", 500);
+    return r("Docker did not answer within 10 seconds, so the container may already exist. Check the list before trying again.", 500);
   }
   return r(GENERIC, 500);
 }

@@ -12,8 +12,9 @@ it("every setLines append in the RCON console keeps only the last 500 entries", 
 
 it("the console takes its hint from consoleHint and the page passes whether the server is running", () => {
   const src = readFileSync(new URL("./console.tsx", import.meta.url), "utf8");
-  assert.match(src, /consoleHint\(rcon, running, Boolean\(stale\)\)/);
+  assert.match(src, /consoleHint\(rcon, running, Boolean\(stale\), paused\)/);
   assert.match(src, /const disabled = hint !== null;/);
   const page = readFileSync(new URL("../../app/(dash)/minecraft/page.tsx", import.meta.url), "utf8");
   assert.match(page, /running=\{container\?\.state !== "exited"\}/);
+  assert.match(page, /paused=\{container\?\.state === "paused"\}/);
 });

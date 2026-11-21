@@ -28,11 +28,14 @@ const append = (l: Line[], entry: Line): Line[] => [...l, entry].slice(-SCROLLBA
 export function Console({
   rcon,
   running,
+  paused,
   stale,
 }: {
   rcon: "ok" | "unavailable" | "unconfigured";
   /** The minecraft container is running; a stopped one reads differently from a booting one. */
   running: boolean;
+  /** The container is paused: RCON is silent, but it is not booting. */
+  paused?: boolean;
   /** The server is not answering: Send is off (the model's console-send). */
   stale?: boolean;
 }) {
@@ -46,7 +49,7 @@ export function Console({
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
-  const hint = consoleHint(rcon, running, Boolean(stale));
+  const hint = consoleHint(rcon, running, Boolean(stale), paused);
   const disabled = hint !== null;
 
   async function send() {

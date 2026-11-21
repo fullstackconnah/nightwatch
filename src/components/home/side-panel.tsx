@@ -55,7 +55,7 @@ function Digest() {
 
 function Lanes() {
   const { data, error } = useOrchestraStatus();
-  const text = data?.status === "ok" ? homeLanesText(data.orchestrators) : homeLanesStatusText(data?.status, Boolean(error));
+  const text = data?.status === "ok" && !error ? homeLanesText(data.orchestrators) : homeLanesStatusText(data?.status, Boolean(error));
   return (
     <Link href="/orchestrators" className="hm-lanes" data-feature="orchestra-link">
       <span className="microlabel">AI lanes</span>
