@@ -91,3 +91,32 @@ test("while creating, focus stays on a submit that is aria-disabled, not disable
   // a refused submit returns before busy starts, so focus stays where it was
   assert.ok(body.indexOf('"error" in rows') < busyAt);
 });
+
+const hostMsg = (n: number) => `Port row ${n}: the host port must be a whole number from 1 to 65535.`;
+const contMsg = (n: number) => `Port row ${n}: the container port must be a whole number from 1 to 65535.`;
+
+test("a host port that is not a whole number from 1 to 65535 is refused, naming the row", () => {
+  for (const bad of ["8000-8010", "abc", "0", "80.5", "70000", "-1", "1e3"]) {
+    assert.equal(err(checkRows([port("8080", "80"), port(bad, "80")], [], [])), hostMsg(2), bad);
+  }
+});
+
+test("a bad container port gets the container message; both bad reports the host", () => {
+  assert.equal(err(checkRows([port("8080", "80-90")], [], [])), contMsg(1));
+  assert.equal(err(checkRows([port("8080", "65536")], [], [])), contMsg(1));
+  assert.equal(err(checkRows([port("x", "y")], [], [])), hostMsg(1));
+});
+
+test("valid ports pass as numbers, trimmed, with the edges 1 and 65535", () => {
+  const r = checkRows([port("8080", "80"), port(" 8080 ", " 80 "), port("1", "65535"), port("080", "80")], [], []);
+  assert.deepEqual(r, {
+    ports: [
+      { host: 8080, container: 80, protocol: "tcp" },
+      { host: 8080, container: 80, protocol: "tcp" },
+      { host: 1, container: 65535, protocol: "tcp" },
+      { host: 80, container: 80, protocol: "tcp" },
+    ],
+    env: [],
+    volumes: [],
+  });
+});
