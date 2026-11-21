@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { homeLanesStatusText } from "./orchestra-view.ts";
 import { LOAD_FAILED, LOGS_FAILED, REFRESH_FAILED, detailNotice, nearBottom, statsWhileRunning } from "./detail-states.ts";
 
 const src = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -44,7 +45,8 @@ test("B5: the Digest reads error and shows dashes", () => {
 test("B6: lanes say 'not reachable' on a route-level error", () => {
   const s = src("components/home/side-panel.tsx");
   assert.match(s, /const \{ data, error \} = useOrchestraStatus\(\)/);
-  assert.match(s, /else if \(data \|\| error\) text = "not reachable"/);
+  assert.match(s, /homeLanesStatusText\(data\?\.status, Boolean\(error\)\)/);
+  assert.equal(homeLanesStatusText(undefined, true), "not reachable");
 });
 
 test("B7: orphans are null while sizes are pending", () => {
