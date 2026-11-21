@@ -37,7 +37,7 @@ export function buildGroups<P extends PLike>(processes: readonly P[]): Group<P>[
     const id = p.containerId ?? OTHER_ID;
     let g = map.get(id);
     if (!g) {
-      g = { id, name: p.containerId ? (p.containerName ?? p.containerId.slice(0, 12)) : OTHER_NAME, other: !p.containerId, procs: [], cpu: null, mem: 0, threads: 0, io: p.cgroupIoRate };
+      g = { id, name: p.containerId ? (p.containerName || p.containerId.slice(0, 12)) : OTHER_NAME, other: !p.containerId, procs: [], cpu: null, mem: 0, threads: 0, io: p.cgroupIoRate };
       map.set(id, g);
     }
     // Names resolve from a cached docker lookup, so the first process can arrive before its name does.

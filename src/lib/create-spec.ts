@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 interface Checkable {
   volumes: { host: string; container: string }[];
+  ports?: { host: number; container: number; protocol?: string }[];
   network?: string;
 }
 
@@ -65,7 +66,7 @@ export function validateSpecShape(body: unknown): string | null {
   for (const f of ["name", "network", "restartPolicy"]) {
     if (body[f] !== undefined && typeof body[f] !== "string") return `${f} must be a string`;
   }
-  if (/\s/.test(body.image)) return "image is invalid";
+  if (/\s/.test(body.image) || body.image.startsWith("-")) return "image is invalid";
   if (body.name && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/.test(body.name as string)) return "name is invalid";
   if (body.restartPolicy !== undefined && !restartPolicies.includes(body.restartPolicy as string)) return "restartPolicy is invalid";
   for (const [list, fields] of Object.entries(rowShapes)) {
@@ -95,7 +96,8 @@ export function validateCreateSpec(spec: Checkable): string | null {
       return `Container path "${v.container}" must be absolute, without "..", "." or repeated slashes.`;
     }
     // Named Docker volume.
-    if (!v.host.startsWith("/") && /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(v.host)) continue;
+    if (!v.host.startsWith("/") && /^[a-zA-Z0-9][a-zA-Z0-9_.-]+$/.test(v.host)) continue;
+    if (/^[a-zA-Z0-9]$/.test(v.host)) return `Volume name "${v.host}" is too short. Docker needs at least 2 characters.`;
     if (!v.host.startsWith("/")) return `Host path "${v.host}" must be absolute.`;
     const path = normalise(v.host);
     // shortcut: symlinks inside an allowed root are not resolved (no realpath of host paths from the container); the owner controls those trees.
@@ -105,6 +107,13 @@ export function validateCreateSpec(spec: Checkable): string | null {
     ) {
       return `Mounting "${v.host}" is not allowed. Bind mounts must be under: ${roots.join(", ")}.`;
     }
+  }
+  // Same key as buildPortBindings (host port + protocol); an exact repeat is dropped there, a different container port can't share the host port.
+  const published = new Map<string, number>();
+  for (const p of spec.ports ?? []) {
+    const key = `${p.host}/${p.protocol || "tcp"}`;
+    if (published.get(key) !== undefined && published.get(key) !== p.container) return `Host port ${p.host} is used by two rows. Give each row its own host port.`;
+    published.set(key, p.container);
   }
   const net = createNetwork(spec);
   if (!createNetworks().includes(net)) {

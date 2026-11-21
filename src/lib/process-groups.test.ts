@@ -76,3 +76,13 @@ test("withNewcomers: a group that newly matches joins the end of a held order; v
   assert.deepEqual(withNewcomers(["a", "gone"], ["a"]), ["a"]);
   assert.deepEqual(withNewcomers(null, ["x"]), ["x"]);
 });
+
+test("a container with an empty name is titled by its short id, like an absent name", () => {
+  const id = "c".repeat(64);
+  const [blank] = buildGroups([p(1, { containerId: id, containerName: "" })]);
+  const [absent] = buildGroups([p(2, { containerId: id, containerName: null })]);
+  const [named] = buildGroups([p(3, { containerId: id, containerName: "web" })]);
+  assert.equal(blank.name, id.slice(0, 12));
+  assert.equal(blank.name, absent.name);
+  assert.equal(named.name, "web");
+});

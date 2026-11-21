@@ -301,3 +301,30 @@ test("polish12: volume check copy says whether Docker answered with an error or 
   assert.equal(await run(() => Promise.reject({ statusCode: "500" })), 'Volume "app_data" could not be checked. Docker did not answer; try again.');
   assert.equal(await run(notFound), null);
 });
+
+test("validateSpecShape refuses an image starting with a dash, keeps dashes elsewhere", () => {
+  assert.equal(validateSpecShape({ image: "-x" }), "image is invalid");
+  assert.equal(validateSpecShape({ image: 5 }), "image is required");
+  assert.equal(validateSpecShape({ image: "nginx:1.27-alpine" }), null);
+  assert.equal(validateSpecShape({ image: "ghcr.io/a/b-c" }), null);
+});
+
+test("validateCreateSpec: a 1-character volume name is too short, 2 characters pass, a path stays 'must be absolute'", () => {
+  assert.equal(validateCreateSpec(spec("a")), 'Volume name "a" is too short. Docker needs at least 2 characters.');
+  assert.equal(validateCreateSpec(spec("7")), 'Volume name "7" is too short. Docker needs at least 2 characters.');
+  assert.equal(validateCreateSpec(spec("ab")), null);
+  assert.equal(validateCreateSpec(spec("a/b")), 'Host path "a/b" must be absolute.');
+});
+
+test("validateCreateSpec: one host port and protocol on two container ports is refused", () => {
+  const withPorts = (ports: { host: number; container: number; protocol?: string }[]) => ({ ...spec("ab"), ports });
+  assert.equal(
+    validateCreateSpec(withPorts([{ host: 8080, container: 80, protocol: "tcp" }, { host: 8080, container: 81, protocol: "tcp" }])),
+    "Host port 8080 is used by two rows. Give each row its own host port.",
+  );
+  assert.equal(validateCreateSpec(withPorts([{ host: 8080, container: 80 }, { host: 8080, container: 81, protocol: "tcp" }])), "Host port 8080 is used by two rows. Give each row its own host port.");
+  assert.equal(validateCreateSpec(withPorts([{ host: 8080, container: 80, protocol: "tcp" }, { host: 8080, container: 80, protocol: "udp" }])), null);
+  assert.equal(validateCreateSpec(withPorts([{ host: 8080, container: 80 }, { host: 8081, container: 80 }])), null);
+  assert.equal(validateCreateSpec(withPorts([{ host: 8080, container: 80 }, { host: 8080, container: 80 }])), null);
+  assert.equal(validateCreateSpec(withPorts([{ host: 8080, container: 80, protocol: "tcp" }, { host: 8080, container: 81, protocol: "udp" }])), null);
+});
