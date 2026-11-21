@@ -593,6 +593,27 @@ await guarded("rcon-port-error", () =>
     await page.close();
   }),
 );
+// ---- polish12: password errors wait for the field's first blur (ONLY=pw12 runs just this). State: pw12-blur-short (both widths) ----
+await guarded("pw12", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "calm", { hash: "#access" });
+    const c = visibleBody(page).first().locator('section:has(> div > h3:text-is("Change password"))');
+    await c.waitFor({ timeout: SLOW });
+    const next = c.getByPlaceholder("at least 8 characters");
+    await next.fill("abc");
+    record("polish12 short before blur: no error", s.name, (await c.innerText()).includes("needs at least 8") === false);
+    await field(c, "Confirm new password").focus(); // blurs the new-password field
+    record("polish12 short after blur: error", s.name, (await c.innerText()).includes("needs at least 8"));
+    await next.fill("abcdefgh");
+    await field(c, "Confirm new password").fill("abcdefgx");
+    record("polish12 mismatch waits for the confirm blur", s.name, (await c.innerText()).includes("don't match") === false);
+    await next.focus();
+    record("polish12 mismatch after confirm blur", s.name, (await c.innerText()).includes("don't match"));
+    await next.fill("abc");
+    await cropEl(page, s, c, "pw12-blur-short", false);
+    await page.close();
+  }),
+);
 // ---- nw-tileurl: a schemeless App URL is refused in the card, nothing is sent, the error stays inside the card ----
 await guarded("tileurl-refused", () =>
   each(async (s) => {
@@ -614,6 +635,12 @@ await guarded("tileurl-refused", () =>
     record("nw-tileurl error copy", s.name, (await line.innerText()) === `The App URL for ${name} must start with http:// or https://`);
     record("nw-tileurl no PUT sent", s.name, mock.posts.length === before);
     record("nw-tileurl typed value kept", s.name, (await input.inputValue()) === "myapp.lan:8080");
+    record("polish12 refused App URL input invalid", s.name, (await input.getAttribute("aria-invalid")) === "true"); // marked in the tileurl-refused crop
+    await input.fill("myapp.lan:8081");
+    record("polish12 mark clears when the value changes", s.name, (await input.getAttribute("aria-invalid")) === null);
+    await input.fill("myapp.lan:8080");
+    await body.getByRole("button", { name: "Save tiles" }).click();
+    await page.waitForTimeout(500);
     const inside = await line.evaluate((el) => { const r = el.getBoundingClientRect(), c = el.parentElement.getBoundingClientRect(); return r.right <= c.right + 0.5 && el.scrollWidth <= el.clientWidth + 1; });
     record("nw-tileurl error line inside the card", s.name, inside);
     await cropEl(page, s, line.locator("xpath=.."), "tileurl-refused");

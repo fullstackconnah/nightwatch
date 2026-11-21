@@ -32,7 +32,7 @@ import { LabelConventionPanel } from "@/components/settings/settings-reference";
 import { SettingsTiles, isCustomized } from "@/components/settings/settings-tiles";
 import { SettingsWidgets } from "@/components/settings/settings-widgets";
 import { useClampedLead } from "@/components/strips/use-answer-clamped";
-import { appUrlError } from "@/lib/settings-field-checks";
+import { appUrlError, appUrlOffender } from "@/lib/settings-field-checks";
 
 export default function SettingsPage() {
   const { data, error, mutate } = useSettingsFull((at) => setLoadedAt(at));
@@ -40,6 +40,8 @@ export default function SettingsPage() {
   const now = useNow(true);
   const [tileDraft, setTileDraft] = useState<AppConfig | null>(null);
   const [savingTiles, setSavingTiles] = useState(false);
+  // The App URL the last save refused, with the draft value it was refused at: the mark holds only while the field still has that value.
+  const [refusedUrl, setRefusedUrl] = useState<{ name: string; value: unknown } | null>(null);
   // Version of the tiles the draft was seeded from (or last saved); the server answers 409 if they changed since.
   const [tilesVersion, setTilesVersion] = useState<string | undefined>();
   const [forms, setForms] = useState<Partial<Record<FormId, FormState>>>({});
@@ -111,6 +113,8 @@ export default function SettingsPage() {
     // Trim what is checked and sent (the form keeps what was typed); compare with the config as last loaded, as the server does.
     const urls = Object.fromEntries(Object.entries(tileDraft.urls).map(([k, v]) => [k, typeof v === "string" ? v.trim() : v]));
     const urlError = appUrlError(urls, data?.config.urls ?? {}); // same check as the server; nothing is sent, the typed values stay
+    const offender = appUrlOffender(urls, data?.config.urls ?? {});
+    setRefusedUrl(offender === null ? null : { name: offender, value: tileDraft.urls[offender] });
     if (urlError) return setDashError((d) => ({ ...d, tiles: urlError }));
     setSavingTiles(true);
     setDashError((d) => ({ ...d, tiles: null }));
@@ -173,7 +177,7 @@ export default function SettingsPage() {
           error={dashError.widgets}
         />
         {tileDraft && (
-          <SettingsTiles cfg={tileDraft} containerNames={containerNames} onChange={setTileDraft} onSave={saveTiles} saving={savingTiles} dirty={tilesDirty} error={dashError.tiles} />
+          <SettingsTiles cfg={tileDraft} containerNames={containerNames} onChange={setTileDraft} onSave={saveTiles} saving={savingTiles} dirty={tilesDirty} error={dashError.tiles} invalidUrl={refusedUrl && tileDraft.urls[refusedUrl.name] === refusedUrl.value ? refusedUrl.name : null} />
         )}
         <LabelConventionPanel />
       </div>

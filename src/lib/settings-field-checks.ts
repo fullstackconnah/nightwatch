@@ -29,14 +29,33 @@ export const MAX_APP_URL = 2048;
 /** A link a tile may render: http or https only. */
 export const WEB_URL = /^https?:\/\/\S+$/i;
 
-/** First App URL the tiles save must refuse (the message names the container), or null. Shared by the server's mergeDashPut and the Tiles card. */
-export function appUrlError(urls: Record<string, unknown>, stored: Record<string, unknown> = {}): string | null {
+/** Key of the first App URL a save must refuse, or null. */
+export function appUrlOffender(urls: Record<string, unknown>, stored: Record<string, unknown> = {}): string | null {
   for (const [name, v] of Object.entries(urls)) {
     const old = stored[name];
     // unchanged (ignoring surrounding spaces: the browser trims drafts): a stored bad value for a removed container must not block the save
     if (name in stored && (v === old || (typeof v === "string" && typeof old === "string" && v.trim() === old.trim()))) continue;
-    if (typeof v === "string" && v.length > MAX_APP_URL) return `The App URL for ${name} is too long (the most is ${MAX_APP_URL} characters)`;
-    if (typeof v !== "string" || !WEB_URL.test(v.trim())) return `The App URL for ${name} must start with http:// or https://`;
+    if (typeof v !== "string" || v.length > MAX_APP_URL || !WEB_URL.test(v.trim())) return name;
   }
   return null;
+}
+
+/** First App URL the tiles save must refuse (the message names the container), or null. Shared by the server's mergeDashPut and the Tiles card. */
+export function appUrlError(urls: Record<string, unknown>, stored: Record<string, unknown> = {}): string | null {
+  const name = appUrlOffender(urls, stored);
+  if (name === null) return null;
+  const v = urls[name];
+  if (typeof v === "string" && v.length > MAX_APP_URL) return `The App URL for ${name} is too long (the most is ${MAX_APP_URL} characters)`;
+  return `The App URL for ${name} must start with http:// or https://`;
+}
+
+/** Change-password messages. "Too short" and "don't match" wait for their own field's first blur; "too long" shows at once. A mismatch is held back while the new password has its own error. */
+export function passwordFieldHints(s: { next: string; confirm: string; nextTouched: boolean; confirmTouched: boolean }): { tooShort: boolean; tooLong: boolean; mismatch: boolean } {
+  const short = s.next.length > 0 && s.next.length < 8;
+  const tooLong = isPasswordOverBytes(s.next);
+  return {
+    tooShort: short && s.nextTouched,
+    tooLong,
+    mismatch: s.confirmTouched && s.confirm.length > 0 && s.next !== s.confirm && s.next.length >= 8 && !tooLong,
+  };
 }

@@ -24,7 +24,7 @@ import { ApiError, postJson } from "@/lib/client";
 import { isStepUpRefusal } from "@/lib/api-error";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { plainReason } from "@/lib/settings/page-model";
-import { isPasswordOverBytes } from "@/lib/settings-field-checks";
+import { passwordFieldHints } from "@/lib/settings-field-checks";
 import { useFormReport } from "@/components/settings/form-report";
 import { CopyButton, ScopesPanel } from "@/components/settings/settings-reference";
 import { ssoStepUpPending } from "@/lib/sso-step-up";
@@ -85,9 +85,10 @@ function ChangePasswordCard({ data }: { data: Data }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  const mismatch = next.length > 0 && confirm.length > 0 && next !== confirm;
-  const tooShort = next.length > 0 && next.length < 8;
-  const tooLong = isPasswordOverBytes(next);
+  const [nextTouched, setNextTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
+
+  const { tooShort, tooLong, mismatch } = passwordFieldHints({ next, confirm, nextTouched, confirmTouched });
   const canSubmit = configured && current.length > 0 && next.length >= 8 && !tooLong && next === confirm && !saving;
   useFormReport("password", { dirty: current !== "" || next !== "" || confirm !== "", error });
 
@@ -99,6 +100,8 @@ function ChangePasswordCard({ data }: { data: Data }) {
       setCurrent("");
       setNext("");
       setConfirm("");
+      setNextTouched(false);
+      setConfirmTouched(false);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -134,15 +137,15 @@ function ChangePasswordCard({ data }: { data: Data }) {
           errorClassName="text-bad"
           error={tooShort ? "New password needs at least 8 characters." : tooLong ? "Too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)." : undefined}
         >
-          <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} placeholder="at least 8 characters" />
+          <Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} onBlur={() => setNextTouched(true)} placeholder="at least 8 characters" />
         </Field>
         <Field
           label="Confirm new password"
           required
-          error={mismatch && !tooShort && !tooLong ? "Passwords don't match." : undefined}
+          error={mismatch ? "Passwords don't match." : undefined}
           errorClassName="text-bad"
         >
-          <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          <Input type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onBlur={() => setConfirmTouched(true)} />
         </Field>
       </div>
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">

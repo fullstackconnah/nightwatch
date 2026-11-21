@@ -176,8 +176,9 @@ export async function checkCreateSpecHost(spec: Checkable, deps: CreateDeps): Pr
       await deps.inspectVolume(v.host);
       return `Volume "${v.host}" already exists; creating a container may not reuse it.`;
     } catch (e) {
-      if ((e as { statusCode?: number }).statusCode !== 404) {
-        return `Volume "${v.host}" could not be checked. Docker did not answer; try again.`;
+      const code = (e as { statusCode?: unknown }).statusCode;
+      if (code !== 404) {
+        return `Volume "${v.host}" could not be checked. Docker ${typeof code === "number" ? "returned an error" : "did not answer"}; try again.`;
       }
     }
   }

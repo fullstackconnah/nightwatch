@@ -112,3 +112,19 @@ test("hunt 100: createAndStartContainer uses the helper, not a bare start", () =
   assert.match(body, /startOrRemove\(container, DOCKER_CALL_MS\)/);
   assert.ok(!/await container\.start\(/.test(body));
 });
+
+test("polish12: a bare 'connection refused' is not a registry fault; the Go dial form still is", () => {
+  assert.deepEqual(createErrorResult("connection refused"), { copy: "Docker failed to create it.", status: 500 });
+  const r = createErrorResult("dial tcp 1.2.3.4:443: connect: connection refused");
+  assert.equal(r.status, 500);
+  assert.match(r.copy, /image registry/);
+});
+
+test("polish12: 'is not a valid' is a mount fault only with mount, volume or path in the message", () => {
+  assert.deepEqual(createErrorResult('invalid reference format: "X" is not a valid repository/tag'), { copy: "Docker failed to create it.", status: 500 });
+  for (const m of ['"/a:b" is not a valid volume name', 'invalid mount config for type "bind"', "the Path is not a valid one"]) {
+    const r = createErrorResult(m);
+    assert.equal(r.status, 400, m);
+    assert.match(r.copy, /refused a mount/, m);
+  }
+});
