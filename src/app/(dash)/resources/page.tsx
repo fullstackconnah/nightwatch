@@ -688,7 +688,7 @@ function ResourcesPageInner() {
     };
   }, [historyMetric, historyRange, chartIds, samples, containers]);
   const historyContainerPoints = useMemo(() => {
-    if (!historyData || !historyMetric) return {};
+    if (!historyData?.containers || !historyMetric) return {};
     const out: Record<string, (number | null)[]> = {};
     for (const [name, buckets] of Object.entries(historyData.containers)) {
       out[name] = buckets.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
