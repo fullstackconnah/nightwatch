@@ -65,8 +65,8 @@ export function bandView(status: "unauthorized" | "unreachable", a: { detail: st
     };
   }
   const stale = a.lastAge !== undefined;
-  // shortcut: matches orchestra.ts's "answered HTTP" detail text, give the snapshot a cause field if a second cause appears
-  const answered = a.detail?.startsWith("The orchestra service answered") === true;
+  // shortcut: matches orchestra.ts's "answered HTTP" and "sent an unreadable answer" detail text (both mean the PC replied), give the snapshot a cause field if a third cause appears
+  const answered = /^The orchestra service (answered|sent)/.test(a.detail ?? "");
   const lead = answered ? "The PC is on, but the service is failing." : "The PC is probably off or asleep.";
   return {
     dot: "dot-dead",

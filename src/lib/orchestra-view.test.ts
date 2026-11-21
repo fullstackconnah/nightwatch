@@ -241,6 +241,14 @@ describe("bandView", () => {
     assert.equal(stale.hint, "The PC is on, but the service is failing. Showing what it last reported, 4m ago.");
     assert.equal(stale.stale, true);
   });
+  it("an unreadable answer counts as answered; a timeout or network failure does not", () => {
+    const unreadable = bandView("unreachable", { detail: "The orchestra service sent an unreadable answer." });
+    assert.equal(unreadable.label, "error");
+    assert.equal(unreadable.hint, "The PC is on, but the service is failing. This page checks again every 10 seconds.");
+    for (const detail of ["The orchestra service did not answer within 5s.", "The orchestra service could not be reached."]) {
+      assert.equal(bandView("unreachable", { detail }).label, "unreachable");
+    }
+  });
 });
 
 describe("checkpointView", () => {

@@ -60,7 +60,7 @@ export function Console({
     setCommand("");
     try {
       const res = await postJson("/api/minecraft/rcon", { command: cmd });
-      setLines((l) => append(l, { text: String(res?.response ?? ""), kind: "resp" }));
+      setLines((l) => append(l, { text: String(res?.response ?? "").trim() ? String(res.response) : "(no output)", kind: "resp" }));
     } catch (e) {
       const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "command failed";
       setLines((l) => append(l, { text: message, kind: "error" }));

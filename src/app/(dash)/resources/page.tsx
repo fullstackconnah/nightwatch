@@ -664,9 +664,9 @@ function ResourcesPageInner() {
     mutate: mutateSummary,
   } = useSWR<HistoryApiResponse>(summaryKey, fetcher, { refreshInterval: 30000, keepPreviousData: true });
   const timelineError = (historyError ?? summaryError) as unknown;
-  const historyBucketTimes = useMemo(() => historyData?.host.map((b) => b.t) ?? [], [historyData]);
+  const historyBucketTimes = useMemo(() => historyData?.host?.map((b) => b.t) ?? [], [historyData]);
   const historyHostPoints = useMemo(() => {
-    if (!historyData || !historyMetric) return undefined;
+    if (!historyData?.host || !historyMetric) return undefined;
     return historyData.host.map((b) => (historyMetric === "cpu" ? b.cpuPct : b.memBytes));
   }, [historyData, historyMetric]);
   // LIVE with compares draws the 60-sample SSE ring through the same points props.
