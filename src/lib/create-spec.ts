@@ -108,7 +108,7 @@ export function validateCreateSpec(spec: Checkable): string | null {
       return `Mounting "${v.host}" is not allowed. Bind mounts must be under: ${roots.join(", ")}.`;
     }
   }
-  // Same key as buildPortBindings (host port + protocol); an exact repeat is dropped there, a different container port can't share the host port.
+  // Docker publishes one container port per host port and protocol; buildPortBindings keys on the container port, so a shared host port is caught here.
   const published = new Map<string, number>();
   for (const p of spec.ports ?? []) {
     const key = `${p.host}/${p.protocol || "tcp"}`;
