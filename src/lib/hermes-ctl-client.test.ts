@@ -102,7 +102,7 @@ describe("runHermesJob", () => {
     } finally {
       console.error = realError;
     }
-    assert.ok(logged.some((l) => l.includes("http://hermes.test:8765")), "the URL stays in the server log");
+    assert.ok(logged.some((l) => l.includes("http://hermes.test:8765")), "the origin stays in the server log");
   });
 
   it("reports an unexpected HTTP status as an error", async () => {
@@ -137,5 +137,12 @@ describe("getHermesJob", () => {
     assert.equal(((await getHermesJob("job-1")) as { status: string }).status, "not-found");
     stubFetch(new Error("connect ECONNREFUSED"));
     assert.equal(((await getHermesJob("job-1")) as { status: string }).status, "unreachable");
+  });
+});
+
+describe("hermes-ctl log line", () => {
+  it("never interpolates creds.url into the log", () => {
+    const src = fs.readFileSync(new URL("./hermes-ctl.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /console\.error\([^)]*creds\.url/);
   });
 });

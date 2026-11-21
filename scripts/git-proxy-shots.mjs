@@ -418,7 +418,7 @@ await guarded("git-honest", async () => {
 
 // strip-long-name (polish 16): ONLY=strip-long-name. The first strip is renamed in the DOM to a long unbroken release name
 // (the git strips' titles are static words, so the fixture cannot carry it); a padded crop of the strip list per width.
-const LONG_NAME = "A.Long.Release.Name.2019.1080p.BluRay.x264-GRP.With.More.Words.To.Be.Sure";
+const LONG_NAME = "A.Long.Release.Name.2019.1080p.BluRay.x264.GRP.With.More.Words.To.Be.Sure";
 await guarded("strip-long-name", () =>
   each(async (s) => {
     const { page } = await visit(s, "git", "calm");
@@ -429,13 +429,18 @@ await guarded("strip-long-name", () =>
     await list.scrollIntoViewIfNeeded();
     const m = await page.evaluate(() => {
       const row = document.querySelector("[data-row-id] .st-sh");
-      const name = row.querySelector(".st-name").getBoundingClientRect();
+      const nameEl = row.querySelector(".st-name");
+      const name = nameEl.getBoundingClientRect();
       const r = row.getBoundingClientRect();
-      return { rowFits: row.scrollWidth <= row.clientWidth, pageFits: document.documentElement.scrollWidth <= window.innerWidth, nameInRow: name.right <= r.right + 0.5 };
+      const cs = getComputedStyle(nameEl);
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;
+      const wraps = nameEl.getClientRects().length > 1 || nameEl.clientHeight > 1.5 * lh;
+      return { wraps, rowFits: row.scrollWidth <= row.clientWidth, pageFits: document.documentElement.scrollWidth <= window.innerWidth, nameInRow: name.right <= r.right + 0.5 };
     });
     record("SLN-1 row scrollWidth <= clientWidth", vp, m.rowFits);
     record("SLN-2 page scrollWidth <= innerWidth", vp, m.pageFits);
     record("SLN-3 name right edge inside the row", vp, m.nameInRow);
+    record("SLN-4 name wraps onto more than one line", vp, m.wraps === true);
     const box = await list.boundingBox();
     const pad = 16;
     const clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: box.height + 2 * pad };

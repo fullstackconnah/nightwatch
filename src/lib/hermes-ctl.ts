@@ -78,7 +78,9 @@ async function hermesFetch(creds: HermesCredentials, path: string, init?: Reques
     });
   } catch (e) {
     const timedOut = isTimeout(e);
-    console.error(`Hermes at ${creds.url} ${timedOut ? `did not respond within ${timeoutMs / 1000}s` : "is not reachable"}.`);
+    let origin = "Hermes"; // userinfo, path and query never reach the log
+    try { origin = new URL(creds.url).origin; } catch {}
+    console.error(`Hermes at ${origin} ${timedOut ? `did not respond within ${timeoutMs / 1000}s` : "is not reachable"}.`);
     return { kind: "unreachable", detail: unreachableDetail(timeoutMs, timedOut) };
   }
   if (res.status === 401 || res.status === 403) {
