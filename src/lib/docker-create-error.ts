@@ -19,10 +19,10 @@ export function createErrorResult(message: string): { copy: string; status: numb
   if (/pull access denied|manifest unknown|manifest for|not found: manifest|repository does not exist|No such image/i.test(m)) {
     return r("Docker could not find that image. Check the image name and tag, then try again.", 400);
   }
-  if (/no such host|dial tcp|connection refused|TLS handshake timeout|i\/o timeout/i.test(m)) {
+  if (/no such host|dial tcp|TLS handshake timeout|i\/o timeout/i.test(m)) {
     return r("Docker could not reach the image registry. Check the host's network and DNS, then try again.", 500);
   }
-  if (/invalid mount config|invalid volume specification|is not a valid/i.test(m)) {
+  if (/invalid mount config|invalid volume specification/i.test(m) || (/is not a valid/i.test(m) && /mount|volume|path/i.test(m))) {
     return r("Docker refused a mount. Check the host and container paths, then try again.", 400);
   }
   if (/no space left on device/i.test(m)) {

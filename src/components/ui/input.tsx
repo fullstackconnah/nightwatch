@@ -112,7 +112,7 @@ export function Field({
       {React.cloneElement(children, {
         id,
         "aria-describedby": describedBy,
-        "aria-invalid": error ? true : undefined,
+        "aria-invalid": error ? true : children.props["aria-invalid"], // a control that marks itself invalid (no message of its own here) keeps it
         "aria-required": required || undefined,
       })}
       {error ? (

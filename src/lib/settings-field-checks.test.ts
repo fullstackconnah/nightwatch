@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { plainReason } from "./settings/page-model.ts";
-import { BUDGET_HINT, MAX_PASSWORD_BYTES, RCON_PORT_COPY, appUrlError, groupInputText, isPasswordOverBytes, rconPortFieldError } from "./settings-field-checks.ts";
+import { BUDGET_HINT, MAX_PASSWORD_BYTES, RCON_PORT_COPY, appUrlError, appUrlOffender, groupInputText, isPasswordOverBytes, passwordFieldHints, rconPortFieldError } from "./settings-field-checks.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -68,7 +68,7 @@ test("password 72-byte limit: the route refuses before hashing; the card disable
   const sent = /isPasswordOverBytes\(newPassword\)[^]*?error: "([^"]+)"/.exec(route)![1];
   assert.equal(plainReason(sent), sent.replace(/\.$/, "")); // the form shows the server's own words, not "the server refused it"
   const ui = read("../components/settings/settings-access.tsx");
-  assert.match(ui, /const tooLong = isPasswordOverBytes\(next\)/);
+  assert.match(ui, /const \{[^}]*tooLong[^}]*\} = passwordFieldHints\(/); // tooLong is isPasswordOverBytes(next) inside the helper (polish12)
   assert.match(ui, /canSubmit = [^;]*!tooLong/);
   assert.ok(ui.includes("Too long: the most is 72 bytes (72 plain letters, fewer with accents or emoji)."));
   assert.ok(!/isPasswordOverBytes\(current\)/.test(ui), "the current password is never length-checked");
@@ -111,4 +111,43 @@ test("polish11: a stored URL with spaces round it is unchanged when the trimmed 
 test("polish11: the password fields' Save-blocking messages use the house error tone", () => {
   const src = read("../components/settings/settings-access.tsx");
   assert.equal(src.match(/errorClassName="text-bad"/g)?.length, 2);
+});
+
+test("polish12: appUrlOffender names the offending tile key, null when none or unchanged", () => {
+  assert.equal(appUrlOffender({ a: "http://a.lan", b: "myapp.lan:8080", c: "x" }), "b");
+  assert.equal(appUrlOffender({ a: "https://a.lan/" + "a".repeat(2048) }), "a");
+  assert.equal(appUrlOffender({ a: "bad" }, { a: "bad" }), null);
+  assert.equal(appUrlOffender({ a: " bad " }, { a: "bad" }), null);
+  assert.equal(appUrlOffender({}), null);
+  assert.equal(appUrlOffender({ a: "bad" }, { a: 42 }), "a");
+  assert.equal(appUrlOffender({ a: "http://a.lan" }, { a: 42 }), null);
+  assert.equal(appUrlOffender({ a: 42 }, { a: 42 }), null);
+  assert.equal(appUrlOffender({ a: 42 }, { a: "x" }), "a");
+});
+
+test("polish12: password errors wait for their own field's first blur; too long shows at once", () => {
+  const f = (p: Partial<Parameters<typeof passwordFieldHints>[0]>) =>
+    passwordFieldHints({ next: "", confirm: "", nextTouched: false, confirmTouched: false, ...p });
+  assert.deepEqual(f({}), { tooShort: false, tooLong: false, mismatch: false });
+  assert.deepEqual(f({ next: "abc", confirm: "x" }), { tooShort: false, tooLong: false, mismatch: false });
+  assert.deepEqual(f({ next: "abc", nextTouched: true }), { tooShort: true, tooLong: false, mismatch: false });
+  assert.equal(f({ next: "", nextTouched: true }).tooShort, false); // blank stays a hint, not an error
+  assert.equal(f({ next: "abc", nextTouched: true }).tooShort, true);
+  assert.equal(f({ next: "abcdefgh", nextTouched: true }).tooShort, false);
+  assert.deepEqual(f({ next: "é".repeat(37) }), { tooShort: false, tooLong: true, mismatch: false });
+  assert.deepEqual(f({ next: "abcdefgh", confirm: "abcdefgx" }), { tooShort: false, tooLong: false, mismatch: false });
+  assert.deepEqual(f({ next: "abcdefgh", confirm: "abcdefgx", confirmTouched: true }), { tooShort: false, tooLong: false, mismatch: true });
+  assert.equal(f({ next: "abcdefgh", confirm: "", confirmTouched: true }).mismatch, false);
+  assert.equal(f({ next: "abcdefgh", confirm: "abcdefgh", confirmTouched: true }).mismatch, false);
+  assert.equal(f({ next: "abc", confirm: "x", confirmTouched: true, nextTouched: true }).mismatch, false);
+  assert.equal(f({ next: "é".repeat(37), confirm: "x", confirmTouched: true }).mismatch, false);
+});
+
+test("polish12: the refused App URL is marked invalid on both layouts and the mark is derived from the refused value", () => {
+  const page = read("../app/(dash)/settings/page.tsx");
+  assert.ok(page.includes("appUrlOffender(urls,") && page.includes("invalidUrl="));
+  assert.ok(page.includes("tileDraft.urls[refusedUrl.name] === refusedUrl.value"));
+  const tiles = read("../components/settings/settings-tiles.tsx");
+  assert.equal(tiles.match(/aria-invalid=\{invalidUrl === name \|\| undefined\}/g)?.length, 2);
+  assert.ok(read("../components/ui/input.tsx").includes('children.props["aria-invalid"]'));
 });

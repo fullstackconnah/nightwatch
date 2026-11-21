@@ -293,3 +293,11 @@ test("CREATE_NETWORKS never lets host, none, container: or *_internal through", 
     delete process.env.CREATE_NETWORKS;
   }
 });
+
+test("polish12: volume check copy says whether Docker answered with an error or not at all", async () => {
+  const run = (inspectVolume: () => Promise<unknown>) => checkCreateSpecHost(spec("app_data"), { inspectVolume });
+  assert.equal(await run(() => Promise.reject({ statusCode: 500 })), 'Volume "app_data" could not be checked. Docker returned an error; try again.');
+  assert.equal(await run(() => Promise.reject(new Error("down"))), 'Volume "app_data" could not be checked. Docker did not answer; try again.');
+  assert.equal(await run(() => Promise.reject({ statusCode: "500" })), 'Volume "app_data" could not be checked. Docker did not answer; try again.');
+  assert.equal(await run(notFound), null);
+});

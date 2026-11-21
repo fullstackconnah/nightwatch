@@ -51,3 +51,24 @@ test("G1: the four utilisation and memory fields use cellNumber, not a zero fall
   }
   assert.doesNotMatch(gpuSrc, /cellNumberOrZero\(get\(c, "(utilization|memory)/);
 });
+
+// polish12: by value, per field. parseDeviceRows is private to gpu.ts (it imports "@/lib/gpu-parse", which node:test cannot resolve),
+// so this mirrors its four field conversions with the real helpers; the source-text tests above pin that gpu.ts uses the same calls.
+test("polish12: an N/A reading nulls only its own field of the four nullable GPU fields", () => {
+  const convert: Record<string, (raw: string | undefined) => number | null> = {
+    "utilization.gpu": cellNumber,
+    "utilization.memory": cellNumber,
+    "memory.used": (r) => mibToBytes(cellNumber(r)),
+    "memory.total": (r) => mibToBytes(cellNumber(r)),
+  };
+  const row: Record<string, string> = { "utilization.gpu": "37", "utilization.memory": "12", "memory.used": "2", "memory.total": "8" };
+  const expected: Record<string, number> = { "utilization.gpu": 37, "utilization.memory": 12, "memory.used": 2 * 1024 * 1024, "memory.total": 8 * 1024 * 1024 };
+  for (const na of ["[N/A]", "N/A"]) {
+    for (const bad of Object.keys(convert)) {
+      for (const name of Object.keys(convert)) {
+        const got = convert[name](name === bad ? na : row[name]);
+        assert.equal(got, name === bad ? null : expected[name], `${na} in ${bad}: ${name}`);
+      }
+    }
+  }
+});
