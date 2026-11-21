@@ -4,6 +4,7 @@ import { listContainers } from "@/lib/docker";
 import { Memo } from "@/lib/cache";
 import { allResolve, namesForIds, type NamedContainer } from "@/lib/container-names";
 import { processCpuShare } from "@/lib/cpu-share";
+import { processListErrorText } from "@/lib/process-error-text";
 import { capCmdline, redactCmdline } from "@/lib/redact";
 import type { ProcessRow, ProcessSnapshot } from "@/lib/types/process";
 
@@ -389,7 +390,7 @@ async function collectProcessSnapshot(): Promise<ProcessSnapshot> {
       processes: [],
       scanned: 0,
       skipped: 0,
-      error: "Could not read the process list.",
+      error: processListErrorText(err),
     };
   }
 

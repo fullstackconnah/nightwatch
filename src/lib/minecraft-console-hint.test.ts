@@ -34,3 +34,17 @@ test("consoleHint: paused loses to unconfigured and to stopped", () => {
   assert.equal(consoleHint("unconfigured", true, false, true), "RCON not configured — add it in Settings → Integrations");
   assert.equal(consoleHint("ok", false, false, true), "server is stopped — start it to use the console");
 });
+
+test("consoleHint: a rejected password names the fix", () => {
+  assert.equal(consoleHint("rejected", true, false), "RCON password rejected. Check it in Settings.");
+});
+test("consoleHint: stopped and paused win over a rejected password, which wins over stale (as unavailable does)", () => {
+  assert.equal(consoleHint("rejected", false, false), "server is stopped — start it to use the console");
+  assert.equal(consoleHint("rejected", true, false, true), "server is paused — resume it to use the console");
+  assert.equal(consoleHint("rejected", true, true), "RCON password rejected. Check it in Settings.");
+});
+test("status route sets rejected only for an Error 'rcon auth failed'", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../app/api/minecraft/status/route.ts", import.meta.url), "utf8");
+  assert.match(src, /reason instanceof Error && rconResult\.reason\.message === "rcon auth failed"/);
+});

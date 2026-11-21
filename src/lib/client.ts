@@ -130,7 +130,7 @@ export interface MinecraftStatusResponse {
   instances: McInstance[];
   active: string | null;
   players: { online: number; max: number; players: string[] } | null;
-  rcon: "ok" | "unavailable" | "unconfigured";
+  rcon: "ok" | "unavailable" | "rejected" | "unconfigured";
 }
 
 export function useMinecraftStatus(refreshMs = 10000) {
