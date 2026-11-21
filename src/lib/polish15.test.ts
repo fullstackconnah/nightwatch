@@ -13,7 +13,7 @@ test("H116-1: root error Retry reloads the page", () => {
 
 test("H116-2: a successful write refocuses the trigger only when focus fell to body", () => {
   const src = read("../components/strips/write-action.tsx");
-  assert.match(src, /await run\(\);\s*\/\/[^\r\n]*\s*if \(!document\.activeElement \|\| document\.activeElement === document\.body\) refocus\.current = true;\s*setPhase\("idle"\)/);
+  assert.match(src, /await runWithLimit\(run, timeoutMs\);\s*\/\/[^\r\n]*\s*if \(!document\.activeElement \|\| document\.activeElement === document\.body\) refocus\.current = true;\s*setPhase\("idle"\)/);
 });
 
 test("H116-3: non-finite samples are dropped", () => {
