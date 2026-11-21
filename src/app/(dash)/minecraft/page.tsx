@@ -112,7 +112,7 @@ export default function MinecraftPage() {
         />
       ),
     },
-    console: { body: status ? <Console rcon={status.rcon} running={container?.state === "running"} stale={!enabled("console-send") && status.rcon === "ok"} /> : null },
+    console: { body: status ? <Console rcon={status.rcon} running={container?.state !== "exited"} stale={!enabled("console-send") && status.rcon === "ok"} /> : null },
     log: {
       mono: true,
       slot: container ? (
