@@ -128,16 +128,17 @@ export function PackBrowser({
           </p>
         )}
 
-        {view === "searching-over-old" && <p className="st-note">Searching…</p>}
-        {providerNote && (view === "results" || view === "empty-with-note") && <p className="text-xs text-bad">{providerNote}</p>}
+        {/* Always mounted so a screen reader hears the text arrive; `contents` keeps the empty region from adding a flex gap. */}
+        <div role="status" className="contents">
+          {(view === "searching" || view === "searching-over-old") && <p className="st-note">Searching…</p>}
+          {providerNote && (view === "results" || view === "empty-with-note") && <p className="text-xs text-bad">{providerNote}</p>}
+        </div>
 
         {view === "prompt" ? (
           <p className="st-note">Type to search modpacks.</p>
         ) : view === "failed" ? (
           <p className="text-xs text-bad">Couldn&apos;t search. Try again.</p>
-        ) : view === "searching" ? (
-          <p className="st-note">Searching…</p>
-        ) : view === "empty" ? (
+        ) : view === "searching" ? null : view === "empty" ? (
           <p className="st-note">No results.</p>
         ) : view === "empty-with-note" ? null : (
           <div>

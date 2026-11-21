@@ -75,8 +75,11 @@ export function LogDetail({
         ref={boxRef}
         className="logbox st-log [word-break:normal]! [overflow-wrap:anywhere]! bg-bg rounded-md border border-line p-3 text-ink-dim"
       >
-        {error && logs && <div className="text-bad">Couldn&apos;t refresh.</div>}
-        {empty ? (empty.bad ? <span className="text-bad">{empty.text}</span> : empty.text) : logs}
+        <div role="status">
+          {error && logs && <div className="text-bad">Couldn&apos;t refresh.</div>}
+          {empty && (empty.bad ? <span className="text-bad">{empty.text}</span> : empty.text)}
+        </div>
+        {!empty && logs}
       </div>
     </div>
   );

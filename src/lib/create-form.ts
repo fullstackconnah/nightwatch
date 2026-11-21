@@ -8,6 +8,14 @@ type Checked =
 
 const blank = (s: string) => !s.trim();
 
+/** The dialog's error line after a failed create: no answer (or a proxy cut) may still have made the container. */
+export function createFailedCopy(message: string | undefined, status: number | undefined): string {
+  if (status === undefined || status === 502 || status === 504) {
+    return "No answer came back, so the container may already exist. Close this and check the list before trying again.";
+  }
+  return message || "create failed";
+}
+
 /** Validates the create form's rows: an all-blank row is dropped, a half-filled one refuses the submit (first problem only). */
 export function checkRows(ports: PortRow[], env: EnvRow[], vols: VolRow[]): Checked {
   const outPorts: { host: number; container: number; protocol: "tcp" | "udp" }[] = [];
@@ -20,7 +28,10 @@ export function checkRows(ports: PortRow[], env: EnvRow[], vols: VolRow[]): Chec
         return { error: `Port row ${i + 1}: the ${half} port must be a whole number from 1 to 65535.` };
       }
     }
-    outPorts.push({ host: Number(p.host), container: Number(p.container), protocol: p.protocol });
+    const host = Number(p.host);
+    const dup = ports.findIndex((q, j) => j < i && q.protocol === p.protocol && !blank(q.host) && !blank(q.container) && Number(q.host) === host);
+    if (dup >= 0) return { error: `Port rows ${dup + 1} and ${i + 1} use the same host port.` };
+    outPorts.push({ host, container: Number(p.container), protocol: p.protocol });
   }
   const outEnv: EnvRow[] = [];
   for (const [i, e] of env.entries()) {

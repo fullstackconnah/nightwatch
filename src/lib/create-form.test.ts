@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkRows, type EnvRow, type PortRow, type VolRow } from "./create-form.ts";
+import { checkRows, createFailedCopy, type EnvRow, type PortRow, type VolRow } from "./create-form.ts";
 
 const src = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), "utf8");
 const port = (host: string, container: string): PortRow => ({ host, container, protocol: "tcp" });
@@ -108,17 +108,43 @@ test("a bad container port gets the container message; both bad reports the host
 });
 
 test("valid ports pass as numbers, trimmed, with the edges 1 and 65535", () => {
-  const r = checkRows([port("8080", "80"), port(" 8080 ", " 80 "), port("1", "65535"), port("080", "80")], [], []);
+  const r = checkRows([port("8080", "80"), port(" 8081 ", " 80 "), port("1", "65535"), port("080", "80")], [], []);
   assert.deepEqual(r, {
     ports: [
       { host: 8080, container: 80, protocol: "tcp" },
-      { host: 8080, container: 80, protocol: "tcp" },
+      { host: 8081, container: 80, protocol: "tcp" },
       { host: 1, container: 65535, protocol: "tcp" },
       { host: 80, container: 80, protocol: "tcp" },
     ],
     env: [],
     volumes: [],
   });
+});
+
+test("two port rows on the same host port and protocol are refused", () => {
+  const same = "Port rows 1 and 2 use the same host port.";
+  assert.equal(err(checkRows([port("8080", "80"), port("8080", "81")], [], [])), same);
+  assert.equal(err(checkRows([port("80", "81"), port("080", "80")], [], [])), same);
+  assert.equal(err(checkRows([port("8080", "80"), port("", ""), port("8080", "81")], [], [])), "Port rows 1 and 3 use the same host port.");
+});
+
+test("tcp and udp may share a host port; one container port may map twice", () => {
+  const udp: PortRow = { host: "8080", container: "80", protocol: "udp" };
+  assert.ok(!("error" in checkRows([port("8080", "80"), udp], [], [])));
+  assert.ok(!("error" in checkRows([port("8080", "80"), port("8081", "80")], [], [])));
+});
+
+test("a bad number is reported before a later duplicate", () => {
+  assert.equal(err(checkRows([port("8080", "80"), port("x", "80"), port("8080", "81")], [], [])), "Port row 2: the host port must be a whole number from 1 to 65535.");
+});
+
+test("createFailedCopy: no answer or a proxy cut says the container may exist", () => {
+  const lost = "No answer came back, so the container may already exist. Close this and check the list before trying again.";
+  assert.equal(createFailedCopy(undefined, undefined), lost);
+  assert.equal(createFailedCopy("Bad gateway", 502), lost);
+  assert.equal(createFailedCopy("", 504), lost);
+  assert.equal(createFailedCopy("Name in use.", 409), "Name in use.");
+  assert.equal(createFailedCopy("", 500), "create failed");
 });
 
 test("checkRows: volume paths are saved without stray spaces", () => {
