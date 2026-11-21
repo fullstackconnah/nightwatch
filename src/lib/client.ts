@@ -338,34 +338,7 @@ export function useTelemetryStream(enabled = true): TelemetryState {
   return data ?? { samples: [], status: "connecting" };
 }
 
-export type TelemetryMetric = "cpu" | "mem" | "net" | "blkio";
-
-function telemetryMetricValue(row: TelemetryRow, metric: TelemetryMetric): number {
-  switch (metric) {
-    case "cpu":
-      return row.cpuPct;
-    case "mem":
-      return row.memBytes;
-    case "net":
-      return row.rxRate + row.txRate;
-    case "blkio":
-      return row.blkReadRate + row.blkWriteRate;
-  }
-}
-
-/**
- * Maps each sample to one container's value for `metric`, keeping the series
- * length equal to `samples.length` (missing/not-yet-running containers contribute
- * 0) so a sparkline's x-axis stays time-aligned across containers.
- */
-export function seriesFor(samples: TelemetrySample[], containerId: string, metric: TelemetryMetric): number[] {
-  return samples.map((sample) => {
-    const row = sample.containers[containerId];
-    if (!row) return 0;
-    const value = telemetryMetricValue(row, metric);
-    return Number.isFinite(value) ? value : 0;
-  });
-}
+export { seriesFor, type TelemetryMetric } from "@/lib/chart-points";
 
 export type {
   TiledContainer,

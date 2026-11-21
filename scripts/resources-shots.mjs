@@ -333,6 +333,58 @@ async function scanRoot(run, w) {
   }, (page) => page.locator(".panel", { has: page.getByText("PINNED", { exact: true }) }).last());
 }
 
+// series-gap (nw-gaps): a container with absent telemetry samples (3 at the start, 3 in the middle) draws a broken line and is
+// ranked by the mean of its REAL samples. Two fake running containers: "gap-demo" (24 real samples around 41%) and "full-demo"
+// (30 real samples at 35%). Counted as zeros, gap-demo would average ~33% and rank below full-demo.
+const SG_ABSENT = (i) => i < 3 || (i >= 14 && i < 17);
+const sgCpu = (i) => 40 + (i % 3); // gap-demo's real value at sample i
+const sgReal = Array.from({ length: 30 }, (_, i) => i).filter((i) => !SG_ABSENT(i)).map(sgCpu);
+const sgMean = sgReal.reduce((a, b) => a + b, 0) / sgReal.length;
+const sgMock = async (page) => {
+  await page.route(/\/api\/resources(\?|$)/, async (route) => {
+    const body = await route.fetch().then((r) => r.json()).catch(() => ({}));
+    const base = { ...(body.containers?.[0] ?? {}), state: "running", image: "demo", cpuPct: 0, memBytes: 1e8, memLimit: 1e9 };
+    json(route, { ...body, containers: [{ ...base, id: "gapc", name: "gap-demo" }, { ...base, id: "fullc", name: "full-demo" }] });
+  });
+  await page.addInitScript(([absent]) => {
+    const Real = window.EventSource;
+    const row = (cpuPct) => ({ cpuPct, memBytes: 1e8, memLimit: 1e9, rxRate: 0, txRate: 0, blkReadRate: 0, blkWriteRate: 0, pids: 1 });
+    const sample = (i) => ({ ts: Date.now() - (30 - i) * 1000, containers: { ...(absent.includes(i) ? {} : { gapc: row(40 + (i % 3)) }), fullc: row(35) } });
+    window.EventSource = function (url) {
+      if (!String(url).includes("/api/telemetry/stream")) return new Real(url);
+      const l = {};
+      const es = { readyState: 1, onerror: null, close() {}, addEventListener: (t, f) => (l[t] ??= []).push(f) };
+      setTimeout(() => {
+        l.open?.forEach((f) => f({}));
+        l.history?.forEach((f) => f({ data: JSON.stringify(Array.from({ length: 30 }, (_, i) => sample(i))) }));
+      }, 50);
+      return es;
+    };
+  }, [Array.from({ length: 30 }, (_, i) => i).filter(SG_ABSENT)]);
+};
+const sgStrip = (page, id) => page.locator(`.wl-item[data-row-id="${id}"]`);
+// Recorded as booleans (false when the element is missing); a false also fails the run.
+const sgRecord = (key, w, ok) => { record(key, `series-gap@${w}`, ok); if (!ok) { failed++; console.log(`FAIL ${key} @ series-gap@${w}`); } };
+async function seriesGap(run, w) {
+  await run("series-gap", "metric=cpu&view=timeline", async (page) => {
+    const strip = sgStrip(page, "gapc");
+    await strip.locator(".tl-spark svg").waitFor({ timeout: SLOW });
+    await page.waitForTimeout(500);
+    const line = strip.locator('.tl-spark svg path[fill="none"]').first();
+    const d = (await line.count()) ? await line.getAttribute("d") : null;
+    sgRecord("GAP-1 gapped path has more than one sub-path", w, d !== null && (d.match(/M/g) ?? []).length > 1);
+    const found = (await strip.count()) > 0;
+    const ds = found ? await strip.locator("svg path").evaluateAll((ps) => ps.map((p) => p.getAttribute("d") ?? "")) : [];
+    const text = found ? await strip.evaluate((el) => el.textContent ?? "") : "";
+    sgRecord("GAP-2 no NaN in any path d or text", w, found && ds.length > 0 && !ds.some((x) => x.includes("NaN")) && !text.includes("NaN"));
+    // There is no on-screen ring average; its observable effect is the rank (timeline ranks by the ring mean when history has no entry).
+    const rank = async (id) => Number(await sgStrip(page, id).getAttribute("data-rank").catch(() => NaN));
+    const [rg, rf] = [await rank("gapc"), await rank("fullc")];
+    const gapFirst = sgMean > 35; // mean of gap-demo's real samples vs full-demo's 35
+    sgRecord("GAP-3 average ignores absent samples", w, Number.isFinite(rg) && Number.isFinite(rf) && (gapFirst ? rg < rf : rf < rg));
+  }, sgMock, (page) => sgStrip(page, "gapc"));
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -389,6 +441,11 @@ try {
 
     if (ONLY === "scan-root") {
       await scanRoot(run, vp.name);
+      continue;
+    }
+
+    if (ONLY === "series-gap") {
+      await seriesGap(run, vp.name);
       continue;
     }
 
@@ -501,7 +558,7 @@ try {
 }
 check("page errors", "all", pageErrors.length === 0, pageErrors.slice(0, 10));
 // A mistyped SHOTS_ONLY would otherwise run the default sections and look green.
-check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root", "gpu-na", "processes-poll-failed"].includes(ONLY), ONLY);
+check("SHOTS_ONLY names a known section", "all", !ONLY || ["hint-pages", "load-failed", "scan-root", "gpu-na", "processes-poll-failed", "series-gap"].includes(ONLY), ONLY);
 if (ONLY === "hint-pages") {
   check("hint-pages ran every check", "all", hpRan === HP_PER_WIDTH * VIEWPORTS.length, { ran: hpRan, expected: HP_PER_WIDTH * VIEWPORTS.length });
   console.log(`hint-pages: ${hpPass}/${HP_PER_WIDTH * VIEWPORTS.length} pass`);

@@ -16,6 +16,7 @@ import { ChevronDown, ExternalLink, GitCompare, List, Plus, RotateCw } from "luc
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Meter } from "@/components/charts";
 import { Sparkline } from "@/components/sparkline";
+import { finiteMean, finitePeak } from "@/lib/chart-points";
 import { ImageInUseButton } from "@/components/resources/image-delete-action";
 import { CreateContainerDialog } from "@/components/resources/create-container";
 import { LifecycleActions, LifecycleError, useLifecycle } from "@/components/resources/container-controls";
@@ -60,7 +61,7 @@ export function telemetryRowEqual(a: TelemetryRow | undefined, b: TelemetryRow |
 }
 
 const sparkEqual = (a: number[] | null, b: number[] | null) =>
-  a === b || (!!a && !!b && a.length === b.length && a.every((v, i) => v === b[i]));
+  a === b || (!!a && !!b && a.length === b.length && a.every((v, i) => Object.is(v, b[i]))); // Object.is: a NaN gap equals itself, so the memo holds
 
 /** OPEN-T3 default. Timeline's quiet strips draw on quietCap of the AVERAGES, with a 2 px ink-faint tick where a
  *  spike is clamped. "peak" scales them to the quiet peak instead (honest, but reads oddly under "averaged under"). */
@@ -71,7 +72,6 @@ export interface RangeStat {
   peak: number;
   spark: (number | null)[];
 }
-const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 /** Start / stop / restart (+ pause) with its inline error, for rows outside the watchlist (DISK, NET). */
 export function LifecycleGroup({ c, onDone }: { c: ResourceContainer; onDone: () => void }) {
@@ -292,7 +292,7 @@ function RowDetail({
   );
 }
 
-const sparkOf = (s: RangeStat) => s.spark.map((v) => v ?? 0);
+const sparkOf = (s: RangeStat) => s.spark.map((v) => v ?? NaN); // a missing bucket is a gap, not 0
 
 interface StripProps extends Omit<RowProps, "spark" | "scale"> {
   scale: number;
@@ -338,7 +338,7 @@ const TimelineStrip = memo(function TimelineStrip(p: StripProps) {
   const dotI = stat ? stat.spark.findIndex((v) => v != null) : -1;
   const dotV = dotI >= 0 ? stat!.spark[dotI] : null;
   const dotAt = stat && stat.spark.length > 1 ? Math.min(158.5, Math.max(1.5, (dotI / (stat.spark.length - 1)) * 160)) : 158.5;
-  const peak = stat?.peak ?? (ring && ring.length ? Math.max(...ring) : 0);
+  const peak = stat?.peak ?? (ring ? finitePeak(ring) : 0);
   const clamped = scale > 0 && peak > scale;
   const ref = useCallback((el: HTMLDivElement | null) => register(c.id, el), [register, c.id]);
   const detailId = `wl-det-${c.id.slice(0, 12)}`;
@@ -499,7 +499,9 @@ export function Watchlist(p: WatchlistProps) {
       if (range !== "live") st = p.rangeStats?.[nameOf.get(id) ?? ""] ?? null;
       else {
         const r = ringOf(id);
-        st = { avg: mean(r), peak: Math.max(0, ...r), spark: r };
+        // Absent samples are left out of the average and peak; no real sample at all means no stat.
+        const avg = finiteMean(r);
+        st = avg === null ? null : { avg, peak: finitePeak(r), spark: r.map((v) => (Number.isFinite(v) ? v : null)) };
       }
       statCache.set(id, st);
     }
@@ -509,7 +511,7 @@ export function Watchlist(p: WatchlistProps) {
     const r = rows?.[id];
     if (!r) return null;
     if (!tl) return isCpu ? r.cpuPct : r.memBytes;
-    return avgs?.get(nameOf.get(id) ?? "") ?? mean(ringOf(id)); // no history: rank by the ring mean
+    return avgs?.get(nameOf.get(id) ?? "") ?? finiteMean(ringOf(id)); // no history: rank by the ring mean of real samples; none ranks last
   };
 
   // Offer the order only once real data exists, so the first offer commits the real ranking.
