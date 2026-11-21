@@ -5,8 +5,8 @@ import { useDialogFocus } from "@/components/use-dialog-focus";
 import { Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Label, Select } from "@/components/ui/input";
-import { postJson } from "@/lib/client";
-import { checkRows, type EnvRow, type PortRow, type VolRow } from "@/lib/create-form";
+import { ApiError, postJson } from "@/lib/client";
+import { checkRows, createFailedCopy, type EnvRow, type PortRow, type VolRow } from "@/lib/create-form";
 
 /**
  * One-off container creation. Compose-based stacks stay in Dockge — this is
@@ -77,7 +77,7 @@ export function CreateContainerDialog({
       });
       onCreated();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "create failed");
+      setError(createFailedCopy(e instanceof Error ? e.message : undefined, e instanceof ApiError ? e.status : undefined));
       setBusy(false);
     }
   }
