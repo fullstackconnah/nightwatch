@@ -10,6 +10,7 @@ import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
 import { fetcher } from "@/lib/client";
+import { logStripText, type LogWhy } from "@/lib/minecraft-log-text";
 
 export const TAILS = [100, 200, 500, 1000, 5000] as const;
 
@@ -30,6 +31,7 @@ export function lastLogLine(logs: string | undefined): string | null {
 export function LogDetail({
   logs,
   error,
+  why,
   tail,
   paused,
   onTail,
@@ -37,11 +39,13 @@ export function LogDetail({
 }: {
   logs: string | undefined;
   error: boolean;
+  why: LogWhy;
   tail: number;
   paused: boolean;
   onTail: (n: number) => void;
   onPaused: (p: boolean) => void;
 }) {
+  const empty = logStripText(logs, error, why);
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = boxRef.current;
@@ -72,7 +76,7 @@ export function LogDetail({
         className="logbox st-log [word-break:normal]! [overflow-wrap:anywhere]! bg-bg rounded-md border border-line p-3 text-ink-dim"
       >
         {error && logs && <div className="text-bad">Couldn&apos;t refresh.</div>}
-        {error && !logs ? <span className="text-bad">Couldn&apos;t read logs.</span> : logs || "no output"}
+        {empty ? (empty.bad ? <span className="text-bad">{empty.text}</span> : empty.text) : logs}
       </div>
     </div>
   );

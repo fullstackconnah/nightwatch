@@ -120,3 +120,8 @@ test("valid ports pass as numbers, trimmed, with the edges 1 and 65535", () => {
     volumes: [],
   });
 });
+
+test("checkRows: volume paths are saved without stray spaces", () => {
+  const r = checkRows([], [], [{ host: " /data ", container: "/config ", readonly: true }]);
+  assert.deepEqual("volumes" in r ? r.volumes : null, [{ host: "/data", container: "/config", readonly: true }]);
+});
