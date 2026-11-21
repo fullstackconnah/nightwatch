@@ -29,6 +29,7 @@ export function BackupNowSlot({
       label="Back up now"
       confirm={false}
       flight="Backing up…"
+      timeoutMs={0} // the manager bounds a backup at 30 min, longer than any client limit
       failure="Couldn’t back up"
       disabled={!enabled}
       describedBy={describedBy}
@@ -90,6 +91,7 @@ export function BackupsDetail({
                 yes="Yes, restore"
                 danger
                 flight="Restoring…"
+                timeoutMs={0} // the manager bounds a restore at 30 min, longer than any client limit
                 failure="Couldn’t restore"
                 softFailure={restoreSoftFailure}
                 disabled={blocked || writesOff || busy}

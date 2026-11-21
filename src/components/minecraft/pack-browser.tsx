@@ -157,6 +157,7 @@ export function PackBrowser({
                   say={`Installs ${r.name} from ${SOURCE_LABEL[r.source]} and makes it active.`}
                   yes="Yes, install"
                   flight="Installing… first boot can take several minutes."
+                  timeoutMs={0} // a pack install and first boot can outlast any client limit (the manager bounds it at 30 min)
                   failure="Couldn’t install the pack"
                   disabled={off}
                   onPending={setBusy}
@@ -201,6 +202,7 @@ export function PackBrowser({
                       say={`Makes ${inst.name} the active pack.`}
                       yes="Yes, switch"
                       flight="Switching… loading the pack can take a few minutes."
+                    timeoutMs={0} // loading a pack can outlast any client limit (the manager bounds it at 30 min)
                       failure="Couldn’t switch the pack"
                       disabled={off}
                       onPending={setBusy}
@@ -214,6 +216,7 @@ export function PackBrowser({
                     yes="Yes, delete"
                     danger
                     flight="Deleting…"
+                    timeoutMs={0} // an instance delete goes through the manager (30 min bound)
                     failure="Couldn’t delete the pack"
                     disabled={off || isActive}
                     describedBy={isActive ? reasonId : undefined}

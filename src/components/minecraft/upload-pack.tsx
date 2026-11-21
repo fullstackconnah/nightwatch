@@ -130,6 +130,7 @@ export function UploadPack({
           say={`Uploads ${file?.name ?? "the file"} as ${name.trim() || "the pack"}.`}
           yes="Yes, upload"
           flight="Uploading…"
+          timeoutMs={0} // a pack file upload runs as long as the file takes (the server allows 10 min)
           failure="Couldn’t upload the pack"
           disabled={off || !canSubmit}
           onPending={(p) => {
