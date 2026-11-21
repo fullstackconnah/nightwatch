@@ -46,6 +46,19 @@ describe("getOrchestraSnapshot", () => {
     assert.equal((await getOrchestraSnapshot({ url: await stub(() => ({ code: 500 })), token: TOKEN })).status, "unreachable");
     assert.equal((await getOrchestraSnapshot({ url: await stub(() => ({ code: 200, body: "nope{" })), token: TOKEN })).status, "unreachable");
   });
+  it("a refused connection says it could not be reached; only a timeout says it did not answer", async () => {
+    const realFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () => { throw new TypeError("fetch failed"); }) as typeof fetch;
+      const refused = await getOrchestraSnapshot({ url: "http://127.0.0.1:1", token: TOKEN });
+      assert.equal(refused.detail, "The orchestra service could not be reached.");
+      globalThis.fetch = (async () => { throw new DOMException("timed out", "TimeoutError"); }) as typeof fetch;
+      const slow = await getOrchestraSnapshot({ url: "http://127.0.0.1:1", token: TOKEN });
+      assert.equal(slow.detail, "The orchestra service did not answer within 5s.");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
   it("200 is ok, sends the bearer, maps orchestrators and drops junk", async () => {
     let auth: string | undefined;
     const url = await stub((_u, a) => ((auth = a), { code: 200, body: { orchestrators: [dev, { bogus: true }] } }));

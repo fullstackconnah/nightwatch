@@ -71,6 +71,7 @@ export function PackBrowser({
     try {
       const created = await postJson("/api/minecraft/instances", { pack });
       slug = created?.slug as string | undefined;
+      onChanged(); // refresh now, so a retry after a failed activate finds the instance instead of a 409
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         slug = findInstalledSlug(pack, instances) ?? undefined;

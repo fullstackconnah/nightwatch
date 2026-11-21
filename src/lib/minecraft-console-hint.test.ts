@@ -26,6 +26,10 @@ test("consoleHint: a paused server says paused, not booting", () => {
 test("consoleHint: a paused server is refused even when RCON answers", () => {
   assert.equal(consoleHint("ok", true, false, true), "server is paused — resume it to use the console");
 });
+test("consoleHint: paused on a stale page gives the stale line, not 'resume it' while Resume is off", () => {
+  assert.equal(consoleHint("ok", true, true, true), "paused while the page shows old data");
+  assert.equal(consoleHint("ok", true, false, true), "server is paused — resume it to use the console");
+});
 test("consoleHint: paused loses to unconfigured and to stopped", () => {
   assert.equal(consoleHint("unconfigured", true, false, true), "RCON not configured — add it in Settings → Integrations");
   assert.equal(consoleHint("ok", false, false, true), "server is stopped — start it to use the console");
