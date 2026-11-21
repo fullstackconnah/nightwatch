@@ -9,7 +9,7 @@ export function budgetFieldError(text: string, stored: unknown): string | null {
   if (!text.trim()) return null;
   const n = Number(text);
   // plain decimals only: Number() also takes 0x10, 0b11 and 1e2
-  if (!/^\d+(\.\d+)?$/.test(text.trim()) || !Number.isFinite(n)) return "Daily budget must be a non-negative number";
+  if (!/^\d+(\.\d+)?$/.test(text.trim()) || !Number.isFinite(n)) return "Daily budget must be a plain number, like 5 or 0.5";
   if (typeof stored === "number" && Number.isFinite(stored) && n === stored) return null;
   return n > MAX_BUDGET_USD ? `Daily budget: the most is $${MAX_BUDGET_USD}` : null;
 }

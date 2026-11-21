@@ -2,9 +2,9 @@
  * A minimal RCON console: one command in, one response line out, scrollback
  * kept in component state only (not persisted — a fresh mount starts empty,
  * same as opening a real terminal). Disabled with an explanatory hint
- * whenever rcon isn't "ok" — booting (server up, RCON not answering yet) and
- * unconfigured (no rconHost/rconPassword in Settings) read differently, so
- * they get different copy.
+ * (consoleHint) whenever it cannot send: unconfigured (no rconHost/rconPassword
+ * in Settings), stopped, booting (server up, RCON not answering yet) or a
+ * stale page each get their own copy.
  */
 "use client";
 
@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, postJson } from "@/lib/client";
+import { consoleHint } from "@/lib/minecraft-console-hint";
 import { cn } from "@/lib/utils";
 
 /** Scrollback kept in state; older entries drop so a long session cannot grow without bound. */
@@ -24,17 +25,14 @@ interface Line {
 
 const append = (l: Line[], entry: Line): Line[] => [...l, entry].slice(-SCROLLBACK);
 
-function rconHint(rcon: "ok" | "unavailable" | "unconfigured"): string | null {
-  if (rcon === "unavailable") return "booting — console unavailable";
-  if (rcon === "unconfigured") return "RCON not configured — add it in Settings → Integrations";
-  return null;
-}
-
 export function Console({
   rcon,
+  running,
   stale,
 }: {
   rcon: "ok" | "unavailable" | "unconfigured";
+  /** The minecraft container is running; a stopped one reads differently from a booting one. */
+  running: boolean;
   /** The server is not answering: Send is off (the model's console-send). */
   stale?: boolean;
 }) {
@@ -48,8 +46,8 @@ export function Console({
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines]);
 
-  const disabled = rcon !== "ok" || Boolean(stale);
-  const hint = rconHint(rcon);
+  const hint = consoleHint(rcon, running, Boolean(stale));
+  const disabled = hint !== null;
 
   async function send() {
     const cmd = command.trim();
@@ -89,7 +87,7 @@ export function Console({
             onKeyDown={(e) => {
               if (e.key === "Enter") void send();
             }}
-            placeholder={disabled ? (hint ?? "RCON unavailable") : "say hello"}
+            placeholder={hint ?? "say hello"}
             aria-label="Command"
             disabled={disabled || sending}
             className="flex-1"
