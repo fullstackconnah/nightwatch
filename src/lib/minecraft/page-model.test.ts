@@ -187,6 +187,15 @@ test("partial: console not answering keeps Running, drops the count, turns Send 
   assert.equal(w(m, "stop").enabled, true);
 });
 
+test("partial: a rejected console password is named, not 'not answering'", () => {
+  const m = minecraftModel(input({ status: status({ players: null, rcon: "rejected" }) }));
+  assert.equal(m.answer, "Minecraft is running ATM10. Player count unknown: the console password was rejected.");
+  assert.equal(m.strips[1].state, "Unknown: the console password was rejected");
+  assert.equal(m.strips[4].state, "Password rejected");
+  assert.equal(w(m, "console-send").enabled, false);
+  assert.equal(m.writes.find((x) => x.id === "console-send")!.reason, "Unavailable: the console password was rejected.");
+});
+
 test("first minutes of a boot read as Starting…", () => {
   const m = minecraftModel(input({ status: status({ players: null, rcon: "unavailable" }), container: { ...running, startedAt: NOW - 60_000 } }));
   assert.equal(m.strips[0].state, "Starting…");

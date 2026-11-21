@@ -117,7 +117,7 @@ export function minecraftModel(i: ModelInput): Model {
   const crashed = managerOk && Boolean(active) && exited && !cleanExit;
   const noPack = managerOk && !active;
   const pl = status.players;
-  const consoleLine = status.rcon === "unconfigured" ? "the console isn’t set up" : "the console isn’t answering";
+  const consoleLine = status.rcon === "unconfigured" ? "the console isn’t set up" : status.rcon === "rejected" ? "the console password was rejected" : "the console isn’t answering";
   const uptimeMs = running && c?.startedAt ? now - c.startedAt : null;
   const stale = i.statusError || age > STALE_MS;
 
@@ -195,7 +195,7 @@ export function minecraftModel(i: ModelInput): Model {
         : newest ? `Last ${ageText(now - Date.parse(newest.modifiedAt))} ago · ${packBackups.length} kept` : "No backups yet",
       tone: managerOk && i.backupsError && !i.backups ? "warn" : null,
     },
-    console: { state: status.rcon === "ok" ? "Ready" : status.rcon === "unconfigured" ? "Not set up" : "Not answering", tone: null },
+    console: { state: status.rcon === "ok" ? "Ready" : status.rcon === "unconfigured" ? "Not set up" : status.rcon === "rejected" ? "Password rejected" : "Not answering", tone: null },
     log: { state: i.lastLine || "No log yet", tone: null },
   };
   const strips = order.map((id) => ({ id, title: TITLES[id], ...state[id] }));
