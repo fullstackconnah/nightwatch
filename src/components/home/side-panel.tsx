@@ -6,7 +6,7 @@ import { BackupTile } from "@/components/resources/backup-tile";
 import { useHost } from "@/lib/client";
 import { formatRate } from "@/lib/format";
 import { diskLine } from "@/lib/home";
-import { homeLanesText } from "@/lib/orchestra-view";
+import { homeLanesStatusText, homeLanesText } from "@/lib/orchestra-view";
 import { useOrchestraStatus } from "@/lib/use-orchestra";
 import { cn } from "@/lib/utils";
 
@@ -55,10 +55,7 @@ function Digest() {
 
 function Lanes() {
   const { data, error } = useOrchestraStatus();
-  let text = "checking…";
-  if (data?.status === "ok") {
-    text = homeLanesText(data.orchestrators);
-  } else if (data || error) text = "not reachable";
+  const text = data?.status === "ok" ? homeLanesText(data.orchestrators) : homeLanesStatusText(data?.status, Boolean(error));
   return (
     <Link href="/orchestrators" className="hm-lanes" data-feature="orchestra-link">
       <span className="microlabel">AI lanes</span>

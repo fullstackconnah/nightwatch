@@ -103,6 +103,37 @@ test("calm: singular mirror and pull request, no pull requests, no commits, empt
   assert.equal(strip(gitModel(input({ data: ok({ branches: [] }) })), "branches").state, "No branches reported yet");
 });
 
+test("a future-dated commit reads just now, never 0 s", () => {
+  const s = ok();
+  s.stream = [{ ...s.stream[0], date: iso(2 * H) }];
+  const m = gitModel(input({ data: s }));
+  assert.match(m.answer, /last commit just now in lab\/a\.$/);
+  assert.equal(strip(m, "commits").state, "just now · lab/a: Fix the thing");
+  assert.doesNotMatch(m.answer + JSON.stringify(m.strips), /\b0 s/); // the evidence line's "every 60 s" is a different thing
+});
+
+test("an unparseable commit date never wins newest and never prints NaN", () => {
+  const s = ok();
+  s.stream = [{ ...s.stream[0], repo: "lab/bad", date: "garbage" }, { ...s.stream[0], repo: "lab/good", date: iso(-2 * H) }];
+  const m = gitModel(input({ data: s }));
+  assert.match(m.answer, /last commit 2 h ago in lab\/good\.$/);
+  assert.doesNotMatch(JSON.stringify(m), /NaN/);
+  s.stream = [{ ...s.stream[0], date: "garbage" }];
+  const only = gitModel(input({ data: s }));
+  assert.match(only.answer, /no commits yet\.$/);
+  assert.equal(strip(only, "commits").state, "No commits yet");
+});
+
+test("a pull request with no date never claims 1970 and never wins newest", () => {
+  const s = ok();
+  s.pulls = [{ ...s.pulls[0], createdAt: null }, { ...s.pulls[1], createdAt: iso(-3 * D) }];
+  const m = gitModel(input({ data: s }));
+  assert.equal(strip(m, "pulls").state, "2 open · newest 3 d ago");
+  assert.doesNotMatch(JSON.stringify(m), /20400|1970|NaN/);
+  s.pulls = [{ ...s.pulls[0], createdAt: null }];
+  assert.equal(strip(gitModel(input({ data: s })), "pulls").state, "1 open");
+});
+
 test("the last commit is the newest, whatever the order", () => {
   const s = ok();
   s.stream = [{ ...s.stream[0], repo: "lab/old", date: iso(-9 * D) }, { ...s.stream[0], repo: "lab/new", date: iso(-2 * H) }];

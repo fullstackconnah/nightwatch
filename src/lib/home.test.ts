@@ -252,6 +252,7 @@ test("answerFor: a quiet report with the containers fetch failed says the app co
   assert.equal(answerFor({ ...base, report: report() }).text, "All clear. 48 apps running, backup ran 9 h ago");
 });
 test("ageText", () => {
+  assert.equal(ageText(NaN), "an unknown time");
   assert.equal(ageText(20_000), "20 s");
   assert.equal(ageText(40 * 60_000), "40 min");
   assert.equal(ageText(9 * 3_600_000), "9 h");

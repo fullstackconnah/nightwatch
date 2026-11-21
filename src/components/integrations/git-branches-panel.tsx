@@ -21,7 +21,7 @@ export function PullRows({ pulls }: { pulls: GitPullRequest[] }) {
         >
           <Badge variant="accent" className="shrink-0">{pr.repo}</Badge>
           <span className="min-w-0 flex-1 truncate text-sm text-ink" title={pr.title}>{pr.title}</span>
-          <span className="shrink-0 font-mono text-xs text-ink-faint" title={pr.createdAt}>{relativeTime(pr.createdAt)}</span>
+          <span className="shrink-0 font-mono text-xs text-ink-faint" title={pr.createdAt ?? undefined}>{pr.createdAt ? relativeTime(pr.createdAt) : "—"}</span>
         </a>
       ))}
     </div>

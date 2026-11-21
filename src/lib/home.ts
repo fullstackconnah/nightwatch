@@ -242,6 +242,7 @@ export function dropListed<E extends { subjects: readonly string[] }>(events: re
 
 /** Age for the answer line and the stale bar: "20 s", "40 min", "9 h", "3 d". */
 export function ageText(ms: number): string {
+  if (!Number.isFinite(ms)) return "an unknown time";
   if (ms < 60_000) return `${Math.round(ms / 1000)} s`;
   const min = Math.round(ms / 60_000);
   if (min < 60) return `${min} min`;

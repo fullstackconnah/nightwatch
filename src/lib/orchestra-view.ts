@@ -229,6 +229,10 @@ export function tallySegments(t: LaneTally): { n: number; label: string }[] {
 export const homeLanesText = (list: OrchestratorSummary[]): string =>
   tallySegments(laneTally(list)).filter((s) => !s.label.startsWith("agent")).map((s) => `${s.n} ${s.label}`).join(", ") || "no lanes";
 
+/** Home's tile when there is no ok answer: says why, instead of one "not reachable" for everything. */
+export const homeLanesStatusText = (status: OrchestraState | undefined, failed: boolean): string =>
+  status === "unconfigured" ? "not set up" : status === "unauthorized" ? "key rejected" : status || failed ? "not reachable" : "checking…";
+
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
