@@ -241,6 +241,11 @@ describe("bandView", () => {
     assert.equal(stale.hint, "The PC is on, but the service is failing. Showing what it last reported, 4m ago.");
     assert.equal(stale.stale, true);
   });
+  it("an answer too large to read counts as answered", () => {
+    const big = bandView("unreachable", { detail: "The orchestra service sent an answer too large to read." });
+    assert.equal(big.label, "error");
+    assert.equal(big.hint, "The PC is on, but the service is failing. This page checks again every 10 seconds.");
+  });
   it("an unreadable answer counts as answered; a timeout or network failure does not", () => {
     const unreadable = bandView("unreachable", { detail: "The orchestra service sent an unreadable answer." });
     assert.equal(unreadable.label, "error");

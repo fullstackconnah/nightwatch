@@ -39,6 +39,20 @@ describe("orchestra client upstream body cap", () => {
     assert.equal(pulls, 0);
   });
 
+  it("names a Content-Length over 1 MB as an answer too large to read, not a failure to connect", async () => {
+    stub(new Response("{}", { status: 200, headers: { "content-length": String(MB + 1) } }));
+    const s = await getOrchestraSnapshot(creds);
+    assert.equal(s.status, "unreachable");
+    assert.equal(s.detail, "The orchestra service sent an answer too large to read.");
+  });
+
+  it("a timeout while the body streams still says it did not answer in time", async () => {
+    const body = new ReadableStream<Uint8Array>({ pull() { throw new DOMException("timed out", "TimeoutError"); } });
+    stub(new Response(body, { status: 200 }));
+    const s = await getOrchestraSnapshot(creds);
+    assert.match(s.detail, /did not answer within/);
+  });
+
   it("stops reading a long chunked body at the 1 MB cap and answers unreachable", async () => {
     let pulls = 0;
     // 8 MB in all, so old uncapped code reads 32 chunks and ends; the capped client stops after about 4.

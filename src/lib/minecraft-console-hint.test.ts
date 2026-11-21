@@ -1,6 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { consoleHint } from "./minecraft-console-hint.ts";
+import { ApiError } from "./api-error.ts";
+import { consoleHint, consoleSendError } from "./minecraft-console-hint.ts";
+
+const UNREACHED = "Couldn't reach the dashboard. The command may not have run.";
+test("consoleSendError: an ApiError keeps the server's sentence", () => {
+  assert.equal(consoleSendError(new ApiError("The server didn't reply over RCON", 502)), "The server didn't reply over RCON");
+});
+test("consoleSendError: an ApiError with no message falls back to command failed", () => {
+  assert.equal(consoleSendError(new ApiError("", 500)), "command failed");
+});
+test("consoleSendError: Chrome's 'Failed to fetch' becomes the fixed sentence", () => {
+  assert.equal(consoleSendError(new TypeError("Failed to fetch")), UNREACHED);
+});
+test("consoleSendError: Safari's 'Load failed' becomes the fixed sentence", () => {
+  assert.equal(consoleSendError(new TypeError("Load failed")), UNREACHED);
+});
+test("consoleSendError: any other Error becomes the fixed sentence", () => {
+  assert.equal(consoleSendError(new Error("boom")), UNREACHED);
+});
+test("consoleSendError: a thrown string becomes the fixed sentence", () => {
+  assert.equal(consoleSendError("boom"), UNREACHED);
+});
+test("consoleSendError: undefined becomes the fixed sentence", () => {
+  assert.equal(consoleSendError(undefined), UNREACHED);
+});
 
 test("consoleHint: unconfigured wins over everything", () => {
   assert.equal(consoleHint("unconfigured", false, true), "RCON not configured — add it in Settings → Integrations");
