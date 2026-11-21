@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { rconCommand } from "@/lib/minecraft/rcon";
+import { rconErrorCopy } from "@/lib/minecraft/rcon-error";
 import { loadConfig } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,10 @@ export async function POST(req: NextRequest) {
       command,
     });
     return NextResponse.json({ response });
-  } catch (e) {
-    console.error("rcon command failed", e);
-    return NextResponse.json({ error: "RCON command failed." }, { status: 502 });
+  } catch (err) {
+    console.error("rcon command failed", err);
+    // 502 for every cause: the client reads 401 as a signed-out session.
+    const error = rconErrorCopy(err instanceof Error ? err.message : undefined) ?? "RCON command failed.";
+    return NextResponse.json({ error }, { status: 502 });
   }
 }
