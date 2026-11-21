@@ -34,7 +34,7 @@ export function checkRows(ports: PortRow[], env: EnvRow[], vols: VolRow[]): Chec
   for (const [i, v] of vols.entries()) {
     if (blank(v.host) && blank(v.container)) continue;
     if (blank(v.host) || blank(v.container)) return { error: `Volume row ${i + 1} needs both a host path and a container path.` };
-    outVols.push(v);
+    outVols.push({ ...v, host: v.host.trim(), container: v.container.trim() });
   }
   return { ports: outPorts, env: outEnv, volumes: outVols };
 }

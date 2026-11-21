@@ -165,3 +165,10 @@ test("budgetFieldError: an unchanged stored cap above the max is not refused; an
   assert.ok(budgetFieldError("abc", 500));
   assert.equal(budgetFieldError("1000", 5), null);
 });
+
+test("budgetFieldError: only plain decimal text is a budget (no hex, binary, exponent, bare dot or separators)", () => {
+  const bad = "Daily budget must be a non-negative number";
+  for (const t of ["-1", "abc", "0x10", "0b11", "1e2", ".5", "5.", "1,000", "1 000"]) assert.equal(budgetFieldError(t, 5), bad, t);
+  for (const t of ["12", "12.5", " 12 "]) assert.equal(budgetFieldError(t, 5), null, t);
+  for (const t of ["", "   "]) assert.equal(budgetFieldError(t, 5), null, t);
+});

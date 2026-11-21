@@ -8,6 +8,7 @@
 import { WriteAction } from "@/components/strips/write-action";
 import { postJson } from "@/lib/client";
 import { backupReason, canRestore } from "@/lib/mc-backup-reason";
+import { backupSizeText } from "@/lib/backup-size";
 import { relativeTime } from "@/lib/format";
 import { restoreSoftFailure } from "@/lib/restore-failure";
 import type { McBackup } from "@/lib/minecraft/manager";
@@ -81,7 +82,7 @@ export function BackupsDetail({
               <div className="st-grow">
                 <div className="font-mono text-ink truncate">{b.file}</div>
                 <div className="text-ink-faint">
-                  {b.instance} · {(b.sizeBytes / 1048576).toFixed(1)} MB · {relativeTime(b.modifiedAt)}
+                  {b.instance} · {backupSizeText(b.sizeBytes)} · {relativeTime(b.modifiedAt)}
                 </div>
               </div>
               <WriteAction

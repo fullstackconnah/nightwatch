@@ -124,6 +124,7 @@ export default function MinecraftPage() {
         <LogDetail
           logs={log.data?.logs}
           error={Boolean(log.error)}
+          why={containersError && !containersData ? "docker-failed" : containersData && !container ? "no-container" : paused ? "paused" : "loading"}
           tail={tail}
           paused={paused}
           onTail={setTail}
