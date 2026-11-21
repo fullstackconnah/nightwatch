@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { packProviderNote, packSearchView } from "@/lib/minecraft-pack-notes";
 import { WriteAction } from "@/components/strips/write-action";
 import { Badge } from "@/components/ui/badge";
 import { Input, Select } from "@/components/ui/input";
@@ -54,7 +55,9 @@ export function PackBrowser({
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [source, setSource] = useState<"all" | "curseforge" | "modrinth">("all");
-  const { data: search, error: searchError } = useMinecraftPackSearch(debounced, source);
+  const { data: search, error: searchError, isLoading } = useMinecraftPackSearch(debounced, source);
+  const view = packSearchView(debounced, !!searchError, search, isLoading);
+  const providerNote = packProviderNote(search);
   const [busy, setBusy] = useState(false);
   const off = disabled || busy;
 
@@ -125,17 +128,20 @@ export function PackBrowser({
           </p>
         )}
 
-        {!debounced ? (
+        {view === "searching-over-old" && <p className="st-note">Searching…</p>}
+        {providerNote && (view === "results" || view === "empty-with-note") && <p className="text-xs text-bad">{providerNote}</p>}
+
+        {view === "prompt" ? (
           <p className="st-note">Type to search modpacks.</p>
-        ) : searchError ? (
+        ) : view === "failed" ? (
           <p className="text-xs text-bad">Couldn&apos;t search. Try again.</p>
-        ) : !search ? (
+        ) : view === "searching" ? (
           <p className="st-note">Searching…</p>
-        ) : search.results.length === 0 ? (
+        ) : view === "empty" ? (
           <p className="st-note">No results.</p>
-        ) : (
+        ) : view === "empty-with-note" ? null : (
           <div>
-            {search.results.map((r) => (
+            {search?.results.map((r) => (
               <div key={`${r.source}:${r.id}`} className="st-li">
                 {r.icon ? (
                   // eslint-disable-next-line @next/next/no-img-element
