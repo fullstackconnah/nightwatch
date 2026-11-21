@@ -30,6 +30,7 @@ import { chromium } from "playwright";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CONTAINERS, FIXTURES, NOW } from "./fixtures/settings/fixtures.mjs";
+import { shotsFailed } from "./settings-shots-verdict.mjs";
 
 const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3006").replace(/\/$/, "");
 const OUT_DIR = process.env.OUT_DIR ?? "shots";
@@ -1262,10 +1263,11 @@ await guarded("pw72", () =>
 function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");
   record("C14 foreign requests", "all", foreignRequests.length ? [...new Set(foreignRequests)].join(" | ") : "none");
+  record("C14 no page errors", "all", pageErrors.length === 0);
+  record("C14 no foreign requests", "all", foreignRequests.length === 0);
   console.log(JSON.stringify({ ...checks, diag }));
-  // A failed step-up check (or any FAIL record in a single-section run) fails the run.
-  const bad = Object.entries(checks).some(([k, v]) => ((k.startsWith("SU ") || k.startsWith("CN ") || k.startsWith("SP ") || k.startsWith("PW72 ")) && Object.values(v).includes(false)) || (ONLY && k === "FAIL"));
-  if (bad) process.exitCode = 1;
+  // Any false record (or any FAIL record in a single-section run) fails the run.
+  if (shotsFailed(checks, ONLY)) process.exitCode = 1;
 }
 for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => (finish(), process.exit(1)));
 await browser.close().catch(() => {});
