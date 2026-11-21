@@ -11,3 +11,10 @@ export function logStripText(logs: string | undefined, error: boolean, why: LogW
   if (why === "paused") return { text: "Paused before any logs loaded.", bad: false };
   return { text: "Reading logs…", bad: false };
 }
+
+/** The log text to show: lines fetched for another container are dropped; a failed Docker list (id gone, why not "no-container") keeps them. */
+export function shownLogs(data: { logs: string; id: string } | undefined, id: string | undefined, why: LogWhy): string | undefined {
+  if (!data) return undefined;
+  if (id !== undefined) return data.id === id ? data.logs : undefined;
+  return why === "no-container" ? undefined : data.logs;
+}

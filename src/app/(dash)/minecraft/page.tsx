@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BackupNowSlot, BackupsDetail } from "@/components/minecraft/backups-panel";
 import { Console } from "@/components/minecraft/console";
+import { shownLogs, type LogWhy } from "@/lib/minecraft-log-text";
 import { LogDetail, lastLogLine, useMinecraftLog } from "@/components/minecraft/log-detail";
 import { PackBrowser } from "@/components/minecraft/pack-browser";
 import { ServerDetail, ServerSlot } from "@/components/minecraft/status-card";
@@ -54,7 +55,9 @@ export default function MinecraftPage() {
   const [paused, setPaused] = useState(false);
   const [serverBusy, setServerBusy] = useState(false);
   const log = useMinecraftLog(container?.id, tail, paused);
-  const lastLine = lastLogLine(log.data?.logs);
+  const logWhy: LogWhy = containersError && !containersData ? "docker-failed" : containersData && !container ? "no-container" : paused ? "paused" : "loading";
+  const logs = shownLogs(log.data, container?.id, logWhy);
+  const lastLine = lastLogLine(logs);
 
   const model = minecraftModel({
     status,
@@ -122,9 +125,9 @@ export default function MinecraftPage() {
       ) : undefined,
       body: (
         <LogDetail
-          logs={log.data?.logs}
+          logs={logs}
           error={Boolean(log.error)}
-          why={containersError && !containersData ? "docker-failed" : containersData && !container ? "no-container" : paused ? "paused" : "loading"}
+          why={logWhy}
           tail={tail}
           paused={paused}
           onTail={setTail}

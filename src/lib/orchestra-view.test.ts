@@ -229,6 +229,16 @@ describe("bandView", () => {
     assert.equal(b.detail, "no answer");
     assert.equal(b.dot, "dot-dead");
   });
+  it("unreachable with an HTTP answer says it answered with an error, not that the PC is off", () => {
+    const detail = "The orchestra service answered HTTP 500.";
+    const fresh = bandView("unreachable", { detail });
+    assert.equal(fresh.sentence, "Orchestra answered with an error.");
+    assert.equal(fresh.hint, "The PC is on, but the service is failing. This page checks again every 10 seconds.");
+    assert.equal(fresh.detail, detail);
+    const stale = bandView("unreachable", { detail, lastAge: "4m ago" });
+    assert.equal(stale.hint, "The PC is on, but the service is failing. Showing what it last reported, 4m ago.");
+    assert.equal(stale.stale, true);
+  });
 });
 
 describe("checkpointView", () => {

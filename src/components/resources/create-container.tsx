@@ -77,7 +77,7 @@ export function CreateContainerDialog({
       });
       onCreated();
     } catch (e) {
-      setError(createFailedCopy(e instanceof Error ? e.message : undefined, e instanceof ApiError ? e.status : undefined));
+      setError(createFailedCopy(e instanceof Error ? e.message : undefined, e instanceof ApiError ? e.status : undefined, typeof navigator !== "undefined" && navigator.onLine === false));
       setBusy(false);
     }
   }

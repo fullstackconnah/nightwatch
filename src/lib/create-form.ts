@@ -9,7 +9,8 @@ type Checked =
 const blank = (s: string) => !s.trim();
 
 /** The dialog's error line after a failed create: no answer (or a proxy cut) may still have made the container. */
-export function createFailedCopy(message: string | undefined, status: number | undefined): string {
+export function createFailedCopy(message: string | undefined, status: number | undefined, offline: boolean): string {
+  if (status === undefined && offline) return "You're offline, so nothing was sent. Reconnect and try again.";
   if (status === undefined || status === 502 || status === 504) {
     return "No answer came back, so the container may already exist. Close this and check the list before trying again.";
   }

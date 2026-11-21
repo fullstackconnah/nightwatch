@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { logStripText } from "./minecraft-log-text.ts";
+import { logStripText, shownLogs } from "./minecraft-log-text.ts";
 
 test("logStripText: loaded logs show as they are", () => {
   assert.equal(logStripText("line", false, "loading"), null);
@@ -13,4 +13,13 @@ test("logStripText: each reason a log is missing has its own sentence", () => {
   assert.deepEqual(logStripText(undefined, false, "no-container"), { text: "No Minecraft container.", bad: false });
   assert.deepEqual(logStripText(undefined, false, "paused"), { text: "Paused before any logs loaded.", bad: false });
   assert.deepEqual(logStripText(undefined, false, "loading"), { text: "Reading logs…", bad: false });
+});
+
+test("shownLogs: lines follow the container they were fetched for", () => {
+  const d = { logs: "old", id: "a" };
+  assert.equal(shownLogs(d, "a", "paused"), "old"); // 1 pause, same id
+  assert.equal(shownLogs(d, "a", "loading"), "old"); // 2 tail change, same id
+  assert.equal(shownLogs(d, "b", "loading"), undefined); // 3 new id
+  assert.equal(shownLogs(d, undefined, "no-container"), undefined); // 4 container gone
+  assert.equal(shownLogs(d, undefined, "docker-failed"), "old"); // 5 transient list failure
 });

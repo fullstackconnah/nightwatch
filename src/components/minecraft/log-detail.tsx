@@ -15,9 +15,10 @@ import { logStripText, type LogWhy } from "@/lib/minecraft-log-text";
 export const TAILS = [100, 200, 500, 1000, 5000] as const;
 
 export function useMinecraftLog(id: string | undefined, tail: number, paused: boolean) {
-  return useSWR<{ logs: string }>(
+  // The id rides with the lines so the page can drop lines fetched for another container (shownLogs).
+  return useSWR<{ logs: string; id: string }>(
     id && !paused ? `/api/docker/containers/${id}/logs?tail=${tail}` : null,
-    fetcher,
+    async (url: string) => ({ ...(await fetcher(url)), id: id as string }),
     { refreshInterval: 5000, keepPreviousData: true },
   );
 }

@@ -65,14 +65,15 @@ export function bandView(status: "unauthorized" | "unreachable", a: { detail: st
     };
   }
   const stale = a.lastAge !== undefined;
+  // shortcut: matches orchestra.ts's "answered HTTP" detail text, give the snapshot a cause field if a second cause appears
+  const answered = a.detail?.startsWith("The orchestra service answered") === true;
+  const lead = answered ? "The PC is on, but the service is failing." : "The PC is probably off or asleep.";
   return {
     dot: "dot-dead",
     label: "unreachable",
     tone: "bad",
-    sentence: "Orchestra is not answering.",
-    hint: stale
-      ? `The PC is probably off or asleep. Showing what it last reported, ${a.lastAge}.`
-      : "The PC is probably off or asleep. This page checks again every 10 seconds.",
+    sentence: answered ? "Orchestra answered with an error." : "Orchestra is not answering.",
+    hint: stale ? `${lead} Showing what it last reported, ${a.lastAge}.` : `${lead} This page checks again every 10 seconds.`,
     stale,
     detail: a.detail,
   };
