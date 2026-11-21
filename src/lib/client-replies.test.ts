@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { assistantSay, loginFailure, versionBuildId } from "./client-replies.ts";
+import { assistantSay, loginFailure, loginUnreachable, versionBuildId } from "./client-replies.ts";
 
 test("assistant: a non-blank say is kept, a blank or missing one throws", () => {
   assert.equal(assistantSay({ say: "Too many requests." }), "Too many requests.");
@@ -17,4 +17,9 @@ test("login: a non-JSON error body (empty object) shows Login failed, a server e
   assert.equal(loginFailure({}), "Login failed");
   assert.equal(loginFailure({ error: "" }), "Login failed");
   assert.equal(loginFailure({ error: "Wrong password" }), "Wrong password");
+});
+
+test("login: any thrown fetch value gives the fixed offline copy, never the raw text", () => {
+  const copy = "Can't reach nightwatch. Check the connection and try again.";
+  for (const e of [new TypeError("Failed to fetch"), new TypeError("Load failed"), "boom", undefined]) assert.equal(loginUnreachable(e), copy);
 });

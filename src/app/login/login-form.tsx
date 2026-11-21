@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Activity, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { loginFailure } from "@/lib/client-replies";
+import { loginFailure, loginUnreachable } from "@/lib/client-replies";
 import { postLoginPath } from "@/lib/login-redirect";
 
 /** One line per code the callback route can redirect back with — see
@@ -33,19 +33,25 @@ export function LoginForm({
     e.preventDefault();
     setBusy(true);
     setError(null);
+    let res: Response;
     try {
-      const res = await fetch("/api/auth/login", {
+      res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(loginFailure(data));
-      window.location.href = postLoginPath(window.location.hash);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(loginUnreachable(err));
       setBusy(false);
+      return;
     }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(loginFailure(data));
+      setBusy(false);
+      return;
+    }
+    window.location.href = postLoginPath(window.location.hash);
   }
 
   return (
@@ -58,7 +64,7 @@ export function LoginForm({
           </span>
         </div>
 
-        {ssoError && SSO_ERROR_COPY[ssoError] && <p className="text-bad text-xs text-center">{SSO_ERROR_COPY[ssoError]}</p>}
+        {ssoError && SSO_ERROR_COPY[ssoError] && <p role="alert" className="text-bad text-xs text-center">{SSO_ERROR_COPY[ssoError]}</p>}
 
         {ssoConfigured && (
           <>
@@ -94,7 +100,7 @@ export function LoginForm({
               placeholder="••••••••"
             />
           </div>
-          {error && <p className="text-bad text-xs">{error}</p>}
+          {error && <p role="alert" className="text-bad text-xs">{error}</p>}
           <Button type="submit" disabled={busy || !password} className="w-full">
             {busy ? "Checking…" : "Unlock"}
           </Button>

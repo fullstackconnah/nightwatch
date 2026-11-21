@@ -14,3 +14,6 @@ export function versionBuildId(ok: boolean, data: { buildId?: unknown }): string
 
 /** Login failure text: the server's own error when it sent one, else the generic line. */
 export const loginFailure = (data: { error?: unknown }) => (typeof data.error === "string" && data.error) || "Login failed";
+
+/** A rejected fetch is a network failure whatever it threw: fixed copy, never the browser's own text ("Failed to fetch", "Load failed"). */
+export const loginUnreachable = (_thrown: unknown) => "Can't reach nightwatch. Check the connection and try again.";
