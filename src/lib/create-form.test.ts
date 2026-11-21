@@ -140,11 +140,16 @@ test("a bad number is reported before a later duplicate", () => {
 
 test("createFailedCopy: no answer or a proxy cut says the container may exist", () => {
   const lost = "No answer came back, so the container may already exist. Close this and check the list before trying again.";
-  assert.equal(createFailedCopy(undefined, undefined), lost);
-  assert.equal(createFailedCopy("Bad gateway", 502), lost);
-  assert.equal(createFailedCopy("", 504), lost);
-  assert.equal(createFailedCopy("Name in use.", 409), "Name in use.");
-  assert.equal(createFailedCopy("", 500), "create failed");
+  assert.equal(createFailedCopy(undefined, undefined, false), lost);
+  assert.equal(createFailedCopy("Bad gateway", 502, false), lost);
+  assert.equal(createFailedCopy("", 504, false), lost);
+  assert.equal(createFailedCopy("Name in use.", 409, false), "Name in use.");
+  assert.equal(createFailedCopy("", 500, false), "create failed");
+});
+
+test("createFailedCopy: offline with no answer says nothing was sent; a real 502 still may exist", () => {
+  assert.equal(createFailedCopy(undefined, undefined, true), "You're offline, so nothing was sent. Reconnect and try again.");
+  assert.match(createFailedCopy("Bad gateway", 502, true), /may already exist/);
 });
 
 test("checkRows: volume paths are saved without stray spaces", () => {
