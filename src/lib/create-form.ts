@@ -14,6 +14,12 @@ export function checkRows(ports: PortRow[], env: EnvRow[], vols: VolRow[]): Chec
   for (const [i, p] of ports.entries()) {
     if (blank(p.host) && blank(p.container)) continue;
     if (blank(p.host) || blank(p.container)) return { error: `Port row ${i + 1} needs both a host and a container port.` };
+    for (const [half, text] of [["host", p.host], ["container", p.container]] as const) {
+      const t = text.trim();
+      if (!/^\d+$/.test(t) || Number(t) < 1 || Number(t) > 65535) {
+        return { error: `Port row ${i + 1}: the ${half} port must be a whole number from 1 to 65535.` };
+      }
+    }
     outPorts.push({ host: Number(p.host), container: Number(p.container), protocol: p.protocol });
   }
   const outEnv: EnvRow[] = [];
