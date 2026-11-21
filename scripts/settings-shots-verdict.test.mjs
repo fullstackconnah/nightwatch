@@ -21,3 +21,9 @@ test("an empty record set passes", () => {
   assert.equal(shotsFailed({}, false), false);
   assert.equal(shotsFailed({}, true), false);
 });
+test("a per-viewport object whose ok is strictly false fails; other shapes do not", () => {
+  assert.equal(shotsFailed({ "L1 x": { 390: { ok: false, h: 3 } } }, false), true);
+  assert.equal(shotsFailed({ "L1 x": { 390: { ok: true } } }, false), false);
+  assert.equal(shotsFailed({ "L1 x": { 390: { h: 3 } } }, false), false);
+  assert.equal(shotsFailed({ "L1 x": { 390: null, 1440: [false], a: "ok", b: 0 } }, false), false);
+});
