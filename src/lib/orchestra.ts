@@ -1,4 +1,4 @@
-import { readJsonCapped } from "./read-capped.ts";
+import { BODY_OVER_CAP, readJsonCapped } from "./read-capped.ts";
 import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "./config.ts";
 import type {
   OrchestraDetailResponse,
@@ -66,6 +66,7 @@ async function get(creds: OrchestraCredentials, path: string): Promise<Fetched> 
     } catch (e) {
       // A timeout while the body streams is still a timeout; only a parse failure is an unreadable answer.
       if (e instanceof SyntaxError) return { kind: "unreachable", detail: "The orchestra service sent an unreadable answer." };
+      if (e instanceof Error && e.message === BODY_OVER_CAP) return { kind: "unreachable", detail: "The orchestra service sent an answer too large to read." };
       throw e;
     }
   } catch (e) {

@@ -26,9 +26,12 @@ export async function readCapped(res: { headers: Headers; body: ReadableStream<U
   return out.slice(0, max);
 }
 
+/** The message readJsonCapped throws for a declared body over the cap, so a caller can tell it from a timeout. */
+export const BODY_OVER_CAP = "upstream body over cap";
+
 /** JSON.parse of a capped body; throws (like res.json() on bad JSON) when the body is over `max` or not JSON. */
 export async function readJsonCapped<T>(res: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number): Promise<T> {
   const text = await readCapped(res, max);
-  if (text === null) throw new Error("upstream body over cap");
+  if (text === null) throw new Error(BODY_OVER_CAP);
   return JSON.parse(text) as T;
 }

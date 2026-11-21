@@ -11,8 +11,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError, postJson } from "@/lib/client";
-import { consoleHint } from "@/lib/minecraft-console-hint";
+import { postJson } from "@/lib/client";
+import { consoleHint, consoleSendError } from "@/lib/minecraft-console-hint";
 import { cn } from "@/lib/utils";
 
 /** Scrollback kept in state; older entries drop so a long session cannot grow without bound. */
@@ -62,8 +62,7 @@ export function Console({
       const res = await postJson("/api/minecraft/rcon", { command: cmd });
       setLines((l) => append(l, { text: String(res?.response ?? "").trim() ? String(res.response) : "(no output)", kind: "resp" }));
     } catch (e) {
-      const message = e instanceof ApiError ? e.message : e instanceof Error ? e.message : "command failed";
-      setLines((l) => append(l, { text: message, kind: "error" }));
+      setLines((l) => append(l, { text: consoleSendError(e), kind: "error" }));
     } finally {
       setSending(false);
     }
