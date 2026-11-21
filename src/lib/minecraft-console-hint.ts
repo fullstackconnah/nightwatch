@@ -2,7 +2,7 @@
 export function consoleHint(rcon: "ok" | "unavailable" | "unconfigured", running: boolean, stale: boolean, paused = false): string | null {
   if (rcon === "unconfigured") return "RCON not configured — add it in Settings → Integrations";
   if (!running) return "server is stopped — start it to use the console";
-  if (paused) return "server is paused — resume it to use the console";
+  if (paused && !stale) return "server is paused — resume it to use the console";
   if (rcon === "unavailable") return "booting — console unavailable";
   if (stale) return "paused while the page shows old data";
   return null;

@@ -48,7 +48,7 @@ export interface BandView {
   hint: string;
   /** True when last-known cards are shown beside it. */
   stale: boolean;
-  /** The service's own error line; only when there is nothing stale to show. */
+  /** The service's own error line (the true cause), shown with or without stale cards. */
   detail: string | null;
 }
 
@@ -74,7 +74,7 @@ export function bandView(status: "unauthorized" | "unreachable", a: { detail: st
       ? `The PC is probably off or asleep. Showing what it last reported, ${a.lastAge}.`
       : "The PC is probably off or asleep. This page checks again every 10 seconds.",
     stale,
-    detail: stale ? null : a.detail,
+    detail: a.detail,
   };
 }
 

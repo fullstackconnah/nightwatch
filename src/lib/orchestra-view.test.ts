@@ -222,11 +222,11 @@ describe("bandView", () => {
     assert.equal(b.hint, "The PC is probably off or asleep. This page checks again every 10 seconds.");
     assert.equal(b.detail, "no answer");
   });
-  it("unreachable with last-known is stale and quotes the age, without the detail line", () => {
+  it("unreachable with last-known is stale and quotes the age, and keeps the detail line", () => {
     const b = bandView("unreachable", { detail: "no answer", lastAge: "4m ago" });
     assert.equal(b.stale, true);
     assert.equal(b.hint, "The PC is probably off or asleep. Showing what it last reported, 4m ago.");
-    assert.equal(b.detail, null);
+    assert.equal(b.detail, "no answer");
     assert.equal(b.dot, "dot-dead");
   });
 });

@@ -68,8 +68,11 @@ async function get(creds: OrchestraCredentials, path: string): Promise<Fetched> 
       if (e instanceof SyntaxError) return { kind: "unreachable", detail: "The orchestra service sent an unreadable answer." };
       throw e;
     }
-  } catch {
-    return { kind: "unreachable", detail: `The orchestra service did not answer within ${TIMEOUT_MS / 1000}s.` };
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      return { kind: "unreachable", detail: `The orchestra service did not answer within ${TIMEOUT_MS / 1000}s.` };
+    }
+    return { kind: "unreachable", detail: "The orchestra service could not be reached." };
   }
 }
 
