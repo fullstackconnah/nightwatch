@@ -6,7 +6,7 @@ import { rconErrorCopy } from "./rcon-error.ts";
 describe("rconErrorCopy", () => {
   it("names the cause for auth and unreachable", () => {
     assert.equal(rconErrorCopy("rcon auth failed"), "The Minecraft server rejected the RCON password.");
-    assert.equal(rconErrorCopy("rcon unreachable"), "The Minecraft server didn't answer on the RCON port.");
+    assert.equal(rconErrorCopy("rcon unreachable"), "The Minecraft server didn't reply over RCON.");
   });
   it("gives null for anything else", () => {
     for (const m of [undefined, "rcon malformed frame", "rcon protocol error", "ECONNRESET", "constructor"]) {
