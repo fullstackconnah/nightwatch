@@ -70,7 +70,7 @@ export function bandView(status: "unauthorized" | "unreachable", a: { detail: st
   const lead = answered ? "The PC is on, but the service is failing." : "The PC is probably off or asleep.";
   return {
     dot: "dot-dead",
-    label: "unreachable",
+    label: answered ? "error" : "unreachable",
     tone: "bad",
     sentence: answered ? "Orchestra answered with an error." : "Orchestra is not answering.",
     hint: stale ? `${lead} Showing what it last reported, ${a.lastAge}.` : `${lead} This page checks again every 10 seconds.`,

@@ -233,6 +233,8 @@ describe("bandView", () => {
     const detail = "The orchestra service answered HTTP 500.";
     const fresh = bandView("unreachable", { detail });
     assert.equal(fresh.sentence, "Orchestra answered with an error.");
+    assert.equal(fresh.label, "error");
+    assert.equal(bandView("unreachable", { detail: "no answer" }).label, "unreachable");
     assert.equal(fresh.hint, "The PC is on, but the service is failing. This page checks again every 10 seconds.");
     assert.equal(fresh.detail, detail);
     const stale = bandView("unreachable", { detail, lastAge: "4m ago" });
