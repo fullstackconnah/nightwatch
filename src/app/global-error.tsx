@@ -29,7 +29,7 @@ export default function GlobalError({
       <body className="antialiased">
         <div className="min-h-screen flex items-center justify-center px-4">
           <div className="panel w-full max-w-sm p-6 flex flex-col items-center gap-4 text-center">
-            <div className="flex flex-col gap-1.5">
+            <div role="alert" className="flex flex-col gap-1.5">
               <h1 className="text-sm font-semibold text-ink">nightwatch hit an error</h1>
               <p className="text-xs text-ink-dim">
                 The app shell itself failed to render. Retrying reloads the whole page.
@@ -38,7 +38,7 @@ export default function GlobalError({
 
             <button
               type="button"
-              onClick={reset}
+              onClick={() => window.location.reload()}
               className="h-11 md:h-9 w-full rounded-md border border-accent/30 bg-accent/10 text-accent text-sm font-medium flex items-center justify-center gap-1.5 outline-none hover:bg-accent/20 focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] transition cursor-pointer"
             >
               Retry

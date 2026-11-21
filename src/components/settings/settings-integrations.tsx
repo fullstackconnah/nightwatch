@@ -31,6 +31,7 @@ import { plainReason } from "@/lib/settings/page-model";
 import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar-status";
 import { MAX_CALENDAR_LINK } from "@/lib/settings-checks";
 import { rconPortFieldError } from "@/lib/settings-field-checks";
+import { MAX_RCON_HOST } from "@/lib/settings-checks";
 import { useFormReport } from "@/components/settings/form-report";
 
 // ---------------------------------------------------------------------------
@@ -797,7 +798,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
           />
         </Field>
         <Field label="RCON host">
-          <Input placeholder="homelab.local" value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
+          <Input placeholder="homelab.local" maxLength={MAX_RCON_HOST} value={rconHost} onChange={(e) => setRconHost(e.target.value)} />
         </Field>
         <Field label="RCON port" error={portError}>
           <Input placeholder="25575" value={rconPort} onChange={(e) => setRconPort(e.target.value)} />

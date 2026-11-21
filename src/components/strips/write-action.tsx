@@ -84,6 +84,8 @@ export function WriteAction({
     onPending?.(true);
     try {
       await run();
+      // Yes or the trigger unmounted under the focus (it fell to body): put it back; never pull it from another control.
+      if (!document.activeElement || document.activeElement === document.body) refocus.current = true;
       setPhase("idle");
     } catch (e) {
       setSoft(softFailure?.(e) ?? null);

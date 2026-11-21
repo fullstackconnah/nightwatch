@@ -32,7 +32,7 @@ export default function DashError({
       <div className="panel w-full max-w-sm p-6 flex flex-col items-center gap-4 text-center">
         <AlertTriangle size={24} className="text-warn" aria-hidden="true" />
 
-        <div className="flex flex-col gap-1.5">
+        <div role="alert" className="flex flex-col gap-1.5">
           <h1 className="text-sm font-semibold text-ink">Something went wrong</h1>
           <p className="text-xs text-ink-dim">
             This page hit an error while rendering. The rest of the dashboard is unaffected — the sidebar

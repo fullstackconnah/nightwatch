@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { sparkPaths } from "@/lib/chart-points";
 
 /** Filled sparkline/area chart, no axes — for live stat history. */
 export function Sparkline({
@@ -18,7 +19,8 @@ export function Sparkline({
 }) {
   const W = 240;
   const H = height;
-  if (data.length < 2) {
+  const paths = sparkPaths(data, max, W, H);
+  if (!paths) {
     return (
       <div
         className={cn("flex items-center justify-center text-ink-faint text-xs", className)}
@@ -28,16 +30,10 @@ export function Sparkline({
       </div>
     );
   }
-  const peak = max ?? Math.max(...data, 1);
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * W;
-    const y = H - 3 - (Math.min(v, peak) / peak) * (H - 8);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const line = pts.join(" ");
-  const area = `0,${H} ${line} ${W},${H}`;
+  const { line, area } = paths;
   return (
     <svg
+      aria-hidden="true"
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
       className={cn("w-full", className)}
