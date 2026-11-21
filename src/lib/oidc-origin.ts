@@ -9,8 +9,15 @@ export interface OriginRequest {
 
 export function requestOrigin(req: OriginRequest): string {
   const host = req.headers.get("host") ?? req.nextUrl.host;
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  return `${proto}://${host}`;
+  // Behind two proxies the header is "https,http": first value only, anything but http(s) falls back to http.
+  const first = (req.headers.get("x-forwarded-proto") ?? "").split(",")[0].trim().toLowerCase();
+  return `${first === "https" ? "https" : "http"}://${host}`;
+}
+
+/** URL code for a failed token exchange: a provider outage (or discovery failure) reads as "SSO is not available", not "rejected". Duck-typed so this file stays import-free. */
+export function exchangeErrorCode(err: unknown): "config" | "exchange_failed" {
+  const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return code === "config" || code === "discovery_failed" || code === "provider_unreachable" ? "config" : "exchange_failed";
 }
 
 /** /login?sso_error=<code> on the browser's origin. The raw error never reaches the URL, only a code. */
