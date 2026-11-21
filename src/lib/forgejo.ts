@@ -3,6 +3,7 @@ import { Memo } from "./cache.ts";
 import { readJsonCapped } from "./read-capped.ts";
 import { commitDate, newestFirst } from "./git/commit-order.ts";
 import { isTimeout } from "./integration-client.ts";
+import { fetchAllPages } from "./forgejo-pages.ts";
 import type {
   GitBranchSummary,
   GitCommitEntry,
@@ -300,9 +301,8 @@ async function fetchRepoBundle(
   const base = `/api/v1/repos/${enc(repo.owner)}/${enc(repo.name)}`;
   const [commitsRes, branchesRes, pullsRes, mirrorsRes] = await Promise.all([
     forgejoFetch<ForgejoCommitRaw[]>(baseUrl, token, `${base}/commits?limit=20`),
-    // shortcut: one page of 50 per repo (Forgejo's max page size); follow pages if a repo ever has more than 50 branches or open pulls
-    forgejoFetch<ForgejoBranchRaw[]>(baseUrl, token, `${base}/branches?limit=50`),
-    forgejoFetch<ForgejoPullRequestRaw[]>(baseUrl, token, `${base}/pulls?state=open&limit=50`),
+    fetchAllPages((p) => forgejoFetch<ForgejoBranchRaw[]>(baseUrl, token, `${base}/branches?limit=50&page=${p}`)),
+    fetchAllPages((p) => forgejoFetch<ForgejoPullRequestRaw[]>(baseUrl, token, `${base}/pulls?state=open&limit=50&page=${p}`)),
     forgejoFetch<ForgejoPushMirrorRaw[]>(baseUrl, token, `${base}/push_mirrors`),
   ]);
 

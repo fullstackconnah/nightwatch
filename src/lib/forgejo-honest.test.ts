@@ -76,7 +76,21 @@ describe("buildGitSnapshot branch and pull counts", () => {
     if (s.status !== "ok") return;
     assert.equal(s.offDefaultCount, 90);
     assert.equal(s.branches.length, 60);
-    assert.equal(urls.filter((u) => u.endsWith("/branches?limit=50")).length, 3);
-    assert.equal(urls.filter((u) => u.endsWith("/pulls?state=open&limit=50")).length, 3);
+    assert.equal(urls.filter((u) => u.endsWith("/branches?limit=50&page=1")).length, 3);
+    assert.equal(urls.filter((u) => u.endsWith("/pulls?state=open&limit=50&page=1")).length, 3);
+  });
+  it("follows pages past 50 branches", async () => {
+    const urls: string[] = [];
+    const page = (p: number) => Array.from({ length: p === 2 ? 20 : 50 }, (_, i) => ({ name: `p${p}-${i}`, commit: { timestamp: "2026-11-01T00:00:00Z" } }));
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const u = String(input);
+      urls.push(u);
+      if (u.includes("/repos/search")) return json({ data: [repoRow] });
+      const m = /\/branches\?limit=50&page=(\d+)/.exec(u);
+      return json(m ? page(Number(m[1])) : []);
+    }) as typeof fetch;
+    const s = await buildGitSnapshot(creds);
+    assert.equal(s.status === "ok" && s.offDefaultCount, 70);
+    assert.equal(urls.filter((u) => u.includes("/branches")).length, 2);
   });
 });
