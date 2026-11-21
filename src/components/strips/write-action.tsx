@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { runWithLimit, WriteTimeout } from "@/lib/write-timeout";
 
 type Phase = "idle" | "asking" | "flight" | "failed";
 
@@ -28,6 +29,7 @@ export function WriteAction({
   onPending,
   onActive,
   autoCancelMs,
+  timeoutMs = 120_000,
   renderAsk,
   triggerClassName,
 }: {
@@ -55,6 +57,8 @@ export function WriteAction({
   onActive?: (active: boolean) => void;
   /** The question cancels itself after this long (a lock is a door: Smart home's 4 s). */
   autoCancelMs?: number;
+  /** A write with no answer after this long ends as a failure (default 2 min); 0 = no limit, for a transfer that can run longer. */
+  timeoutMs?: number;
   /** Replaces the default question (the shared ConfirmStop). */
   renderAsk?: (p: { onYes: () => void; onCancel: () => void }) => ReactNode;
   /** Extra classes for the idle trigger (a 44 px touch target on mobile). */
@@ -64,6 +68,7 @@ export function WriteAction({
   const [reason, setReason] = useState("");
   const [soft, setSoft] = useState<string | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const retry = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   const frame = useRef<HTMLDivElement>(null);
   const sayId = useId();
@@ -72,6 +77,8 @@ export function WriteAction({
       refocus.current = false;
       trigger.current?.focus();
     }
+    // The pressed button unmounted under the focus (it fell to body): the failure takes it; never pull it from another control.
+    if (phase === "failed" && (!document.activeElement || document.activeElement === document.body)) retry.current?.focus();
   }, [phase]);
 
   // An open question or failure must not outlive the write being turned off (the state changed under it).
@@ -83,13 +90,15 @@ export function WriteAction({
     setPhase("flight");
     onPending?.(true);
     try {
-      await run();
+      await runWithLimit(run, timeoutMs);
       // Yes or the trigger unmounted under the focus (it fell to body): put it back; never pull it from another control.
       if (!document.activeElement || document.activeElement === document.body) refocus.current = true;
       setPhase("idle");
     } catch (e) {
-      setSoft(softFailure?.(e) ?? null);
-      setReason(e instanceof Error && e.message ? e.message.replace(/\.$/, "") : "no reason given");
+      const why = e instanceof Error && e.message ? e.message.replace(/\.$/, "") : "no reason given";
+      // The thrown value is ours for a timeout, so softFailure is not consulted.
+      setSoft(e instanceof WriteTimeout ? `${failure}: ${why}. It may still finish; check before trying again.` : (softFailure?.(e) ?? null));
+      setReason(why);
       setPhase("failed");
     } finally {
       onPending?.(false);
@@ -179,10 +188,10 @@ export function WriteAction({
         {soft ?? `${failure}: ${reason}.`}
       </p>
       <div className="st-acts">
-        <Button size="sm" variant="outline" onClick={() => (autoCancelMs ? setPhase("asking") : void go())}>
+        <Button ref={retry} size="sm" variant="outline" onClick={() => (autoCancelMs ? setPhase("asking") : void go())}>
           Try again
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setPhase("idle")}>
+        <Button size="sm" variant="ghost" onClick={cancel}>
           Dismiss
         </Button>
       </div>
