@@ -98,7 +98,8 @@ export function gitModel(i: ModelInput): Model {
     xs.reduce<T | null>((a, x) => (!Number.isFinite(Date.parse(at(x) ?? "")) || (a !== null && Date.parse(at(x)!) <= Date.parse(at(a)!)) ? a : x), null);
   const lastCommit = newest(g.stream, (c) => c.date) as ((typeof g.stream)[number] & { date: string }) | null;
   const newestPull = newest(g.pulls, (p) => p.createdAt) as ((typeof g.pulls)[number] & { createdAt: string }) | null;
-  const offDefault = g.branches.filter((b) => !b.isDefault).length;
+  // Falls back for a cached snapshot from before offDefaultCount existed.
+  const offDefault = g.offDefaultCount ?? g.branches.filter((b) => !b.isDefault).length;
   const prs = g.pulls.length === 0 ? "No open pull requests" : `${plural(g.pulls.length, "open pull request", "open pull requests")}`;
   const last = lastCommit ? `last commit ${ago(lastCommit.date)} in ${lastCommit.repo}` : "no commits yet";
   const tail = `${prs}; ${last}.`;

@@ -107,6 +107,8 @@ export interface GitSnapshotOk {
   pulls: GitPullRequest[];
   /** Active branches across all repos, most-recently-committed first. */
   branches: GitBranchSummary[];
+  /** Branches off their repo's default, counted before `branches` is capped for display. */
+  offDefaultCount: number;
   mirrors: GitMirror[];
 }
 

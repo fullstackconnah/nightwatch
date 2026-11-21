@@ -300,8 +300,9 @@ async function fetchRepoBundle(
   const base = `/api/v1/repos/${enc(repo.owner)}/${enc(repo.name)}`;
   const [commitsRes, branchesRes, pullsRes, mirrorsRes] = await Promise.all([
     forgejoFetch<ForgejoCommitRaw[]>(baseUrl, token, `${base}/commits?limit=20`),
-    forgejoFetch<ForgejoBranchRaw[]>(baseUrl, token, `${base}/branches`),
-    forgejoFetch<ForgejoPullRequestRaw[]>(baseUrl, token, `${base}/pulls?state=open`),
+    // shortcut: one page of 50 per repo (Forgejo's max page size); follow pages if a repo ever has more than 50 branches or open pulls
+    forgejoFetch<ForgejoBranchRaw[]>(baseUrl, token, `${base}/branches?limit=50`),
+    forgejoFetch<ForgejoPullRequestRaw[]>(baseUrl, token, `${base}/pulls?state=open&limit=50`),
     forgejoFetch<ForgejoPushMirrorRaw[]>(baseUrl, token, `${base}/push_mirrors`),
   ]);
 
@@ -399,6 +400,7 @@ function unconfiguredSnapshot(): GitSnapshot {
 }
 
 export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSnapshot> {
+  // shortcut: one page of 50 repos; follow pages if the forge ever has more than 50 repos
   const searchRes = await forgejoFetch<ForgejoSearchReposResponse>(creds.url, creds.token, "/api/v1/repos/search?limit=50");
   if (!searchRes.ok) {
     return {
@@ -444,8 +446,9 @@ export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSn
     .sort(newestFirst)
     .slice(0, STREAM_CAP);
 
-  const branches = bundles
-    .flatMap((b) => b.branches)
+  const allBranches = bundles.flatMap((b) => b.branches);
+  const offDefaultCount = allBranches.filter((b) => !b.isDefault).length;
+  const branches = allBranches
     // Nulls (no reported commit timestamp) sort last rather than throwing —
     // "" compares less than any real ISO string under localeCompare.
     .sort((a, b) => (b.commitDate ?? "").localeCompare(a.commitDate ?? ""))
@@ -459,7 +462,7 @@ export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSn
 
   const mirrors = bundles.map((b) => b.mirror).filter((m): m is GitMirror => m !== null);
 
-  return { status: "ok", partial: bundles.filter((b) => b.failed).length, forgejoUrl: creds.url, repos, stream, pulls, branches, mirrors };
+  return { status: "ok", partial: bundles.filter((b) => b.failed).length, forgejoUrl: creds.url, repos, stream, pulls, branches, offDefaultCount, mirrors };
 }
 
 /** GET /api/git's data source. Cached ~30s server-side (per the spec's

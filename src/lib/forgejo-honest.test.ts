@@ -58,3 +58,25 @@ describe("triggerPushMirrorSync upstream auth", () => {
     assert.deepEqual(r, { ok: false, status: 404, detail: "That repo or mirror no longer exists." });
   });
 });
+
+describe("buildGitSnapshot branch and pull counts", () => {
+  it("asks for full pages and counts off-default branches before the display cap", async () => {
+    const urls: string[] = [];
+    const repos = ["a", "b", "c"].map((n, i) => ({ ...repoRow, id: i + 1, name: n, full_name: `lab/${n}`, html_url: `http://forge.test/lab/${n}` }));
+    const branchList = [{ name: "main", commit: { timestamp: "2026-11-01T00:00:00Z" } }, ...Array.from({ length: 30 }, (_, i) => ({ name: `f${i}`, commit: { timestamp: "2026-11-01T00:00:00Z" } }))];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const u = String(input);
+      urls.push(u);
+      if (u.includes("/repos/search")) return json({ data: repos });
+      if (u.includes("/branches")) return json(branchList);
+      return json([]);
+    }) as typeof fetch;
+    const s = await buildGitSnapshot(creds);
+    assert.equal(s.status, "ok");
+    if (s.status !== "ok") return;
+    assert.equal(s.offDefaultCount, 90);
+    assert.equal(s.branches.length, 60);
+    assert.equal(urls.filter((u) => u.endsWith("/branches?limit=50")).length, 3);
+    assert.equal(urls.filter((u) => u.endsWith("/pulls?state=open&limit=50")).length, 3);
+  });
+});
