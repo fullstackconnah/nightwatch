@@ -31,7 +31,7 @@ export function Console({
   paused,
   stale,
 }: {
-  rcon: "ok" | "unavailable" | "unconfigured";
+  rcon: "ok" | "unavailable" | "rejected" | "unconfigured";
   /** The minecraft container is running; a stopped one reads differently from a booting one. */
   running: boolean;
   /** The container is paused: RCON is silent, but it is not booting. */

@@ -53,7 +53,7 @@ export async function GET() {
     managerDetail = instancesResult.reason instanceof Error ? instancesResult.reason.message : String(instancesResult.reason);
   }
 
-  let rcon: "ok" | "unavailable" | "unconfigured" = "unconfigured";
+  let rcon: "ok" | "unavailable" | "rejected" | "unconfigured" = "unconfigured";
   let players: { online: number; max: number; players: string[] } | null = null;
 
   if (rconConfigured) {
@@ -61,7 +61,7 @@ export async function GET() {
       rcon = "ok";
       players = parsePlayerList(rconResult.value);
     } else {
-      rcon = "unavailable";
+      rcon = rconResult.status === "rejected" && rconResult.reason instanceof Error && rconResult.reason.message === "rcon auth failed" ? "rejected" : "unavailable";
     }
   }
 
