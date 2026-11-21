@@ -224,7 +224,7 @@ export function SettingsTiles({
                     </td>
                     <td className="px-3 py-1.5">
                       <Input
-                        className="h-7 aria-invalid:border-bad"
+                        className="h-7 aria-invalid:border-bad focus:aria-invalid:border-bad"
                         aria-invalid={invalidUrl === name || undefined}
                         aria-label={`App URL for ${name}`}
                         placeholder="(inferred)"
@@ -280,7 +280,7 @@ export function SettingsTiles({
                 </Field>
                 <Field label="App URL">
                   <Input
-                    className="aria-invalid:border-bad"
+                    className="aria-invalid:border-bad focus:aria-invalid:border-bad"
                     aria-invalid={invalidUrl === name || undefined}
                     placeholder="(inferred)"
                     value={cfg.urls[name] ?? ""}

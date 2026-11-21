@@ -602,7 +602,7 @@ await guarded("pw12", () =>
     const next = c.getByPlaceholder("at least 8 characters");
     await next.fill("abc");
     record("polish12 short before blur: no error", s.name, (await c.innerText()).includes("needs at least 8") === false);
-    await field(c, "Confirm new password").focus(); // blurs the new-password field
+    await next.blur(); // confirm is never focused before the mismatch check
     record("polish12 short after blur: error", s.name, (await c.innerText()).includes("needs at least 8"));
     await next.fill("abcdefgh");
     await field(c, "Confirm new password").fill("abcdefgx");
@@ -610,6 +610,7 @@ await guarded("pw12", () =>
     await next.focus();
     record("polish12 mismatch after confirm blur", s.name, (await c.innerText()).includes("don't match"));
     await next.fill("abc");
+    await next.blur();
     await cropEl(page, s, c, "pw12-blur-short", false);
     await page.close();
   }),
