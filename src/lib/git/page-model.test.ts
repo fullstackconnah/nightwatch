@@ -12,7 +12,12 @@ const mirror = (repo: string, o: Partial<GitMirror> = {}): GitMirror => ({
   repo, target: `https://github.com/example/${repo.split("/")[1]}`, lastSync: iso(-H), lastError: null, interval: "8h0m0s", defaultBranch: { state: "synced" }, ...o,
 });
 const repo = (name: string) => ({ id: 1, owner: "lab", name, fullName: `lab/${name}`, private: false, htmlUrl: `${URL_}/lab/${name}`, defaultBranch: "main", updatedAt: iso(-H) });
+// offDefaultCount follows the listed branches unless a test sets it (the real snapshot counts before the display cap).
 function ok(o: Partial<GitSnapshotOk> = {}): GitSnapshotOk {
+  const s = okBase(o);
+  return { offDefaultCount: s.branches.filter((b) => !b.isDefault).length, ...s, ...o };
+}
+function okBase(o: Partial<GitSnapshotOk>): Omit<GitSnapshotOk, "offDefaultCount"> {
   return {
     status: "ok", forgejoUrl: URL_,
     repos: [repo("a"), repo("b"), repo("c"), repo("d")],
@@ -204,7 +209,7 @@ test("an error outranks divergence; an unknown mirror state is not counted as in
 });
 
 test("no repos: Empty, no strips, nothing opens", () => {
-  const m = gitModel(input({ data: ok({ repos: [], stream: [], pulls: [], branches: [], mirrors: [] }) }));
+  const m = gitModel(input({ data: ok({ repos: [], stream: [], pulls: [], branches: [], offDefaultCount: 0, mirrors: [] }) }));
   assert.deepEqual(m.chip, { tone: "neutral", label: "Empty" });
   assert.equal(m.answer, "Forgejo has no repos yet.");
   assert.deepEqual(m.strips, []);
@@ -276,4 +281,14 @@ test("honest sync: an empty mirror list says None set up when every call answere
 test("honest sync: an empty mirror list says Not known when a Forgejo call failed", () => {
   const m = gitModel(input({ data: ok({ mirrors: [], partial: 1 }) }));
   assert.equal(strip(m, "mirrors").state, "Not known");
+});
+
+test("branches strip reads the true off-default count, not the capped list length", () => {
+  const listed = Array.from({ length: 60 }, (_, i) => ({ repo: "lab/a", name: `b${i}`, commitDate: iso(-H), isDefault: false }));
+  assert.match(strip(gitModel(input({ data: ok({ branches: listed, offDefaultCount: 70 }) })), "branches").state, /^70 off the default branch$/);
+});
+
+test("branches strip falls back to the listed count when an older snapshot lacks offDefaultCount", () => {
+  const m = gitModel(input({ data: ok({ offDefaultCount: undefined }) }));
+  assert.match(strip(m, "branches").state, /^3 off the default branch$/);
 });

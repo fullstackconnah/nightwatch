@@ -34,6 +34,7 @@ export const ok = (over = {}) => ({
     { repo: "lab/bravo", name: "fix/mirror-retry", commitDate: at(-6 * H), isDefault: false },
     { repo: "lab/charlie", name: "chore/base-image", commitDate: at(-1 * D), isDefault: false },
   ],
+  offDefaultCount: 3,
   mirrors: NAMES.map((n) => mirror(n)),
   ...over,
 });
@@ -52,7 +53,7 @@ export const FIXTURES = {
   mirrorUnknown: ok({ mirrors: [mirror("alpha", { lastSync: null, defaultBranch: { state: "unknown" } })] }),
   mirrorMixed: ok({ mirrors: [mirror("alpha"), mirror("bravo"), mirror("charlie"), mirror("delta", { lastSync: null, defaultBranch: { state: "unknown" } })] }),
   reposPartial: ok({ mirrors: [], partial: 1 }),
-  noRepos: ok({ repos: [], stream: [], pulls: [], branches: [], mirrors: [] }),
+  noRepos: ok({ repos: [], stream: [], pulls: [], branches: [], offDefaultCount: 0, mirrors: [] }),
   unconfigured: { status: "unconfigured", forgejoUrl: null, detail: "No Forgejo connection configured.", ...none },
   unauthorized: down("unauthorized", "401 from the server"),
   unreachable: down("unreachable", "connect ECONNREFUSED"),
