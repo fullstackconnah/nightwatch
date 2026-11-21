@@ -331,7 +331,7 @@ async function fetchRepoBundle(
         number: p.number,
         title: p.title,
         author: p.user?.login ?? null,
-        createdAt: p.created_at ?? new Date(0).toISOString(),
+        createdAt: p.created_at ?? null,
         htmlUrl: p.html_url,
       }))
     : [];
@@ -430,7 +430,7 @@ export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSn
       private: Boolean(r.private),
       htmlUrl: r.html_url,
       defaultBranch: r.default_branch || "main",
-      updatedAt: r.updated_at ?? new Date(0).toISOString(),
+      updatedAt: r.updated_at ?? null,
     });
   }
 
@@ -453,7 +453,9 @@ export async function buildGitSnapshot(creds: ForgejoCredentials): Promise<GitSn
 
   // Oldest first: a PR open for three weeks is the one worth noticing, not
   // the one opened five minutes ago.
-  const pulls = bundles.flatMap((b) => b.pulls).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  // A missing or unparseable date is Infinity, so it sorts last (still a strict order).
+  const when = (d: string | null) => Date.parse(d ?? "") || Infinity;
+  const pulls = bundles.flatMap((b) => b.pulls).sort((a, b) => (when(a.createdAt) - when(b.createdAt)) || 0);
 
   const mirrors = bundles.map((b) => b.mirror).filter((m): m is GitMirror => m !== null);
 

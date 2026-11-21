@@ -8,6 +8,7 @@ import {
   formatQuiet,
   holdMembers,
   holdPillText,
+  homeLanesStatusText,
   homeLanesText,
   inFlightRows,
   isLive,
@@ -399,6 +400,13 @@ describe("waiting agents on Home (O2)", () => {
     assert.equal(homeLanesText(list), "1 stuck, 1 running, 1 stopped");
     assert.equal(homeLanesText([o("running", 0, [ag("a", 1, wait("Bash", 3))])]), "1 stuck");
     assert.equal(homeLanesText([]), "no lanes");
+  });
+  it("Home's lane tile says why it has no answer, one line per OrchestraState", () => {
+    assert.equal(homeLanesStatusText(undefined, false), "checking…");
+    assert.equal(homeLanesStatusText("unconfigured", false), "not set up");
+    assert.equal(homeLanesStatusText("unauthorized", false), "key rejected");
+    assert.equal(homeLanesStatusText("unreachable", false), "not reachable");
+    assert.equal(homeLanesStatusText(undefined, true), "not reachable");
   });
 });
 

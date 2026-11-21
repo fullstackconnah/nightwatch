@@ -23,7 +23,8 @@ export interface GitRepoSummary {
   private: boolean;
   htmlUrl: string;
   defaultBranch: string;
-  updatedAt: string;
+  /** Null when Forgejo reports none; never the 1970 epoch. */
+  updatedAt: string | null;
 }
 
 export interface GitCommitEntry {
@@ -56,7 +57,8 @@ export interface GitPullRequest {
   number: number;
   title: string;
   author: string | null;
-  createdAt: string;
+  /** Null when Forgejo reports none; the UI shows a dash. */
+  createdAt: string | null;
   htmlUrl: string;
 }
 

@@ -86,7 +86,7 @@ export function gitModel(i: ModelInput): Model {
   const g: GitSnapshotOk = data;
   const age = i.lastOkAt === null ? 0 : Math.max(0, now - i.lastOkAt);
   const stale = i.loadError || age > STALE_MS;
-  const ago = (iso: string) => ageText(Math.max(0, now - Date.parse(iso)));
+  const ago = (iso: string) => { const d = now - Date.parse(iso); return d < 60_000 ? "just now" : `${ageText(d)} ago`; }; // future dates too
   const link = { href: g.forgejoUrl, label: "Open Forgejo" };
 
   // ---- facts ----
@@ -94,12 +94,13 @@ export function gitModel(i: ModelInput): Model {
   const diverged = g.mirrors.filter((m) => !m.lastError && m.defaultBranch.state === "diverged");
   const inSync = g.mirrors.filter((m) => !m.lastError && m.defaultBranch.state === "synced").length;
   const unknown = g.mirrors.length - failing.length - diverged.length - inSync; // no GitHub token, the call failed, or never synced
-  const newest = <T,>(xs: T[], at: (x: T) => string) => xs.reduce<T | null>((a, x) => (a === null || Date.parse(at(x)) > Date.parse(at(a)) ? x : a), null);
-  const lastCommit = newest(g.stream.filter((c): c is typeof c & { date: string } => c.date !== null), (c) => c.date);
-  const newestPull = newest(g.pulls, (p) => p.createdAt);
+  const newest = <T,>(xs: T[], at: (x: T) => string | null) =>
+    xs.reduce<T | null>((a, x) => (!Number.isFinite(Date.parse(at(x) ?? "")) || (a !== null && Date.parse(at(x)!) <= Date.parse(at(a)!)) ? a : x), null);
+  const lastCommit = newest(g.stream, (c) => c.date) as ((typeof g.stream)[number] & { date: string }) | null;
+  const newestPull = newest(g.pulls, (p) => p.createdAt) as ((typeof g.pulls)[number] & { createdAt: string }) | null;
   const offDefault = g.branches.filter((b) => !b.isDefault).length;
   const prs = g.pulls.length === 0 ? "No open pull requests" : `${plural(g.pulls.length, "open pull request", "open pull requests")}`;
-  const last = lastCommit ? `last commit ${ago(lastCommit.date)} ago in ${lastCommit.repo}` : "no commits yet";
+  const last = lastCommit ? `last commit ${ago(lastCommit.date)} in ${lastCommit.repo}` : "no commits yet";
   const tail = `${prs}; ${last}.`;
 
   let chip: Model["chip"] = { tone: "ok", label: "In sync" };
@@ -161,7 +162,7 @@ export function gitModel(i: ModelInput): Model {
     },
     {
       id: "pulls", title: "Pull requests", tone: null,
-      state: newestPull ? `${g.pulls.length} open · newest ${ago(newestPull.createdAt)} ago` : "None open",
+      state: newestPull ? `${g.pulls.length} open · newest ${ago(newestPull.createdAt)}` : g.pulls.length ? `${g.pulls.length} open` : "None open",
     },
     {
       id: "branches", title: "Branches", tone: null,
@@ -169,7 +170,7 @@ export function gitModel(i: ModelInput): Model {
     },
     {
       id: "commits", title: "Commits", tone: null,
-      state: lastCommit ? `${ago(lastCommit.date)} ago · ${lastCommit.repo}: ${lastCommit.message}` : "No commits yet",
+      state: lastCommit ? `${ago(lastCommit.date)} · ${lastCommit.repo}: ${lastCommit.message}` : "No commits yet",
     },
   ];
 
