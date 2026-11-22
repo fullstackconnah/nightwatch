@@ -3,6 +3,7 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
 import { sessionEpoch } from "@/lib/config";
 import { contentLengthError } from "@/lib/upload-limit";
 import { runAllowed } from "@/lib/kiosk-access";
+import { allowAsk } from "@/lib/kiosk-ask-limit";
 import { runHermesJob, type HermesRunResult } from "@/lib/hermes-ctl";
 import type { HermesJobKind } from "@/lib/types/hermes";
 
@@ -66,8 +67,19 @@ export async function POST(req: NextRequest) {
 
   // Middleware lets a PIN-elevated kiosk reach this route and the kiosk only asks questions, so
   // without a real session nothing but "ask" (no digest, no alert-test) is allowed.
-  if (!runAllowed(body.kind, await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, sessionEpoch()))) {
+  const hasSession = await verifySessionToken(req.cookies.get(SESSION_COOKIE)?.value, sessionEpoch());
+  if (!runAllowed(body.kind, hasSession)) {
     return NextResponse.json({ error: "kind not available to the kiosk" }, { status: 403 });
+  }
+
+  // Same process-wide cap as the kiosk assistant route; a signed-in dashboard session is not limited.
+  if (!hasSession && body.kind === "ask") {
+    const gate = allowAsk();
+    if (!gate.ok) {
+      const error =
+        gate.reason === "daily" ? "That's all the questions I can take today." : "One question at a time. Try again in a few seconds.";
+      return NextResponse.json({ error }, { status: 429 });
+    }
   }
 
   const result = await runHermesJob(body.kind, body.kind === "ask" ? body.question!.trim() : undefined);
