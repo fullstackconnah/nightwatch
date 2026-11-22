@@ -109,11 +109,12 @@ test("row: undone is Restored with no action", () => {
   assert.deepEqual([r.word, r.line.text, r.act], ["Restored", "Original restored.", null]);
 });
 
-test("row: a failed check keeps the original, with Try again; Dismiss goes back to the verdict", () => {
+test("row: a failed check keeps the original, with Try again; a saved dismissal goes back to the verdict", () => {
   const f = job("failed", { failedCheck: "saving", failedValue: 4 });
   const r = row(f);
   assert.deepEqual([r.word, r.line.text, r.act?.kind, r.tone], ["Failed", "Kept the original: it saved only 4%.", "retry", "bad"]);
-  const back = fileRow(file({ id: f.id, state: "failed" }), "movie", rowJobs(jobs({ recent: [f] })), { dismissed: true });
+  assert.equal(r.act?.kind === "retry" && r.act.id, f.id); // Dismiss needs the failed job's id
+  const back = fileRow(file({ id: f.id, state: "failed" }), "movie", rowJobs(jobs({ recent: [{ ...f, dismissedAt: "2026-11-12T00:00:00.000Z" }] })));
   assert.equal(back.word, "Compress");
   assert.equal(back.act?.kind, "compress");
 });
@@ -249,4 +250,11 @@ test("F8/S9: files whose job is done, held or purged are not suggested, in the s
   assert.deepEqual(suggestedFiles(files).map((f) => f.path), [files[0].path, "c"]);
   assert.equal(titleSummary(files), "4 files · 2 could save ~8.0 GB");
   assert.equal(batchPlan([files[1], files[2]]), null);
+});
+
+test("row: a dismissed failure past the recent list stays dismissed (the file's job carries dismissedAt)", () => {
+  const f = file({ id: "gone-job-00000", state: "failed", dismissedAt: "2026-11-12T00:00:00.000Z" });
+  const r = fileRow(f, "movie", rowJobs(jobs()));
+  assert.equal(r.word, "Compress");
+  assert.equal(r.act?.kind, "compress");
 });

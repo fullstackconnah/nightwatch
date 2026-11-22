@@ -228,7 +228,7 @@ export function answerFor(i: AnswerInput): { tone: Tone; text: string } {
 
 /** The status slot's probe line. */
 export function probeLine(r: AttentionReport | null, at: string): string {
-  if (!r) return "Asking 9 sources…";
+  if (!r) return "Asking the sources…";
   const answered = r.probes.filter((p) => p.state === "answered").length;
   const bits = [`${answered} of ${r.probes.length} checks answered at ${at}`];
   const waiting = r.probes.filter((p) => p.state === "pending").map((p) => p.label.toLowerCase());

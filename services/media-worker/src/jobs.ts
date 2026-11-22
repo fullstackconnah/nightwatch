@@ -205,6 +205,14 @@ export function createQueue(opts: QueueOpts) {
     return publicJob(r);
   }
 
+  /** H174-1: a failed job's Dismiss. Only the record changes (no hold, no file, no retry); asking again keeps the first time. */
+  function dismiss(id: string): Job {
+    const r = get(id);
+    if (!r) throw new JobError(404, "No such job");
+    if (r.state !== "failed") throw new JobError(409, "Only a failed job can be dismissed");
+    return publicJob(r.dismissedAt ? r : patch(id, { dismissedAt: now().toISOString() }));
+  }
+
   function purgeDue(): number {
     if (!opts.ready().ready) return 0; // F5: with the drive gone the delete would fail quietly and the job read as purged
     let n = 0;
@@ -293,9 +301,9 @@ export function createQueue(opts: QueueOpts) {
     },
 
     /** The newest job for a path: what a file row shows. */
-    jobFor(path: string): { id: string; state: Job["state"] } | undefined {
+    jobFor(path: string): { id: string; state: Job["state"]; dismissedAt?: string } | undefined {
       const r = [...jobs].reverse().find((j) => j.path === path);
-      return r ? { id: r.id, state: r.state } : undefined;
+      return r ? { id: r.id, state: r.state, ...(r.dismissedAt ? { dismissedAt: r.dismissedAt } : {}) } : undefined;
     },
 
     enqueueOne: (path: unknown) => (enqueue([path], false) as Job[])[0],
@@ -304,6 +312,7 @@ export function createQueue(opts: QueueOpts) {
       return enqueue(paths, true) as BatchResponse;
     },
     cancel,
+    dismiss,
     cancelBatch(batchId: string): Job[] {
       const mine = jobs.filter((j) => j.batchId === batchId && ACTIVE.has(j.state));
       if (!jobs.some((j) => j.batchId === batchId)) throw new JobError(404, "No such batch");

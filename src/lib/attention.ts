@@ -520,7 +520,7 @@ async function probeOutside(): Promise<RawHit[] | typeof PENDING> {
   }
 }
 
-/** A worker that is down or slow is quiet here (the Media page reports it); a slow one is cut by runProbes' deadline, so no second timer. */
+/** A worker that is down is quiet here (the Media page reports it); a slow one is cut by runProbes' deadline (3.25 s) and shows as pending, so no second timer. */
 async function probeMedia(): Promise<RawHit[]> {
   const n = await countRecentFailedCompressions(mediaWorker);
   return n ? [hit("media-failed", "warn", mediaCompressionFailed(n))] : [];

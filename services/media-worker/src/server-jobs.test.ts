@@ -73,6 +73,8 @@ describe("jobs api (B8)", () => {
     assert.equal((await fetch(`${s.base}/jobs`, { method: "POST", headers: s.auth, body: "{nope" })).status, 400);
     assert.equal((await post("/jobs/abcdef123456/cancel")).status, 404);
     assert.equal((await post("/jobs/abcdef123456/undo")).status, 404);
+    assert.equal((await post("/jobs/abcdef123456/dismiss")).status, 404);
+    assert.equal((await fetch(`${s.base}/jobs/abcdef123456/dismiss`, { method: "POST" })).status, 401); // the bearer check runs before every route
   });
 
   it("B4: a JSON number or string body is a 400, not a 500", async () => {

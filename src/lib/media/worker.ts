@@ -62,6 +62,9 @@ export class MediaWorkerClient extends IntegrationClient<Creds> {
   undo(id: string): Promise<Probe<Job>> {
     return this.request(`/jobs/${id}/undo`, { method: "POST", body: {}, includeErrorBody: true });
   }
+  dismiss(id: string): Promise<Probe<Job>> {
+    return this.request(`/jobs/${id}/dismiss`, { method: "POST", body: {}, includeErrorBody: true });
+  }
 }
 
 export const mediaWorker = new MediaWorkerClient();

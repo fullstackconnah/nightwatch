@@ -291,7 +291,7 @@ export function sensorsDown(count: number): AlertCopy {
   };
 }
 
-/** Compression jobs that failed in the last 7 days. Names no file: Home's hits also reach the kiosk and the desk widget. */
+/** Compression jobs that failed in the last 7 days. Names no file: Home-only: attention-report's HOME_ONLY keeps it off the kiosk. */
 export function mediaCompressionFailed(count: number): AlertCopy {
   return {
     headline: count === 1 ? "A compression failed" : `${count} compressions failed`,
