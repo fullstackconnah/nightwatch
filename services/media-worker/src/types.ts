@@ -43,7 +43,7 @@ export interface MediaFile {
   subs: { codec: string; lang: string | null }[];
   verdict: Verdict;
   probeError?: string;
-  job?: { id: string; state: JobState };
+  job?: { id: string; state: JobState; dismissedAt?: string };
 }
 
 export interface TitleSummary {

@@ -301,9 +301,9 @@ export function createQueue(opts: QueueOpts) {
     },
 
     /** The newest job for a path: what a file row shows. */
-    jobFor(path: string): { id: string; state: Job["state"] } | undefined {
+    jobFor(path: string): { id: string; state: Job["state"]; dismissedAt?: string } | undefined {
       const r = [...jobs].reverse().find((j) => j.path === path);
-      return r ? { id: r.id, state: r.state } : undefined;
+      return r ? { id: r.id, state: r.state, ...(r.dismissedAt ? { dismissedAt: r.dismissedAt } : {}) } : undefined;
     },
 
     enqueueOne: (path: unknown) => (enqueue([path], false) as Job[])[0],

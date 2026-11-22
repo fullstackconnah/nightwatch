@@ -251,3 +251,10 @@ test("F8/S9: files whose job is done, held or purged are not suggested, in the s
   assert.equal(titleSummary(files), "4 files · 2 could save ~8.0 GB");
   assert.equal(batchPlan([files[1], files[2]]), null);
 });
+
+test("row: a dismissed failure past the recent list stays dismissed (the file's job carries dismissedAt)", () => {
+  const f = file({ id: "gone-job-00000", state: "failed", dismissedAt: "2026-11-12T00:00:00.000Z" });
+  const r = fileRow(f, "movie", rowJobs(jobs()));
+  assert.equal(r.word, "Compress");
+  assert.equal(r.act?.kind, "compress");
+});

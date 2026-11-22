@@ -405,7 +405,7 @@ export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | nul
   const row = verdictRow(f, kind);
   if (!rj) return row;
   const name = f.name;
-  const known: JobLite | null = f.job ? (rj.byId.get(f.job.id) ?? { id: f.job.id, state: f.job.state }) : null;
+  const known: JobLite | null = f.job ? (rj.byId.get(f.job.id) ?? f.job) : null;
   const job = known && !(known.state === "failed" && known.dismissedAt) ? known : null; // a saved dismissal: back to the verdict row
   if (job) {
     const t = jobText(job, rj.ahead(job.id));
