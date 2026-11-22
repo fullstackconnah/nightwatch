@@ -410,6 +410,13 @@ test("a failed media compression is no kiosk hit, and never outranks a crashed a
   assert.equal((firstHit(both) as { headline: string }).headline, "crashed-app h");
 });
 
+test("an expiring certificate is a Home hit, never the wall kiosk", async () => {
+  const certs = await runProbes([def("certs", () => [raw("cert-expiring", "warn")])], 50);
+  const ordered = toHits(certs, () => "2026-11-04T00:00:00.000Z");
+  assert.deepEqual(ordered.map((h) => h.id), ["certs:cert-expiring"]);
+  assert.deepEqual(firstHit(ordered), { status: "quiet" });
+});
+
 test("a failed probe stays failed and still reports its hitsOnFail (the drill rides a failed backup probe)", async () => {
   const [o] = await runProbes([{ ...def("backup", () => { throw new Error("the backup status file is missing"); }), hitsOnFail: [raw("backup", "warn")] }], 50);
   assert.equal(o.status.state, "failed");

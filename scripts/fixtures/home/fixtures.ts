@@ -24,6 +24,7 @@ const PROBES: ReadonlyArray<readonly [ProbeId, string]> = [
   ["disks", "Disks"],
   ["health", "Health"],
   ["media", "Media compression"],
+  ["certs", "Certificates"],
   ["doorbell", "Front door"],
   ["orchestra", "AI lanes"],
 ];
@@ -136,6 +137,14 @@ const mediaFailed = (now: number, minAgo: number) =>
     owner: { href: "/media", label: "Open Media" },
   });
 
+// CE: copy from certificateExpiring(1, 9) in src/lib/attention-copy.ts (a no-break space joins "9" and "days").
+const certExpiring = (now: number, minAgo: number) =>
+  hit(now, "certs", "cert-expiring", "warn", "A certificate expires in 9 days", minAgo, {
+    detail: "It has not renewed on its own.",
+    action: "Open Proxy to see which one.",
+    owner: { href: "/proxy", label: "Open Proxy" },
+  });
+
 export function build(now: number) {
   const e = baseEvents(now);
   return {
@@ -146,6 +155,7 @@ export function build(now: number) {
     doorbellQuiet: report(now, [disk(now, 90), doorbellQuiet(now, 120)], e),
     stalledLane: report(now, [stalledLane(now, 25)], e),
     mediaFailed: report(now, [disk(now, 90), mediaFailed(now, 120)], e),
+    certExpiring: report(now, [disk(now, 90), certExpiring(now, 120)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(
       now,

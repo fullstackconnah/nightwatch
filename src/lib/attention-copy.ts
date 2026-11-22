@@ -254,6 +254,23 @@ const OUTSIDE_UNCHECKED: Record<UncheckedWhy, string> = {
 /** Thrown as the probe's Error message, so it becomes the grey failed row's detail. */
 export const outsideUnchecked = (why: UncheckedWhy): string => OUTSIDE_UNCHECKED[why];
 
+/** Certificates under 14 days left. Names no domain: Home's hits also reach the desk widget. */
+export function certificateExpiring(count: number, soonest: number): AlertCopy {
+  const one = count === 1;
+  const headline = !one
+    ? `${count} certificates need renewing`
+    : soonest < 0
+      ? "A certificate has expired"
+      : soonest === 0
+        ? "A certificate expires today"
+        : `A certificate expires in ${soonest} ${soonest === 1 ? "day" : "days"}`; // no-break space: "1 day" never wraps
+  return {
+    headline,
+    detail: one ? "It has not renewed on its own." : "They have not renewed on their own.",
+    action: one ? "Open Proxy to see which one." : "Open Proxy to see which ones.",
+  };
+}
+
 /** Compression jobs that failed in the last 7 days. Names no file: Home's hits also reach the kiosk and the desk widget. */
 export function mediaCompressionFailed(count: number): AlertCopy {
   return {
