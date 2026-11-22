@@ -56,7 +56,7 @@ test("the step-up input is the only one with current-password; only it carries t
 test("numeric checks that need no browser: hint, warning and error lines share kiosk-pin-hint's size; error stays text-bad", () => {
   assert.match(src, /<p id=\{hintId\} className="mt-1 text-\[0\.7rem\] text-ink-faint">/);
   assert.equal(src.match(/<p className="text-\[0\.7rem\] text-warn\/80">\{NO_PASSWORD_WARNING\}<\/p>/g)?.length, 2);
-  for (const c of [sso, sys]) assert.match(c, /<span className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
+  for (const c of [sso, sys]) assert.match(c, /<span (?:role="alert" )?className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
   assert.ok(!/data-1p-ignore/.test(sso + sys), "no password-manager vendor attributes");
 });
 
@@ -103,7 +103,7 @@ test("Daemon: the pending check and the request share one allowlist split; any r
 test("Daemon: the final hint and the shared no-password warning, and the helpers are the exported originals", () => {
   assert.ok(daemon.includes('hint="Changing Discord access needs your current password."'));
   assert.match(daemon, /<p className="text-\[0\.7rem\] text-warn\/80">\{NO_PASSWORD_WARNING\}<\/p>/);
-  assert.match(daemon, /<span className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
+  assert.match(daemon, /<span (?:role="alert" )?className="text-\[0\.7rem\] text-bad">\{error\}<\/span>/);
   assert.match(src, /export const NO_PASSWORD_WARNING = /);
   assert.match(src, /export function StepUpField\(/);
   assert.doesNotMatch(hermesSrc, /function StepUpField|const NO_PASSWORD_WARNING/);

@@ -149,8 +149,8 @@ function ChangePasswordCard({ data }: { data: Data }) {
         </Field>
       </div>
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+        {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
+        <span role="status" className="sr-only">{saved ? "Saved" : ""}</span><Badge variant="ok" aria-hidden className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
         <Button size="sm" disabled={!canSubmit} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
@@ -342,7 +342,7 @@ function SystemConfigCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       {data && !authConfigured && <p className="text-[0.7rem] text-warn/80">{NO_PASSWORD_WARNING}</p>}
 
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
         <Button size="sm" disabled={saving || (!mcpDraft.trim() && !pinDraft.trim()) || (authConfigured && !password)} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
@@ -455,8 +455,8 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-          <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
+          <span role="status" className="sr-only">{saved ? "Saved" : ""}</span><Badge variant="ok" aria-hidden className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
           <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
             <Save size={13} /> Save
           </Button>
@@ -514,8 +514,8 @@ function OutsideCheckCard({ data, mutate }: { data: Data; mutate: Mutate }) {
         <Input placeholder="status.example.com" value={host} onChange={(e) => { setHost(e.target.value); setHostError(null); }} />
       </Field>
       <div className="flex items-center justify-end gap-2 flex-wrap pt-1">
-        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
-        <Badge variant="ok" className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
+        {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
+        <span role="status" className="sr-only">{saved ? "Saved" : ""}</span><Badge variant="ok" aria-hidden className="nw-fade" data-on={saved ? "" : undefined}>saved</Badge>
         <Button size="sm" disabled={saving || !changed} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>
@@ -599,7 +599,7 @@ function SsoCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       )}
       {data && !authConfigured && <p className="text-[0.7rem] text-warn/80">{NO_PASSWORD_WARNING}</p>}
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
         <Button size="sm" disabled={saving || (askPassword && !password)} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>

@@ -401,7 +401,7 @@ function UrlTokenPanel({
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || !url.trim()}
@@ -525,7 +525,7 @@ export function NpmPanel({ data, mutate }: PanelProps) {
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || !url.trim() || !email.trim()}
@@ -592,7 +592,7 @@ export function GithubPanel({ data, mutate }: PanelProps) {
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || (!configured && !token.trim())}
@@ -843,7 +843,7 @@ export function MinecraftPanel({ data, mutate }: PanelProps) {
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || !managerUrl.trim()}
@@ -927,7 +927,7 @@ export function MediaPanel({ data, mutate }: PanelProps) {
           <span />
         )}
         <div className="flex items-center gap-2">
-          {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+          {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
           <Button
             size="sm"
             disabled={saving || !workerUrl.trim()}
@@ -1034,8 +1034,9 @@ export function VoiceCard({ data, mutate }: PanelProps) {
         </Field>
       </div>
       <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-        {saved && <Badge variant="ok">saved</Badge>}
-        {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+        <span role="status" className="sr-only">{saved ? "Saved" : ""}</span>
+        {saved && <Badge variant="ok" aria-hidden>saved</Badge>}
+        {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
         <Button size="sm" disabled={saving} onClick={handleSave}>
           <Save size={13} /> Save
         </Button>

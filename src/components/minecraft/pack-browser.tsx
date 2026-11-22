@@ -133,15 +133,13 @@ export function PackBrowser({
         <div role="status" className="contents">
           {(view === "searching" || view === "searching-over-old") && <p className="st-note">Searching…</p>}
           {providerNote && (view === "results" || view === "empty-with-note") && <p className="text-xs text-bad">{providerNote}</p>}
+          {view === "failed" && <p className="text-xs text-bad">Couldn&apos;t search. Try again.</p>}
+          {view === "empty" && <p className="st-note">No results.</p>}
         </div>
 
         {view === "prompt" ? (
           <p className="st-note">Type to search modpacks.</p>
-        ) : view === "failed" ? (
-          <p className="text-xs text-bad">Couldn&apos;t search. Try again.</p>
-        ) : view === "searching" ? null : view === "empty" ? (
-          <p className="st-note">No results.</p>
-        ) : view === "empty-with-note" ? null : (
+        ) : view === "failed" || view === "searching" || view === "empty" || view === "empty-with-note" ? null : (
           <div>
             {search?.results.map((r) => (
               <div key={`${r.source}:${r.id}`} className="st-li">

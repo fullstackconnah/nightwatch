@@ -72,7 +72,10 @@ export function Console({
     <div className="st-stack">
         <div
           ref={boxRef}
-          className="logbox bg-bg rounded-md border border-line p-3 h-56 overflow-y-auto text-ink-dim"
+          role="log"
+          aria-label="Console output"
+          tabIndex={0}
+          className="logbox bg-bg rounded-md border border-line p-3 h-56 overflow-y-auto text-ink-dim outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           {lines.length === 0
             ? hint ?? "no output yet"
