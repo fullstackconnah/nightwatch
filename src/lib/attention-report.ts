@@ -156,7 +156,7 @@ export type KioskResult =
   | { status: "attention"; severity: "warn" | "bad"; headline: string; detail?: string; action?: string; since?: string };
 
 /** Owner-only items are Home reminders; the family wall never shows them (and a settings fault must not outrank a crashed app there). */
-const HOME_ONLY = new Set(["backup:restore-drill", "settings:settings"]);
+const HOME_ONLY = new Set(["backup:restore-drill", "settings:settings", "media:media-failed"]);
 
 /** The `settings` probe: a hit while config.json cannot be read (configProblem() is non-null), none otherwise. */
 export const settingsHit = (problem: string | null): RawHit[] =>

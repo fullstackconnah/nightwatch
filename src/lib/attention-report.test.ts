@@ -399,6 +399,17 @@ test("a 91-day drill is a dashboard hit and no kiosk hit; 90 days and never rais
   assert.equal((firstHit(withOther) as { headline: string }).headline, "backup h");
 });
 
+// --- a failed media compression: a Home hit, never the wall kiosk ---
+
+test("a failed media compression is no kiosk hit, and never outranks a crashed app there", async () => {
+  const media = await runProbes([def("media", () => [raw("media-failed", "warn")])], 50);
+  const ordered = toHits(media, () => "2026-11-04T00:00:00.000Z");
+  assert.deepEqual(ordered.map((h) => h.id), ["media:media-failed"]);
+  assert.deepEqual(firstHit(ordered), { status: "quiet" });
+  const both = toHits(await runProbes([def("media", () => [raw("media-failed", "warn")]), def("crashes", () => [raw("crashed-app", "warn")])], 50), () => "2026-11-04T00:00:00.000Z");
+  assert.equal((firstHit(both) as { headline: string }).headline, "crashed-app h");
+});
+
 test("a failed probe stays failed and still reports its hitsOnFail (the drill rides a failed backup probe)", async () => {
   const [o] = await runProbes([{ ...def("backup", () => { throw new Error("the backup status file is missing"); }), hitsOnFail: [raw("backup", "warn")] }], 50);
   assert.equal(o.status.state, "failed");

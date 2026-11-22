@@ -712,6 +712,16 @@ for (const width of WIDTHS) {
   await row.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
   const r = await row.boundingBox().catch(() => null);
   if (r) {
+    const covered = await row.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return [...document.querySelectorAll("body *")].some((n) => {
+        if (n.contains(el) || el.contains(n)) return false;
+        const cs = getComputedStyle(n);
+        const nb = n.getBoundingClientRect();
+        return (cs.position === "fixed" || cs.position === "sticky") && nb.width > 0 && nb.height > 0 && nb.left < b.right && nb.right > b.left && nb.top < b.bottom && nb.bottom > b.top;
+      });
+    });
+    record("MF", !covered, `@${width.name}: fixed or sticky chrome over the crop: ${covered}`);
     const cx = Math.max(0, r.x - PAD), cy = Math.max(0, r.y - PAD);
     await page.screenshot({ path: join(OUT_DIR, `home-attention-media-failed-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(r.width + 2 * PAD, width.viewport.width - cx), height: r.height + 2 * PAD } });
   }
