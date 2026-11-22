@@ -757,6 +757,35 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- MB: a Minecraft world with no backup for 20 days raises one item that names no file (state attention-minecraft-backup) ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "mcBackupStale" });
+  const row = page.locator('.hm-att-row[data-subject="backup-stale"]');
+  await row.waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await row.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth })).catch(() => ({ text: "", over: 0 }));
+  record("MB", /The Minecraft world has no backup for 20.days/.test(m.text) && /nothing recent to restore/.test(m.text) && /Open Minecraft and choose Back up now/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 140)}", page overflow ${m.over}px`);
+  const PAD = 12;
+  const h = await row.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 400 });
+  await row.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  const r = await row.boundingBox().catch(() => null);
+  if (r) {
+    const covered = await row.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return [...document.querySelectorAll("body *")].some((n) => {
+        if (n.contains(el) || el.contains(n)) return false;
+        const cs = getComputedStyle(n);
+        const nb = n.getBoundingClientRect();
+        return (cs.position === "fixed" || cs.position === "sticky") && nb.width > 0 && nb.height > 0 && nb.left < b.right && nb.right > b.left && nb.top < b.bottom && nb.bottom > b.top;
+      });
+    });
+    record("MB", !covered, `@${width.name}: fixed or sticky chrome over the crop: ${covered}`);
+    const cx = Math.max(0, r.x - PAD), cy = Math.max(0, r.y - PAD);
+    await page.screenshot({ path: join(OUT_DIR, `home-attention-minecraft-backup-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(r.width + 2 * PAD, width.viewport.width - cx), height: r.height + 2 * PAD } });
+  }
+  await context.close();
+}
+
 // ---- BL: a nearly flat smart-home battery and a silent sensor raise two items (state attention-battery-low) ----
 for (const width of WIDTHS) {
   const { context, page } = await open({ width, fixture: "batteryLow" });
@@ -1076,7 +1105,7 @@ await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK", "CL", "DQ", "H103", "MF", "CE", "BL"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK", "CL", "DQ", "H103", "MF", "CE", "MB", "BL"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };

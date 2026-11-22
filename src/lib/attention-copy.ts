@@ -271,6 +271,16 @@ export function certificateExpiring(count: number, soonest: number): AlertCopy {
   };
 }
 
+/** The Minecraft world's newest backup is 14+ days old (days), or there is none (null). Names no file or instance. */
+export function minecraftBackupStale(days: number | null): AlertCopy {
+  return {
+    // no-break space: "1 day" never wraps
+    headline: days === null ? "The Minecraft world has never been backed up" : `The Minecraft world has no backup for ${days} ${days === 1 ? "day" : "days"}`,
+    detail: "If something goes wrong, there is nothing recent to restore.",
+    action: "Open Minecraft and choose Back up now.",
+  };
+}
+
 /** Smart-home batteries at 10% or less. Names a sensor, so only Home and the desk widget show it. */
 export function batteryLow(names: string[], lowest: { name: string; value: number }): AlertCopy {
   const one = names.length === 1;

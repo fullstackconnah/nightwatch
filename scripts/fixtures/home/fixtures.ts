@@ -146,6 +146,14 @@ const certExpiring = (now: number, minAgo: number) =>
     owner: { href: "/proxy", label: "Open Proxy" },
   });
 
+// MB: copy from minecraftBackupStale(20) in src/lib/attention-copy.ts (a no-break space joins "20" and "days").
+const mcBackupStale = (now: number, minAgo: number) =>
+  hit(now, "minecraft", "backup-stale", "warn", "The Minecraft world has no backup for 20 days", minAgo, {
+    detail: "If something goes wrong, there is nothing recent to restore.",
+    action: "Open Minecraft and choose Back up now.",
+    owner: { href: "/minecraft", label: "Open Minecraft" },
+  });
+
 // BL: copy from batteryLow(["Hall sensor"], { name: "Hall sensor", value: 8 }) and sensorsDown(1) in src/lib/attention-copy.ts.
 const batteryLow = (now: number, minAgo: number) =>
   hit(now, "smarthome", "battery-low", "warn", "Hall sensor battery at 8%", minAgo, {
@@ -171,6 +179,7 @@ export function build(now: number) {
     stalledLane: report(now, [stalledLane(now, 25)], e),
     mediaFailed: report(now, [disk(now, 90), mediaFailed(now, 120)], e),
     certExpiring: report(now, [disk(now, 90), certExpiring(now, 120)], e),
+    mcBackupStale: report(now, [disk(now, 90), mcBackupStale(now, 120)], e),
     batteryLow: report(now, [disk(now, 90), batteryLow(now, 120), sensorsDown(now, 110)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(

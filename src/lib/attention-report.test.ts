@@ -530,3 +530,10 @@ test("nothing held and every probe failed reads quiet", async () => {
   const next = await run([def("crashes", boom), def("smart", hang)], new Map());
   assert.deepEqual(firstHit(next.flat), { status: "quiet" });
 });
+
+test("a stale Minecraft backup is a Home hit, never the wall kiosk", async () => {
+  const out = await runProbes([def("minecraft", () => [raw("backup-stale", "warn")])], 50);
+  const ordered = toHits(out, () => "2026-11-04T00:00:00.000Z");
+  assert.deepEqual(ordered.map((h) => h.id), ["minecraft:backup-stale"]);
+  assert.deepEqual(firstHit(ordered), { status: "quiet" });
+});

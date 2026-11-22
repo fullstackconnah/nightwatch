@@ -16,7 +16,7 @@ export async function readWithin<T>(read: () => Promise<T>, ms: number, what: st
   return r as T;
 }
 
-export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside" | "media" | "certs" | "smarthome";
+export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside" | "media" | "certs" | "smarthome" | "minecraft";
 export type ProbeStatus =
   | { id: ProbeId; label: string; state: "answered"; hits: number }
   | { id: ProbeId; label: string; state: "pending" } // missed the deadline
@@ -130,6 +130,8 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
       return { href: "/media", label: "Open Media" };
     case "certs":
       return { href: "/proxy", label: "Open Proxy" };
+    case "minecraft":
+      return { href: "/minecraft", label: "Open Minecraft" };
     case "outside":
       return { href: "/resources", label: "Open in Resources" };
     default:
@@ -159,7 +161,7 @@ export type KioskResult =
   | { status: "attention"; severity: "warn" | "bad"; headline: string; detail?: string; action?: string; since?: string };
 
 /** Owner-only items are Home reminders; the family wall never shows them (and a settings fault must not outrank a crashed app there). */
-const HOME_ONLY = new Set(["backup:restore-drill", "settings:settings", "media:media-failed", "certs:cert-expiring", "smarthome:battery-low", "smarthome:sensors-down"]);
+const HOME_ONLY = new Set(["backup:restore-drill", "settings:settings", "media:media-failed", "certs:cert-expiring", "minecraft:backup-stale", "smarthome:battery-low", "smarthome:sensors-down"]);
 
 /** The `settings` probe: a hit while config.json cannot be read (configProblem() is non-null), none otherwise. */
 export const settingsHit = (problem: string | null): RawHit[] =>
