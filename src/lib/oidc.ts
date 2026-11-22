@@ -234,11 +234,11 @@ export async function exchangeCode(code: string, redirectUri: string, codeVerifi
       body: body.toString(),
     });
   } catch (err) {
-    throw new OidcError("exchange_failed", err instanceof Error ? err.message : "token request failed");
+    throw new OidcError("provider_unreachable", err instanceof Error ? err.message : "token request failed");
   }
 
   if (!res.ok) {
-    throw new OidcError("exchange_failed", `token endpoint returned ${res.status}`);
+    throw new OidcError(res.status >= 500 ? "provider_unreachable" : "exchange_failed", `token endpoint returned ${res.status}`);
   }
 
   let json: TokenResponse | null;

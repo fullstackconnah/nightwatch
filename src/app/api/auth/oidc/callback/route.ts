@@ -9,7 +9,7 @@ import {
   verifyIdToken,
   verifyOidcFlowToken,
 } from "@/lib/oidc";
-import { isSecureRequest, requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
+import { exchangeErrorCode, isSecureRequest, requestOrigin, ssoErrorUrl } from "@/lib/oidc-origin";
 import { SESSION_COOKIE, createSessionToken, isMissingSecretError, sessionCookieOptions } from "@/lib/auth";
 import { sessionEpoch } from "@/lib/config";
 
@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await exchangeCode(code, redirectUri, flow.verifier);
     idToken = tokens.id_token;
-  } catch {
-    return ssoErrorRedirect(req, "exchange_failed");
+  } catch (err) {
+    return ssoErrorRedirect(req, exchangeErrorCode(err));
   }
 
   let payload: JWTPayload;
