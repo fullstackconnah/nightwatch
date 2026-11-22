@@ -207,6 +207,16 @@ export const weatherFetcher = async (url: string) => {
 };
 export const getWeatherLastOkAt = (): number | null => weatherLastOkAt;
 
+/** Same idea for the briefing: the time of the last answer of any status (a throw does not stamp),
+ *  module-level so every component on the key reads one time. */
+let briefingAnsweredAt: number | null = null;
+export const briefingFetcher = async (url: string) => {
+  const res = await fetcher(url);
+  briefingAnsweredAt = Date.now();
+  return res;
+};
+export const getBriefingAnsweredAt = (): number | null => briefingAnsweredAt;
+
 /** `?wx=<preset>&wxsun=day|dusk|night`: a weather preview for this session.
  *  Read in an effect and never persisted, the same way `?theme=` is
  *  (kiosk-theme.tsx); see WX_PRESETS for the values. */

@@ -39,16 +39,15 @@ import {
   Sun,
   Sunset,
 } from "lucide-react";
-import { fetcher } from "@/lib/client";
 import { BinNightRow, useBinNight } from "@/components/kiosk/kiosk-bins";
 import { type KioskAgenda, useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
-import { type KioskWeatherOk, WEATHER_REFRESH_MS, getWeatherLastOkAt, useWxParams, weatherFetcher } from "@/lib/kiosk-client";
+import { type KioskWeatherOk, WEATHER_REFRESH_MS, briefingFetcher, getBriefingAnsweredAt, getWeatherLastOkAt, useWxParams, weatherFetcher } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { type SunAirAir, type SunAirInlineItem, type SunAirTone, type SunAirUv, type SunAirView, sunAirView } from "@/lib/kiosk-sun-air";
-import { briefingRefreshMs } from "@/lib/briefing-poll";
+import { briefingRefreshMs, briefingTooOld } from "@/lib/briefing-poll";
 import { type WeatherViewStatus, weatherViewStatus } from "@/lib/kiosk/view-status";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 
@@ -283,8 +282,9 @@ type BriefingResponse =
  *  `unavailable`): the server's per-day cache is cheap to poll and rolls the
  *  day itself, so a wall display picks up tomorrow's digest. */
 export function useKioskBriefing(active: boolean) {
-  return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, fetcher, {
-    refreshInterval: briefingRefreshMs,
+  return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, briefingFetcher, {
+    // old kept data is no data: poll fast again until a fresh answer stamps the time
+    refreshInterval: (latest) => briefingRefreshMs(briefingTooOld(getBriefingAnsweredAt(), Date.now()) ? undefined : latest),
     keepPreviousData: true,
   });
 }
@@ -448,7 +448,9 @@ export function WeatherBand({ period, weather }: { period: KioskPeriod; weather:
 
 function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefing> }) {
   const { data } = briefing;
-  const preparing = !data || (data.status === "ok" && !data.digest && !data.news);
+  const now = useNow(true, true); // minute tick; 0 before mount reads as not old
+  const preparing =
+    !data || (data.status === "ok" && !data.digest && !data.news) || briefingTooOld(getBriefingAnsweredAt(), now);
 
   // No box: a hairline top rule groups it with the weather band above
   // instead (redesign-06 §E) — the same "type and space do the grouping"
