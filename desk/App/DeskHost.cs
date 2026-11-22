@@ -48,6 +48,7 @@ internal sealed class DeskHost
 
     public int Run()
     {
+        Application.Current.DispatcherUnhandledException += (_, e) => e.Handled = true; // a stray UI exception must not end the widget; nothing is logged, so no token can leak
         Theme.EnsureLoaded();
         var saved = WinState.Load(DeskFiles.State);
         view = new DeskView(tz) { Open = OpenHref };
@@ -87,7 +88,7 @@ internal sealed class DeskHost
         tray.Summon += widget.Summon;
         tray.OpenHome += () => OpenHref("/");
         tray.Refresh += () => { LoadConfig(); _ = PollAsync(); Update(); };
-        tray.StartupToggled += on => Autostart.Set(on);
+        tray.StartupToggled += on => Autostart.Set(on); // the tick is re-read from Autostart.Enabled each time the menu opens (Tray.cs:30)
         tray.OnTopToggled += on => widget.SetAlwaysOnTop(on);
         tray.ToastClicked += () => { if (lastToast is Click.OpenUrl o) OpenUrl(o.Url); else widget.Summon(); };
         tray.Quit += () => Application.Current.Shutdown();
@@ -111,7 +112,6 @@ internal sealed class DeskHost
         doorTimer.Start();
         _ = PollAsync();
 
-        Application.Current.DispatcherUnhandledException += (_, e) => e.Handled = true; // a stray UI exception must not end the widget; nothing is logged, so no token can leak
         Application.Current.Exit += (_, _) =>
         {
             SystemEvents.SessionSwitch -= OnSession;

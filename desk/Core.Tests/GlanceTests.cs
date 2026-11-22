@@ -37,6 +37,19 @@ public class GlanceTests
         Assert.Null(((Outcome.Ok)GlanceParser.Parse(nullVitals)).Glance.Vitals);
     }
 
+    [Theory]
+    [InlineData("\"cpu\": 12", "\"cpu\": null")]
+    [InlineData("\"mem\": 34", "\"mem\": null")]
+    public void A_null_cpu_or_mem_reads_as_no_vitals_and_keeps_the_rest(string was, string now)
+    {
+        var json = Fixture().Replace(was, now);
+        Assert.NotEqual(Fixture(), json);
+        var g = Assert.IsType<Outcome.Ok>(GlanceParser.Parse(json)).Glance;
+        Assert.Null(g.Vitals);
+        Assert.Equal(new Probes(5, 1, 1), g.Probes);
+        Assert.Equal(2, g.Items.Length);
+    }
+
     [Fact]
     public void Old_bodies_without_a_forecast_still_parse_with_Forecast_null()
     {
