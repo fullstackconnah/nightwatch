@@ -139,6 +139,18 @@ test("every failed check has plain words", () => {
   assert.equal(failedWords({}), "something went wrong");
 });
 
+test("a job the worker could not recover after a restart says so, with only the fs code", () => {
+  const lost = "Couldn't recover this job after a restart";
+  const line = (check: "restart" | "swap", error?: string) => row(job("failed", { failedCheck: check, error })).line.text;
+  assert.equal(line("restart", `${lost} (EACCES)`), "Kept the original: the worker could not pick this job up again after a restart (EACCES).");
+  assert.equal(line("swap", `${lost} (EACCES)`), "Kept the original: the worker could not pick this job up again after a restart (EACCES).");
+  assert.equal(line("restart", lost), "Kept the original: the worker could not pick this job up again after a restart.");
+  assert.equal(line("restart", `${lost} (eacces)`), "Kept the original: the worker could not pick this job up again after a restart.");
+  assert.equal(line("restart"), "Kept the original: the worker restarted twice.");
+  assert.equal(line("restart", ""), "Kept the original: the worker restarted twice.");
+  assert.equal(line("restart", "/library/movies/a.mkv: EACCES"), "Kept the original: the worker restarted twice.");
+});
+
 test("dates are Sydney days and times read like 'about 1 h 20 min'", () => {
   assert.equal(dayLabel("2026-11-11T23:00:00.000Z"), "12 Nov");
   assert.deepEqual([etaText(30), etaText(600), etaText(4800)], ["30 s", "10 min", "1 h 20 min"]);
