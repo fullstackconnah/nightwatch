@@ -3,10 +3,14 @@ import { readdirSync, readFileSync } from "node:fs";
 import { it } from "node:test";
 
 const src = readFileSync(new URL("../components/kiosk/kiosk-display.tsx", import.meta.url), "utf8");
-const card = src.slice(src.indexOf("function BriefingCard"), src.indexOf("function BriefingCard") + 900);
+const body = (start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)));
+const hook = body("export function useKioskBriefing", "/* ── shared bits");
+const card = body("function BriefingCard", "\n}");
 
-it("polish 35: BriefingCard treats a too-old kept answer as no data", () => {
-  assert.match(card, /briefingTooOld\(getBriefingAnsweredAt\(\)/);
+it("polish 35: the shared hook returns a too-old kept answer as no data; BriefingCard does not re-check", () => {
+  assert.match(hook, /briefingTooOld\(getBriefingAnsweredAt\(\), now\)/);
+  assert.match(hook, /data: undefined/);
+  assert.doesNotMatch(card, /briefingTooOld/);
 });
 
 it("polish 35: every useSWR on the briefing key uses the stamping fetcher", () => {

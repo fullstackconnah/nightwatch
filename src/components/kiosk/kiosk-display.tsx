@@ -282,11 +282,14 @@ type BriefingResponse =
  *  `unavailable`): the server's per-day cache is cheap to poll and rolls the
  *  day itself, so a wall display picks up tomorrow's digest. */
 export function useKioskBriefing(active: boolean) {
-  return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, briefingFetcher, {
+  const swr = useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, briefingFetcher, {
     // old kept data is no data: poll fast again until a fresh answer stamps the time
     refreshInterval: (latest) => briefingRefreshMs(briefingTooOld(getBriefingAnsweredAt(), Date.now()) ? undefined : latest),
     keepPreviousData: true,
   });
+  const now = useNow(true, true); // minute tick re-evaluates the age; 0 before mount reads as not old
+  // Every consumer gets the rule. The spread reads SWR's getters afresh each render (no stale copy).
+  return briefingTooOld(getBriefingAnsweredAt(), now) ? { ...swr, data: undefined } : swr;
 }
 
 /* ── shared bits ─────────────────────────────────────────────────────────── */
@@ -448,9 +451,7 @@ export function WeatherBand({ period, weather }: { period: KioskPeriod; weather:
 
 function BriefingCard({ briefing }: { briefing: ReturnType<typeof useKioskBriefing> }) {
   const { data } = briefing;
-  const now = useNow(true, true); // minute tick; 0 before mount reads as not old
-  const preparing =
-    !data || (data.status === "ok" && !data.digest && !data.news) || briefingTooOld(getBriefingAnsweredAt(), now);
+  const preparing = !data || (data.status === "ok" && !data.digest && !data.news);
 
   // No box: a hairline top rule groups it with the weather band above
   // instead (redesign-06 §E) — the same "type and space do the grouping"
