@@ -65,6 +65,10 @@ const ORDER = {
   noPack: ["pack", "server", "backups", "players", "console", "log"],
 } as const satisfies Record<string, readonly StripId[]>;
 const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "pause", "resume", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
+/** The most recently modified backup, null for an empty list. */
+export const newestBackup = (backups: McBackup[]): McBackup | null =>
+  backups.reduce<McBackup | null>((a, b) => (a && Date.parse(a.modifiedAt) >= Date.parse(b.modifiedAt) ? a : b), null);
+
 /** The full answer leads the strip the answer names, and only that one (R3). */
 /** The Server detail says "no pack" only when mc-manager answered and listed none; down or rejected, it would be false advice. */
 export const noPackNote = (s: MinecraftStatusResponse | undefined): string | null =>
@@ -176,7 +180,7 @@ export function minecraftModel(i: ModelInput): Model {
 
   // ---- strips ----
   const packBackups = i.backups ?? [];
-  const newest = packBackups.reduce<McBackup | null>((a, b) => (a && Date.parse(a.modifiedAt) >= Date.parse(b.modifiedAt) ? a : b), null);
+  const newest = newestBackup(packBackups);
   const serverState = !c
     ? "No container"
     : running

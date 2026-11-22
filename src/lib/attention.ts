@@ -42,6 +42,7 @@ import {
   integrityAlert,
   keepsRestarting,
   certificateExpiring,
+  minecraftBackupStale,
   batteryLow,
   sensorsDown,
   mediaCompressionFailed,
@@ -50,6 +51,9 @@ import {
 } from "@/lib/attention-copy";
 import { countRecentFailedCompressions } from "@/lib/media/failed-count";
 import { mediaWorker, mediaWorkerCredentials } from "@/lib/media/worker";
+import { mcManager, mcManagerCredentials } from "@/lib/minecraft/manager";
+import { cachedBackupVerdict } from "@/lib/minecraft/backup-age";
+import { isProbeOk } from "@/lib/integration-client";
 import { getProxyManagerSnapshot } from "@/lib/npm";
 import { cachedExpiringCerts, certSeverity } from "@/lib/proxy/expiring-certs";
 import { getHaStates, haCredentials } from "@/lib/ha";
@@ -535,6 +539,20 @@ async function probeCerts(): Promise<RawHit[]> {
   return [hit("cert-expiring", certSeverity(soonest), certificateExpiring(count, soonest))];
 }
 
+/** An unreachable manager holds the last verdict (the Minecraft page says it isn't answering); the manager is read at most every 15 minutes. Instances come with the backups because an instance with none is the "never" case. */
+const readMcBackups = cachedBackupVerdict(
+  async () => {
+    const [instances, backups] = await Promise.all([mcManager.instances(), mcManager.backups()]);
+    return isProbeOk(instances) && isProbeOk(backups) ? { instances: instances.data.instances, backups: backups.data.backups } : null;
+  },
+  { key: "attention.mcbackup" },
+);
+
+async function probeMinecraftBackup(): Promise<RawHit[]> {
+  const v = await readMcBackups();
+  return v.kind === "ok" ? [] : [hit("backup-stale", "warn", minecraftBackupStale(v.kind === "stale" ? v.days : null))];
+}
+
 /** HA not set up is left out of the list; unreachable or an error is quiet here (the Smart home page says so). getHaStates() is uncached, so the facts are held for a minute. */
 const readSmartHome = cachedSmartHomeFacts(getHaStates, { key: "attention.smarthome" });
 
@@ -616,6 +634,7 @@ async function computeReport(): Promise<Computed> {
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
     ...(mediaWorkerCredentials() ? [{ id: "media", label: "Media compression", run: () => probeMedia() } as ProbeDef] : []),
     { id: "certs", label: "Certificates", run: () => probeCerts() },
+    ...(mcManagerCredentials() ? [{ id: "minecraft", label: "Minecraft backup", run: () => probeMinecraftBackup() } as ProbeDef] : []),
     ...(haCredentials() ? [{ id: "smarthome", label: "Smart home", run: () => probeSmartHome() } as ProbeDef] : []),
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
