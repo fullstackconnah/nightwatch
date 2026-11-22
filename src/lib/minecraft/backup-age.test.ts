@@ -56,19 +56,37 @@ test("a read that throws or answers null gives no hit when nothing was known", a
   assert.deepEqual(await reader(async () => null).read(), { kind: "ok" });
 });
 
-test("a failed refresh holds the last verdict, and is retried after the retry window", async () => {
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test("a changed answer shows once the TTL has passed (the refresh lands on the next read)", async () => {
+  let current: BackupRead = stale;
+  const { t, read } = reader(async () => current);
+  assert.deepEqual(await read(), { kind: "stale", days: 20 });
+  current = { instances: [inst("a")], backups: [bk("a", 0)] };
+  t.ms += BACKUP_TTL_MS;
+  await read(); // returns the old verdict at once and starts the refresh
+  await tick();
+  assert.deepEqual(await read(), { kind: "ok" });
+  assert.equal(t.calls, 2);
+});
+
+test("a failed refresh holds the last verdict, and is retried only after the retry window", async () => {
   let fail = false;
   const { t, read } = reader(async () => (fail ? null : stale));
   await read();
   fail = true;
   t.ms += BACKUP_TTL_MS;
-  await read(); // stale value returned, refresh runs and fails
-  await new Promise((r) => setTimeout(r, 0));
+  await read(); // old verdict returned, refresh runs and fails
+  await tick();
+  assert.equal(t.calls, 2);
   assert.deepEqual(await read(), { kind: "stale", days: 20 });
-  const calls = t.calls;
-  t.ms += BACKUP_RETRY_MS - 1;
-  await read();
-  assert.equal(t.calls, calls, "no retry inside the window");
+  await tick();
+  assert.equal(t.calls, 2, "no retry inside the window");
+  t.ms += BACKUP_RETRY_MS;
+  fail = false;
+  await read(); // retry fires
+  await tick();
+  assert.equal(t.calls, 3, "retry after the window");
 });
 
 test("copy: stale names the days, never says never; no file or instance names", () => {

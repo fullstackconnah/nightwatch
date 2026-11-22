@@ -59,5 +59,9 @@ export function cachedBackupVerdict(
       }
     },
   });
-  return async () => (memo.peek() ?? (await memo.get())).verdict;
+  return async () => {
+    const last = memo.peek();
+    const next = memo.get(); // starts the refresh; never rejects: load catches
+    return (last ?? (await next)).verdict;
+  };
 }

@@ -65,13 +65,13 @@ const ORDER = {
   noPack: ["pack", "server", "backups", "players", "console", "log"],
 } as const satisfies Record<string, readonly StripId[]>;
 const ALL_WRITES: WriteId[] = ["stop", "start", "restart", "pause", "resume", "switch", "delete", "install", "upload", "console-send", "backup-run", "restore", "log-pause"];
-/** The full answer leads the strip the answer names, and only that one (R3). */
-/** The Server detail says "no pack" only when mc-manager answered and listed none; down or rejected, it would be false advice. */
 /** The most recently modified backup, null for an empty list. */
 export const newestBackup = (backups: McBackup[]): McBackup | null =>
   backups.reduce<McBackup | null>((a, b) => (a && Date.parse(a.modifiedAt) >= Date.parse(b.modifiedAt) ? a : b), null);
 
-export const noPackNote =(s: MinecraftStatusResponse | undefined): string | null =>
+/** The full answer leads the strip the answer names, and only that one (R3). */
+/** The Server detail says "no pack" only when mc-manager answered and listed none; down or rejected, it would be false advice. */
+export const noPackNote = (s: MinecraftStatusResponse | undefined): string | null =>
   s?.manager === "ok" && !s.instances.some((p) => p.slug === s.active) ? "No pack active. Pick one in the Pack strip." : null;
 
 export const leadFor = (m: Pick<Model, "autoTarget" | "detailLead">, id: StripId): string | null => (m.autoTarget === id ? m.detailLead : null);
