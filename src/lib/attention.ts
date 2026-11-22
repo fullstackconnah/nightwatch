@@ -41,9 +41,12 @@ import {
   driveUnreadable,
   integrityAlert,
   keepsRestarting,
+  mediaCompressionFailed,
   stuckRestarting,
   type AlertCopy,
 } from "@/lib/attention-copy";
+import { countRecentFailedCompressions } from "@/lib/media/failed-count";
+import { mediaWorker, mediaWorkerCredentials } from "@/lib/media/worker";
 import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
@@ -510,6 +513,12 @@ async function probeOutside(): Promise<RawHit[] | typeof PENDING> {
   }
 }
 
+/** A worker that is down or slow is quiet here (the Media page reports it); a slow one is cut by runProbes' deadline, so no second timer. */
+async function probeMedia(): Promise<RawHit[]> {
+  const n = await countRecentFailedCompressions(mediaWorker);
+  return n ? [hit("media-failed", "warn", mediaCompressionFailed(n))] : [];
+}
+
 // --- orchestration -----------------------------------------------------------
 
 /** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
@@ -578,6 +587,7 @@ async function computeReport(): Promise<Computed> {
     { id: "disks", label: "Disk space", run: () => probeDiskCapacity() },
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(watched)) },
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
+    ...(mediaWorkerCredentials() ? [{ id: "media", label: "Media compression", run: () => probeMedia() } as ProbeDef] : []),
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
     { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },

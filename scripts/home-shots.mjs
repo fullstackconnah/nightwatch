@@ -699,6 +699,25 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- MF: a failed media compression raises one item that names no file (state attention-media-failed) ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "mediaFailed" });
+  const row = page.locator('.hm-att-row[data-subject="media-failed"]');
+  await row.waitFor({ timeout: 30_000 }).catch(() => {});
+  const m = await row.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth })).catch(() => ({ text: "", over: 0 }));
+  record("MF", /A compression failed/.test(m.text) && /original file was kept/.test(m.text) && /Try again/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 140)}", page overflow ${m.over}px`);
+  const PAD = 12;
+  const h = await row.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 400 });
+  await row.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  const r = await row.boundingBox().catch(() => null);
+  if (r) {
+    const cx = Math.max(0, r.x - PAD), cy = Math.max(0, r.y - PAD);
+    await page.screenshot({ path: join(OUT_DIR, `home-attention-media-failed-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(r.width + 2 * PAD, width.viewport.width - cx), height: r.height + 2 * PAD } });
+  }
+  await context.close();
+}
+
 // ---- DQ: a quiet front door camera raises an item next to the disk one (state attention-doorbell) ----
 for (const width of WIDTHS) {
   const { context, page } = await open({ width, fixture: "doorbellQuiet" });

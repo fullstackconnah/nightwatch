@@ -16,7 +16,7 @@ export async function readWithin<T>(read: () => Promise<T>, ms: number, what: st
   return r as T;
 }
 
-export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside";
+export type ProbeId = "settings" | "crashes" | "restarts" | "smart" | "mounts" | "backup" | "disks" | "health" | "doorbell" | "orchestra" | "outside" | "media";
 export type ProbeStatus =
   | { id: ProbeId; label: string; state: "answered"; hits: number }
   | { id: ProbeId; label: string; state: "pending" } // missed the deadline
@@ -125,6 +125,8 @@ export function ownerFor(probe: ProbeId, subject: string): { href: string; label
       return { href: "/smarthome", label: "Open Smart home" };
     case "orchestra":
       return { href: "/orchestrators", label: "Open AI lanes" };
+    case "media":
+      return { href: "/media", label: "Open Media" };
     case "outside":
       return { href: "/resources", label: "Open in Resources" };
     default:
