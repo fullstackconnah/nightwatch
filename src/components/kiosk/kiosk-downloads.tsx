@@ -162,10 +162,12 @@ interface KioskDownloadsButtonProps {
   items: KioskDownloadItem[];
   trayOpen: boolean;
   onPress: () => void;
+  /** The list is the last good one (the poll is failing); the ring is not live. */
+  stale?: boolean;
 }
 
 export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloadsButtonProps>(
-  function KioskDownloadsButton({ items, trayOpen, onPress }, forwardedRef) {
+  function KioskDownloadsButton({ items, trayOpen, onPress, stale = false }, forwardedRef) {
     const aggregate = useMemo(() => aggregateProgress(items), [items]);
     const count = items.length;
     const hasItems = count > 0;
@@ -218,9 +220,11 @@ export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloads
         }}
         aria-expanded={trayOpen}
         aria-label={
-          count > 0
-            ? `${count} download${count === 1 ? "" : "s"} in progress, ${Math.round(aggregate * 100)}% average`
-            : "Downloads"
+          stale && count > 0
+            ? `${count} download${count === 1 ? "" : "s"}, last known, downloads are unavailable right now`
+            : count > 0
+              ? `${count} download${count === 1 ? "" : "s"} in progress, ${Math.round(aggregate * 100)}% average`
+              : "Downloads"
         }
         style={{
           transitionDuration: `${KIOSK_FADE_MS}ms`,
@@ -234,6 +238,7 @@ export const KioskDownloadsButton = forwardRef<HTMLButtonElement, KioskDownloads
         <span className="relative grid shrink-0 place-items-center" style={{ width: RING_SIZE, height: RING_SIZE }}>
           <DownloadRing progress={aggregate} />
           <Download size={16} className="absolute" aria-hidden />
+          {stale && count > 0 && <span aria-hidden className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-warn" />}
         </span>
         {count > 1 && <span className="font-mono text-lg font-bold tabular-nums">{count}</span>}
       </button>
@@ -501,7 +506,7 @@ export function KioskDownloads() {
 
   return (
     <>
-      <KioskDownloadsButton ref={buttonRef} items={items} trayOpen={trayOpen} onPress={() => setTrayOpen((o) => !o)} />
+      <KioskDownloadsButton ref={buttonRef} items={items} stale={!!error} trayOpen={trayOpen} onPress={() => setTrayOpen((o) => !o)} />
       <KioskDownloadsTray items={items} stale={!!error} open={trayOpen} onClose={() => setTrayOpen(false)} anchorRef={buttonRef} />
       {toast && <KioskDownloadsToast key={toast.key} toast={toast} onDismiss={dismissToast} />}
     </>
