@@ -10,11 +10,16 @@ export const dynamic = "force-dynamic";
  * which covers "/kiosk/api/*") so a wall tablet can show download progress
  * without an admin session. Never echoes the configured qBittorrent URL or
  * credentials — only per-torrent name/progress/speed/size/eta, and only for
- * torrents currently making progress (see getKioskDownloads).
+ * torrents currently making progress (see getKioskDownloads). Unreachable
+ * answers 502 so the tablet's SWR keeps its last list (stale tag).
  */
 export async function GET() {
   try {
-    return NextResponse.json(await getKioskDownloads());
+    const result = await getKioskDownloads();
+    if (result.status === "unreachable") {
+      return NextResponse.json({ error: "downloads unavailable" }, { status: 502 });
+    }
+    return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "downloads unavailable" },

@@ -251,7 +251,10 @@ export function KioskRadarModal({
   useEffect(() => {
     let cancelled = false;
     fetch("/kiosk/api/weather/radar")
-      .then((res) => res.json() as Promise<RadarApiResponse>)
+      .then((res) => {
+        if (!res.ok) throw new Error(`radar HTTP ${res.status}`);
+        return res.json() as Promise<RadarApiResponse>;
+      })
       .then((json) => {
         if (!cancelled) setData(json);
       })
