@@ -94,6 +94,10 @@ describe("redactLogText authorization header, any scheme", () => {
     '"authorization": "Token abc123secret"',
     "Authorization=Token abc123secret",
     "> Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/2026, Signature=abc123secret",
+    "HTTP_AUTHORIZATION=Token abc123secret",
+    'HTTP_PROXY_AUTHORIZATION: Digest response="abc123secret"',
+    "x-authorization: abc123secret",
+    String.raw`{\"authorization\":\"Token abc123secret\"}`,
   ];
   for (const line of masked) {
     it(`masks ${line.slice(0, 40)}`, () => assert.ok(!/abc123secret|AKIDEXAMPLE/.test(redactLogText(line)), redactLogText(line)));
@@ -102,7 +106,7 @@ describe("redactLogText authorization header, any scheme", () => {
     it(`leaves ${line}`, () => assert.equal(redactLogText(line), line));
   }
   it("handles a 100 KB header line fast", () => {
-    for (const line of ["authorization:".repeat(7500), "Authorization: " + "a ".repeat(50000), "authorization".repeat(8000)]) {
+    for (const line of ["authorization:".repeat(7500), "Authorization: " + "a ".repeat(50000), "authorization".repeat(8000), "_authorization".repeat(7000), "a.".repeat(50000) + "authorization"]) {
       const t = performance.now();
       redactLogText(line);
       assert.ok(performance.now() - t < 100);

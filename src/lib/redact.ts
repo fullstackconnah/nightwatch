@@ -22,7 +22,7 @@ const COOKIE = /(\b(?:set-)?cookie\s*:\s*).+/gi;
 const JWT = /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g;
 const GH_TOKEN = /\b(?:gh[pousr]_|github_pat_)\w{20,}/g;
 // Any scheme (Token, ApiKey, Digest, AWS4...): mask to the end of the line; the colon or equals keeps prose "authorization failed" and "Basic settings" intact.
-const AUTH = /(\b(?:proxy-)?authorization["']?\s*[:=]\s*).+/gi;
+const AUTH = /((?<![\w.-])(?:[\w.-]{0,128}[_.-])?(?:proxy-)?authorization\\?["']?\s*[:=]\s*).+/gi;
 const BEARER =/\bBearer\s+[\w.~+/=-]+/gi;
 
 /** Container log text for the MCP client: cmdline masking plus key-value secrets and bare bearer tokens. */
