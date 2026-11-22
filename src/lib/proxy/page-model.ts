@@ -52,6 +52,12 @@ export function certVariant(daysLeft: number | null): "neutral" | "warn" | "bad"
   return "neutral";
 }
 
+/** Where a route's domain opens: https with a certificate, else http; no link for a disabled route, a wildcard or any odd string. */
+export function routeHref(route: Pick<ProxyRoute, "enabled" | "cert">, domain: string): string | null {
+  if (!route.enabled || !/^[A-Za-z0-9.-]+$/.test(domain)) return null;
+  return `${route.cert ? "https" : "http"}://${domain}`;
+}
+
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const domainOf = (x: { domains: string[] }, fallback: string) => x.domains[0] || fallback;
 const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`; // no-break space: "1 day" never wraps between number and unit

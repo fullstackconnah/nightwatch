@@ -484,6 +484,52 @@ await guarded("C13", () =>
   }),
 );
 
+// P47-A: an enabled route's domain opens its site; a disabled or wildcard one stays text; the link keeps the row height.
+await guarded("P47-A", () =>
+  each(async (s) => {
+    const { page } = await visit(s, "proxy", "domainLinks");
+    await openStrip(page, "routes");
+    const vis = s.name === "390" ? "div.md\\:hidden > div" : "tbody tr";
+    const rows = detail(page).locator(vis);
+    const info = (i) => rows.nth(i).evaluate((row) => {
+      const a = row.querySelector("a[href]");
+      return { h: row.getBoundingClientRect().height, href: a?.getAttribute("href") ?? null, target: a?.getAttribute("target") ?? null, rel: a?.getAttribute("rel") ?? null, text: a?.textContent ?? null };
+    });
+    const [r1, r2, r3, r4] = [await info(0), await info(1), await info(2), await info(3)];
+    record("P47-A1 https link, target and rel", s.name, r1.href === "https://app1.example.test" && r1.target === "_blank" && r1.rel === "noopener noreferrer");
+    record("P47-A2 no certificate gives an http link", s.name, r4.href === "http://app4.example.test");
+    record("P47-A3 disabled and wildcard domains are not links", s.name, r2.href === null && r3.href === null);
+    record("P47-A4 row height within 1 px of a plain row", s.name, Math.abs(r1.h - r3.h) <= 1);
+    record("P47-A5 page scrollWidth <= innerWidth", s.name, (await overflow(page)) <= 0);
+    const tag = await page.addStyleTag({ content: "nav.fixed.bottom-0, nextjs-portal { display: none !important; }" });
+    const box = await rows.first().boundingBox();
+    const last = await rows.nth(3).boundingBox();
+    const pad = 16;
+    const clip = { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: last.y + last.height - box.y + 2 * pad };
+    await page.screenshot({ path: join(OUT_DIR, `proxy-domain-link-${s.name}.png`), fullPage: true, clip });
+    await tag.evaluate((el) => el.remove());
+    await page.close();
+  }),
+);
+
+// P47-B: a URL that does not exist shows the not-found page with a way back.
+await guarded("P47-B", () =>
+  each(async (s) => {
+    const page = await s.context.newPage();
+    watch(page, s.name);
+    await page.goto(`${BASE_URL}/no-such-page-p47`, { waitUntil: "domcontentloaded" });
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    await page.getByRole("heading", { name: "This page does not exist" }).waitFor({ timeout: SLOW });
+    const back = page.getByRole("link", { name: "Back to Home" });
+    record("P47-B1 heading and Back to Home link to /", s.name, (await back.getAttribute("href")) === "/");
+    record("P47-B2 page scrollWidth <= innerWidth", s.name, (await overflow(page)) <= 0);
+    const box = await page.locator(".panel").first().boundingBox();
+    const pad = 16;
+    await page.screenshot({ path: join(OUT_DIR, `not-found-${s.name}.png`), fullPage: true, clip: { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: box.height + 2 * pad } });
+    await page.close();
+  }),
+);
+
 // The final records print even after failures, and on a runner kill.
 function finish() {
   record("C14 page errors", "all", pageErrors.length ? pageErrors.slice(0, 3).join(" | ") : "none");

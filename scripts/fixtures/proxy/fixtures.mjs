@@ -29,6 +29,8 @@ export const FIXTURES = {
   certUnder30: ok({ certificates: [cert(1, 21, "app1.example.test"), cert(2, 60)] }),
   healthUnknown: ok({ routes: routes(12, { 3: { health: "unknown" }, 4: { health: "unknown", kind: "redirection" } }) }),
   noRoutes: ok({ routes: [], certificates: [] }),
+  // P47: 1 https link, 2 disabled, 3 wildcard, 4 enabled without a certificate (http link).
+  domainLinks: ok({ routes: routes(4, { 2: { enabled: false }, 3: { domains: ["*.example.test"] }, 4: { cert: null } }) }),
   unconfigured: { status: "unconfigured", npmUrl: null, routes: [], certificates: [] },
   unauthorized: empty("unauthorized", "401 from the server"),
   unreachable: empty("unreachable", "connect ECONNREFUSED"),

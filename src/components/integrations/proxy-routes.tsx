@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { certVariant, daysSinceExpiry } from "@/lib/proxy/page-model";
+import { certVariant, daysSinceExpiry, routeHref } from "@/lib/proxy/page-model";
 import type { ProxyRoute, RouteCertRef, RouteHealth } from "@/lib/types/npm";
 import { cn } from "@/lib/utils";
 
@@ -58,12 +58,26 @@ const HEALTH_LABEL: Record<RouteHealth, string> = {
 
 function DomainCell({ route }: { route: ProxyRoute }) {
   const domains = route.domains.length > 0 ? route.domains : ["—"];
+  const href = routeHref(route, domains[0]);
   return (
     <div className="min-w-0">
       <div className="flex items-baseline gap-1.5 flex-wrap">
-        <span className="font-mono text-sm text-ink truncate" title={domains.join(", ")}>
-          {domains[0]}
-        </span>
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Open ${domains[0]} in a new tab`}
+            title={domains.join(", ")}
+            className="font-mono text-sm text-ink truncate underline decoration-line-bright underline-offset-4 hover:text-accent hover:decoration-accent focus-visible:text-accent outline-none focus-visible:ring-1 focus-visible:ring-accent rounded-sm transition-colors"
+          >
+            {domains[0]}
+          </a>
+        ) : (
+          <span className="font-mono text-sm text-ink truncate" title={domains.join(", ")}>
+            {domains[0]}
+          </span>
+        )}
         {domains.length > 1 && (
           <span className="font-mono text-[0.65rem] text-ink-faint">+{domains.length - 1}</span>
         )}
