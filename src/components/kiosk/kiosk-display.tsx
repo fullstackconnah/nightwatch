@@ -39,16 +39,15 @@ import {
   Sun,
   Sunset,
 } from "lucide-react";
-import { fetcher } from "@/lib/client";
 import { BinNightRow, useBinNight } from "@/components/kiosk/kiosk-bins";
 import { type KioskAgenda, useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
-import { type KioskWeatherOk, WEATHER_REFRESH_MS, getWeatherLastOkAt, useWxParams, weatherFetcher } from "@/lib/kiosk-client";
+import { type KioskWeatherOk, WEATHER_REFRESH_MS, briefingFetcher, getBriefingAnsweredAt, getWeatherLastOkAt, useWxParams, weatherFetcher } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { type SunAirAir, type SunAirInlineItem, type SunAirTone, type SunAirUv, type SunAirView, sunAirView } from "@/lib/kiosk-sun-air";
-import { briefingRefreshMs } from "@/lib/briefing-poll";
+import { briefingRefreshMs, briefingTooOld } from "@/lib/briefing-poll";
 import { type WeatherViewStatus, weatherViewStatus } from "@/lib/kiosk/view-status";
 import { StaleTag } from "@/components/kiosk/kiosk-stale-tag";
 
@@ -283,10 +282,14 @@ type BriefingResponse =
  *  `unavailable`): the server's per-day cache is cheap to poll and rolls the
  *  day itself, so a wall display picks up tomorrow's digest. */
 export function useKioskBriefing(active: boolean) {
-  return useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, fetcher, {
-    refreshInterval: briefingRefreshMs,
+  const swr = useSWR<BriefingResponse>(active ? "/kiosk/api/briefing" : null, briefingFetcher, {
+    // old kept data is no data: poll fast again until a fresh answer stamps the time
+    refreshInterval: (latest) => briefingRefreshMs(briefingTooOld(getBriefingAnsweredAt(), Date.now()) ? undefined : latest),
     keepPreviousData: true,
   });
+  const now = useNow(true, true); // minute tick re-evaluates the age; 0 before mount reads as not old
+  // Every consumer gets the rule. The spread reads SWR's getters afresh each render (no stale copy).
+  return briefingTooOld(getBriefingAnsweredAt(), now) ? { ...swr, data: undefined } : swr;
 }
 
 /* ── shared bits ─────────────────────────────────────────────────────────── */
