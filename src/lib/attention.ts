@@ -47,6 +47,7 @@ import {
 import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
+import { loadFirstSeen, saveFirstSeen } from "@/lib/attention-first-seen-store";
 import { localDateString } from "@/lib/local-time";
 import { displayTimeZone } from "@/app/kiosk/api/list/tz";
 import { createOutsideTracker, OUTSIDE_START, outsideCopy, outsideRun, pickReader, realDeps, type OutsideState } from "@/lib/outside-check";
@@ -583,17 +584,25 @@ async function computeReport(): Promise<Computed> {
   ];
   const outcomes = await runProbes(defs, PROBE_DEADLINE_MS);
 
-  const seen = globalForSeen.__attentionFirstSeen ?? new Map<string, string>();
+  const seen = globalForSeen.__attentionFirstSeen ?? loadFirstSeen();
   globalForSeen.__attentionFirstSeen = seen;
+  let changed = false;
   const now = new Date().toISOString();
   const ordered = toHits(outcomes, (id) => {
-    if (!seen.has(id)) seen.set(id, now);
+    if (!seen.has(id)) {
+      seen.set(id, now);
+      changed = true;
+    }
     return seen.get(id)!;
   });
-  // shortcut: resets on restart, fine while the process is long-lived. Ids of probes that did not answer are kept.
+  // Saved to the data folder, so a restart keeps ongoing ages. Ids of probes that did not answer are kept.
   const current = new Set(ordered.map((h) => h.id));
   const answered = new Set(outcomes.filter((o) => o.status.state === "answered").map((o) => o.status.id));
-  for (const id of seen.keys()) if (answered.has(id.split(":")[0] as never) && !current.has(id)) seen.delete(id);
+  for (const id of seen.keys()) if (answered.has(id.split(":")[0] as never) && !current.has(id)) {
+    seen.delete(id);
+    changed = true;
+  }
+  if (changed) saveFirstSeen(seen);
 
   // shortcut: held hits have no age limit and reset on restart, add a cap if a probe can stay failed for days
   const held = holdUnanswered(globalForSeen.__attentionHeld ?? new Map(), outcomes, ordered);
