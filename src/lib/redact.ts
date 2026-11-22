@@ -21,14 +21,15 @@ const KV_KEY = /((?<![\w.-])["']?(?:[\w.-]{0,128}[_.-])?key["']?\s*(?:=>|[:=])\s
 const COOKIE = /(\b(?:set-)?cookie\s*:\s*).+/gi;
 const JWT = /\beyJ[\w-]+\.[\w-]+\.[\w-]+/g;
 const GH_TOKEN = /\b(?:gh[pousr]_|github_pat_)\w{20,}/g;
-const BASIC = /(\bauthorization:\s*)Basic\s+\S+/gi; // tied to the header name so prose "Basic settings" stays
+// Any scheme (Token, ApiKey, Digest, AWS4...): mask to the end of the line; the colon or equals keeps prose "authorization failed" and "Basic settings" intact.
+const AUTH = /(\b(?:proxy-)?authorization["']?\s*[:=]\s*).+/gi;
 const BEARER =/\bBearer\s+[\w.~+/=-]+/gi;
 
 /** Container log text for the MCP client: cmdline masking plus key-value secrets and bare bearer tokens. */
 export function redactLogText(text: string): string {
   return text
     .split("\n")
-    .map((line) => redactCmdline(line.replace(BASIC, "$1Basic ***").replace(BEARER, "Bearer ***").replace(COOKIE, "$1***").replace(JWT, "***").replace(GH_TOKEN, "***").replace(KV, "$1***").replace(KV_KEY, "$1***")))
+    .map((line) => redactCmdline(line.replace(AUTH, "$1***").replace(BEARER, "Bearer ***").replace(COOKIE, "$1***").replace(JWT, "***").replace(GH_TOKEN, "***").replace(KV, "$1***").replace(KV_KEY, "$1***")))
     .join("\n");
 }
 
