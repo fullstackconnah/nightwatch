@@ -227,6 +227,7 @@ export function createQueue(opts: QueueOpts) {
     const t = now().toISOString();
     const requeue: JobRecord[] = [];
     for (const r of jobs) {
+      const was = r.state;
       try {
         const p = plan(r);
         if (r.state === "encoding" || r.state === "verifying") {
@@ -254,9 +255,12 @@ export function createQueue(opts: QueueOpts) {
         }
       } catch (e) {
         // H170-1: one unreadable job must not stop boot. Nothing is deleted here; a swap-stage job keeps its hold.
-        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
-        Object.assign(r, { state: "failed", failedCheck: r.state === "swapping" ? "swap" : "restart", error: msg, finishedAt: t });
-        if (r.failedCheck === "swap") r.keepHold = true;
+        if (was !== "encoding" && was !== "verifying" && was !== "swapping") continue; // finished jobs stay as they were
+        // The raw fs message carries an absolute library path, so only the code is kept.
+        const code = (e as { code?: unknown } | null)?.code;
+        const error = `Couldn't recover this job after a restart${typeof code === "string" ? ` (${code})` : ""}`;
+        Object.assign(r, { state: "failed", failedCheck: was === "swapping" ? "swap" : "restart", error, finishedAt: t });
+        if (was === "swapping") r.keepHold = true;
       }
     }
     // A job that was running goes to the head of the queue.
