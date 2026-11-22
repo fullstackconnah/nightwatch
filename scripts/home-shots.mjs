@@ -757,6 +757,42 @@ for (const width of WIDTHS) {
   await context.close();
 }
 
+// ---- BL: a nearly flat smart-home battery and a silent sensor raise two items (state attention-battery-low) ----
+for (const width of WIDTHS) {
+  const { context, page } = await open({ width, fixture: "batteryLow" });
+  const rowB = page.locator('.hm-att-row[data-subject="battery-low"]');
+  const rowS = page.locator('.hm-att-row[data-subject="sensors-down"]');
+  await rowB.waitFor({ timeout: 30_000 }).catch(() => {});
+  const text = (row) => row.evaluate((el) => el.textContent ?? "").catch(() => "");
+  const [tb, ts] = [await text(rowB), await text(rowS)];
+  const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth).catch(() => 0);
+  record("BL", /Hall sensor battery at 8%/.test(tb) && /Replace or charge the battery/.test(tb) && /A sensor is not responding/.test(ts) && /Open Smart home to see which one/.test(ts) && over <= 0, `@${width.name}: "${tb.slice(0, 90)}" / "${ts.slice(0, 90)}", page overflow ${over}px`);
+  const PAD = 12;
+  const hb = await rowB.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  const hs = await rowS.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
+  await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(hb + hs) + 2 * PAD + 400 });
+  await rowB.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  const r1 = await rowB.boundingBox().catch(() => null);
+  const r2 = await rowS.boundingBox().catch(() => null);
+  if (r1 && r2) {
+    const coveredBy = (row) => row.evaluate((el) => {
+      const b = el.getBoundingClientRect();
+      return [...document.querySelectorAll("body *")].some((n) => {
+        if (n.contains(el) || el.contains(n)) return false;
+        const cs = getComputedStyle(n);
+        const nb = n.getBoundingClientRect();
+        return (cs.position === "fixed" || cs.position === "sticky") && nb.width > 0 && nb.height > 0 && nb.left < b.right && nb.right > b.left && nb.top < b.bottom && nb.bottom > b.top;
+      });
+    });
+    const covered = (await coveredBy(rowB)) || (await coveredBy(rowS));
+    record("BL", !covered, `@${width.name}: fixed or sticky chrome over the crop: ${covered}`);
+    const x0 = Math.min(r1.x, r2.x), y0 = Math.min(r1.y, r2.y), x1 = Math.max(r1.x + r1.width, r2.x + r2.width), y1 = Math.max(r1.y + r1.height, r2.y + r2.height);
+    const cx = Math.max(0, x0 - PAD), cy = Math.max(0, y0 - PAD);
+    await page.screenshot({ path: join(OUT_DIR, `home-attention-battery-low-${width.name}.png`), clip: { x: cx, y: cy, width: Math.min(x1 - x0 + 2 * PAD, width.viewport.width - cx), height: y1 - y0 + 2 * PAD } });
+  }
+  await context.close();
+}
+
 // ---- DQ: a quiet front door camera raises an item next to the disk one (state attention-doorbell) ----
 for (const width of WIDTHS) {
   const { context, page } = await open({ width, fixture: "doorbellQuiet" });
@@ -1040,7 +1076,7 @@ await browser.close();
 
 // ---- C13 and the summary ----
 record("C13", pageErrors === 0 && foreign.length === 0, `${pageErrors} page errors, ${foreign.length} foreign requests ${foreign.slice(0, 3).join(" ")}`);
-const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK", "CL", "DQ", "H103", "MF", "CE"];
+const ids = [...Array.from({ length: 14 }, (_, i) => `C${i + 1}`), "PQ4", "SL", "LC", "WK", "CL", "DQ", "H103", "MF", "CE", "BL"];
 const summary = ids.map((id) => {
   const mine = results.filter((r) => r.id === id);
   return { id, pass: mine.length > 0 && mine.every((r) => r.pass), runs: mine.length, details: mine.map((r) => `${r.pass ? "ok" : "FAIL"} ${r.detail}`) };
