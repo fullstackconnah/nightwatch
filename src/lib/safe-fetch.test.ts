@@ -75,8 +75,13 @@ describe("fetchNoCrossOriginRedirect", () => {
 
   it("throws on the 4th hop", async () => {
     const calls = stub(redirect(302, "/1"), redirect(302, "/2"), redirect(302, "/3"), redirect(302, "/4"));
-    await assert.rejects(fetchNoCrossOriginRedirect("http://a.test/0", {}), /redirected to another host/);
+    await assert.rejects(fetchNoCrossOriginRedirect("http://a.test/0", {}), /redirected too many times/);
     assert.equal(calls.length, 4);
+  });
+
+  it("still says another host for a cross-origin redirect on the last allowed hop", async () => {
+    stub(redirect(302, "/1"), redirect(302, "/2"), redirect(302, "/3"), redirect(302, "http://b.test/4"));
+    await assert.rejects(fetchNoCrossOriginRedirect("http://a.test/0", {}), /redirected to another host/);
   });
 
   it("turns a 303 after a POST into a GET with no body", async () => {

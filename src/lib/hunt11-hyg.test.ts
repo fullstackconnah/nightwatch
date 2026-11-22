@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { readCapped, readJsonCapped } from "./read-capped.ts";
+import { BODY_OVER_CAP, readCapped, readJsonCapped } from "./read-capped.ts";
 import { searchSelected } from "./minecraft/packs.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
@@ -18,6 +18,16 @@ describe("hunt 11 capped reads", () => {
     assert.deepEqual(await readJsonCapped(new Response('{"a":1}'), 100), { a: 1 });
     await assert.rejects(readJsonCapped(new Response('{"a":1}', { headers: { "content-length": "500" } }), 100));
     await assert.rejects(readJsonCapped(new Response('{"a":"' + "x".repeat(200) + '"}'), 100));
+  });
+  it("readJsonCapped names a chunked body over the cap as BODY_OVER_CAP, and parses one exactly at it", async () => {
+    const chunked = (s: string) =>
+      new Response(new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new TextEncoder().encode(s)); c.close(); } }));
+    const exact = '{"a":"' + "x".repeat(10) + '"}';
+    await assert.rejects(readJsonCapped(chunked('{"a":"' + "x".repeat(50) + '"}'), 20), { message: BODY_OVER_CAP });
+    assert.deepEqual(await readJsonCapped(chunked(exact), exact.length), { a: "x".repeat(10) });
+  });
+  it("readJsonCapped refuses a declared size of max + 1 from the header, whatever the body holds", async () => {
+    await assert.rejects(readJsonCapped(new Response('{"a":1}', { headers: { "content-length": "101" } }), 100), { message: BODY_OVER_CAP });
   });
   it("none of the four upstream sites calls res.json()", () => {
     for (const f of ["../app/api/hermes/local-models/route.ts", "../app/api/hermes/openrouter-models/route.ts", "./weather.ts", "./forgejo.ts"]) {

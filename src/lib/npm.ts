@@ -97,7 +97,9 @@ async function login(creds: NpmCredentials): Promise<AuthResult> {
       cache: "no-store",
     });
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith("redirected")) return { ok: false, reason: "unreachable", detail: "NPM redirected to another host." };
+    if (e instanceof Error && e.message.startsWith("redirected")) {
+      return { ok: false, reason: "unreachable", detail: e.message === "redirected too many times" ? "NPM redirected too many times." : "NPM redirected to another host." };
+    }
     return { ok: false, reason: "unreachable", detail: isTimeout(e) ? `NPM did not respond within ${API_TIMEOUT_MS / 1000}s.` : "NPM is not reachable." };
   }
 
