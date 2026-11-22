@@ -346,7 +346,14 @@ const FAILED: Record<NonNullable<Job["failedCheck"]>, (v?: number) => string> = 
   encoder: () => "the encoder stopped with an error",
   swap: () => "the swap was interrupted",
 };
-export const failedWords = (j: Pick<Job, "failedCheck" | "failedValue">) => (j.failedCheck ? FAILED[j.failedCheck](j.failedValue) : "something went wrong");
+const LOST = "Couldn't recover this job after a restart"; // the worker's boot-recovery error (jobs.ts); only its fs code is ever shown
+export function failedWords(j: Pick<Job, "failedCheck" | "failedValue" | "error">): string {
+  if (j.error?.startsWith(LOST)) {
+    const code = /\(([A-Z0-9_]+)\)$/.exec(j.error)?.[1];
+    return `the worker could not pick this job up again after a restart${code ? ` (${code})` : ""}`;
+  }
+  return j.failedCheck ? FAILED[j.failedCheck](j.failedValue) : "something went wrong";
+}
 
 type JobLite = Pick<Job, "id" | "state"> & Partial<Job>;
 const savedOf = (j: JobLite) => (j.outputBytes !== undefined && j.sourceBytes !== undefined ? mediaBytes(Math.max(0, j.sourceBytes - j.outputBytes)) : null);
