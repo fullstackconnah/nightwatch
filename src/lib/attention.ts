@@ -41,12 +41,15 @@ import {
   driveUnreadable,
   integrityAlert,
   keepsRestarting,
+  certificateExpiring,
   mediaCompressionFailed,
   stuckRestarting,
   type AlertCopy,
 } from "@/lib/attention-copy";
 import { countRecentFailedCompressions } from "@/lib/media/failed-count";
 import { mediaWorker, mediaWorkerCredentials } from "@/lib/media/worker";
+import { getProxyManagerSnapshot } from "@/lib/npm";
+import { cachedExpiringCerts, certSeverity } from "@/lib/proxy/expiring-certs";
 import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
@@ -519,6 +522,15 @@ async function probeMedia(): Promise<RawHit[]> {
   return n ? [hit("media-failed", "warn", mediaCompressionFailed(n))] : [];
 }
 
+/** NPM not set up, unreachable or refusing the login is quiet here (the Proxy page says so); a slow one is cut by runProbes' deadline. */
+const readCerts = cachedExpiringCerts(getProxyManagerSnapshot, { key: "attention.certs" });
+
+async function probeCerts(): Promise<RawHit[]> {
+  const { count, soonest } = await readCerts();
+  if (!count || soonest === null) return [];
+  return [hit("cert-expiring", certSeverity(soonest), certificateExpiring(count, soonest))];
+}
+
 // --- orchestration -----------------------------------------------------------
 
 /** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
@@ -588,6 +600,7 @@ async function computeReport(): Promise<Computed> {
     { id: "health", label: "Health checks", run: () => (needDocker(), probeUnhealthy(watched)) },
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
     ...(mediaWorkerCredentials() ? [{ id: "media", label: "Media compression", run: () => probeMedia() } as ProbeDef] : []),
+    { id: "certs", label: "Certificates", run: () => probeCerts() },
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
     { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },
