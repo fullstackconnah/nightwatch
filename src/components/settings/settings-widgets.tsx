@@ -198,7 +198,7 @@ export function SettingsWidgets({
         />
       )}
 
-      {error && !deleting && <p className="text-[0.7rem] text-bad">{error}</p>}
+      {error && !deleting && <p role="alert" className="text-[0.7rem] text-bad">{error}</p>}
 
       <div className="panel divide-y divide-line/50">
         {widgets.map((w) => (

@@ -7,6 +7,12 @@ const src = (p: string) => readFileSync(fileURLToPath(new URL(`../${p}`, import.
 const count = (s: string, needle: string) => s.split(needle).length - 1;
 
 const settings = ["components/settings/settings-access.tsx", "components/settings/settings-integrations.tsx"];
+// Files with fewer error lines; settings-hermes also has saved badges, the other two only an error line.
+const minErrors: Record<string, number> = {
+  "components/settings/settings-hermes.tsx": 2,
+  "components/settings/settings-tiles.tsx": 1,
+  "components/settings/settings-widgets.tsx": 1,
+};
 
 test("save-row errors are role=alert, not plain spans", () => {
   for (const f of settings) {
@@ -24,6 +30,22 @@ test("every saved badge has an always-mounted sr-only status announcer and is ar
     assert.equal(count(s, '<span role="status" className="sr-only">'), badges, f);
     assert.equal(count(s, '<Badge variant="ok" aria-hidden'), badges, f);
   }
+});
+
+test("hermes, tiles and widgets save errors (span or p, with or without a leading condition) are role=alert", () => {
+  for (const [f, min] of Object.entries(minErrors)) {
+    const tags = [...src(f).matchAll(/<(?:span|p)\b[^>]*\btext-bad\b[^>]*>\s*\{error\}/g)].map((m) => m[0]);
+    assert.ok(tags.length >= min, `${f}: found ${tags.length} error lines`);
+    for (const t of tags) assert.ok(t.includes('role="alert"'), `${f}: ${t}`);
+  }
+});
+
+test("every hermes saved badge has an always-mounted sr-only status announcer and is aria-hidden", () => {
+  const s = src("components/settings/settings-hermes.tsx");
+  const badges = count(s, ">saved</Badge>");
+  assert.equal(badges, 2);
+  assert.equal(count(s, '<span role="status" className="sr-only">'), badges);
+  assert.equal(count(s, '<Badge variant="ok" aria-hidden'), badges);
 });
 
 test("console output box is a log region", () => {

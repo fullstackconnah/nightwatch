@@ -407,7 +407,8 @@ function HermesDaemonCard() {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="microlabel !text-accent">Hermes · daemon</h2>
-        {saved && <Badge variant="ok">saved</Badge>}
+        <span role="status" className="sr-only">{saved ? "Saved" : ""}</span>
+        {saved && <Badge variant="ok" aria-hidden>saved</Badge>}
       </div>
       <Card>
         <CardHeader>
@@ -538,7 +539,7 @@ function HermesDaemonCard() {
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-                {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+                {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
                 <Button size="sm" disabled={saving || (askPassword && !password)} onClick={handleSave}>
                   <Save size={13} /> Save
                 </Button>
@@ -615,7 +616,8 @@ export function SettingsHermes() {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="microlabel !text-accent">Hermes · model</h2>
-        {saved && <Badge variant="ok">saved</Badge>}
+        <span role="status" className="sr-only">{saved ? "Saved" : ""}</span>
+        {saved && <Badge variant="ok" aria-hidden>saved</Badge>}
       </div>
       <div className="panel p-4 space-y-4">
         {!data && <HermesSkeleton />}
@@ -713,7 +715,7 @@ export function SettingsHermes() {
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
-              {error && <span className="text-[0.7rem] text-bad">{error}</span>}
+              {error && <span role="alert" className="text-[0.7rem] text-bad">{error}</span>}
               <Button
                 size="sm"
                 disabled={saving || !model.trim() || needsOpenrouterKey || needsAnthropicKey}
