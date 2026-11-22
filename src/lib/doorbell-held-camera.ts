@@ -4,3 +4,9 @@
 export function heldCameraId(current: string | null, last: string | null, open: boolean): string | null {
   return current ?? (open ? last : null);
 }
+
+/* The modal's subtitle name: the live name, else the last name seen for this
+   same camera (never another chip's), else the raw id. */
+export function heldCameraName(current: string | undefined, last: { id: string; name: string } | null, selected: string): string {
+  return current ?? (last && last.id === selected ? last.name : selected);
+}

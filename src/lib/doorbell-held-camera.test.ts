@@ -2,7 +2,29 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { heldCameraId } from "./doorbell-held-camera.ts";
+import { heldCameraId, heldCameraName } from "./doorbell-held-camera.ts";
+
+test("heldCameraName: the current name wins", () => {
+  assert.equal(heldCameraName("Front", { id: "camera.a", name: "Old" }, "camera.a"), "Front");
+});
+
+test("heldCameraName: a dropped list keeps the last name for the same camera", () => {
+  assert.equal(heldCameraName(undefined, { id: "camera.a", name: "Front" }, "camera.a"), "Front");
+});
+
+test("heldCameraName: a name held for another camera is never shown", () => {
+  assert.equal(heldCameraName(undefined, { id: "camera.b", name: "Back" }, "camera.a"), "camera.a");
+});
+
+test("heldCameraName: no last name falls back to the id", () => {
+  assert.equal(heldCameraName(undefined, null, "camera.a"), "camera.a");
+});
+
+test("the modal labels through heldCameraName, not the raw id", () => {
+  const src = readFileSync(fileURLToPath(new URL("../components/kiosk/kiosk-doorbell.tsx", import.meta.url)), "utf8");
+  assert.match(src, /heldCameraName\(/);
+  assert.doesNotMatch(src, /current\?\.name \?\? selected/);
+});
 
 test("a current camera always wins", () => {
   assert.equal(heldCameraId("camera.a", "camera.b", true), "camera.a");
