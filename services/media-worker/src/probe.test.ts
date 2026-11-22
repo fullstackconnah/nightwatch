@@ -48,6 +48,12 @@ describe("parseProbe bitrate order", () => {
 });
 
 describe("parseProbe streams", () => {
+  it("carries a probeError when ffprobe exits 0 but finds no video (it can sniff a format in garbage bytes)", () => {
+    assert.ok(parseProbe({ format: { format_name: "mp3" }, streams: [] }, st()).probeError);
+    assert.ok(parseProbe({}, st()).probeError);
+    assert.equal(parseProbe(data("probe-mkv-tags.json"), st()).probeError, undefined);
+  });
+
   it("does not take an attached picture as the main video", () => {
     const f = parseProbe(data("probe-cover.json"), st({ bytes: 400000000 }));
     assert.equal(f.video?.codec, "h264");
