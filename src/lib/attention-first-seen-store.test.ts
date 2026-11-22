@@ -1,11 +1,13 @@
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadFirstSeen, saveFirstSeen } from "./attention-first-seen-store.ts";
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "nw-first-seen-"));
+const dirs: string[] = [];
+const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "nw-first-seen-")); dirs.push(d); return d; };
+after(() => { for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); });
 const T = "2026-11-20T10:00:00.000Z";
 
 describe("attention first-seen store", () => {
