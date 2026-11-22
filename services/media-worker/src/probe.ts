@@ -106,6 +106,9 @@ export function parseProbe(json: unknown, st: FileStat): VerdictInput {
   return {
     path: st.path, name: st.name, bytes: st.bytes, mtimeMs: st.mtimeMs, nlink: st.nlink,
     durationSec, container, video,
+    // ffprobe can sniff a format in garbage bytes and exit 0 with no video; verdict() calls that unreadable, so say why.
+    // shortcut: an audio-only file is also re-probed each scan (scan.ts skips the cache on probeError); upgrade if those pile up.
+    ...(video ? {} : { probeError: "No video stream found" }),
     videoStreams: videos.length,
     attachments: streams.filter((s) => s.codec_type === "attachment").length,
     audio: audio.map((a) => ({ codec: a.codec_name ?? "unknown", channels: a.channels ?? null, lang: lang(a) })),
