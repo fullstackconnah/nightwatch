@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { ProxyCertificate, ProxyManagerSnapshot, ProxyRoute } from "../types/npm.ts";
-import { certVariant, daysSinceExpiry, proxyModel, type Model, type ModelInput } from "./page-model.ts";
+import { certVariant, daysSinceExpiry, proxyModel, routeHref, type Model, type ModelInput } from "./page-model.ts";
 
 const NOW = Date.parse("2026-11-06T10:00:00Z");
 const NPM = "http://npm.test:81";
@@ -160,4 +160,17 @@ test("C22 stale: Stale chip, old answer, never All up", () => {
     assert.equal(m.strips.length, 2);
   }
   assert.equal(proxyModel(input({ lastOkAt: NOW - 85_000 })).stale, false);
+});
+
+test("routeHref: https with a certificate, http without, no link when disabled, wildcard, empty or odd", () => {
+  const on = { enabled: true, cert: { provider: "letsencrypt", expiresOn: null, daysLeft: 41 } };
+  assert.equal(routeHref(on, "app1.example.test"), "https://app1.example.test");
+  assert.equal(routeHref({ ...on, cert: null }, "app1.example.test"), "http://app1.example.test");
+  assert.equal(routeHref({ ...on, enabled: false }, "app1.example.test"), null);
+  assert.equal(routeHref(on, "*.example.test"), null);
+  assert.equal(routeHref(on, ""), null);
+  assert.equal(routeHref(on, "—"), null);
+  assert.equal(routeHref(on, "a.test/evil"), null);
+  assert.equal(routeHref(on, "a.test:81"), null);
+  assert.equal(routeHref(on, "a b.test"), null);
 });
