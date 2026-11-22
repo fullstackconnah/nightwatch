@@ -31,6 +31,11 @@ export const BODY_OVER_CAP = "upstream body over cap";
 
 /** JSON.parse of a capped body; throws BODY_OVER_CAP when the body is over `max`, and (like res.json()) a SyntaxError when it is not JSON. */
 export async function readJsonCapped<T>(res: { headers: Headers; body: ReadableStream<Uint8Array> | null }, max: number): Promise<T> {
+  // readCapped is given max + 1 to see an overrun, which would let a declared size of exactly max + 1 through
+  if (Number(res.headers.get("content-length")) > max) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(BODY_OVER_CAP);
+  }
   const text = await readCapped(res, max + 1);
   // shortcut: counts characters, so a multibyte body just over the cap still fails as bad JSON; count bytes if a caller ever needs that case named
   if (text === null || text.length > max) throw new Error(BODY_OVER_CAP);

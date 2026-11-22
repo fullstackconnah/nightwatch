@@ -26,6 +26,9 @@ describe("hunt 11 capped reads", () => {
     await assert.rejects(readJsonCapped(chunked('{"a":"' + "x".repeat(50) + '"}'), 20), { message: BODY_OVER_CAP });
     assert.deepEqual(await readJsonCapped(chunked(exact), exact.length), { a: "x".repeat(10) });
   });
+  it("readJsonCapped refuses a declared size of max + 1 from the header, whatever the body holds", async () => {
+    await assert.rejects(readJsonCapped(new Response('{"a":1}', { headers: { "content-length": "101" } }), 100), { message: BODY_OVER_CAP });
+  });
   it("none of the four upstream sites calls res.json()", () => {
     for (const f of ["../app/api/hermes/local-models/route.ts", "../app/api/hermes/openrouter-models/route.ts", "./weather.ts", "./forgejo.ts"]) {
       const src = read(f);
