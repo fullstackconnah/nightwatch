@@ -16,7 +16,8 @@ export async function fetchNoCrossOriginRedirect(url: string, init: RequestInit 
     const cur = new URL(current);
     // a force-SSL proxy in front of the same service upgrades http to https on the same host
     const upgrade = next.hostname === cur.hostname && cur.protocol === "http:" && next.protocol === "https:";
-    if ((next.origin !== cur.origin && !upgrade) || hop >= MAX_HOPS) throw new Error("redirected to another host");
+    if (next.origin !== cur.origin && !upgrade) throw new Error("redirected to another host");
+    if (hop >= MAX_HOPS) throw new Error("redirected too many times");
     if (res.status === 303 || ((res.status === 301 || res.status === 302) && req.method?.toUpperCase() === "POST")) {
       req = { ...req, method: "GET", body: undefined };
     }

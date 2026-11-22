@@ -143,7 +143,10 @@ export abstract class IntegrationClient<C> {
         cache: "no-store",
       });
     } catch (e) {
-      if (e instanceof Error && e.message.startsWith("redirected")) return { status: "unreachable", detail: `${this.displayName} redirected to another host.` };
+      if (e instanceof Error && e.message.startsWith("redirected")) {
+        const detail = e.message === "redirected too many times" ? `${this.displayName} redirected too many times.` : `${this.displayName} redirected to another host.`;
+        return { status: "unreachable", detail };
+      }
       const timedOut = isTimeout(e);
       console.error(`${this.displayName} at ${base} ${timedOut ? `did not respond within ${timeoutMs / 1000}s` : "is not reachable"}.`);
       return { status: "unreachable", detail: this.unreachableDetail(timeoutMs, timedOut), ...(timedOut && { timedOut }) };

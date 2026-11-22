@@ -3,6 +3,7 @@
 // (unlike Next's build, which does), so an "@/" import would resolve fine
 // under tsc but throw ERR_MODULE_NOT_FOUND at test time.
 import { loadConfig } from "../config.ts";
+import { readJsonCapped } from "../read-capped.ts";
 import { fetchNoCrossOriginRedirect } from "../safe-fetch.ts";
 
 /**
@@ -15,6 +16,7 @@ import { fetchNoCrossOriginRedirect } from "../safe-fetch.ts";
  */
 
 const SEARCH_TIMEOUT_MS = 6000;
+const SEARCH_BODY_MAX = 4 * 1024 * 1024; // a 20-hit search page is well under 1 MiB
 const PAGE_SIZE = 20;
 
 export interface PackResult {
@@ -145,7 +147,7 @@ async function fetchJson(url: string, headers?: Record<string, string>): Promise
   }
   if (!res.ok) throw new Error(`http ${res.status}`);
   try {
-    return await res.json();
+    return await readJsonCapped(res, SEARCH_BODY_MAX);
   } catch {
     throw new Error("non-json response");
   }
