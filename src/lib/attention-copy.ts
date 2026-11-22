@@ -253,3 +253,12 @@ const OUTSIDE_UNCHECKED: Record<UncheckedWhy, string> = {
 
 /** Thrown as the probe's Error message, so it becomes the grey failed row's detail. */
 export const outsideUnchecked = (why: UncheckedWhy): string => OUTSIDE_UNCHECKED[why];
+
+/** Compression jobs that failed in the last 7 days. Names no file: Home's hits also reach the kiosk and the desk widget. */
+export function mediaCompressionFailed(count: number): AlertCopy {
+  return {
+    headline: count === 1 ? "A compression failed" : `${count} compressions failed`,
+    detail: count === 1 ? "The original file was kept." : "The original files were kept.",
+    action: "Open Media and choose Try again.",
+  };
+}

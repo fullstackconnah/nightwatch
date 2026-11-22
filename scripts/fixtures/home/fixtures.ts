@@ -23,6 +23,7 @@ const PROBES: ReadonlyArray<readonly [ProbeId, string]> = [
   ["backup", "Backup"],
   ["disks", "Disks"],
   ["health", "Health"],
+  ["media", "Media compression"],
   ["doorbell", "Front door"],
   ["orchestra", "AI lanes"],
 ];
@@ -127,6 +128,14 @@ const doorbellQuiet = (now: number, minAgo: number) =>
     owner: { href: "/smarthome", label: "Open Smart home" },
   });
 
+// MF: copy from mediaCompressionFailed(1) in src/lib/attention-copy.ts.
+const mediaFailed = (now: number, minAgo: number) =>
+  hit(now, "media", "media-failed", "warn", "A compression failed", minAgo, {
+    detail: "The original file was kept.",
+    action: "Open Media and choose Try again.",
+    owner: { href: "/media", label: "Open Media" },
+  });
+
 export function build(now: number) {
   const e = baseEvents(now);
   return {
@@ -136,6 +145,7 @@ export function build(now: number) {
     several: report(now, [crash(now, "radarr", 130), lane(now, 40), disk(now, 300)], e),
     doorbellQuiet: report(now, [disk(now, 90), doorbellQuiet(now, 120)], e),
     stalledLane: report(now, [stalledLane(now, 25)], e),
+    mediaFailed: report(now, [disk(now, 90), mediaFailed(now, 120)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(
       now,
