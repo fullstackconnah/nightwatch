@@ -271,6 +271,26 @@ export function certificateExpiring(count: number, soonest: number): AlertCopy {
   };
 }
 
+/** Smart-home batteries at 10% or less. Names a sensor, so only Home and the desk widget show it. */
+export function batteryLow(names: string[], lowest: { name: string; value: number }): AlertCopy {
+  const one = names.length === 1;
+  return {
+    headline: one ? `${id(lowest.name)} battery at ${lowest.value}%` : `${names.length} batteries are nearly flat`,
+    detail: one ? "It will stop reporting when it runs out." : `The lowest is ${id(lowest.name)} at ${lowest.value}%.`,
+    action: one ? "Replace or charge the battery." : "Replace or charge them.",
+  };
+}
+
+/** Shared smart-home sensors Home Assistant has no reading from. */
+export function sensorsDown(count: number): AlertCopy {
+  const one = count === 1;
+  return {
+    headline: one ? "A sensor is not responding" : `${count} sensors are not responding`,
+    detail: one ? "Home Assistant has no reading from it." : "Home Assistant has no reading from them.",
+    action: one ? "Open Smart home to see which one." : "Open Smart home to see which ones.",
+  };
+}
+
 /** Compression jobs that failed in the last 7 days. Names no file: Home's hits also reach the kiosk and the desk widget. */
 export function mediaCompressionFailed(count: number): AlertCopy {
   return {

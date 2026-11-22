@@ -417,6 +417,13 @@ test("an expiring certificate is a Home hit, never the wall kiosk", async () => 
   assert.deepEqual(firstHit(ordered), { status: "quiet" });
 });
 
+test("smart-home battery and sensor hits are Home hits, never the wall kiosk", async () => {
+  const out = await runProbes([def("smarthome", () => [raw("battery-low", "warn"), raw("sensors-down", "warn")])], 50);
+  const ordered = toHits(out, () => "2026-11-04T00:00:00.000Z");
+  assert.deepEqual(ordered.map((h) => h.id), ["smarthome:battery-low", "smarthome:sensors-down"]);
+  assert.deepEqual(firstHit(ordered), { status: "quiet" });
+});
+
 test("a failed probe stays failed and still reports its hitsOnFail (the drill rides a failed backup probe)", async () => {
   const [o] = await runProbes([{ ...def("backup", () => { throw new Error("the backup status file is missing"); }), hitsOnFail: [raw("backup", "warn")] }], 50);
   assert.equal(o.status.state, "failed");

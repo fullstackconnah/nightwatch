@@ -42,6 +42,8 @@ import {
   integrityAlert,
   keepsRestarting,
   certificateExpiring,
+  batteryLow,
+  sensorsDown,
   mediaCompressionFailed,
   stuckRestarting,
   type AlertCopy,
@@ -50,6 +52,8 @@ import { countRecentFailedCompressions } from "@/lib/media/failed-count";
 import { mediaWorker, mediaWorkerCredentials } from "@/lib/media/worker";
 import { getProxyManagerSnapshot } from "@/lib/npm";
 import { cachedExpiringCerts, certSeverity } from "@/lib/proxy/expiring-certs";
+import { getHaStates, haCredentials } from "@/lib/ha";
+import { cachedSmartHomeFacts } from "@/lib/smarthome/attention-facts";
 import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
@@ -531,6 +535,17 @@ async function probeCerts(): Promise<RawHit[]> {
   return [hit("cert-expiring", certSeverity(soonest), certificateExpiring(count, soonest))];
 }
 
+/** HA not set up is left out of the list; unreachable or an error is quiet here (the Smart home page says so). getHaStates() is uncached, so the facts are held for a minute. */
+const readSmartHome = cachedSmartHomeFacts(getHaStates, { key: "attention.smarthome" });
+
+async function probeSmartHome(): Promise<RawHit[]> {
+  const { batteries, down } = await readSmartHome();
+  const hits: RawHit[] = [];
+  if (batteries.length) hits.push(hit("battery-low", "warn", batteryLow(batteries.map((b) => b.name), { name: batteries[0].name, value: batteries[0].value ?? 0 })));
+  if (down) hits.push(hit("sensors-down", "warn", sensorsDown(down)));
+  return hits;
+}
+
 // --- orchestration -----------------------------------------------------------
 
 /** Slightly past ORCHESTRA_RACE_MS, so the orchestra's own race (which falls back to its last decision) settles first. */
@@ -601,6 +616,7 @@ async function computeReport(): Promise<Computed> {
     ...(outsideHost ? [{ id: "outside", label: "Outside access", run: () => probeOutside() } as ProbeDef] : []),
     ...(mediaWorkerCredentials() ? [{ id: "media", label: "Media compression", run: () => probeMedia() } as ProbeDef] : []),
     { id: "certs", label: "Certificates", run: () => probeCerts() },
+    ...(haCredentials() ? [{ id: "smarthome", label: "Smart home", run: () => probeSmartHome() } as ProbeDef] : []),
     { id: "doorbell", label: "Front door", run: () => doorbellMemo.get() },
     // Last: a quiet agent is never a household outage.
     { id: "orchestra", label: "AI lanes", run: () => probeOrchestra() },

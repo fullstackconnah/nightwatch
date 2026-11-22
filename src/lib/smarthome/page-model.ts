@@ -3,6 +3,7 @@
  * can load it. Sections 5 and 6 of the strips shape brief are the spec; page-model.test.ts has a case per state. */
 import { statusFor } from "../climate-auto-off.ts";
 import { ageText } from "../home.ts";
+import { countSensorsDown, lowBatteries } from "./sensor-facts.ts";
 import type { HaClimate, HaEntities, HaLock, HaStatesResponse } from "../types/ha.ts";
 
 export type StripId = "climate" | "lock" | "lights" | "switches" | "sensors";
@@ -148,9 +149,7 @@ export function smarthomeModel(i: ModelInput): Model {
   const lockDown = e.locks.some((l) => !lockUp(l));
   const deviceDown = [...e.climates, ...e.lights, ...e.switches, ...e.sensors].filter((d) => !d.available);
   const acOn = e.climates.filter((c) => c.available && c.hvacMode !== "off").length;
-  const lowBattery = e.sensors
-    .filter((s) => s.kind === "battery" && s.available && s.value != null && s.value <= 20)
-    .sort((a, b) => (a.value ?? 0) - (b.value ?? 0))[0];
+  const lowBattery = lowBatteries(e.sensors)[0];
   let autoAnswer = "";
   let autoStrip = "";
   if (i.autoOff?.unreadable === true && acOn > 0) [autoAnswer, autoStrip] = [", auto-off can't be read", " · auto-off can't be read"];
@@ -194,7 +193,7 @@ export function smarthomeModel(i: ModelInput): Model {
     const locked = e.locks.filter((l) => l.state === "locked").length;
     return { state: locked === e.locks.length ? `All ${locked} locked` : `${locked} of ${e.locks.length} locked`, tone: worst };
   };
-  const sensorDown = e.sensors.filter((s) => !s.available).length;
+  const sensorDown = countSensorsDown(e.sensors);
   const state: Record<StripId, Pick<Strip, "state" | "tone">> = {
     climate: count(e.climates.map((c) => ({ on: c.hvacMode !== "off", available: c.available })), autoStrip),
     lock: lockStrip(),

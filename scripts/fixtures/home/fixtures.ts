@@ -25,6 +25,7 @@ const PROBES: ReadonlyArray<readonly [ProbeId, string]> = [
   ["health", "Health"],
   ["media", "Media compression"],
   ["certs", "Certificates"],
+  ["smarthome", "Smart home"],
   ["doorbell", "Front door"],
   ["orchestra", "AI lanes"],
 ];
@@ -145,6 +146,20 @@ const certExpiring = (now: number, minAgo: number) =>
     owner: { href: "/proxy", label: "Open Proxy" },
   });
 
+// BL: copy from batteryLow(["Hall sensor"], { name: "Hall sensor", value: 8 }) and sensorsDown(1) in src/lib/attention-copy.ts.
+const batteryLow = (now: number, minAgo: number) =>
+  hit(now, "smarthome", "battery-low", "warn", "Hall sensor battery at 8%", minAgo, {
+    detail: "It will stop reporting when it runs out.",
+    action: "Replace or charge the battery.",
+    owner: { href: "/smarthome", label: "Open Smart home" },
+  });
+const sensorsDown = (now: number, minAgo: number) =>
+  hit(now, "smarthome", "sensors-down", "warn", "A sensor is not responding", minAgo, {
+    detail: "Home Assistant has no reading from it.",
+    action: "Open Smart home to see which one.",
+    owner: { href: "/smarthome", label: "Open Smart home" },
+  });
+
 export function build(now: number) {
   const e = baseEvents(now);
   return {
@@ -156,6 +171,7 @@ export function build(now: number) {
     stalledLane: report(now, [stalledLane(now, 25)], e),
     mediaFailed: report(now, [disk(now, 90), mediaFailed(now, 120)], e),
     certExpiring: report(now, [disk(now, 90), certExpiring(now, 120)], e),
+    batteryLow: report(now, [disk(now, 90), batteryLow(now, 120), sensorsDown(now, 110)], e),
     partial: report(now, [], e, { smart: { state: "pending" }, mounts: { state: "pending" } }),
     dockerFailed: report(
       now,
