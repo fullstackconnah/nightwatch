@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic";
  * — but getAttention() never surfaces logs, env vars, images, ports or
  * anything else. getAttention() itself never throws (every probe is
  * independently guarded), so this route has no error branch of its own to
- * write: a genuinely unreachable Docker/host layer just resolves to "quiet"
- * rather than a card that says "attention: something is wrong with the
- * thing that tells you what's wrong".
+ * write. An unreachable Docker/host layer with nothing held still reads
+ * "quiet" rather than a card that says "attention: something is wrong with
+ * the thing that tells you what's wrong"; a hit from a probe that has not
+ * answered this run is held until that probe answers, so the wall never
+ * shows it resolved while nothing could be checked.
  */
 export async function GET() {
   const result = await getAttention();

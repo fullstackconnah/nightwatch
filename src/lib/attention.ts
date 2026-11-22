@@ -11,6 +11,8 @@ import { backupHeadline, drillPayload, summarizeBackup, type BackupStatus, type 
 import {
   drillHit,
   firstHit,
+  heldInOrder,
+  holdUnanswered,
   PENDING,
   parseSince,
   runProbes,
@@ -24,6 +26,7 @@ import {
   type AttentionHit,
   type AttentionReport,
   type ProbeDef,
+  type ProbeId,
   type RawHit,
 } from "@/lib/attention-report";
 import {
@@ -513,13 +516,18 @@ const PROBE_DEADLINE_MS = ORCHESTRA_RACE_MS + 250;
 /** The backup status file is a few hundred bytes on the host's disk; healthy it reads in milliseconds, so 5 s only trips on a hung mount. */
 const BACKUP_READ_MS = 5_000;
 
-const globalForSeen = globalThis as unknown as { __attentionFirstSeen?: Map<string, string> };
+const globalForSeen = globalThis as unknown as {
+  __attentionFirstSeen?: Map<string, string>;
+  __attentionHeld?: Map<ProbeId, AttentionHit[]>;
+};
 
 interface Computed {
   /** Everything but `changes`, which depends on the request's `since`. */
   report: Omit<AttentionReport, "changes">;
   /** Hits in probe order: the kiosk's firstHit reads this, report.hits is sorted. */
   ordered: AttentionHit[];
+  /** The wall's list: `ordered` plus hits held from probes that could not answer this run. */
+  kioskOrdered: AttentionHit[];
   containers: RuntimeContainer[];
   backup: BackupStatus | null;
   dockerError: string | null;
@@ -587,9 +595,14 @@ async function computeReport(): Promise<Computed> {
   const answered = new Set(outcomes.filter((o) => o.status.state === "answered").map((o) => o.status.id));
   for (const id of seen.keys()) if (answered.has(id.split(":")[0] as never) && !current.has(id)) seen.delete(id);
 
+  // shortcut: held hits have no age limit and reset on restart, add a cap if a probe can stay failed for days
+  const held = holdUnanswered(globalForSeen.__attentionHeld ?? new Map(), outcomes, ordered);
+  globalForSeen.__attentionHeld = held;
+
   return {
     report: { checkedAt: now, probes: outcomes.map((o) => o.status), hits: sortHits(ordered) },
     ordered,
+    kioskOrdered: heldInOrder(held, outcomes),
     containers,
     backup,
     dockerError: dockerFailure ? clipError(dockerFailure) : null,
@@ -617,5 +630,5 @@ export async function getAttentionReport(sinceRaw: string | null): Promise<Atten
 }
 
 export async function getAttention(): Promise<AttentionResult> {
-  return firstHit((await reportMemo.get()).ordered);
+  return firstHit((await reportMemo.get()).kioskOrdered);
 }
