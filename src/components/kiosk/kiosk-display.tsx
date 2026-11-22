@@ -219,9 +219,15 @@ interface WeatherView {
  *  keepPreviousData (which only bridges a revalidation in flight, not a
  *  fetch that completed with a different shape). */
 export function useWeatherView(): WeatherView {
+  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
+  const now = useNow(true, true); // minute tick re-evaluates the age while a failing fetch sits open; 0 before mount
   const { data: raw, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", fetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
+    // Every good answer, equal payload or not: the [data] effect below does not fire for an equal one.
+    onSuccess: (d) => {
+      if (d.status === "ok") setLastOkAt(Date.now());
+    },
   });
   // The ?wx= preview fills every field this view reads (see applyWxPreview),
   // so the header agrees with the backdrop. Memoised for the [data] effect.
@@ -238,18 +244,21 @@ export function useWeatherView(): WeatherView {
     hasError: !!error,
     isLoading,
     hasLastOk: !!lastOk,
+    lastOkAgeMs: lastOkAt !== null && now > 0 ? now - lastOkAt : undefined,
   });
+  const errorMessage = error instanceof Error ? error.message : undefined;
   if (!data) {
     return status === "unreachable-empty"
-      ? { status, ok: null, detail: error instanceof Error ? error.message : undefined }
+      ? { status, ok: null, detail: errorMessage }
       : { status, ok: lastOk };
   }
   if (data.status === "unconfigured") return { status, ok: null, detail: data.detail };
   if (data.status === "unreachable") {
     return { status, ok: status === "ready-stale" ? lastOk : null, detail: data.detail };
   }
-  // A failed revalidation beside kept data: data is the last good reading.
-  return { status, ok: data, detail: status === "ready-stale" && error instanceof Error ? error.message : undefined };
+  // A failed revalidation beside kept data: data is the last good reading, unless it aged out.
+  if (status === "unreachable-empty") return { status, ok: null, detail: errorMessage };
+  return { status, ok: data, detail: status === "ready-stale" ? errorMessage : undefined };
 }
 
 /* ── briefing contract ──────────────────────────────────────────────────── */
