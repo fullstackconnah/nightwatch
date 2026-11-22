@@ -29,6 +29,7 @@ import { DoorOpen, RefreshCw, Video, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatWallClock } from "@/lib/format";
 import { lastSeenIsToday } from "@/lib/doorbell-last-seen";
+import { heldCameraId } from "@/lib/doorbell-held-camera";
 import { fetcher } from "@/lib/client";
 import {
   KIOSK_EASE_OUT,
@@ -249,7 +250,13 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
     return cameras[0].entityId;
   }, [cameras, trigger, viewCamera]);
 
-  return { hasCamera: cameras.length > 0, open, trigger, cameraId, snapshot: data, originRect, openManually, close };
+  // A failed poll empties `cameras` mid-ring; hold the camera the takeover
+  // opened with until it closes (the ref is forgotten while closed).
+  const lastCameraRef = useRef<string | null>(null);
+  const heldCamera = heldCameraId(cameraId, lastCameraRef.current, open);
+  lastCameraRef.current = open ? heldCamera : null;
+
+  return { hasCamera: cameras.length > 0, open, trigger, cameraId: heldCamera, snapshot: data, originRect, openManually, close };
 }
 
 /* ── the manual control ───────────────────────────────────────────────────── */
