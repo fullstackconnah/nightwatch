@@ -86,6 +86,34 @@ describe("redactLogText hunt 10 review", () => {
   });
 });
 
+describe("redactLogText authorization header, any scheme", () => {
+  const masked = [
+    "Authorization: Token abc123secret",
+    "authorization: ApiKey abc123secret",
+    'Proxy-Authorization: Digest username="bob", response="abc123secret"',
+    '"authorization": "Token abc123secret"',
+    "Authorization=Token abc123secret",
+    "> Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/2026, Signature=abc123secret",
+    "HTTP_AUTHORIZATION=Token abc123secret",
+    'HTTP_PROXY_AUTHORIZATION: Digest response="abc123secret"',
+    "x-authorization: abc123secret",
+    String.raw`{\"authorization\":\"Token abc123secret\"}`,
+  ];
+  for (const line of masked) {
+    it(`masks ${line.slice(0, 40)}`, () => assert.ok(!/abc123secret|AKIDEXAMPLE/.test(redactLogText(line)), redactLogText(line)));
+  }
+  for (const line of ["authorization failed for user bob", "Basic settings loaded", "GET /health 200 3ms"]) {
+    it(`leaves ${line}`, () => assert.equal(redactLogText(line), line));
+  }
+  it("handles a 100 KB header line fast", () => {
+    for (const line of ["authorization:".repeat(7500), "Authorization: " + "a ".repeat(50000), "authorization".repeat(8000), "_authorization".repeat(7000), "a.".repeat(50000) + "authorization"]) {
+      const t = performance.now();
+      redactLogText(line);
+      assert.ok(performance.now() - t < 100);
+    }
+  });
+});
+
 describe("redactLogText hunt 10 review 2", () => {
   it("masks a bearer token behind a token key", () => {
     assert.ok(!redactLogText("token: Bearer abc").includes("abc"));
