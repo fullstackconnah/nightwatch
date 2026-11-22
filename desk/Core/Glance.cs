@@ -60,7 +60,7 @@ public sealed record Containers(int Total, int Running, int Restarting, int Unhe
         c is { Total: > 0, Running: >= 0, Restarting: >= 0, Unhealthy: >= 0, Dead: >= 0 } && c.Running <= c.Total ? c : null;
 }
 // Forecast, NowPlaying, Downloads, Home and Containers are read apart from the rest (see GlanceParser): a bad one must never fail the whole glance.
-public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false, [property: JsonIgnore] ForecastDay[]? Forecast = null, [property: JsonIgnore] NowPlaying? NowPlaying = null, [property: JsonIgnore] Downloads? Downloads = null, [property: JsonIgnore] Home? Home = null, [property: JsonIgnore] Containers? Containers = null);
+public sealed record Glance(int V, DateTimeOffset CheckedAt, string Tone, string Answer, GlanceItem[] Lanes, GlanceItem[] Items, Probes Probes, [property: JsonIgnore] Vitals? Vitals, WeatherNow? Weather = null, bool Camera = false, [property: JsonIgnore] ForecastDay[]? Forecast = null, [property: JsonIgnore] NowPlaying? NowPlaying = null, [property: JsonIgnore] Downloads? Downloads = null, [property: JsonIgnore] Home? Home = null, [property: JsonIgnore] Containers? Containers = null);
 
 /// <summary>What one poll came back with. The HTTP layer maps its result onto these.</summary>
 public abstract record Outcome
@@ -90,7 +90,7 @@ public static class GlanceParser
                 return new Outcome.Failed();
             if (n > 1) return new Outcome.TooNew(n);
             var g = root.Deserialize<Glance>(Options);
-            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root), NowPlaying = ReadNowPlaying(root), Downloads = ReadDownloads(root), Home = ReadHome(root), Containers = ReadObject<Containers>(root, "containers") }) : new Outcome.Failed();
+            return n == 1 && g is not null && Complete(g) ? new Outcome.Ok(g with { Forecast = ReadForecast(root), NowPlaying = ReadNowPlaying(root), Downloads = ReadDownloads(root), Home = ReadHome(root), Containers = ReadObject<Containers>(root, "containers"), Vitals = ReadObject<Vitals>(root, "vitals") }) : new Outcome.Failed();
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException or ArgumentException)
         {

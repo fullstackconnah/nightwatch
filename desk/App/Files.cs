@@ -96,7 +96,14 @@ internal static class Autostart
     static string Lnk => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup), "Nightwatch Desk.lnk");
     public static bool Enabled => File.Exists(Lnk);
 
+    /// <summary>Never throws for a locked or denied Startup folder or a COM failure; the tray tick re-reads Enabled.</summary>
     public static void Set(bool on)
+    {
+        try { Apply(on); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or COMException) { }
+    }
+
+    static void Apply(bool on)
     {
         if (!on) { if (File.Exists(Lnk)) File.Delete(Lnk); return; }
         var exe = Environment.ProcessPath;
