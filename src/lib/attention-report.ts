@@ -173,6 +173,29 @@ export function firstHit(ordered: AttentionHit[]): KioskResult {
   return { status: "attention", severity: h.severity, headline: h.headline, detail: h.detail, action: h.action, since: h.since };
 }
 
+/**
+ * What the wall may show: a probe that answered replaces its entry with this run's hits; one that
+ * failed or is pending keeps what it held (plus its hitsOnFail, this run's copy winning); one
+ * missing from the run is dropped. Home never reads this, it lists unanswered probes itself.
+ */
+export function holdUnanswered(
+  prev: Map<ProbeId, AttentionHit[]>,
+  outcomes: ProbeOutcome[],
+  hits: AttentionHit[],
+): Map<ProbeId, AttentionHit[]> {
+  const next = new Map<ProbeId, AttentionHit[]>();
+  for (const { status } of outcomes) {
+    const mine = hits.filter((h) => h.probe === status.id);
+    const old = status.state === "answered" ? [] : (prev.get(status.id) ?? []).filter((p) => !mine.some((m) => m.id === p.id));
+    next.set(status.id, [...old, ...mine]);
+  }
+  return next;
+}
+
+/** The held map flattened in this run's probe order, ready for firstHit. */
+export const heldInOrder = (held: Map<ProbeId, AttentionHit[]>, outcomes: ProbeOutcome[]): AttentionHit[] =>
+  outcomes.flatMap((o) => held.get(o.status.id) ?? []);
+
 const DAY_MS = 86_400_000;
 
 /** `?since=` as ms: missing, NaN, negative or future gives now - 24 h; older than 30 d is capped at now - 30 d. */

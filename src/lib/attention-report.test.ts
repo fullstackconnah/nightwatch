@@ -4,6 +4,8 @@ import {
   deriveChanges,
   drillHit,
   firstHit,
+  heldInOrder,
+  holdUnanswered,
   parseSince,
   pruneRestartCounts,
   PENDING,
@@ -13,6 +15,7 @@ import {
   toHits,
   type AttentionHit,
   type ProbeDef,
+  type ProbeId,
   type RawHit,
 } from "./attention-report.ts";
 import type { RuntimeContainer } from "./docker.ts";
@@ -439,4 +442,66 @@ test("pins existing behaviour (source text; the route is not loadable by node): 
   const { readFileSync } = await import("node:fs");
   const s = readFileSync(new URL("../app/api/attention/route.ts", import.meta.url), "utf8");
   assert.match(s, /catch \{\s*return NextResponse\.json\(\{ error: "Attention report unavailable\." \}, \{ status: 503,/);
+});
+
+// --- holdUnanswered: the wall keeps an alert while its probe cannot answer ---
+const SEEN = () => "2026-11-04T00:00:00.000Z";
+const run = async (defs: ProbeDef[], prev: Map<ProbeId, AttentionHit[]>) => {
+  const outcomes = await runProbes(defs, 20);
+  const held = holdUnanswered(prev, outcomes, toHits(outcomes, SEEN));
+  return { held, flat: heldInOrder(held, outcomes) };
+};
+const boom = () => { throw new Error("docker is down"); };
+const hang = () => new Promise<RawHit[]>(() => {});
+
+test("a crashes hit is held while the probe fails, with the same since", async () => {
+  const first = await run([def("crashes", () => [raw("container:a", "bad", "2026-11-04T01:00:00.000Z")])], new Map());
+  const next = await run([def("crashes", boom)], first.held);
+  assert.deepEqual(next.flat, first.flat);
+  assert.deepEqual(firstHit(next.flat), firstHit(first.flat));
+  assert.equal((firstHit(next.flat) as { since?: string }).since, "2026-11-04T01:00:00.000Z");
+});
+
+test("a crashes hit is held while the probe is pending", async () => {
+  const first = await run([def("crashes", () => [raw("container:a")])], new Map());
+  const next = await run([def("crashes", hang)], first.held);
+  assert.equal(firstHit(next.flat).status, "attention");
+  assert.equal((firstHit(next.flat) as { headline: string }).headline, "container:a h");
+});
+
+test("once the probe answers with no hits the held hit is gone", async () => {
+  const first = await run([def("crashes", () => [raw("container:a")])], new Map());
+  const held = await run([def("crashes", boom)], first.held);
+  const next = await run([def("crashes", () => [])], held.held);
+  assert.deepEqual(next.flat, []);
+  assert.deepEqual(firstHit(next.flat), { status: "quiet" });
+});
+
+test("a held hit keeps its probe-order place ahead of a later probe's hit", async () => {
+  const first = await run([def("crashes", () => [raw("container:a")]), def("disks", () => [])], new Map());
+  const next = await run([def("crashes", boom), def("disks", () => [raw("disk")])], first.held);
+  assert.deepEqual(next.flat.map((h) => h.id), ["crashes:container:a", "disks:disk"]);
+  assert.equal((firstHit(next.flat) as { headline: string }).headline, "container:a h");
+});
+
+test("a failed backup probe keeps its held hit and adds the drill hit once, and the kiosk skips the drill", async () => {
+  const withBackup = (run_: ProbeDef["run"], onFail: RawHit[]): ProbeDef => ({ ...def("backup", run_), hitsOnFail: onFail });
+  const first = await run([withBackup(() => [raw("backup", "warn")], [])], new Map());
+  const next = await run([withBackup(boom, [raw("restore-drill", "warn"), raw("backup", "warn")])], first.held);
+  assert.deepEqual(next.flat.map((h) => h.id).sort(), ["backup:backup", "backup:restore-drill"]);
+  assert.equal((firstHit(next.flat) as { headline: string }).headline, "backup h");
+  const drillOnly = await run([withBackup(boom, [raw("restore-drill", "warn")])], new Map());
+  assert.deepEqual(firstHit(drillOnly.flat), { status: "quiet" });
+});
+
+test("a probe missing from the run drops its held entry", async () => {
+  const first = await run([def("crashes", () => [raw("container:a")]), def("outside", () => [raw("host")])], new Map());
+  const next = await run([def("crashes", boom)], first.held);
+  assert.deepEqual([...next.held.keys()], ["crashes"]);
+  assert.deepEqual(next.flat.map((h) => h.id), ["crashes:container:a"]);
+});
+
+test("nothing held and every probe failed reads quiet", async () => {
+  const next = await run([def("crashes", boom), def("smart", hang)], new Map());
+  assert.deepEqual(firstHit(next.flat), { status: "quiet" });
 });
