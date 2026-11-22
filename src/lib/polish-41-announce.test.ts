@@ -62,3 +62,9 @@ test("pack-browser outcome lines sit inside the role=status region", () => {
     assert.ok(i > open && i < close, `${t} must be inside the status region`);
   }
 });
+
+test("log viewer session-expired line is role=alert", () => {
+  const s = src("components/logs/log-console.tsx");
+  const tag = s.slice(s.indexOf('connection === "unauthorized" &&')).match(/<p\b[^>]*>/)?.[0] ?? "";
+  assert.ok(tag.includes('role="alert"'), tag);
+});

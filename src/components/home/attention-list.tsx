@@ -7,7 +7,7 @@ import { FixSheet, type FixDone } from "@/components/home/fix-sheet";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { AttentionReport } from "@/lib/attention-report";
 import { fixFor, stillFailing } from "@/lib/fix-sheet";
-import { calmLine, clock, gate, homeRows, pillText, reveal, slotOrder, type HomeRow } from "@/lib/home";
+import { calmLine, clock, gate, homeRows, pillText, reveal, sinceClock, slotOrder, type HomeRow } from "@/lib/home";
 import { createRanker } from "@/lib/watchlist";
 import { cn } from "@/lib/utils";
 
@@ -224,7 +224,7 @@ export function AttentionList({
                       <span className="hm-att-title">{r.headline}</span>
                     )}
                     <span className="hm-att-since font-mono">
-                      {resolved ? `fixed ${clock(goneAt.current.get(id)!)}` : `since ${clock(r.since)}`}
+                      {resolved ? `fixed ${clock(goneAt.current.get(id)!)}` : `since ${sinceClock(r.since, checkedAt)}`}
                     </span>
                   </div>
                   {r.detail && <p className="hm-att-detail">{r.detail}</p>}
