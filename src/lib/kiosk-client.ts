@@ -197,6 +197,16 @@ export type KioskWeatherResponse =
  */
 export const WEATHER_REFRESH_MS = 15 * 60_000;
 
+/** One time for every subscriber: SWR reports a deduped fetch to the instance that started it only,
+ *  so a per-hook stamp goes stale or stays null. Stamped by the fetcher on every good answer. */
+let weatherLastOkAt: number | null = null;
+export const weatherFetcher = async (url: string) => {
+  const res = await fetcher(url); // any, as before: each caller types its own slice
+  if (res && typeof res === "object" && res.status === "ok") weatherLastOkAt = Date.now();
+  return res;
+};
+export const getWeatherLastOkAt = (): number | null => weatherLastOkAt;
+
 /** `?wx=<preset>&wxsun=day|dusk|night`: a weather preview for this session.
  *  Read in an effect and never persisted, the same way `?theme=` is
  *  (kiosk-theme.tsx); see WX_PRESETS for the values. */
@@ -213,7 +223,7 @@ export function useWxParams(): { wx: string | null; wxsun: string | null } {
  *  `?wx=` preview replaces `data` for every subscriber, so the backdrops and
  *  the header always describe the same weather. */
 export function useKioskWeather() {
-  const swr = useSWR<KioskWeatherResponse>("/kiosk/api/weather", fetcher, {
+  const swr = useSWR<KioskWeatherResponse>("/kiosk/api/weather", weatherFetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
   });

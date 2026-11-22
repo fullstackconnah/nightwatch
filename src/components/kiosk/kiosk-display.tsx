@@ -43,7 +43,7 @@ import { fetcher } from "@/lib/client";
 import { BinNightRow, useBinNight } from "@/components/kiosk/kiosk-bins";
 import { type KioskAgenda, useKioskAgenda } from "@/components/kiosk/kiosk-calendar";
 import { KioskNowPlaying } from "@/components/kiosk/kiosk-now-playing";
-import { type KioskWeatherOk, WEATHER_REFRESH_MS, useWxParams } from "@/lib/kiosk-client";
+import { type KioskWeatherOk, WEATHER_REFRESH_MS, getWeatherLastOkAt, useWxParams, weatherFetcher } from "@/lib/kiosk-client";
 import { applyWxPreview, conditionWord, isNightGlyph } from "@/lib/kiosk-weather-fx";
 import { formatWallClock } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
@@ -219,16 +219,12 @@ interface WeatherView {
  *  keepPreviousData (which only bridges a revalidation in flight, not a
  *  fetch that completed with a different shape). */
 export function useWeatherView(): WeatherView {
-  const [lastOkAt, setLastOkAt] = useState<number | null>(null);
   const now = useNow(true, true); // minute tick re-evaluates the age while a failing fetch sits open; 0 before mount
-  const { data: raw, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", fetcher, {
+  const { data: raw, error, isLoading } = useSWR<WeatherResponse>("/kiosk/api/weather", weatherFetcher, {
     refreshInterval: WEATHER_REFRESH_MS,
     keepPreviousData: true,
-    // Every good answer, equal payload or not: the [data] effect below does not fire for an equal one.
-    onSuccess: (d) => {
-      if (d.status === "ok") setLastOkAt(Date.now());
-    },
   });
+  const lastOkAt = getWeatherLastOkAt(); // shared by every instance; stamped in weatherFetcher
   // The ?wx= preview fills every field this view reads (see applyWxPreview),
   // so the header agrees with the backdrop. Memoised for the [data] effect.
   const { wx, wxsun } = useWxParams();
@@ -244,7 +240,7 @@ export function useWeatherView(): WeatherView {
     hasError: !!error,
     isLoading,
     hasLastOk: !!lastOk,
-    lastOkAgeMs: lastOkAt !== null && now > 0 ? now - lastOkAt : undefined,
+    lastOkAgeMs: lastOkAt !== null && now > lastOkAt ? now - lastOkAt : undefined, // now 0 or a clock moved back: undefined
   });
   const errorMessage = error instanceof Error ? error.message : undefined;
   if (!data) {
