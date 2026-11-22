@@ -140,7 +140,7 @@ export function SettingsTiles({
           <Save size={13} /> Save tiles
         </Button>
       </div>
-      {error && <p className="text-[0.7rem] text-bad">{error}</p>}
+      {error && <p role="alert" className="text-[0.7rem] text-bad">{error}</p>}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="panel p-1 flex gap-1 w-fit" role="group" aria-label="Container scope">
