@@ -18,7 +18,7 @@ import {
   seriesTotal,
 } from "@/components/resources/net-throughput";
 import { fetcher, useContainers, useNetwork, useTelemetryStream } from "@/lib/client";
-import { formatBytes, formatPercent, formatRate } from "@/lib/format";
+import { formatBytes, formatPercent, formatRate, relativeTime } from "@/lib/format";
 import { networkSummary } from "@/lib/network-copy";
 import type { NetInterface } from "@/lib/types/network";
 import type { TelemetrySample } from "@/lib/types/telemetry";
@@ -579,6 +579,13 @@ export default function NetworkPage() {
             )}
           />
           <span className="microlabel">{status === "live" ? "live · 1 Hz" : status}</span>
+          {snapshot && (
+            // SWR keeps the last numbers after a failed poll; the age says how old they are.
+            <span className={cn("microlabel whitespace-nowrap", error && "!text-warn")}>
+              {error ? "STALE · " : "CHECKED "}
+              {relativeTime(snapshot.ts)}
+            </span>
+          )}
         </div>
       </header>
 

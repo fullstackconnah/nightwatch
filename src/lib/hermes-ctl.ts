@@ -10,6 +10,7 @@ import { secretForSettingUrl, systemSetting, unconfiguredDetail } from "@/lib/co
 import { JOB_ID_RE, mapJobBody } from "@/lib/hermes-job-map";
 import { readCapped } from "@/lib/read-capped";
 import { isTimeout } from "@/lib/integration-client";
+import { redactLogText } from "@/lib/redact";
 
 /**
  * Server-only client for the Hermes ops daemon's HTTP control API.
@@ -220,7 +221,7 @@ export async function runHermesJob(kind: HermesJobKind, question?: string): Prom
     try {
       const body = obj(await res.json());
       const errMsg = str(body.error);
-      if (errMsg) detail = errMsg;
+      if (errMsg) detail = redactLogText(errMsg).slice(0, 200);
     } catch {
       // keep the fallback detail
     }
@@ -231,7 +232,7 @@ export async function runHermesJob(kind: HermesJobKind, question?: string): Prom
     return {
       ok: false,
       status: "error",
-      detail: `Hermes returned HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : "."}`,
+      detail: `Hermes returned HTTP ${res.status}${text ? `: ${redactLogText(text).slice(0, 200)}` : "."}`,
     };
   }
 

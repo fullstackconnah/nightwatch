@@ -20,7 +20,7 @@ import { Field, Input, Label, Select } from "@/components/ui/input";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { HaSwitchControl } from "@/components/integrations/ha-toggle";
 import { fetcher, postJson } from "@/lib/client";
-import { useFormReport } from "@/components/settings/form-report";
+import { useFormReport, useSavedFlash } from "@/components/settings/form-report";
 import { formatNumber, relativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { BUDGET_HINT, budgetFieldError } from "@/lib/settings-field-checks";
@@ -304,7 +304,7 @@ function HermesDaemonCard() {
   const [saveVersion, setSaveVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
   const [password, setPassword] = useState("");
   const [askedAt, setAskedAt] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -387,8 +387,7 @@ function HermesDaemonCard() {
       setPassword("");
       setAskedAt(null);
       setSaveVersion((v) => v + 1);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
       if (isStepUpRefusal(e)) {
@@ -563,7 +562,7 @@ export function SettingsHermes() {
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
   // Bumped on every successful save and used as the two SecretFields' `key` —
   // forces a remount so replacing an already-configured key collapses back to
   // the masked view too (see the identical pattern/comment in
@@ -603,8 +602,7 @@ export function SettingsHermes() {
       setOpenrouterKey("");
       setAnthropicKey("");
       setSaveVersion((v) => v + 1);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
     } finally {

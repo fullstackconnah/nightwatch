@@ -32,7 +32,7 @@ import { calendarStatusLine, type CalendarStatus } from "@/lib/settings/calendar
 import { MAX_CALENDAR_LINK } from "@/lib/settings-checks";
 import { rconPortFieldError } from "@/lib/settings-field-checks";
 import { MAX_RCON_HOST } from "@/lib/settings-checks";
-import { useFormReport } from "@/components/settings/form-report";
+import { useFormReport, useSavedFlash } from "@/components/settings/form-report";
 
 // ---------------------------------------------------------------------------
 // Wire type for GET /api/settings. Richer than src/lib/client.ts's own
@@ -964,7 +964,7 @@ export function VoiceCard({ data, mutate }: PanelProps) {
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
 
   useEffect(() => {
     if (data && !seeded) {
@@ -1001,8 +1001,7 @@ export function VoiceCard({ data, mutate }: PanelProps) {
       });
       await mutate();
       setSeeded(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {

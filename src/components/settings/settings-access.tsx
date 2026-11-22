@@ -25,7 +25,7 @@ import { isStepUpRefusal } from "@/lib/api-error";
 import { resetOrchestraStatus } from "@/lib/use-orchestra";
 import { plainReason } from "@/lib/settings/page-model";
 import { passwordFieldHints } from "@/lib/settings-field-checks";
-import { useFormReport } from "@/components/settings/form-report";
+import { useFormReport, useSavedFlash } from "@/components/settings/form-report";
 import { CopyButton, ScopesPanel } from "@/components/settings/settings-reference";
 import { ssoStepUpPending } from "@/lib/sso-step-up";
 import { ClearAction, SecretField, type SettingsFullResponse } from "@/components/settings/settings-integrations";
@@ -83,7 +83,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
   const [confirm, setConfirm] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
 
   const [nextTouched, setNextTouched] = useState(false);
   const [confirmTouched, setConfirmTouched] = useState(false);
@@ -102,8 +102,7 @@ function ChangePasswordCard({ data }: { data: Data }) {
       setConfirm("");
       setNextTouched(false);
       setConfirmTouched(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       setError(e instanceof Error && e.message ? plainReason(e.message) : "save failed");
     } finally {
@@ -364,7 +363,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
   const [seeded, setSeeded] = useState(false);
   const [saveVersion, setSaveVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
   const [error, setError] = useState<string | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
 
@@ -395,8 +394,7 @@ function OrchestraSettingsCard({ data, mutate }: { data: Data; mutate: Mutate })
       setSeeded(false);
       setToken("");
       setSaveVersion((v) => v + 1);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       setError(e instanceof ApiError && e.status === 400 ? plainReason(e.message) : `Couldn't save${e instanceof Error && e.message ? `: ${plainReason(e.message)}` : "."}`);
     } finally {
@@ -471,7 +469,7 @@ function OutsideCheckCard({ data, mutate }: { data: Data; mutate: Mutate }) {
   const [host, setHost] = useState("");
   const [seeded, setSeeded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, flashSaved] = useSavedFlash();
   const [error, setError] = useState<string | null>(null);
   const [hostError, setHostError] = useState<string | null>(null);
 
@@ -494,8 +492,7 @@ function OutsideCheckCard({ data, mutate }: { data: Data; mutate: Mutate }) {
       await postJson("/api/settings/system", { outsideCheckHost: host });
       await mutate();
       setSeeded(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      flashSaved();
     } catch (e) {
       if (e instanceof ApiError && e.status === 400) setHostError(e.message); // the route's one fixed sentence
       else setError(`Couldn't save${e instanceof Error && e.message ? `: ${plainReason(e.message)}` : "."}`);
