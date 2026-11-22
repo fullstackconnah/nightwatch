@@ -42,6 +42,26 @@ export function dayClock(t: number | string, now: number, offsetMin?: number): s
   return `${e.day === n.day ? "Today" : WEEKDAYS[e.wd]} ${clock(t, offsetMin)}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** When a problem began: "14:03" today, "Mon 14:03" inside 6 days, "12 Nov" from 7 days; a future or invalid time is the bare hh:mm. offsetMin as in clock() (tests only). */
+export function sinceClock(t: number | string, now: number, offsetMin?: number): string {
+  const ms = new Date(t).getTime();
+  if (Number.isNaN(ms) || ms > now) return clock(t, offsetMin);
+  const parts = (x: number) => {
+    const d = new Date(x + (offsetMin ?? 0) * 60_000);
+    const [y, m, dom, wd] =
+      offsetMin === undefined
+        ? [new Date(x).getFullYear(), new Date(x).getMonth(), new Date(x).getDate(), new Date(x).getDay()]
+        : [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCDay()];
+    return { day: Date.UTC(y, m, dom) / 86_400_000, dom, m, wd };
+  };
+  const e = parts(ms);
+  const ago = parts(now).day - e.day;
+  if (ago === 0) return clock(t, offsetMin);
+  return ago < 7 ? `${WEEKDAYS[e.wd]} ${clock(t, offsetMin)}` : `${e.dom} ${MONTHS[e.m]}`;
+}
+
 /** A row's time: the bare hh:mm on the local today, else "Mon 14:02". */
 export const rowClock = (t: number | string, now: number, offsetMin?: number): string =>
   dayClock(t, now, offsetMin).replace(/^Today /, "");

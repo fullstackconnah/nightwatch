@@ -8,6 +8,7 @@ import {
   clock,
   dayClock,
   rowClock,
+  sinceClock,
   weekHeading,
   recentHeading,
   dropListed,
@@ -360,4 +361,31 @@ test("T16 weekHeading: a partial log names the day it counts from", () => {
 test("rowClock is the bare time on the local today and weekday plus time otherwise", () => {
   assert.equal(rowClock(Date.UTC(2026, 10, 12, 9, 0), NOW16, 0), "09:00");
   assert.equal(rowClock(Date.UTC(2026, 10, 9, 14, 2), NOW16, 0), "Mon 14:02");
+});
+
+test("sinceClock: bare time today, weekday inside 6 days, day and month from 7 days", () => {
+  const now = Date.UTC(2026, 10, 12, 3, 0); // Thu 12 Nov 14:00 at +11:00
+  assert.equal(sinceClock(Date.UTC(2026, 10, 12, 0, 0), now, 660), "11:00");
+  assert.equal(sinceClock(Date.UTC(2026, 10, 9, 3, 3), now, 660), "Mon 14:03");
+  assert.equal(sinceClock(Date.UTC(2026, 10, 6, 3, 3), now, 660), "Fri 14:03");
+  assert.equal(sinceClock(Date.UTC(2026, 10, 5, 3, 3), now, 660), "5 Nov"); // exactly 7 days
+  assert.equal(sinceClock(Date.UTC(2026, 9, 20, 3, 3), now, 660), "20 Oct");
+});
+
+test("sinceClock changes day at local midnight", () => {
+  const now = Date.UTC(2026, 10, 11, 13, 1); // 00:01 Thu 12 Nov at +11:00
+  assert.equal(sinceClock(Date.UTC(2026, 10, 11, 12, 59), now, 660), "Wed 23:59");
+  assert.equal(sinceClock(now, now, 660), "00:01");
+});
+
+test("sinceClock falls back to the bare time for a future or invalid time", () => {
+  const now = Date.UTC(2026, 10, 12, 3, 0);
+  assert.equal(sinceClock(now + 3_600_000, now, 660), "15:00");
+  assert.equal(sinceClock("nope", now, 660), clock("nope", 660));
+});
+
+test("sinceClock without an offset reads the viewer's local days", () => {
+  const now = new Date(2026, 10, 12, 10, 0).getTime();
+  assert.equal(sinceClock(new Date(2026, 10, 9, 14, 3).getTime(), now), "Mon 14:03");
+  assert.equal(sinceClock(new Date(2026, 10, 12, 8, 5).getTime(), now), "08:05");
 });

@@ -423,7 +423,7 @@ export function LogConsole({
           </p>
         )}
         {connection === "unauthorized" && (
-          <p className="mt-1.5 text-[0.7rem] text-bad">
+          <p role="alert" className="mt-1.5 text-[0.7rem] text-bad">
             Your session expired and the stream stopped.{" "}
             <a href="/logs" className="underline underline-offset-2 hover:text-ink">
               Reload to sign in again
