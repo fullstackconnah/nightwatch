@@ -22,6 +22,13 @@ test("F12: known states and the summarize kind are kept", () => {
   assert.equal(mapJobBody({ state: "error", error: "boom" }).error, "boom");
 });
 
+test("pol46: a job's error is redacted and cut to 500 before it reaches the page", () => {
+  const leaked = mapJobBody({ state: "error", error: "call failed. Authorization: Bearer abc123def456" }).error;
+  assert.ok(leaked && !leaked.includes("abc123def456"));
+  assert.ok((mapJobBody({ state: "error", error: "x".repeat(2000) }).error ?? "").length <= 500);
+  assert.equal(mapJobBody({ state: "error", error: "model not found" }).error, "model not found");
+});
+
 test("F11: unreachable retries inside the deadline, 404 and the deadline stop", () => {
   assert.equal(shouldKeepPolling("unreachable", 1000, 2000), true);
   assert.equal(shouldKeepPolling("unreachable", 2000, 2000), false);

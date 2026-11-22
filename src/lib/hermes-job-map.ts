@@ -1,4 +1,5 @@
 import type { HermesJob } from "./types/hermes.ts";
+import { redactLogText } from "./redact.ts";
 
 const JOB_KINDS = new Set(["digest", "alert-test", "ask", "summarize"]);
 
@@ -27,13 +28,14 @@ export function mapJobBody(raw: unknown): HermesJob {
   // A missing or non-string state is a daemon fault.
   const known = r.state === "done" || r.state === "error" ? r.state : null;
   const state: HermesJob["state"] = known ?? (str(r.state) ? "running" : "error");
+  const err = str(r.error);
   return {
     state,
     kind,
     startedAt: str(r.startedAt),
     finishedAt: str(r.finishedAt),
     result: mapJobResult(r.result),
-    error: str(r.error) ?? (str(r.state) ? null : "Hermes sent no job state."),
+    error: (err === null ? null : redactLogText(err).slice(0, 500)) ?? (str(r.state) ? null : "Hermes sent no job state."),
   };
 }
 
