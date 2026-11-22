@@ -304,6 +304,30 @@ describe("boot recovery (M2, N4)", () => {
     assert.match(again.get("swap-1")?.error ?? "", /kept in the hold folder/);
     assert.equal(statSync(join(hold, "a.mkv")).size, 8);
   });
+
+  it("H170-1: a non-ENOENT error on one interrupted job fails that job, keeps its hold, and the next job still recovers", () => {
+    const first = make();
+    const hold = join(first.ready.dirs.hold, "bad-1");
+    mkdirSync(hold, { recursive: true });
+    writeFileSync(join(hold, "a.mkv"), "ORIGINAL");
+    const badAbs = join(root, "movies", "bad.mkv");
+    seed(first.q, "bad-1", "swapping", { srcIno: 1, outIno: 2, srcSize: 1, srcMtimeMs: 1, abs: badAbs });
+    seed(first.q, "enc-2", "encoding");
+    const fs = { ...realFs, lstat: (p: string) => {
+      if (p === badAbs) throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+      return realFs.lstat(p);
+    } };
+    const again = createQueue({ ...second(first), fs, run: () => new Promise(() => undefined) });
+    assert.doesNotThrow(() => again.recover());
+    const bad = again.get("bad-1");
+    assert.equal(bad?.state, "failed");
+    assert.equal(bad?.failedCheck, "swap");
+    assert.match(bad?.error ?? "", /EACCES/);
+    assert.equal(bad?.keepHold, true);
+    assert.equal(statSync(join(hold, "a.mkv")).size, 8);
+    assert.equal(again.get("enc-2")?.attempts, 1);
+    assert.notEqual(again.get("enc-2")?.state, "failed");
+  });
 });
 
 describe("recovery and purge only when the drive is ready (F1, F5, F6)", () => {

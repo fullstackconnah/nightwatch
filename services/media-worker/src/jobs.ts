@@ -227,29 +227,36 @@ export function createQueue(opts: QueueOpts) {
     const t = now().toISOString();
     const requeue: JobRecord[] = [];
     for (const r of jobs) {
-      const p = plan(r);
-      if (r.state === "encoding" || r.state === "verifying") {
-        rmQuiet(opts.guard, opts.dirs.work, p.part);
-        r.attempts += 1;
-        if (r.cancelRequested) Object.assign(r, { state: "cancelled", finishedAt: t }); // F6: don't re-encode a cancelled job
-        else if (r.attempts >= 2) Object.assign(r, { state: "failed", failedCheck: "restart", finishedAt: t });
-        else { r.state = "queued"; delete r.progress; requeue.push(r); }
-      } else if (r.state === "swapping") {
-        const rec = recoverSwap(opts.fs, opts.guard, p, r.outIno ?? -1);
-        if (rec.result === "done") {
-          Object.assign(r, {
-            state: "done", newIno: rec.newIno, newSize: rec.newSize, outputBytes: rec.newSize, finishedAt: t,
-            heldUntil: new Date(now().getTime() + HOLD_DAYS * DAY_MS).toISOString(),
-          });
-        } else {
-          Object.assign(r, { state: "failed", failedCheck: "swap", error: rec.message, finishedAt: t, keepHold: rec.keepHold });
+      try {
+        const p = plan(r);
+        if (r.state === "encoding" || r.state === "verifying") {
+          rmQuiet(opts.guard, opts.dirs.work, p.part);
+          r.attempts += 1;
+          if (r.cancelRequested) Object.assign(r, { state: "cancelled", finishedAt: t }); // F6: don't re-encode a cancelled job
+          else if (r.attempts >= 2) Object.assign(r, { state: "failed", failedCheck: "restart", finishedAt: t });
+          else { r.state = "queued"; delete r.progress; requeue.push(r); }
+        } else if (r.state === "swapping") {
+          const rec = recoverSwap(opts.fs, opts.guard, p, r.outIno ?? -1);
+          if (rec.result === "done") {
+            Object.assign(r, {
+              state: "done", newIno: rec.newIno, newSize: rec.newSize, outputBytes: rec.newSize, finishedAt: t,
+              heldUntil: new Date(now().getTime() + HOLD_DAYS * DAY_MS).toISOString(),
+            });
+          } else {
+            Object.assign(r, { state: "failed", failedCheck: "swap", error: rec.message, finishedAt: t, keepHold: rec.keepHold });
+          }
+        } else if (r.state === "done") {
+          let holdThere = true;
+          try { opts.fs.lstat(p.holdFile); } catch { holdThere = false; }
+          let srcIno: number | null = null;
+          try { srcIno = opts.fs.lstat(p.src).ino; } catch { /* gone */ }
+          if (!holdThere && srcIno !== null && srcIno === r.srcIno) Object.assign(r, { state: "undone", finishedAt: t });
         }
-      } else if (r.state === "done") {
-        let holdThere = true;
-        try { opts.fs.lstat(p.holdFile); } catch { holdThere = false; }
-        let srcIno: number | null = null;
-        try { srcIno = opts.fs.lstat(p.src).ino; } catch { /* gone */ }
-        if (!holdThere && srcIno !== null && srcIno === r.srcIno) Object.assign(r, { state: "undone", finishedAt: t });
+      } catch (e) {
+        // H170-1: one unreadable job must not stop boot. Nothing is deleted here; a swap-stage job keeps its hold.
+        const msg = (e instanceof Error ? e.message : String(e)).slice(0, 300);
+        Object.assign(r, { state: "failed", failedCheck: r.state === "swapping" ? "swap" : "restart", error: msg, finishedAt: t });
+        if (r.failedCheck === "swap") r.keepHold = true;
       }
     }
     // A job that was running goes to the head of the queue.
