@@ -49,8 +49,7 @@ import {
 import { countRecentFailedCompressions } from "@/lib/media/failed-count";
 import { mediaWorker, mediaWorkerCredentials } from "@/lib/media/worker";
 import { getProxyManagerSnapshot } from "@/lib/npm";
-import { expiringCertsFrom } from "@/lib/proxy/expiring-certs";
-import { certVariant } from "@/lib/proxy/page-model";
+import { cachedExpiringCerts, certSeverity } from "@/lib/proxy/expiring-certs";
 import { pendingStatfsTargets } from "@/lib/host-statfs";
 import { Memo } from "@/lib/cache";
 import { configProblem, loadConfig, systemSetting } from "@/lib/config";
@@ -524,10 +523,12 @@ async function probeMedia(): Promise<RawHit[]> {
 }
 
 /** NPM not set up, unreachable or refusing the login is quiet here (the Proxy page says so); a slow one is cut by runProbes' deadline. */
+const readCerts = cachedExpiringCerts(getProxyManagerSnapshot, { key: "attention.certs" });
+
 async function probeCerts(): Promise<RawHit[]> {
-  const { count, soonest } = await expiringCertsFrom(getProxyManagerSnapshot);
+  const { count, soonest } = await readCerts();
   if (!count || soonest === null) return [];
-  return [hit("cert-expiring", certVariant(soonest) === "bad" ? "bad" : "warn", certificateExpiring(count, soonest))];
+  return [hit("cert-expiring", certSeverity(soonest), certificateExpiring(count, soonest))];
 }
 
 // --- orchestration -----------------------------------------------------------

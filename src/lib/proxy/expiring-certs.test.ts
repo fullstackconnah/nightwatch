@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { expiringCerts, expiringCertsFrom, WARN_DAYS } from "./expiring-certs.ts";
+import { expiringCerts, cachedExpiringCerts, certSeverity, WARN_DAYS, CERTS_TTL_MS, CERTS_RETRY_MS } from "./expiring-certs.ts";
 import { certificateExpiring } from "../attention-copy.ts";
-import { certVariant } from "./page-model.ts";
 import { ownerFor } from "../attention-report.ts";
 
 const snap = (daysLeft: Array<number | null>, status = "ok" as string) =>
@@ -28,9 +27,56 @@ test("a snapshot that is not ok gives 0, whatever it holds", () => {
   }
 });
 
+let keyN = 0;
+/** A reader with its own memo slot, a counting fake snapshot and a fake clock. */
+function reader(fetch: () => Promise<Parameters<typeof expiringCerts>[0]>) {
+  const t = { ms: 0, calls: 0 };
+  const read = cachedExpiringCerts(async () => { t.calls++; return fetch(); }, { key: `test.certs.${keyN++}`, now: () => t.ms });
+  return { t, read };
+}
+
 test("a fetch that throws gives 0", async () => {
-  assert.deepEqual(await expiringCertsFrom(async () => { throw new Error("boom"); }), { count: 0, soonest: null });
-  assert.deepEqual(await expiringCertsFrom(async () => snap([2])), { count: 1, soonest: 2 });
+  assert.deepEqual(await reader(async () => { throw new Error("boom"); }).read(), { count: 0, soonest: null });
+  assert.deepEqual(await reader(async () => snap([2])).read(), { count: 1, soonest: 2 });
+});
+
+test("two reads inside the hour call the snapshot once", async () => {
+  const { t, read } = reader(async () => snap([2]));
+  await read();
+  t.ms = CERTS_TTL_MS - 1;
+  assert.deepEqual(await read(), { count: 1, soonest: 2 });
+  assert.equal(t.calls, 1);
+});
+
+test("after the hour the last result is returned at once while one refresh runs", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let first = true;
+  const { t, read } = reader(async () => { if (first) { first = false; return snap([2]); } await gate; return snap([]); });
+  await read();
+  t.ms = CERTS_TTL_MS;
+  assert.deepEqual(await read(), { count: 1, soonest: 2 });
+  assert.deepEqual(await read(), { count: 1, soonest: 2 });
+  assert.equal(t.calls, 2, "one refresh in flight, not two");
+  release();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(await read(), { count: 0, soonest: null });
+  assert.equal(t.calls, 2);
+});
+
+test("a not-ok reading is retried after 5 minutes, not an hour", async () => {
+  let status = "unreachable";
+  const { t, read } = reader(async () => snap([1], status));
+  assert.deepEqual(await read(), { count: 0, soonest: null });
+  t.ms = CERTS_RETRY_MS - 1;
+  await read();
+  assert.equal(t.calls, 1);
+  status = "ok";
+  t.ms = CERTS_RETRY_MS;
+  await read(); // returns the stale 0 and refreshes behind it
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(await read(), { count: 1, soonest: 1 });
+  assert.equal(t.calls, 2);
 });
 
 const NB = " ";
@@ -40,14 +86,14 @@ test("copy: one certificate", () => {
   assert.equal(certificateExpiring(1, 1).headline, `A certificate expires in 1${NB}day`);
   assert.equal(certificateExpiring(1, 0).headline, "A certificate expires today");
   assert.equal(certificateExpiring(1, -1).headline, "A certificate has expired");
-  assert.equal(certificateExpiring(1, 9).detail, "It has not renewed on its own.");
+  assert.equal(certificateExpiring(1, 9).detail, "It has not been renewed.");
   assert.equal(certificateExpiring(1, 9).action, "Open Proxy to see which one.");
 });
 
 test("copy: several certificates", () => {
   const c = certificateExpiring(3, 2);
   assert.equal(c.headline, "3 certificates need renewing");
-  assert.equal(c.detail, "They have not renewed on their own.");
+  assert.equal(c.detail, "They have not been renewed.");
   assert.equal(c.action, "Open Proxy to see which ones.");
 });
 
@@ -57,8 +103,8 @@ test("copy stays inside the kiosk budgets (48 / 100 / 70)", () => {
   }
 });
 
-test("severity follows certVariant: warn at 13 and 7, bad at 6 and -1", () => {
-  assert.deepEqual([13, 7, 6, -1].map((d) => certVariant(d) === "bad" ? "bad" : "warn"), ["warn", "warn", "bad", "bad"]);
+test("severity (certSeverity): warn at 13 and 7, bad at 6 and -1", () => {
+  assert.deepEqual([13, 7, 6, -1].map(certSeverity), ["warn", "warn", "bad", "bad"]);
 });
 
 test("the owner of a cert hit is the Proxy page", () => {

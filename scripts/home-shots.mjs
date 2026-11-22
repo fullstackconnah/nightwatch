@@ -734,7 +734,7 @@ for (const width of WIDTHS) {
   const row = page.locator('.hm-att-row[data-subject="cert-expiring"]');
   await row.waitFor({ timeout: 30_000 }).catch(() => {});
   const m = await row.evaluate((el) => ({ text: el.textContent ?? "", over: document.documentElement.scrollWidth - window.innerWidth })).catch(() => ({ text: "", over: 0 }));
-  record("CE", /A certificate expires in 9 days/.test(m.text) && /It has not renewed on its own/.test(m.text) && /Open Proxy to see which one/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 140)}", page overflow ${m.over}px`);
+  record("CE", /A certificate expires in 9 days/.test(m.text) && /It has not been renewed/.test(m.text) && /Open Proxy to see which one/.test(m.text) && m.over <= 0, `@${width.name}: "${m.text.slice(0, 140)}", page overflow ${m.over}px`);
   const PAD = 12;
   const h = await row.evaluate((el) => el.getBoundingClientRect().height).catch(() => 40);
   await page.setViewportSize({ width: width.viewport.width, height: Math.ceil(h) + 2 * PAD + 400 });

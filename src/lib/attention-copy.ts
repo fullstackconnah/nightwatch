@@ -266,7 +266,7 @@ export function certificateExpiring(count: number, soonest: number): AlertCopy {
         : `A certificate expires in ${soonest} ${soonest === 1 ? "day" : "days"}`; // no-break space: "1 day" never wraps
   return {
     headline,
-    detail: one ? "It has not renewed on its own." : "They have not renewed on their own.",
+    detail: one ? "It has not been renewed." : "They have not been renewed.",
     action: one ? "Open Proxy to see which one." : "Open Proxy to see which ones.",
   };
 }

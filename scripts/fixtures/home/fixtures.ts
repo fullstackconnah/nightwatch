@@ -140,7 +140,7 @@ const mediaFailed = (now: number, minAgo: number) =>
 // CE: copy from certificateExpiring(1, 9) in src/lib/attention-copy.ts (a no-break space joins "9" and "days").
 const certExpiring = (now: number, minAgo: number) =>
   hit(now, "certs", "cert-expiring", "warn", "A certificate expires in 9 days", minAgo, {
-    detail: "It has not renewed on its own.",
+    detail: "It has not been renewed.",
     action: "Open Proxy to see which one.",
     owner: { href: "/proxy", label: "Open Proxy" },
   });
