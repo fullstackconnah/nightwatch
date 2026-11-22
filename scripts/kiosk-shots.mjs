@@ -233,7 +233,7 @@ const FV_READ = () => {
   const tileBox = tile ? tile.closest("section.panel")?.querySelectorAll(".sr-climate") : [];
   const nudgeTiles = [...tileBox].map((t) => ({ nudges: [...t.querySelectorAll(".sr-btn-nudge")].map(r), target: [...t.querySelectorAll("*")].filter((e) => e.children.length === 0 && /^\s*\d{2}(\.\d)?\s*°?\s*[CF]?\s*$/.test(e.textContent ?? "")).map(r) }));
   const scrollers = board ? [...board.querySelectorAll("*")].filter((e) => { const o = getComputedStyle(e).overflowY; return (o === "auto" || o === "scroll") && e.scrollHeight > e.clientHeight + 1; }).map((e) => e.tagName) : [];
-  const clipped = [...document.querySelectorAll("header.kiosk-hdr-grid *, .max-w-6xl.grid-cols-12 *")].filter((e) => { const cs = getComputedStyle(e); return e.children.length === 0 && (e.textContent ?? "").trim() && e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== "visible" && cs.textOverflow !== "ellipsis"; }).map((e) => (e.textContent ?? "").trim().slice(0, 24));
+  const clipped = [...document.querySelectorAll("header.kiosk-hdr-grid *, .max-w-6xl.grid-cols-12 *")].filter((e) => { const cs = getComputedStyle(e); return e.children.length === 0 && (e.textContent ?? "").trim() && e.scrollWidth > e.clientWidth + 1 && cs.overflowX !== "visible" && cs.textOverflow !== "ellipsis" && !e.closest(".sr-only"); }).map((e) => (e.textContent ?? "").trim().slice(0, 24));
   const agTime = document.querySelector("[data-agenda-row] .font-mono"), agTitle = document.querySelector("[data-agenda-row] > span:nth-child(3)"), binRow = document.querySelector('[data-bin-night="row"]');
   return {
     hdrCols: header ? [...header.children].slice(0, 5).map((c) => r(c)) : [], lineKidsW: line ? [...line.children].map((k) => Math.round(k.scrollWidth)) : [],
