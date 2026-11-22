@@ -1,7 +1,6 @@
 "use client";
 
 import { WriteAction } from "@/components/strips/write-action";
-import { Button } from "@/components/ui/button";
 import { ApiError, postJson } from "@/lib/client";
 import type { QueueView, RowAct } from "@/lib/media/page-model";
 
@@ -21,7 +20,7 @@ async function post(url: string, body?: unknown) {
 }
 
 /** One file's write, from the page model's `act`: Compress, Try again, Cancel, Undo. Off while the page shows old data. */
-export function FileAct({ act, off, onChanged, onDismiss }: { act: RowAct; off: boolean; onChanged: () => void; onDismiss?: () => void }) {
+export function FileAct({ act, off, onChanged }: { act: RowAct; off: boolean; onChanged: () => void }) {
   const done = async (p: Promise<void>) => {
     await p;
     onChanged();
@@ -42,10 +41,17 @@ export function FileAct({ act, off, onChanged, onDismiss }: { act: RowAct; off: 
             triggerClassName={TAP}
             run={() => done(post("/api/media/jobs", { path: act.path }))}
           />
-          {act.kind === "retry" && onDismiss && (
-            <Button size="sm" variant="ghost" className={TAP} onClick={onDismiss}>
-              Dismiss
-            </Button>
+          {act.kind === "retry" && (
+            <WriteAction
+              label="Dismiss"
+              ariaLabel={`Dismiss the failed compression of ${act.name}`}
+              confirm={false}
+              flight="Dismissing…"
+              failure={`Couldn’t dismiss ${act.name}`}
+              disabled={off}
+              triggerClassName={TAP}
+              run={() => done(post(`/api/media/jobs/${act.id}/dismiss`))}
+            />
           )}
         </>
       );

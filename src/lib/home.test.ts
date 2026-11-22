@@ -149,7 +149,7 @@ test("no input with a pending or failed probe says All clear or the ok tone", ()
 
 // --- probeLine / calmLine ---
 test("probeLine", () => {
-  assert.equal(probeLine(null, "08:30"), "Asking 9 sources…");
+  assert.equal(probeLine(null, "08:30"), "Asking the sources…");
   assert.equal(probeLine(report(), "08:30"), "9 of 9 checks answered at 08:30");
   assert.equal(
     probeLine(report({ probes: probes(pending("orchestra")) }), "08:30"),

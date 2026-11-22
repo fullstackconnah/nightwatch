@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { checkReady } from "./disk.ts";
 import { createGuard } from "./fsguard.ts";
-import { createQueue, KEEP_FINISHED, JobError, publicJob, type JobRecord, type QueueOpts } from "./jobs.ts";
+import { createQueue, KEEP_FINISHED, JobError, pruneFinished, publicJob, type JobRecord, type QueueOpts } from "./jobs.ts";
 import { realFs } from "./swap.ts";
 import { SKIP_OFF_LINUX, tempDir } from "./testkit.ts";
 import type { MediaFile } from "./types.ts";
@@ -382,6 +382,69 @@ describe("recovery and purge only when the drive is ready (F1, F5, F6)", () => {
     const again = createQueue({ ...second(first), run: () => new Promise(() => undefined) });
     again.recover();
     assert.equal(again.get("enc-cx")?.state, "cancelled");
+  });
+});
+
+describe("dismiss a failed job (H174-1)", () => {
+  const T0 = "2026-11-05T00:00:00.000Z";
+  it("sets dismissedAt, saves it, and a restarted queue still has it", () => {
+    const first = make();
+    seed(first.q, "fail-1", "failed", { finishedAt: "2026-11-04T00:00:00Z" });
+    const j = first.q.dismiss("fail-1");
+    assert.equal(j.state, "failed");
+    assert.equal(j.dismissedAt, T0);
+    assert.equal(createQueue({ ...second(first), run: async () => undefined }).get("fail-1")?.dismissedAt, T0);
+  });
+
+  it("is idempotent: a second dismiss keeps the first time", () => {
+    let t = new Date(T0);
+    const first = make({ now: () => t });
+    seed(first.q, "fail-1", "failed");
+    first.q.dismiss("fail-1");
+    t = new Date("2026-11-06T00:00:00Z");
+    assert.equal(first.q.dismiss("fail-1").dismissedAt, T0);
+  });
+
+  it("an unknown id is a 404", () => {
+    assert.throws(() => make().q.dismiss("nope"), (e: unknown) => e instanceof JobError && e.status === 404);
+  });
+
+  it("any state but failed is a 409 and saves nothing", () => {
+    const first = make();
+    for (const s of ["queued", "done", "cancelled", "undone", "purged"] as const) seed(first.q, `j-${s}`, s);
+    const onDisk = () => readFileSync(join(stateDir, "jobs.json"), "utf8");
+    const before = onDisk();
+    for (const s of ["queued", "done", "cancelled", "undone", "purged"] as const) {
+      assert.throws(() => first.q.dismiss(`j-${s}`), (e: unknown) => e instanceof JobError && e.status === 409, s);
+      assert.equal(first.q.get(`j-${s}`)?.dismissedAt, undefined);
+    }
+    assert.equal(onDisk(), before);
+  });
+
+  it("a store written before the field loads as not dismissed", () => {
+    const first = make();
+    seed(first.q, "old-1", "failed");
+    const again = createQueue({ ...second(first), run: async () => undefined });
+    assert.equal(again.get("old-1")?.dismissedAt, undefined);
+    assert.equal("dismissedAt" in publicJob(again.get("old-1") as JobRecord), false);
+  });
+
+  it("the public job carries dismissedAt (the page reads it)", () => {
+    const first = make();
+    seed(first.q, "fail-1", "failed");
+    first.q.dismiss("fail-1");
+    assert.equal(first.q.snapshot({ enabled: true, ready: true }).recent.find((j) => j.id === "fail-1")?.dismissedAt, T0);
+  });
+
+  it("pruneFinished treats a dismissed job like any other: superseded ones go past the cap, the newest of a path stays", () => {
+    const rec = (i: number, extra: Partial<JobRecord> = {}) => ({ id: `d-${i}`, path: `movies/f${i}.mkv`, state: "failed", createdAt: "x", finishedAt: new Date(Date.UTC(2026, 0, 1) + i * 60000).toISOString(), dismissedAt: T0, ...extra }) as JobRecord;
+    const all: JobRecord[] = [];
+    for (let i = 0; i < KEEP_FINISHED + 5; i++) all.push(rec(i), rec(i + 1000, { path: `movies/f${i}.mkv`, id: `n-${i}`, dismissedAt: undefined, state: "done" }));
+    const kept = pruneFinished(all);
+    assert.equal(kept.filter((j) => j.id.startsWith("d-")).length, KEEP_FINISHED);
+    assert.equal(kept.some((j) => j.id === "d-0"), false);
+    const lone = [rec(1), rec(2, { path: "movies/f1.mkv" })];
+    assert.equal(pruneFinished(lone).length, 2);
   });
 });
 

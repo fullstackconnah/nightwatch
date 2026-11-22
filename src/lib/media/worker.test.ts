@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { after, before, describe, it } from "node:test";
 import { createKioskElevationToken, createSessionToken, isRequestAuthenticated } from "../auth.ts";
 import { kioskMayCall } from "../kiosk-access.ts";
-import { cancelBatchResponse, cancelResponse, enqueueResponse, jobsResponse, libraryResponse, safeReason, scanResponse, titleResponse, undoResponse } from "./routes.ts";
+import { cancelBatchResponse, cancelResponse, dismissResponse, enqueueResponse, jobsResponse, libraryResponse, safeReason, scanResponse, titleResponse, undoResponse } from "./routes.ts";
 import { MediaWorkerClient, mediaWorkerCredentials } from "./worker.ts";
 
 const TOKEN = "t".repeat(40);
@@ -220,7 +220,7 @@ describe("jobs routes (B9)", () => {
 
   it("cancel, batch cancel and undo validate the id before any fetch, then forward it", async () => {
     lastUrl = "";
-    for (const f of [cancelResponse, cancelBatchResponse, undoResponse]) {
+    for (const f of [cancelResponse, cancelBatchResponse, undoResponse, dismissResponse]) {
       for (const bad of [null, "", "short", "../library", "a/b/c/d/e/f/g/h", "UPPERCASE-ID"]) assert.equal((await f(bad, ok())).status, 400, String(bad));
     }
     assert.equal(lastUrl, "");
@@ -228,8 +228,21 @@ describe("jobs routes (B9)", () => {
     assert.equal(lastUrl, `/jobs/${JOB}/cancel`);
     assert.equal((await undoResponse(JOB, ok())).status, 200);
     assert.equal(lastUrl, `/jobs/${JOB}/undo`);
+    assert.equal((await dismissResponse(JOB, ok())).status, 200);
+    assert.equal(lastUrl, `/jobs/${JOB}/dismiss`);
     assert.equal((await cancelBatchResponse(JOB, ok())).status, 200);
     assert.equal(lastUrl, `/jobs/batch/${JOB}/cancel`);
+  });
+
+  it("dismiss maps a worker 404, 409, 401 and a dead worker the way Retry's routes do", async () => {
+    for (const [m, status] of [["404", 404], ["409", 409], ["401", 502]] as const) {
+      mode = m;
+      assert.equal((await dismissResponse(JOB, ok())).status, status, m);
+    }
+    mode = "ok";
+    const down = await dismissResponse(JOB, dead());
+    assert.equal(down.status, 502);
+    assert.equal((await down.json()).worker, "unreachable");
   });
 
   it("a worker 401 is a 502; the kiosk may call none of them", async () => {
@@ -237,7 +250,7 @@ describe("jobs routes (B9)", () => {
     const r = await undoResponse(JOB, ok());
     mode = "ok";
     assert.equal(r.status, 502);
-    for (const [m, p] of [["GET", "/api/media/jobs"], ["POST", "/api/media/jobs"], ["POST", `/api/media/jobs/${JOB}/cancel`], ["POST", `/api/media/jobs/${JOB}/undo`], ["POST", `/api/media/jobs/batch/${JOB}/cancel`]] as const) {
+    for (const [m, p] of [["GET", "/api/media/jobs"], ["POST", "/api/media/jobs"], ["POST", `/api/media/jobs/${JOB}/cancel`], ["POST", `/api/media/jobs/${JOB}/undo`], ["POST", `/api/media/jobs/${JOB}/dismiss`], ["POST", `/api/media/jobs/batch/${JOB}/cancel`]] as const) {
       assert.equal(kioskMayCall(m, p), false, p);
       assert.equal(await isRequestAuthenticated(undefined, await createKioskElevationToken(0, "test-tag"), m, p, 0, "test-tag"), false, p);
     }

@@ -178,11 +178,12 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
           if ("path" in b) return send(res, 201, queue.enqueueOne(b.path));
           return send(res, 400, { error: "Send path or paths" });
         }
-        const m = /^\/jobs\/(?:batch\/([\w-]+)|([\w-]+))\/(cancel|undo)$/.exec(url.pathname);
+        const m = /^\/jobs\/(?:batch\/([\w-]+)|([\w-]+))\/(cancel|undo|dismiss)$/.exec(url.pathname);
         if (req.method === "POST" && m) {
           if (m[1] && m[3] === "cancel") return send(res, 200, { jobs: queue.cancelBatch(m[1]) });
           if (m[2] && m[3] === "cancel") return send(res, 200, queue.cancel(m[2]));
           if (m[2] && m[3] === "undo") return send(res, 200, await queue.undo(m[2]));
+          if (m[2] && m[3] === "dismiss") return send(res, 200, queue.dismiss(m[2]));
         }
       }
       return send(res, 404, { error: "not found" });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import useSWR from "swr";
 import type { MediaFile, TitleDetail as TitleDetailData } from "../../../services/media-worker/src/types";
 import { FileAct } from "@/components/media/file-act";
@@ -21,8 +21,7 @@ interface JobProps {
 }
 
 function FileRow({ file, kind, rj, off, onChanged }: { file: MediaFile; kind: "movie" | "show" } & JobProps) {
-  const [dismissed, setDismissed] = useState(false);
-  const r = fileRow(file, kind, rj, { dismissed });
+  const r = fileRow(file, kind, rj);
   const estimated = r.cells.rate.startsWith("~");
   return (
     <li className="st-li md-file" data-feature="file-row" data-verdict={file.verdict.kind}>
@@ -41,7 +40,7 @@ function FileRow({ file, kind, rj, off, onChanged }: { file: MediaFile; kind: "m
       <span className="md-word" data-kind={r.tone === "active" || r.tone === "bad" || r.tone === "dim" ? r.tone : file.verdict.kind}>
         {r.word}
       </span>
-      <span className="md-act">{r.act && <FileAct act={r.act} off={off} onChanged={onChanged} onDismiss={() => setDismissed(true)} />}</span>
+      <span className="md-act">{r.act && <FileAct act={r.act} off={off} onChanged={onChanged} />}</span>
       <p className="md-line">
         {r.line.facts && <span className="md-line-facts">{r.line.facts}</span>}
         {r.line.facts && r.line.text && " · "}

@@ -109,6 +109,8 @@ export interface Job {
   error?: string;
   heldUntil?: string;
   jellyfin?: "told" | "failed" | "off";
+  /** The owner dismissed this failure (set once, on a failed job): the page stops offering Try again and Home stops counting it. */
+  dismissedAt?: string;
   attempts: number;
 }
 

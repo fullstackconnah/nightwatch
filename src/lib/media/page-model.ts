@@ -269,7 +269,7 @@ export type RowAct =
   | { kind: "compress"; path: string; name: string; say: string }
   | { kind: "cancel"; id: string; name: string; confirm: boolean }
   | { kind: "undo"; id: string; name: string }
-  | { kind: "retry"; path: string; name: string; say: string };
+  | { kind: "retry"; id: string; path: string; name: string; say: string };
 
 /** What a file row needs of the jobs answer. */
 export interface RowJobs {
@@ -401,12 +401,12 @@ export function compressSay(f: MediaFile): string {
 }
 
 /** A file row: the job's state first, then the verdict. Without `rj` (jobs unknown) it is the plain verdict row. */
-export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | null, opts: { dismissed?: boolean } = {}): FileRow {
+export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | null): FileRow {
   const row = verdictRow(f, kind);
   if (!rj) return row;
   const name = f.name;
   const known: JobLite | null = f.job ? (rj.byId.get(f.job.id) ?? { id: f.job.id, state: f.job.state }) : null;
-  const job = known && !(opts.dismissed && known.state === "failed") ? known : null;
+  const job = known && !(known.state === "failed" && known.dismissedAt) ? known : null; // a saved dismissal: back to the verdict row
   if (job) {
     const t = jobText(job, rj.ahead(job.id));
     const base: FileRow = { ...row, word: t.word as FileRow["word"], line: { facts: "", text: t.line }, tone: t.tone };
@@ -419,7 +419,7 @@ export function fileRow(f: MediaFile, kind: "movie" | "show", rj?: RowJobs | nul
       case "done":
         return { ...base, act: { kind: "undo", id: job.id, name } };
       case "failed":
-        return { ...base, act: { kind: "retry", path: f.path, name, say: compressSay(f) } };
+        return { ...base, act: { kind: "retry", id: job.id, path: f.path, name, say: compressSay(f) } };
       default:
         return base;
     }

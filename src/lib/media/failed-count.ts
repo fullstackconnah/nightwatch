@@ -6,7 +6,7 @@ import type { Job } from "../../../services/media-worker/src/types.ts";
 const WINDOW_MS = 7 * 86_400_000;
 
 /**
- * Paths whose latest job failed within the last 7 days ("latest" per path, like the worker's pruneFinished).
+ * Paths whose latest job failed within the last 7 days ("latest" per path, like the worker's pruneFinished) and was not dismissed.
  * Any trouble reaching or reading the worker counts as 0: the Media page already says the worker is down,
  * so Home must not nag about it.
  */
@@ -25,7 +25,7 @@ export async function countRecentFailedCompressions(client: Pick<MediaWorkerClie
     let n = 0;
     for (const { job } of latest.values()) {
       const t = job.finishedAt ? Date.parse(job.finishedAt) : NaN;
-      if (job.state === "failed" && now - t >= 0 && now - t <= WINDOW_MS) n++;
+      if (job.state === "failed" && !job.dismissedAt && now - t >= 0 && now - t <= WINDOW_MS) n++;
     }
     return n;
   } catch {

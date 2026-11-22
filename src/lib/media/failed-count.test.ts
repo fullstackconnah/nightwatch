@@ -35,6 +35,13 @@ test("a failed job followed by a later successful job for the same path does not
   assert.equal(await countRecentFailedCompressions(clientOf(recent), NOW), 0);
 });
 
+test("a dismissed failure does not count; a newer failure on the same path after it does", async () => {
+  const dismissed = job("/m/a.mkv", "failed", 2 * DAY, { dismissedAt: ago(DAY) });
+  assert.equal(await countRecentFailedCompressions(clientOf([dismissed]), NOW), 0);
+  assert.equal(await countRecentFailedCompressions(clientOf([dismissed, job("/m/a.mkv", "failed", 0)]), NOW), 1);
+  assert.equal(await countRecentFailedCompressions(clientOf([dismissed, job("/m/b.mkv", "failed", DAY)]), NOW), 1);
+});
+
 test("a failed job followed by a queued retry does not count", async () => {
   const retry = job("/m/a.mkv", "queued", 0);
   assert.equal(await countRecentFailedCompressions(clientOf([job("/m/a.mkv", "failed", DAY)], [retry]), NOW), 0);

@@ -96,3 +96,9 @@ export async function undoResponse(id: string | null, client: MediaWorkerClient 
   const p = await client.undo(id);
   return isProbeOk(p) ? json(p.data) : jobFailure(p);
 }
+
+export async function dismissResponse(id: string | null, client: MediaWorkerClient = mediaWorker): Promise<Response> {
+  if (!validJobId(id)) return json({ error: "That job id isn’t valid." }, 400);
+  const p = await client.dismiss(id);
+  return isProbeOk(p) ? json(p.data) : jobFailure(p);
+}
