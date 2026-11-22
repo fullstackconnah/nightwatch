@@ -10,7 +10,9 @@ const settings = ["components/settings/settings-access.tsx", "components/setting
 
 test("save-row errors are role=alert, not plain spans", () => {
   for (const f of settings) {
-    assert.equal(count(src(f), '<span className="text-[0.7rem] text-bad">{error}'), 0, f);
+    const tags = [...src(f).matchAll(/<span\b[^>]*\btext-bad\b[^>]*>\s*\{error\}/g)].map((m) => m[0]);
+    assert.ok(tags.length >= 5, `${f}: found ${tags.length} error spans`);
+    for (const t of tags) assert.ok(t.includes('role="alert"'), `${f}: ${t}`);
   }
 });
 

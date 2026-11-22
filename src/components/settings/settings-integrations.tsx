@@ -725,7 +725,7 @@ export function RestoreDrillCard({ data, mutate }: PanelProps) {
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
         {error && (
-          <span id={errorId} className="text-[0.7rem] text-bad">
+          <span id={errorId} role="alert" className="text-[0.7rem] text-bad">
             {error}
           </span>
         )}
