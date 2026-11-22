@@ -399,7 +399,7 @@ export function saveConfig(config: AppConfig): void {
  *  concurrently-hot-reading process (the daemon's readers below, and this
  *  module's own loadConfig()) — a reader never observes a half-written
  *  file, only the old version or the fully-written new one. */
-function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
+export function writeJsonAtomic(filePath: string, data: unknown, mode?: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = filePath + ".tmp";
   // writeFileSync's mode applies only when it creates the file; drop a leftover .tmp so secrets never land in a looser one
