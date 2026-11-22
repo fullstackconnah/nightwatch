@@ -87,6 +87,13 @@ describe("runHermesJob", () => {
     assert.equal((await runHermesJob("digest") as { status: string }).status, "unreachable");
   });
 
+  it("cuts a long 409 message at 200 characters and redacts a bearer token in it", async () => {
+    stubFetch(json(409, { error: `Authorization: Bearer abc123 ${"x".repeat(400)}` }));
+    const busy = (await runHermesJob("digest")) as { detail: string };
+    assert.ok(busy.detail.length <= 200);
+    assert.ok(!busy.detail.includes("abc123"));
+  });
+
   it("keeps the Hermes URL and host out of the reason a person reads, and in the server log", async () => {
     const logged: string[] = [];
     const realError = console.error;
