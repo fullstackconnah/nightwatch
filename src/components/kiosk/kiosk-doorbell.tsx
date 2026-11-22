@@ -29,6 +29,7 @@ import { DoorOpen, RefreshCw, Video, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatWallClock } from "@/lib/format";
 import { lastSeenIsToday } from "@/lib/doorbell-last-seen";
+import { heldCameraId, heldCameraName } from "@/lib/doorbell-held-camera";
 import { fetcher } from "@/lib/client";
 import {
   KIOSK_EASE_OUT,
@@ -249,7 +250,13 @@ export function useDoorbellWatch(onTrigger?: () => void): DoorbellView {
     return cameras[0].entityId;
   }, [cameras, trigger, viewCamera]);
 
-  return { hasCamera: cameras.length > 0, open, trigger, cameraId, snapshot: data, originRect, openManually, close };
+  // A failed poll empties `cameras` mid-ring; hold the camera the takeover
+  // opened with until it closes (the ref is forgotten while closed).
+  const lastCameraRef = useRef<string | null>(null);
+  const heldCamera = heldCameraId(cameraId, lastCameraRef.current, open);
+  lastCameraRef.current = open ? heldCamera : null;
+
+  return { hasCamera: cameras.length > 0, open, trigger, cameraId: heldCamera, snapshot: data, originRect, openManually, close };
 }
 
 /* ── the manual control ───────────────────────────────────────────────────── */
@@ -453,6 +460,7 @@ export function KioskDoorbellModal({
   // onClose must fire exactly once even though the collapse path arms both
   // an animation-finished handler and a wall-clock safety net (see
   // requestClose) — same guard as KioskClimateModal's closeFiredRef.
+  const lastNameRef = useRef<{ id: string; name: string } | null>(null);
   const closeFiredRef = useRef(false);
   // deadline and the window it came from move together: the countdown threshold
   // is derived from the window, so a state where one has updated and the other
@@ -603,8 +611,10 @@ export function KioskDoorbellModal({
   };
   const heading = trigger ? TRIGGER_LABEL[trigger.kind] : "Front door";
   const current = cameras.find((c) => c.entityId === selected);
+  if (current) lastNameRef.current = { id: selected, name: current.name };
+  const label = heldCameraName(current?.name, lastNameRef.current, selected);
   // Sunroom hides a subtitle that only repeats the title.
-  const dup = (current?.name ?? selected) === heading && !(trigger && trigger.ageSec !== null) && status !== "stills";
+  const dup = label === heading && !(trigger && trigger.ageSec !== null) && status !== "stills";
 
   return (
 <KioskPortal>
@@ -651,7 +661,7 @@ export function KioskDoorbellModal({
               <span className="hidden font-mono text-xs font-normal text-ink-dim" data-sr-dot-word>{DOT_WORD[status]}</span>
             </h2>
             <p className="mt-0.5 truncate text-xs text-ink-faint" data-sr-sub data-sr-dup={dup ? "" : undefined}>
-              {current?.name ?? selected}
+              {label}
               {trigger && trigger.ageSec !== null && ` · ${describeAge(trigger.ageSec)}`}
               {status === "stills" && " · stills"}
             </p>
