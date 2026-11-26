@@ -107,7 +107,7 @@ export function startServer(opts: ServerOpts): Promise<RunningServer> {
   runner.bind(queue);
   if (compressEnabled && readiness().ready) queue.recoverOnce();
   const purgeTimer = setInterval(() => {
-    if (compressEnabled && readiness().ready) { queue.recoverOnce(); queue.purgeDue(); }
+    if (compressEnabled && readiness().ready) { queue.recoverOnce(); queue.purgeDue(); queue.pump(); }
   }, 3_600_000);
   purgeTimer.unref();
   const health = (): Health => {

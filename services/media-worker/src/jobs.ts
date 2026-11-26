@@ -103,8 +103,16 @@ export function createQueue(opts: QueueOpts) {
   const patch = (id: string, p: Partial<JobRecord>): JobRecord => {
     const r = get(id);
     if (!r) throw new JobError(404, "No such job");
+    const rec = r as Record<string, unknown>;
+    const before = Object.keys(p).map((k) => [k, k in r, rec[k]] as const);
     Object.assign(r, p);
-    save();
+    try {
+      save();
+    } catch (e) {
+      // Memory must never run ahead of jobs.json: put every touched key back, then fail the caller.
+      for (const [k, had, v] of before) { if (had) rec[k] = v; else delete rec[k]; }
+      throw e;
+    }
     return r;
   };
 
@@ -138,9 +146,15 @@ export function createQueue(opts: QueueOpts) {
         if (cur.state !== "queued") {
           try { rmQuiet(opts.guard, opts.dirs.work, plan(cur).part); } catch (e3) { opts.log?.(`job ${next.id} part not removed: ${(e3 as Error).message}`); }
         }
-        try { patch(next.id, { state: "failed", failedCheck: "encoder", finishedAt: now().toISOString() }); } catch (e2) { opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`); }
+        const failed = { state: "failed" as const, failedCheck: "encoder" as const, finishedAt: now().toISOString() };
+        try { patch(next.id, failed); } catch (e2) {
+          opts.log?.(`job ${next.id} not marked failed: ${(e2 as Error).message}`);
+          // Nothing runs and the .part is gone: memory must not say active, or enqueue answers "Already queued" until a restart.
+          if (cur.state !== "queued") Object.assign(cur, failed);
+        }
       })
-      .finally(() => { running = null; pump(); });
+      // A job still queued here means its patch rolled back (writes broken); pumping again would spin on it. The hourly timer retries.
+      .finally(() => { running = null; if (get(next.id)?.state !== "queued") pump(); });
     running = { id: next.id, done };
   }
 
@@ -281,7 +295,7 @@ export function createQueue(opts: QueueOpts) {
     jobs = [...requeue, ...jobs.filter((j) => !requeue.includes(j))];
     // Unsaved: pump() would burn the queue to failed (patch throws at the save), so hold it until a save works.
     let saved = true;
-    try { save(); } catch (e) { saved = false; opts.log?.(`jobs.json not saved after recovery, queue held until the next save works: ${(e as Error).message}`); }
+    try { save(); } catch (e) { saved = false; opts.log?.(`jobs.json not saved after recovery, queue held; retried hourly and on the next enqueue: ${(e as Error).message}`); }
     try {
       const live = new Set(jobs.filter((j) => j.state === "queued").map((j) => `${j.id}.part`));
       for (const f of readdirSync(opts.dirs.work)) if (!live.has(f)) rmQuiet(opts.guard, opts.dirs.work, join(opts.dirs.work, f));
