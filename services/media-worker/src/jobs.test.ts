@@ -506,3 +506,36 @@ describe("boot prunes old finished jobs (H7)", () => {
     rmSync(join(stateDir, "jobs.json.tmp"), { recursive: true, force: true });
   });
 });
+
+describe("a failed jobs.json write (H177)", () => {
+  const breakWrite = () => mkdirSync(join(stateDir, "jobs.json.tmp")); // the atomic write opens this path, so save() throws
+  const fixWrite = () => rmSync(join(stateDir, "jobs.json.tmp"), { recursive: true, force: true });
+
+  it("enqueue throws and leaves nothing half-queued, so a retry is not 'Already queued'", { skip: SKIP_OFF_LINUX }, () => {
+    const { q } = make();
+    q.recoverOnce(); // enqueue runs it first; it must not be what throws, only the save after jobs.push
+    breakWrite();
+    assert.throws(() => q.enqueueOne("movies/a.mkv"));
+    assert.equal(q.all().length, 0);
+    fixWrite();
+    assert.equal(q.enqueueOne("movies/a.mkv").state, "queued");
+  });
+
+  it("recovery holds the queue when the save after the requeue fails, and the next working enqueue starts it", { skip: SKIP_OFF_LINUX }, async () => {
+    const first = make();
+    seed(first.q, "enc-1", "encoding");
+    const logs: string[] = [];
+    const started: string[] = [];
+    const again = createQueue({ ...second(first), run: async (r) => { started.push(r.id); await new Promise(() => undefined); }, log: (l: string) => logs.push(l) });
+    breakWrite();
+    assert.doesNotThrow(() => again.recoverOnce());
+    await tick();
+    assert.ok(logs.some((l) => /queue held/.test(l)), logs.join("|"));
+    assert.deepEqual(started, []);
+    assert.equal(again.get("enc-1")?.state, "queued");
+    fixWrite();
+    again.enqueueOne("movies/b.mkv");
+    await tick();
+    assert.deepEqual(started, ["enc-1"]);
+  });
+});

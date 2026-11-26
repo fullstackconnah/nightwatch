@@ -169,7 +169,10 @@ function libraryModel(i: ModelInput): Model {
       filterCounts,
       showFilter: d.titles.length > 0,
       filterEmpty: strips.length === 0 && d.titles.length > 0 && i.filter !== "all" ? FILTER_WORDS[i.filter] : null,
-      disk: `Disk: ${mediaBytes(d.disk.freeBytes)} free of ${mediaBytes(d.disk.sizeBytes)}${d.disk.heldBytes > 0 ? ` · ${mediaBytes(d.disk.heldBytes)} held for Undo` : ""}`,
+      // The worker reports 0 when statfs fails; "0.0 GB free" would read as a full disk.
+      disk: d.disk.sizeBytes === 0
+        ? "Disk: free space unknown"
+        : `Disk: ${mediaBytes(d.disk.freeBytes)} free of ${mediaBytes(d.disk.sizeBytes)}${d.disk.heldBytes > 0 ? ` · ${mediaBytes(d.disk.heldBytes)} held for Undo` : ""}`,
     };
   };
 

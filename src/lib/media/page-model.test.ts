@@ -186,6 +186,11 @@ test("disk line, with held originals only when there are some", () => {
   assert.equal(model({ body: { worker: "unconfigured" }, last: null }).showFilter, false);
 });
 
+test("an unreadable disk says free space is unknown, not 0.0 GB free", () => {
+  const unknown = lib({ disk: { sizeBytes: 0, freeBytes: 0, heldBytes: 0 } });
+  assert.equal(model(body(unknown)).disk, "Disk: free space unknown");
+});
+
 // ---- strips, filter, order ----
 test("strips: one per title, largest first, state lines, tone null", () => {
   const m = model();
