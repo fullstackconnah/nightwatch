@@ -188,7 +188,12 @@ export function createQueue(opts: QueueOpts) {
       abs, container: f.container, ...(batchId ? { batchId } : {}),
     }));
     jobs.push(...made);
-    save();
+    try {
+      save();
+    } catch (e) {
+      jobs = jobs.filter((j) => !made.includes(j)); // nothing half-queued: a retry must not hit "Already queued"
+      throw e;
+    }
     pump();
     const out = made.map(publicJob);
     return asBatch ? { batchId: batchId as string, jobs: out } : out;
@@ -273,7 +278,7 @@ export function createQueue(opts: QueueOpts) {
     }
     // A job that was running goes to the head of the queue.
     jobs = [...requeue, ...jobs.filter((j) => !requeue.includes(j))];
-    save();
+    try { save(); } catch (e) { opts.log?.(`jobs.json not saved after recovery: ${(e as Error).message}`); } // the next save writes it
     try {
       const live = new Set(jobs.filter((j) => j.state === "queued").map((j) => `${j.id}.part`));
       for (const f of readdirSync(opts.dirs.work)) if (!live.has(f)) rmQuiet(opts.guard, opts.dirs.work, join(opts.dirs.work, f));
