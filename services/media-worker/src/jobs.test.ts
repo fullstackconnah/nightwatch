@@ -538,4 +538,62 @@ describe("a failed jobs.json write (H177)", () => {
     await tick();
     assert.deepEqual(started, ["enc-1"]);
   });
+
+  const saved = () => JSON.parse(readFileSync(join(stateDir, "jobs.json"), "utf8")).jobs as JobRecord[];
+
+  it("patch puts back what it changed, and removes a key that was absent, when the save throws", { skip: SKIP_OFF_LINUX }, () => {
+    const { q } = make();
+    const j = q.enqueueOne("movies/a.mkv");
+    breakWrite();
+    assert.throws(() => q.patch(j.id, { state: "failed", dismissedAt: "2026-11-05T00:00:00Z" }));
+    assert.equal(q.get(j.id)?.state, "queued");
+    assert.equal("dismissedAt" in (q.get(j.id) as object), false);
+  });
+
+  it("cancelling a queued job with writes broken throws and leaves it queued; the retry saves cancelled", { skip: SKIP_OFF_LINUX }, () => {
+    const { q } = make();
+    q.enqueueOne("movies/a.mkv"); // running (stub never ends), so b stays queued
+    const b = q.enqueueOne("movies/b.mkv");
+    breakWrite();
+    assert.throws(() => q.cancel(b.id));
+    assert.equal(q.get(b.id)?.state, "queued");
+    fixWrite();
+    assert.equal(q.cancel(b.id).state, "cancelled");
+    assert.equal(saved().find((r) => r.id === b.id)?.state, "cancelled");
+  });
+
+  it("writes break while A runs: B stays queued, runs once (no loop), and the timer's pump starts it", { skip: SKIP_OFF_LINUX }, async () => {
+    const calls: string[] = [];
+    let q!: ReturnType<typeof make>["q"];
+    ({ q } = make({
+      run: async (r) => {
+        calls.push(r.id);
+        if (calls.filter((c) => c === r.id).length > 3) await new Promise(() => undefined); // a runaway loop stalls here and fails the asserts
+        if (calls.length === 1) { q.patch(r.id, { state: "encoding" }); breakWrite(); q.patch(r.id, { state: "done" }); }
+        else q.patch(r.id, { state: "encoding" });
+      },
+    }));
+    const a = q.enqueueOne("movies/a.mkv");
+    const b = q.enqueueOne("movies/b.mkv");
+    await tick(); await tick();
+    assert.equal(q.get(a.id)?.state, "failed");
+    assert.equal(q.get(b.id)?.state, "queued");
+    assert.equal(calls.filter((c) => c === b.id).length, 1);
+    fixWrite();
+    q.pump();
+    await tick(); await tick();
+    assert.equal(calls.filter((c) => c === b.id).length, 2);
+    assert.equal(q.get(b.id)?.state, "encoding");
+  });
+
+  it("a started job that crashes with writes broken ends failed in memory, and its path can be queued again", { skip: SKIP_OFF_LINUX }, async () => {
+    const { q } = make({
+      run: async (r) => { q.patch(r.id, { state: "encoding" }); breakWrite(); throw new Error("encoder died"); },
+    }) as { q: ReturnType<typeof make>["q"] };
+    const a = q.enqueueOne("movies/a.mkv");
+    await tick(); await tick();
+    assert.equal(q.get(a.id)?.state, "failed");
+    fixWrite();
+    assert.doesNotThrow(() => q.enqueueOne("movies/a.mkv"));
+  });
 });
