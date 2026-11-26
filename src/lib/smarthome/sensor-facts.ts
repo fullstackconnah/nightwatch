@@ -11,5 +11,5 @@ export const lowBatteries = (sensors: readonly HaSensor[], max: number = BATTERY
     .filter((s) => s.kind === "battery" && s.available && s.value != null && s.value <= max)
     .sort((a, b) => (a.value ?? 0) - (b.value ?? 0));
 
-/** Shared sensors Home Assistant has no reading from (the page's "not answering"). */
-export const countSensorsDown = (sensors: readonly HaSensor[]): number => sensors.filter((s) => !s.available).length;
+/** Shared sensors Home Assistant has no reading from (the page's "not answering"); a battery with no number (text state) counts too. */
+export const countSensorsDown = (sensors: readonly HaSensor[]): number => sensors.filter((s) => !s.available || (s.kind === "battery" && s.value == null)).length;

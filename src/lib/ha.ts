@@ -1,5 +1,6 @@
 import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { brightnessPercent } from "@/lib/ha-brightness";
+import { isUnavailable, lockState, roundHalf } from "@/lib/ha-facts";
 import { createHiddenIdsCache, fetchRegistryHiddenIds } from "@/lib/ha-settings-entities";
 import { IntegrationClient, type Probe } from "@/lib/integration-client";
 import type {
@@ -9,7 +10,6 @@ import type {
   HaEntities,
   HaLight,
   HaLock,
-  HaLockState,
   HaMediaPlayer,
   HaScene,
   HaSensor,
@@ -140,9 +140,6 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function isUnavailable(state: string): boolean {
-  return state === "unavailable" || state === "unknown";
-}
 
 /** True when both arrays have equal length and equal elements pairwise
  *  (callers pass lower-cased word arrays, so this is effectively the
@@ -303,26 +300,8 @@ function mapClimate(e: HaRawEntity): HaClimate {
   };
 }
 
-const KNOWN_LOCK_STATES: readonly HaLockState[] = [
-  "locked",
-  "unlocked",
-  "locking",
-  "unlocking",
-  "open",
-  "opening",
-  "jammed",
-  "unavailable",
-  "unknown",
-];
-
 function mapLock(e: HaRawEntity): HaLock {
-  const state = (KNOWN_LOCK_STATES as readonly string[]).includes(e.state) ? (e.state as HaLockState) : "unknown";
-  return {
-    entityId: e.entity_id,
-    name: friendlyName(e),
-    state,
-    available: state !== "unavailable",
-  };
+  return { entityId: e.entity_id, name: friendlyName(e), ...lockState(e.state) };
 }
 
 /** Compact read-only sensor set: only these three device classes are surfaced —
@@ -477,9 +456,6 @@ async function callService(
 
 /** Nearest half-degree — HA climate entities routinely reject arbitrary
  *  float precision, and a homelab thermostat has no use for a hundredth. */
-function roundHalf(n: number): number {
-  return Math.round(n * 2) / 2;
-}
 
 /**
  * A temperature "nudge" has no direct HA service — it is read-current,

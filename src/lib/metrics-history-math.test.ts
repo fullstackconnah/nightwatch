@@ -38,8 +38,9 @@ const src = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url
 
 test("wiring: ha.ts knows open and opening; history uses the helpers", () => {
   const ha = src("./ha.ts");
-  assert.match(ha, /^\s+"open",$/m);
-  assert.match(ha, /^\s+"opening",$/m);
+  const facts = src("./ha-facts.ts"); // the lock state list lives in ha-facts.ts
+  assert.match(facts, /"open",/);
+  assert.match(facts, /"opening",/);
   assert.match(ha, /brightnessPercent\(on, brightnessRaw\)/);
   const h = src("./metrics-history.ts");
   assert.match(h, /if \(shouldSkipTick\(input\.ts, last, SAMPLE_INTERVAL_MS\)\) return;/);
