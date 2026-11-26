@@ -245,6 +245,16 @@ describe("jobs routes (B9)", () => {
     assert.equal((await down.json()).worker, "unreachable");
   });
 
+  it("a worker that can't save answers 500: the page gets one plain sentence, not the worker's text or 'didn't answer'", async () => {
+    const cantSave = { status: "unreachable", detail: 'HTTP 500: {"error":"internal error"}', httpStatus: 500 };
+    const broken = { cancel: async () => cantSave, enqueue: async () => cantSave } as unknown as MediaWorkerClient;
+    const sentence = "The media worker couldn’t save the change, so nothing changed. Try again in a minute.";
+    for (const r of [await cancelResponse(JOB, broken), await enqueueResponse({ path: "movies/a.mkv" }, broken)]) {
+      assert.equal(r.status, 500);
+      assert.equal((await r.json()).error, sentence);
+    }
+  });
+
   it("a worker 401 is a 502; the kiosk may call none of them", async () => {
     mode = "401";
     const r = await undoResponse(JOB, ok());

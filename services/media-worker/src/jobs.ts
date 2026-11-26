@@ -109,7 +109,7 @@ export function createQueue(opts: QueueOpts) {
     try {
       save();
     } catch (e) {
-      // Memory must never run ahead of jobs.json: put every touched key back, then fail the caller.
+      // Memory never claims what jobs.json may lack: put every touched key back, then fail the caller.
       for (const [k, had, v] of before) { if (had) rec[k] = v; else delete rec[k]; }
       throw e;
     }

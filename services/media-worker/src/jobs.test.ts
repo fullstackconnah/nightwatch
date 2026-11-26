@@ -562,7 +562,20 @@ describe("a failed jobs.json write (H177)", () => {
     assert.equal(saved().find((r) => r.id === b.id)?.state, "cancelled");
   });
 
-  it("writes break while A runs: B stays queued, runs once (no loop), and the timer's pump starts it", { skip: SKIP_OFF_LINUX }, async () => {
+  it("cancelling a running job with writes broken throws, sends no kill, and leaves it encoding", { skip: SKIP_OFF_LINUX }, async () => {
+    let q!: ReturnType<typeof make>["q"];
+    let kills!: string[];
+    ({ q, kills } = make({ run: async (r) => { q.patch(r.id, { state: "encoding" }); await new Promise(() => undefined); } }));
+    const a = q.enqueueOne("movies/a.mkv");
+    await tick();
+    breakWrite();
+    assert.throws(() => q.cancel(a.id));
+    assert.deepEqual(kills, []);
+    assert.equal(q.isCancelRequested(a.id), false);
+    assert.equal(q.get(a.id)?.state, "encoding");
+  });
+
+  it("writes break while A runs: B stays queued, runs once (no loop), and a later pump starts it", { skip: SKIP_OFF_LINUX }, async () => {
     const calls: string[] = [];
     let q!: ReturnType<typeof make>["q"];
     ({ q } = make({
