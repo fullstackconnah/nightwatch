@@ -1,12 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { backupVerdict, cachedBackupVerdict, BACKUP_WARN_DAYS, BACKUP_TTL_MS, BACKUP_RETRY_MS, type BackupRead } from "./backup-age.ts";
+import { backupVerdict, cachedBackupVerdict, BACKUP_WARN_DAYS, BACKUP_TTL_MS, BACKUP_RETRY_MS, BACKUP_GRACE_MS, type BackupRead } from "./backup-age.ts";
 import { minecraftBackupStale } from "../attention-copy.ts";
 import { ownerFor } from "../attention-report.ts";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-11-23T12:00:00Z");
-const inst = (slug: string) => ({ slug });
+const inst = (slug: string, createdAt = "2026-01-01T00:00:00Z") => ({ slug, createdAt });
+const ago = (days: number) => new Date(NOW - days * DAY).toISOString();
 const bk = (instance: string, daysAgo: number) => ({ instance, file: `${instance}-${daysAgo}.tgz`, sizeBytes: 1, modifiedAt: new Date(NOW - daysAgo * DAY).toISOString() });
 
 test("14 days is the line: 13 is fine, 14 and 20 are stale", () => {
@@ -33,6 +34,31 @@ test("no instances gives no verdict, even with stray backups", () => {
 test("several instances: the one with the oldest newest backup wins; never beats stale", () => {
   assert.deepEqual(backupVerdict([inst("a"), inst("b")], [bk("a", 1), bk("b", 30), bk("b", 45)], NOW), { kind: "stale", days: 30 });
   assert.deepEqual(backupVerdict([inst("a"), inst("b"), inst("c")], [bk("a", 1), bk("b", 30)], NOW), { kind: "never" });
+});
+
+test("a backup whose modifiedAt does not parse is ignored, so an old valid one still reads stale", () => {
+  const junk = { ...bk("a", 1), modifiedAt: "not a date" };
+  assert.deepEqual(backupVerdict([inst("a")], [junk, bk("a", 20)], NOW), { kind: "stale", days: 20 });
+});
+
+test("an instance whose only backups are unparsable has none", () => {
+  const junk = { ...bk("a", 1), modifiedAt: "" };
+  assert.deepEqual(backupVerdict([inst("a")], [junk], NOW), { kind: "never" });
+});
+
+test("a world made inside the 2-day grace is not 'never' yet; past it, it is", () => {
+  assert.equal(BACKUP_GRACE_MS, 2 * DAY);
+  assert.deepEqual(backupVerdict([inst("a", ago(1))], [], NOW), { kind: "ok" });
+  assert.deepEqual(backupVerdict([inst("a", ago(3))], [], NOW), { kind: "never" });
+});
+
+test("a missing or unparsable createdAt with no backup is 'never'", () => {
+  assert.deepEqual(backupVerdict([inst("a", "garbage")], [], NOW), { kind: "never" });
+  assert.deepEqual(backupVerdict([{ slug: "a" } as never], [], NOW), { kind: "never" });
+});
+
+test("a new world skipped in grace does not hide another instance's stale backup", () => {
+  assert.deepEqual(backupVerdict([inst("a", ago(1)), inst("b")], [bk("b", 30)], NOW), { kind: "stale", days: 30 });
 });
 
 let keyN = 0;

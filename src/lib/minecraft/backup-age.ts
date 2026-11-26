@@ -10,21 +10,32 @@ export const BACKUP_TTL_MS = 15 * 60_000;
 /** A failed read (manager down) is cheap to retry, so it does not hold for the full TTL. */
 export const BACKUP_RETRY_MS = 5 * 60_000;
 
+const DAY_MS = 86_400_000;
+/** The stack backs up every 24 h (BACKUP_INTERVAL), so 2 days covers a new world's first nightly run plus slack. */
+export const BACKUP_GRACE_MS = 2 * DAY_MS;
+
 export type BackupVerdict = { kind: "ok" } | { kind: "never" } | { kind: "stale"; days: number };
 export interface BackupRead {
-  instances: Pick<McInstance, "slug">[];
+  instances: Pick<McInstance, "slug" | "createdAt">[];
   backups: McBackup[];
 }
 
-const DAY_MS = 86_400_000;
 const OK: BackupVerdict = { kind: "ok" };
 
-/** Judges the instance whose newest backup is oldest. An instance with none is "never"; no instances is fine. Run state is not known here, so a stopped instance is judged like a running one. */
+/**
+ * Judges the instance whose newest backup is oldest. A backup whose modifiedAt does not parse is ignored (its age
+ * would be NaN and read as fresh). An instance with no usable backup is "never", unless it was created within
+ * BACKUP_GRACE_MS, when it is skipped; a missing or unparsable createdAt gets no grace. No instances is fine. Run
+ * state is not known here, so a stopped instance is judged like a running one.
+ */
 export function backupVerdict(instances: BackupRead["instances"], backups: McBackup[], now: number): BackupVerdict {
   let oldest = Infinity; // age in ms of the worst instance's newest backup
-  for (const { slug } of instances) {
-    const newest = newestBackup(backups.filter((b) => b.instance === slug));
-    if (!newest) return { kind: "never" };
+  for (const { slug, createdAt } of instances) {
+    const newest = newestBackup(backups.filter((b) => b.instance === slug && !Number.isNaN(Date.parse(b.modifiedAt))));
+    if (!newest) {
+      if (now - Date.parse(createdAt) < BACKUP_GRACE_MS) continue; // NaN compares false: no grace
+      return { kind: "never" };
+    }
     oldest = Math.max(oldest === Infinity ? 0 : oldest, now - Date.parse(newest.modifiedAt));
   }
   const days = Math.floor(oldest / DAY_MS);
