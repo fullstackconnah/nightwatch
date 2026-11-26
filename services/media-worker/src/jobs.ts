@@ -103,7 +103,7 @@ export function createQueue(opts: QueueOpts) {
   const patch = (id: string, p: Partial<JobRecord>): JobRecord => {
     const r = get(id);
     if (!r) throw new JobError(404, "No such job");
-    const rec = r as Record<string, unknown>;
+    const rec = r as unknown as Record<string, unknown>;
     const before = Object.keys(p).map((k) => [k, k in r, rec[k]] as const);
     Object.assign(r, p);
     try {
