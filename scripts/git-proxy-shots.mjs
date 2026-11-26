@@ -529,6 +529,23 @@ await guarded("P47-B", () =>
     await page.close();
   }),
 );
+// P175-K: the kiosk 404 links back to the wall display, not Home.
+await guarded("P175-K", () =>
+  each(async (s) => {
+    const page = await s.context.newPage();
+    watch(page, s.name);
+    await page.goto(`${BASE_URL}/kiosk/no-such-page-h175`, { waitUntil: "domcontentloaded" });
+    await page.addStyleTag({ content: "nextjs-portal{display:none!important}" });
+    await page.getByRole("heading", { name: "This page does not exist" }).waitFor({ timeout: SLOW });
+    const back = page.getByRole("link", { name: "Back to the wall display" });
+    record("P175-K1 kiosk 404 links Back to the wall display -> /kiosk", s.name, (await back.getAttribute("href")) === "/kiosk");
+    record("P175-K2 page scrollWidth <= innerWidth", s.name, (await overflow(page)) <= 0);
+    const box = await page.locator(".panel").first().boundingBox();
+    const pad = 16;
+    await page.screenshot({ path: join(OUT_DIR, `not-found-kiosk-${s.name}.png`), fullPage: true, clip: { x: Math.max(0, box.x - pad), y: Math.max(0, box.y - pad), width: Math.min(s.name === "390" ? 390 : 1440, box.width + 2 * pad), height: box.height + 2 * pad } });
+    await page.close();
+  }),
+);
 
 // The final records print even after failures, and on a runner kill.
 function finish() {

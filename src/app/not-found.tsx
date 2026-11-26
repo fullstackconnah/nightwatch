@@ -1,8 +1,8 @@
 /* The one 404 for every route: an unknown URL renders it inside the root layout (bare, no sidebar, so it also works
    signed out); `notFound()` from a (dash) page reaches it through (dash)/not-found.tsx and keeps the dashboard chrome.
    Reads no data on purpose. Look follows (dash)/error.tsx. */
-import Link from "next/link";
-import { ArrowLeft, SearchX } from "lucide-react";
+import { SearchX } from "lucide-react";
+import { NotFoundHomeLink } from "@/components/not-found-home-link";
 
 export default function NotFound() {
   return (
@@ -15,13 +15,7 @@ export default function NotFound() {
           <p className="text-xs text-ink-dim">The address may be mistyped, or the page has moved.</p>
         </div>
 
-        <Link
-          href="/"
-          className="h-11 md:h-9 w-full rounded-md border border-accent/30 bg-accent/10 text-accent text-sm font-medium flex items-center justify-center gap-1.5 outline-none hover:bg-accent/20 focus-visible:ring-1 focus-visible:ring-accent active:scale-[0.98] transition"
-        >
-          <ArrowLeft size={14} aria-hidden="true" />
-          Back to Home
-        </Link>
+        <NotFoundHomeLink />
       </div>
     </div>
   );

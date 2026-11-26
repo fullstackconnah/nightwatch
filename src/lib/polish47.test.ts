@@ -16,8 +16,9 @@ test("P47-B: not-found says what happened, links home and reads no data", () => 
   const src = read("../app/not-found.tsx");
   assert.match(src, /This page does not exist/);
   assert.match(src, /The address may be mistyped, or the page has moved\./);
-  assert.match(src, /href="\/"/);
-  assert.match(src, /Back to Home/);
+  assert.match(src, /<NotFoundHomeLink \/>/);
+  assert.match(read("../components/not-found-home-link.tsx"), /notFoundHome\(usePathname\(\)\)/);
+  assert.match(read("../lib/not-found-home.ts"), /href: "\/", label: "Back to Home"/);
   assert.doesNotMatch(src, /@\/lib|fetch\(|cookies\(|headers\(/);
 });
 
