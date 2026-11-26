@@ -52,13 +52,14 @@ const JOB_FALLBACK: Record<number, string> = {
   404: "That job isn’t there.",
   409: "That job can't be changed right now.",
   410: "The original has been deleted.",
+  500: "The media worker couldn’t save the change, so nothing changed. Try again in a minute.",
   507: "The disk is too full to compress this.",
 };
 const COMPRESS_FALLBACK = { ...JOB_FALLBACK, 409: "it can't be compressed right now" };
 
 function jobFailure(p: ProbeFail, fallback: Record<number, string> = JOB_FALLBACK): Response {
-  const { httpStatus: s, detail } = p; // detail only ever leaves through safeReason
-  if (s !== undefined && fallback[s]) return json({ error: safeReason(detail) ?? fallback[s], worker: p.status }, s);
+  const { httpStatus: s, detail } = p; // detail only ever leaves through safeReason; a 500 body is the worker's own internal error, never shown
+  if (s !== undefined && fallback[s]) return json({ error: (s === 500 ? null : safeReason(detail)) ?? fallback[s], worker: p.status }, s);
   return failure(p, {});
 }
 
