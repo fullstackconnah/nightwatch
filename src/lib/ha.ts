@@ -140,7 +140,6 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-
 /** True when both arrays have equal length and equal elements pairwise
  *  (callers pass lower-cased word arrays, so this is effectively the
  *  case-insensitive comparison). */
@@ -453,9 +452,6 @@ async function callService(
   if (probe.status === "ok") return { ok: true };
   return toActionFailure(probe, entityId);
 }
-
-/** Nearest half-degree — HA climate entities routinely reject arbitrary
- *  float precision, and a homelab thermostat has no use for a hundredth. */
 
 /**
  * A temperature "nudge" has no direct HA service — it is read-current,

@@ -52,6 +52,7 @@ const STATES_CACHE_MS = 1500;
  *  The higher-priority kind wins the `latest` slot so the modal can say
  *  "doorbell" rather than "motion" when both are true. */
 const COINCIDENT_MS = 15_000;
+
 interface RawEntity {
   entity_id: string;
   state: string;

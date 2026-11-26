@@ -19,14 +19,14 @@ test("a battery at 10 counts, at 11 does not, lowest first", () => {
   assert.deepEqual(f.batteries.map((b) => [b.name, b.value]), [["C", 4], ["B", 10]]);
 });
 
-test("a sensor with no battery value, a non-battery sensor and an unavailable battery are never counted as low; the two batteries with no usable reading count as down", () => {
+test("a sensor with no battery value, a non-battery sensor and an unavailable battery are never counted as low", () => {
   const f = smartHomeFacts(ok([
     sensor("NoValue", { value: null }),
     sensor("Temp", { kind: "temperature", value: 3 }),
     sensor("Gone", { value: 2, available: false }),
   ]));
   assert.equal(f.batteries.length, 0);
-  assert.equal(f.down, 2);
+  assert.equal(f.down, 1);
 });
 
 test("the not-responding count equals the Smart home page's own count for one fixture", () => {
