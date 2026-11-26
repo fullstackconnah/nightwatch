@@ -25,7 +25,7 @@ const OK: BackupVerdict = { kind: "ok" };
 /**
  * Judges the instance whose newest backup is oldest. A backup whose modifiedAt does not parse is ignored (its age
  * would be NaN and read as fresh). An instance with no usable backup is "never", unless it was created within
- * BACKUP_GRACE_MS, when it is skipped; a missing or unparsable createdAt gets no grace. No instances is fine. Run
+ * BACKUP_GRACE_MS, when it is skipped; a missing, unparsable or future createdAt gets no grace. No instances is fine. Run
  * state is not known here, so a stopped instance is judged like a running one.
  */
 export function backupVerdict(instances: BackupRead["instances"], backups: McBackup[], now: number): BackupVerdict {
@@ -33,7 +33,8 @@ export function backupVerdict(instances: BackupRead["instances"], backups: McBac
   for (const { slug, createdAt } of instances) {
     const newest = newestBackup(backups.filter((b) => b.instance === slug && !Number.isNaN(Date.parse(b.modifiedAt))));
     if (!newest) {
-      if (now - Date.parse(createdAt) < BACKUP_GRACE_MS) continue; // NaN compares false: no grace
+      const age = now - Date.parse(createdAt);
+      if (age >= 0 && age < BACKUP_GRACE_MS) continue; // NaN and a future createdAt (negative age) get no grace
       return { kind: "never" };
     }
     oldest = Math.max(oldest === Infinity ? 0 : oldest, now - Date.parse(newest.modifiedAt));

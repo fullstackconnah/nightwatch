@@ -135,3 +135,8 @@ test("the probe is registered only when the manager is configured, so an unconfi
   const src = readFileSync(new URL("../attention.ts", import.meta.url), "utf8");
   assert.match(src, /mcManagerCredentials\(\)\s*\?\s*\[\{ id: "minecraft"/);
 });
+
+test("a createdAt in the future gets no grace, so a world that never backs up reads never", () => {
+  const future = new Date(NOW + DAY).toISOString();
+  assert.deepEqual(backupVerdict([inst("a", future)], [], NOW), { kind: "never" });
+});
