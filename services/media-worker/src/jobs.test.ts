@@ -513,6 +513,7 @@ describe("a failed jobs.json write (H177)", () => {
 
   it("enqueue throws and leaves nothing half-queued, so a retry is not 'Already queued'", { skip: SKIP_OFF_LINUX }, () => {
     const { q } = make();
+    q.recoverOnce(); // enqueue runs it first; it must not be what throws, only the save after jobs.push
     breakWrite();
     assert.throws(() => q.enqueueOne("movies/a.mkv"));
     assert.equal(q.all().length, 0);
