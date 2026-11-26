@@ -192,6 +192,7 @@ export function createQueue(opts: QueueOpts) {
       save();
     } catch (e) {
       jobs = jobs.filter((j) => !made.includes(j)); // nothing half-queued: a retry must not hit "Already queued"
+      try { save(); } catch { /* still unwritable: the next save writes it */ } // the rename may have landed before the fsync threw
       throw e;
     }
     pump();
@@ -278,13 +279,15 @@ export function createQueue(opts: QueueOpts) {
     }
     // A job that was running goes to the head of the queue.
     jobs = [...requeue, ...jobs.filter((j) => !requeue.includes(j))];
-    try { save(); } catch (e) { opts.log?.(`jobs.json not saved after recovery: ${(e as Error).message}`); } // the next save writes it
+    // Unsaved: pump() would burn the queue to failed (patch throws at the save), so hold it until a save works.
+    let saved = true;
+    try { save(); } catch (e) { saved = false; opts.log?.(`jobs.json not saved after recovery, queue held until the next save works: ${(e as Error).message}`); }
     try {
       const live = new Set(jobs.filter((j) => j.state === "queued").map((j) => `${j.id}.part`));
       for (const f of readdirSync(opts.dirs.work)) if (!live.has(f)) rmQuiet(opts.guard, opts.dirs.work, join(opts.dirs.work, f));
     } catch { /* work/ not there yet: nothing to clear */ }
     purgeDue();
-    pump();
+    if (saved) pump();
   }
   const recoverOnce = () => { if (!recovered) recover(); };
 

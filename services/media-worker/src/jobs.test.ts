@@ -521,7 +521,7 @@ describe("a failed jobs.json write (H177)", () => {
     assert.equal(q.enqueueOne("movies/a.mkv").state, "queued");
   });
 
-  it("recovery still sweeps and pumps when the save after the requeue fails", async () => {
+  it("recovery holds the queue when the save after the requeue fails, and the next working enqueue starts it", { skip: SKIP_OFF_LINUX }, async () => {
     const first = make();
     seed(first.q, "enc-1", "encoding");
     const logs: string[] = [];
@@ -529,9 +529,13 @@ describe("a failed jobs.json write (H177)", () => {
     const again = createQueue({ ...second(first), run: async (r) => { started.push(r.id); await new Promise(() => undefined); }, log: (l: string) => logs.push(l) });
     breakWrite();
     assert.doesNotThrow(() => again.recoverOnce());
+    await tick();
+    assert.ok(logs.some((l) => /queue held/.test(l)), logs.join("|"));
+    assert.deepEqual(started, []);
+    assert.equal(again.get("enc-1")?.state, "queued");
     fixWrite();
+    again.enqueueOne("movies/b.mkv");
     await tick();
     assert.deepEqual(started, ["enc-1"]);
-    assert.ok(logs.some((l) => /not saved after recovery/.test(l)), logs.join("|"));
   });
 });
