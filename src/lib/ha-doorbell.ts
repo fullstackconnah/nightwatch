@@ -1,6 +1,7 @@
 import { loadConfig, unconfiguredDetail } from "@/lib/config";
 import { UNCONFIGURED_DETAIL, ha, haCredentials, type HaCredentials } from "@/lib/ha";
 import { Memo } from "@/lib/cache";
+import { doorbellAgeSec } from "@/lib/ha-facts";
 import { lastSeenFromHistory } from "@/lib/doorbell-last-seen";
 import type {
   HaDoorbellCamera,
@@ -270,7 +271,7 @@ function readTrigger(e: RawEntity, kind: HaDoorbellTriggerKind, serverNow: numbe
     kind,
     active,
     firedAt,
-    ageSec: Number.isFinite(firedMs) ? Math.max(0, Math.round((serverNow - firedMs) / 1000)) : null,
+    ageSec: doorbellAgeSec(firedMs, serverNow),
   };
 }
 

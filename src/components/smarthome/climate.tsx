@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { SegmentButton } from "@/components/ui/segment-button";
 import { RowError, useBusy } from "@/components/smarthome/shared";
+import { nudgedTemp } from "@/lib/ha-facts";
 import { acWrites } from "@/lib/smarthome/page-model";
 import type { HaClimate, HaEntities } from "@/lib/types/ha";
 import type { UseHaResult } from "@/lib/use-ha";
@@ -39,8 +40,8 @@ function ClimateRow({ climate, ha, entities, stale }: { climate: HaClimate; ha: 
         { entityId: climate.entityId, action: "nudge_temp", delta },
         patch((c) =>
           dual
-            ? { ...c, targetTempLow: c.targetTempLow! + delta, targetTempHigh: c.targetTempHigh! + delta }
-            : { ...c, targetTemp: c.targetTemp != null ? c.targetTemp + delta : c.targetTemp },
+            ? { ...c, targetTempLow: nudgedTemp(c.targetTempLow!, delta), targetTempHigh: nudgedTemp(c.targetTempHigh!, delta) }
+            : { ...c, targetTemp: c.targetTemp != null ? nudgedTemp(c.targetTemp, delta) : c.targetTemp },
         ),
       ),
     );

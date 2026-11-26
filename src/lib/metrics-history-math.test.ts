@@ -36,10 +36,10 @@ test("brightnessPercent: at least 1% while on, 100 at full, null when off or mis
 
 const src = (p: string) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 
-test("wiring: ha.ts knows open and opening; history uses the helpers", () => {
+test("wiring: ha-facts.ts knows open and opening; history uses the helpers", () => {
   const ha = src("./ha.ts");
-  assert.match(ha, /^\s+"open",$/m);
-  assert.match(ha, /^\s+"opening",$/m);
+  // the lock state list lives on one line in ha-facts.ts
+  assert.match(src("./ha-facts.ts"), /KNOWN_LOCK_STATES: readonly string\[\] = \[[^\]]*"open", "opening",/);
   assert.match(ha, /brightnessPercent\(on, brightnessRaw\)/);
   const h = src("./metrics-history.ts");
   assert.match(h, /if \(shouldSkipTick\(input\.ts, last, SAMPLE_INTERVAL_MS\)\) return;/);
